@@ -9,7 +9,7 @@ export reproc
 function reproc()
     StoreUtil.dropAll()
     StoreUtil.useDbProd(;init=true)
-    ordFiles = sort(filter(fn -> endswith(fn, ".json"), readdir("data/log/orders"; join=true)))
+    ordFiles = sort(filter(fn -> endswith(fn, ".json"), readdir(dirData("bak/orders"); join=true)))
     for of in ordFiles
         tord = loadJson(of)
         status = tord["status"]

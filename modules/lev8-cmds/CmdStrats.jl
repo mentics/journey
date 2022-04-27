@@ -46,7 +46,7 @@ end
 function makeProbs(numDays::Int, targetDate::Date, sp::Currency)::Tuple
     phOrig = probHist(sp, numDays)
     ph = Prob(getCenter(phOrig), smooth(getVals(phOrig)))
-    pnd = probsNormDist(sp, calcIvsd(targetDate, 1.0))
+    pnd = probsNormDist(sp, calcIvsd(targetDate, 1.1))
     # pshort = probMid(ph, binMin(), 1.0)
     # plong = probMid(ph, 1., binMax())
     # pmid = probMid(ph, .5*(1.0+binMin()), .5*(1.0+binMax()))
@@ -54,8 +54,8 @@ function makeProbs(numDays::Int, targetDate::Date, sp::Currency)::Tuple
     # pposInv = isnothing(lastPosRet[]) ? nothing : invert(ppos)
     # pflat = probFlat(ph)
     # pposHyb = Prob(getCenter(ph), normalize!(getVals(ph) .+ (getVals(pposInv) .* 2)))
-    # return (pnd, ph)
-    return (ph,pnd)
+    return (pnd, ph)
+    # return (ph,pnd)
 end
 
 ana(exs...; kws...) = an(exs...; kws..., maxRun=0)

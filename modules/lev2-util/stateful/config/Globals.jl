@@ -4,6 +4,7 @@ import Dates:now,UTC
 export config
 export snap, tenv, intest
 export dev, devon, devoff
+export dirData
 
 config()::Dict{Symbol,Any} = cfg
 dev()::Bool = get(:devMode)
@@ -31,6 +32,9 @@ function __init__()
         )
     )
 end
+
+dirData() = "G:/My Drive/sync/data/journey"
+dirData(sub...) = joinpath("G:/My Drive/sync/data/journey", sub...)
 
 has(k::Symbol) = haskey(cfg, k)
 set(k::Symbol, v::Any) = cfg[k] = v

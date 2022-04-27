@@ -4,7 +4,7 @@ using BaseTypes
 
 export loadJson, writeJson
 export readLastLines
-export writeStr, appendCsv
+export writeStr, writeCsv, appendCsv
 
 #region Json
 function (loadJson(path::AStr, typ::Type{T}=Dict)::T) where T
@@ -23,6 +23,12 @@ function writeStr(path::AStr, str::AStr)
     open(path, "w") do io
         write(io, str)
     end
+end
+
+function writeCsv(path::AbstractString, data::Vector{<:Dict}; keys=keys(data[1]))
+    mat = [r[key] for r in data, key in keys]
+    out = vcat(reshape(collect(keys), 1, :), mat)
+    writedlm(path, out, ',')
 end
 function appendCsv(path::AStr, data::Vector{<:Dict}; keys=keys(data[1]))
     mat = [r[key] for r in data, key in keys]

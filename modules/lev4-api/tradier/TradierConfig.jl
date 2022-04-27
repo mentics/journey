@@ -75,7 +75,7 @@ end
 #endregion
 
 #region Local
-const SnavePath = joinpath("data", "snave")
+const SnavePath = dirData("snave")
 const cfg = Dict{Symbol,Any}()
 
 function __init__()

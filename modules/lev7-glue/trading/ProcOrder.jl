@@ -45,12 +45,15 @@ function procOrderRaw(tord::Dict{String,Any})::Bool
     tid = extractTid(tord)
     if status in ("expired", "canceled", "rejected")
         # TODO: Need to do something different when we support > 4 legged trades
-        numLegs = queryNumLegs(tid)
-        isnothing(numLegs) && (@log debug "procOrder: Skipping already deleted trade" oid tid ; return false)
-        if TradierOrderConvert.tierActionOrder(tord) == 1 && TradierOrderConvert.tierNumLegs(tord) == numLegs
+        tnumLegs = queryNumLegs(tid)
+        isnothing(tnumLegs) && (@log debug "procOrder: Skipping already deleted trade" oid tid ; return false)
+        act = TradierOrderConvert.tierActionOrder(tord)
+        onumLegs = TradierOrderConvert.tierNumLegs(tord)
+        if act == 1 && (onumLegs == tnumLegs || onumLegs == tnumLegs - 1)
             StoreTrade.deleteTrade(tid)
             return true
         else
+            @log error "Canceled order for trade doesn't match" oid tid act numLegs
             return false
         end
     elseif status != "filled"

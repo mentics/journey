@@ -8,7 +8,7 @@ using Snapshots, Calendars, Markets, Expirations, Chains
 using CmdStrats, CmdCheck, CmdTrading, CmdExplore
 using SchedAll, Sched
 SchedAll.start()
-isrtd() = !(intest() || dev() || !isMarketOpen() || tenv() != :prod)
+isrtd() = !intest() && !dev() && isMarketOpen() && tenv() == :prod && isnothing(snap()) && urp()
 snap(1)
 an(;maxRun=100000, scorer=scoreRand, posStrat=Vector{LegRet}())
 dr(1)

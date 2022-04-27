@@ -1,8 +1,15 @@
-Globals.set(:anasExps, [3,6])
+1: done
+2: nothing
+3: nothing
+4: done
+5: nothing
+6: nothing
+7: done
 
-When entering or closing a trade, check to see if it already took the other side today to avoid day trading. Especially important if I'm closing out worthless legs early.
 
 it didn't send email today (4/25) so figure out why windows task scheduler didn't work
+
+When entering or closing a trade, check to see if it already took the other side today to avoid day trading. Especially important if I'm closing out worthless legs early.
 
 Write up process doc. eg.: as soon as can buy back short legs for $.01, then do so
 
@@ -36,8 +43,6 @@ extra 2: Also line pricing to deal with how we exit--don't always get to the end
 extra 3:
 extra 4: tools to deal with closing partially before expiration because near the money, and highlight those that should be closed (if time to expir < X and ITM is within Y highlight that leg)
 
-have a specific "improve" prob that is required for those bins to improve score. Then can manipulate that in various ways in args of ana()
-
 schedule to call snave occasionally
 
 standardize on combined color in graphs
@@ -45,8 +50,6 @@ standardize on combined color in graphs
 get market calendar and notify of holidays in next 2 weeks https://documentation.tradier.com/brokerage-api/markets/get-calendar
 
 warning in results if base score is near calcutil evr cap
-
-move code to gitlab
 
 Calc if current trade leg prices for cal spreads are matching the model we used
 
@@ -65,9 +68,6 @@ make sure expired processor is working
 create 1 mil random valid strats and make sure that all of them get called into scoring during a run
 
 consider having a SchedLive module and SchedBackground module to consolidate all scheduling code
-
-to call win api from julia: https://stackoverflow.com/questions/30555994/calling-win32-functions-from-julia
-https://www.prowaretech.com/articles/current/windows/application-programming-interface/prevent-computer-going-to-sleep
 
 Keep worthless long calendar positions until expiration in case they get value back
 

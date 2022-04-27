@@ -1,10 +1,9 @@
 module HistData
 using Dates, DelimitedFiles
-using FileUtil, DateUtil
+using Globals, FileUtil, DateUtil
 using Caches, TradierData
-# using TopTypes, Caching, DateUtil, FileUtil, Tradier
 
-export dataDaily, dataDay#, makeRetsExpirs, priceOpen
+export dataDaily, dataDay
 export DailyType, DailyRowType, RetsItemType
 
 # TODO: do proper row type
@@ -13,7 +12,7 @@ const DailyType = Vector{DailyRowType}
 const RetsItemType = NamedTuple{(:interval, :ret, :date, :dailyIndex), Tuple{Int,Float64,Date,Int}}
 
 const header = [:date, :open, :high, :low, :close, :volume]
-const pathDaily = joinpath("data", "hist", "daily", "spy", "spy-daily.csv")
+const pathDaily = dirData("hist", "daily", "spy", "spy-daily.csv")
 
 const DAILY = :daily
 
@@ -79,6 +78,7 @@ end
 #region Local
 function updateDaily()::DailyType
     if !isfile(pathDaily)
+        error("can't find file: $(pathDaily)")
         # daily = Tradier.tradierHistQuotes(cfg, "SPY", "daily", Date(2000,1,1), Dates.today()+Day(1))
         daily = getDataDaily(Date(2000,1,1), Dates.today()+Day(1))
         writeCsv(pathDaily, daily; keys=string.(header))

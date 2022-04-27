@@ -112,7 +112,7 @@ export backupOrders
 function backupOrders()
     ords = [(d["id"], d) for d in tradierOrders()]
     foreach(ords) do (id, d)
-        writeJson("tmp/$(id).json", d)
+        writeJson(dirData("bak/orders/$(id).json"), d)
     end
 end
 

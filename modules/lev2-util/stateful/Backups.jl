@@ -1,5 +1,5 @@
 module Backups
-using FileUtil
+using Globals, FileUtil
 
 export logOrderRaw, loadOrderLogged
 
@@ -20,7 +20,7 @@ end
 loadOrderLogged(oid::Int)::Dict{String,Any} = loadJson(pathOrder(oid))
 
 #region Local
-defBasePath() = joinpath("data", "log")
+defBasePath() = dirData("save")
 const basePath = Ref{String}(defBasePath())
 pathOrder(oid::Int)::String = joinpath(basePath[], "orders", string(oid) * ".json")
 #endregion

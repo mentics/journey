@@ -1,7 +1,7 @@
 module StoreTrade
 using Dates
 using SH, BaseTypes, SmallTypes, OptionTypes, LegTypes, TradeTypes, LegTradeTypes, StatusTypes, LegMetaTypes
-using BaseUtil, DateUtil, StoreUtil, FileUtil
+using Globals, BaseUtil, DateUtil, StoreUtil, FileUtil
 
 export newTrade, loadTrade, loadLegTrade, findTrades, queryLegStatus, queryNumLegs, queryLeftovers
 export findTradeEntered
@@ -88,7 +88,7 @@ function deleteTrade(tid::Int)
     # print("Are you sure this trade should be deleted? (N/y)")
     # input = readline()
     # if input == "y"
-        writeStr("data/log/deletedTrades/$(tid).json", DictUtil.jsonPretty(trade))
+        writeStr(dirData("save/deletedTrades/$(tid).json"), DictUtil.jsonPretty(trade))
         res = update("delete from Trade where tid=?", tid)
         @info "Deleted." res
     # else
@@ -96,7 +96,7 @@ function deleteTrade(tid::Int)
     # end
 end
 function undeleteTrade(tid::Int)
-    t = loadJson("data/log/deletedTrades/$(tid).json", Trade)
+    t = loadJson(dirData("save/deletedTrades/$(tid).json"), Trade)
     inTransaction() do
         update("insert into Trade (tid, status, tsCreated, primitDir, targetDate) values (?, ?, ?, ?, ?)", getId(t), Starting, tsCreated(t), getPrimitDir(t), getTargetDate(t))
         tmet = getMeta(t)

@@ -15,4 +15,4 @@ using Markets
 urpon()
 
 using Sched, SchedStrat
-# SchedStrat.start()
+SchedStrat.start(2,3,5,6)
