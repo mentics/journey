@@ -1,0 +1,166 @@
+Globals.set(:anasExps, [3,6])
+
+When entering or closing a trade, check to see if it already took the other side today to avoid day trading. Especially important if I'm closing out worthless legs early.
+
+it didn't send email today (4/25) so figure out why windows task scheduler didn't work
+
+Write up process doc. eg.: as soon as can buy back short legs for $.01, then do so
+
+Auto look for opportunities to close out short legs that have gone to .01 early. query db for way out of money items, then filter by quote
+
+need isinvalid to also avoid legs in passed in curpos
+
+can store level be this low?
+Globals is at data level?
+Utils can depend on types
+Types mostly only depend on Types
+
+lmsadd = LegMeta[]
+empty!(lmsadd)
+append!(lmsadd, tos(LegMeta, ar(1)))
+ana(3,4,5; addPos=lmsadd)
+
+Why do I get nice trades for some expirations and can't for others? Could it be the weekends messing with the volatility timing?
+looks like sorting by ev is problematic. optimizing by evr got me 100% prob profit when by ev, I couldn't find anything I liked.
+but that might be because market moved a lot while I was looking at that
+
+If market goes to a price, the long calendar leg will be priced differently based on the skew. Does blackscholes consider this? can I adjust for it?
+
+why is it showing that adding a negative ev can make both ev higher? I wonder if it's because of the adjustment?
+
+2 primary needs to solidify process:
+1) Simulate adding additional positions incrementally
+2) Identify the best scoring that adapts if necessary
+extra 1: refine blackscholes pricing because I don't think it's working quite right.
+extra 2: Also line pricing to deal with how we exit--don't always get to the end, to 0, risks of near the money, etc.
+extra 3:
+extra 4: tools to deal with closing partially before expiration because near the money, and highlight those that should be closed (if time to expir < X and ITM is within Y highlight that leg)
+
+have a specific "improve" prob that is required for those bins to improve score. Then can manipulate that in various ways in args of ana()
+
+schedule to call snave occasionally
+
+standardize on combined color in graphs
+
+get market calendar and notify of holidays in next 2 weeks https://documentation.tradier.com/brokerage-api/markets/get-calendar
+
+warning in results if base score is near calcutil evr cap
+
+move code to gitlab
+
+Calc if current trade leg prices for cal spreads are matching the model we used
+
+move code out of Cmd* modules so Cmd* are very simple
+
+in LegTradeInfo, show leg status: clearly show closed legs, or closing
+
+fast run script with: julia -O0 --compile=min --startup-file=no C:/data/julia/scripts/test.jl
+julia -O0 --compile=min --startup-file=no C:/data/julia/scripts/test.jl
+
+look at source for now(UTC) and see if more efficient code to do that
+
+remove duplication in runstrats results
+get rid of duplicates and conflicting legs in processing
+make sure expired processor is working
+create 1 mil random valid strats and make sure that all of them get called into scoring during a run
+
+consider having a SchedLive module and SchedBackground module to consolidate all scheduling code
+
+to call win api from julia: https://stackoverflow.com/questions/30555994/calling-win32-functions-from-julia
+https://www.prowaretech.com/articles/current/windows/application-programming-interface/prevent-computer-going-to-sleep
+
+Keep worthless long calendar positions until expiration in case they get value back
+
+Get calendar and show hours and holidays: https://documentation.tradier.com/brokerage-api/markets/get-calendar
+
+Include in scheduler: watch kept calotm positions for if they become worth enough, we can sell them for extra profit
+
+get extremes of all metrics, normalize, then add together normalized values to get composite metric
+
+for snap, also only query trades open at that time.
+
+is it wasting processing combis that are all not the target date?
+
+overriding Base.show might be slow compilation. If so, avoid?
+
+Because we're using max loss as risk in the kelly calc, something that has a huge max risk at an extreme shrinks the losses in the middle and makes the overall position look much better when compared to others.
+Need to change the calc so that doesn't happen.
+Maybe using the same max risk for all cases would solve it?
+
+have probs store interval/exp so things can validate that it's right for context (I mistakenly use wrong one for later expirs)
+
+Long running task scanning for good trades
+same task can auto run snave()
+and save market data periodically
+
+show return at current price
+Fix output for sa* netopen is wrong and check others
+
+in results, show ev profit and loss values with vals * probs for just wins and loss bins
+
+store bid/ask in TradeLegMeta
+
+Figure out ideal trade given user input params and put in score/filter for that in InfoStrats and keep N best candidates
+
+should we use vtyRatio based on atmiv()[2] - [1] or something like that?
+
+get rid of duplicates in analysis results
+
+handle canceled orders for closing a trade
+
+Display legs in a pretty table:
+pretty_table(data; tf=tf_borderless, noheader=true)
+
+find api for ex dividend date
+don't allow short calls on ex-dividend date (in Combis.jl)
+
+in plotthings, draw dots for strike prices
+
+More bins, and wider min/max in configs
+
+change bins to sizedvector because it might be too big for svector
+
+Change stratInfo to take a vector of legquotes for faster compilation
+
+Make sure butterflies are calcualted correctly for kelly because I don't know if we're using weight properly
+
+watcher for filled isn't working for orders: gives can't fill leg
+
+fix Reconcile
+
+schedule copy database backup
+
+
+for drawing a trade to be closed (todo()), plot open price for the day when it was opened
+
+when closing, save it to closing.
+while watching, if closing canceled, move it
+
+add startwatcher for closing trade after submit close order
+
+save metadata in trade when start
+
+change distri interval to include weekends, time, something. go from same day of week to same day of week
+
+long running task that saves market and order data periodically and at important times
+
+check the balance on threads running analysis: is it waiting on one (small number) thread at the end?
+
+
+ fixing json:
+
+ jq 'walk(if type=="object" and .extra then . + { greeks:.extra.greeks } else . end )' < chains-2022-01-28.10-35.json > chains2.json
+
+wt -d C:/data/log PowerShell.exe "Get-Content debug.log -Wait -Tail 20" ; sp -D -V PowerShell.exe "Get-Content info.log -Wait -Tail 20" ; sp -D -H PowerShell.exe "Get-Content warn.log -Wait -Tail 20" ; move-focus left ; sp -D -H PowerShell.exe "Get-Content error.log -Wait -Tail 20"
+
+#### Done ####
+Try out free cloud cockroachdb -- it works
+on startup, copy cloud db to local (if it's newer), use local for faster -- decided to use cockroachdb instead
+
+# For dealing with mistakes manually. Insert order with two legs:
+insert into ord ("oid","symbol","class","ordertype","status","primitdir","prilldir","tscreated","tsfilled")
+	values (1001,'SPY','4',3,'Filled',1.0,1.0,1000*cast(now() as int),1000*cast(now() as int))
+insert into legord ("olid","oid","act","style","expiration","strike","side","quantity","prilldir","tscreated","tsfilled")
+	values (2001,1001,-1,-1,'2022-04-22',435.0,1,1.0,0.0,1000*cast(now() as int),1000*cast(now() as int))
+insert into legord ("olid","oid","act","style","expiration","strike","side","quantity","prilldir","tscreated","tsfilled")
+	values (2002,1001,-1,-1,'2022-04-22',436.0,-1,1.0,1.0,1000*cast(now() as int),1000*cast(now() as int))
