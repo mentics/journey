@@ -1,6 +1,4 @@
-2,3,5,6
-
-can try setvr(.8) ; ana(1,2,3)
+spread bins to 10 percent each way?
 
 in "found entry" emails, include comparison of "ev was X, now could by Y"
 

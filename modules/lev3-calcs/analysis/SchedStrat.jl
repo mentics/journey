@@ -5,6 +5,7 @@ using Sched, Emails, DataHelper
 using Calendars, Markets
 using CmdStrats
 using SchedBg
+using SystemUtil
 
 # To be used with repl-sched.jl
 
@@ -16,11 +17,13 @@ function start(inds...)
     @assert SchedBg.Jobs[1][1] == "update-$(Calendars)"
     Sched.add(SchedBg.Jobs[1]...)
     Sched.ison() || Sched.start()
+    setAllowSuspend(false)
 end
 
 function stop()
     @log info "Unscheduling analysis"
     Sched.remove(JOB_NAME)
+    setAllowSuspend(true)
 end
 
 #region Local

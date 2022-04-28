@@ -6,7 +6,7 @@ using DrawStrat
 using Markets, Chains
 # using CmdStrats
 
-export sh, shc, shRet, shVals, drsh, shLegs # shLegs is reexported form Shorthand
+export sh, shc, shRet, shVals, drsh, drsh!, shLegs # shLegs is reexported form Shorthand
 
 shc(args...) = Tuple(lr for lr in sh(args...))
 sh(str::AStr, exps=expirs())::Vector{LegMeta} = tos(LegMeta, shLegs(str, exps), optQuoter)
@@ -19,6 +19,7 @@ end
 shRet(str::AStr, exps, sp=market().startPrice) = combineTo(Ret, shlr(str, exps, sp))
 shVals(str::AStr, exps, sp=market().startPrice) = getVals(shRet(str, exps, sp))
 drsh(str::AStr, exps) = (sp = market().startPrice ; drawRet(shRet(str, exps, sp), nothing, sp, "sh") )
+drsh!(str::AStr, exps) = (sp = market().startPrice ; drawRet!(shRet(str, exps, sp), "sh+") )
 
 # TODO: need to move all probs calcs to util
 # using ProbHist

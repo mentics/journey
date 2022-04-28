@@ -10,19 +10,20 @@ export runStrats, makeCtx
 const VECF_EMPTY = Vector{Float64}()
 
 # Vector{Float64}=VECF_EMPTY
-function makeCtx(calcScore, probs, numDays::Int; nthreads::Int=12, maxRun::Int=120, keep::Int=10000, posRet::Union{Nothing,Ret})
+function makeCtx(calcScore, probs, numDays::Int; nthreads::Int=12, maxRun::Int=120, keep::Int=10000, posRet::Union{Nothing,Ret}, kws...)
     maxRun < nthreads && error("maxRun should be more than nthreads", maxRun, nthreads)
     keep < nthreads && error("keep should be more than nthreads", keep, nthreads)
     # cntEst = binomial(sum(length, legs4), 4) # TODO: too high
     # maxRun = min(maxRun, cntEst)
     thrMaxRun = div(maxRun, nthreads) + 1
     posVals = isnothing(posRet) ? nothing : getVals(posRet)
-    baseScore = isnothing(posRet) ? 0.0 : calcScore((;probs), nothing, VECF_EMPTY, posVals, posVals)
+    baseScore = isnothing(posRet) ? 0.0 : calcScore((;probs, kws...), nothing, VECF_EMPTY, posVals, posVals)
     # baseScore = 0.0
     @info "Setting baseScore" baseScore isnothing(posRet)
+    @info "kws" kws
 
     return (;
-        calcScore, probs, maxRun, baseScore, posVals, numDays,
+        calcScore, probs, maxRun, baseScore, posVals, numDays, kws...,
         threads = [makeThreadCtx(div(keep, nthreads), thrMaxRun, baseScore) for _ in 1:nthreads]
     )
 end

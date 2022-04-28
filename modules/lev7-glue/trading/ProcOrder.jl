@@ -53,7 +53,7 @@ function procOrderRaw(tord::Dict{String,Any})::Bool
             StoreTrade.deleteTrade(tid)
             return true
         else
-            @log error "Canceled order for trade doesn't match" oid tid act numLegs
+            @log error "Canceled order for trade doesn't match" oid tid act onumLegs tnumLegs
             return false
         end
     elseif status != "filled"

@@ -21,4 +21,5 @@ setAllowSuspend(false)
 
 using Sched, SchedStrat
 # TODO: read trades we made today to make this list automatically
+setvr(.7)
 SchedStrat.start(2,3,5,6)

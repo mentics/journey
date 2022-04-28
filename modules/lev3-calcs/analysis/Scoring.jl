@@ -12,54 +12,48 @@ const MID = fill(1.0/numVals(), numVals())
 
 scoreRand(args...) = rand()
 
+getCap(numPos::Real)::Float64 = 2.0 + 0.5 * (.25 * (numPos - 4))
+getAdj(numPos::Real)::Float64 = 0.03 * (.25 * numPos)
+calcMetricsBoth(pvals, bufBoth, numPos) = calcMetrics(pvals, bufBoth, getCap(4 + numPos), getAdj(4 + numPos))
+
 filtkeys() = [:ev, :evr, :standsAlone, :cantAlone, :maxLoss, :noImpProb1, :noImpProb2, :lostProb100,
-              :noImpEv1, :noImpEvr1, :noImpEv2, :noImpEvr2]
+              :noImpEv1, :noImpEvr1, :noImpEv2, :noImpEvr2, :special]
 function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufPos::Union{Nothing,AVec{Float64}}, bufBoth::AVec{Float64})::Float64
+    numPos = ctx.numPos
+    adjCombi = getAdj(4) ; adjPos = getAdj(numPos) ; adjBoth = getAdj(4 + numPos) # TODO: should be length of combi, but it's always 4 right now
+    capCombi = getCap(4) ; capPos = getCap(numPos) ; capBoth = getCap(4 + numPos)
+
     pvalsUse = getVals(ctx.probs[1])
-    metb = CalcUtil.calcMetrics(pvalsUse, bufBoth)
-    pvalsUse2 = getVals(ctx.probs[2])
-    metb2 = CalcUtil.calcMetrics(pvalsUse2, bufBoth)
+    metb = calcMetrics(pvalsUse, bufBoth, capBoth, adjBoth)
     if isempty(bufCombi)
         # This means we're calcing base score from existing position, so only bufPos will be valid but it's also passed into bufBoth.
-        return metb.ev
+        return -10000 # metb.ev
     end
-    canStandAlone = metb.ev > .1 && metb.evr > 1.0 && metb2.ev > .1 && metb2.evr > 1.0
+    isNew = isnothing(bufPos)
+    pvalsUse2 = getVals(ctx.probs[2])
+    metb2 = calcMetrics(pvalsUse2, bufBoth, capBoth, adjBoth)
+
+    metc = isNew ? metb : calcMetrics(pvalsUse, bufCombi, capCombi, adjCombi)
+    metc2 = isNew ? metb2 : calcMetrics(pvalsUse2, bufCombi, capCombi, adjCombi)
+    bufCombi[end] > .14 || return countNo(:special)
+
+    canStandAlone = metc.ev > .1 && metc.evr > 1.0 && metc2.ev > .1 && metc2.evr > 1.0
     canStandAlone && countNo(:standsAlone)
-    (!isnothing(bufPos) || canStandAlone) || return countNo(:cantAlone)
-    # bufCombi[365] >= 0 || return countNo(filtEvrInv)
-    # TODO: created dict for filter reason so we can just create new symbols on the fly
 
     bmn, bmx = extrema(bufBoth)
-    bmn > -1.7 || return countNo(:maxLoss)
-    # metb.prob < 1.0 || (@atomic passed.count += 1 ; return true)
 
-    # return metb.evr
-
-    # return scoreProb(metb.prob, bmn)
-    # TODO: try return metb.prob + bmn
-
-    # metb.ev > .2 || return countNo(filtEv)
-    # metb.evr > 1.2 || return countNo(filtEvr)
-
-    # metb.prob ≈ 1.0 || return countNo(filtProb)
-
-    # (bmn < -2.3 || bmx <= .49) && return countNo(filtExtrema)
-
-
-    # if ctx.numDays >= 7
-    #     (bufBoth[2] > .14 || bufBoth[numBins()+1] > .14) || return countNo(filtSides)
-    #     (bmn < -(1 + 7/5) || bmx <= .49) && return countNo(filtExtrema)
-    # elseif ctx.numDays >= 3
-    #     (bufBoth[2] > .14 && bufBoth[numBins()+1] > .14) || return countNo(filtSides)
-    #     (bmn > -(1.0 + ctx.numDays/5.0) && bmx > .49) || return countNo(filtExtrema)
-    # else
-    #     (bmn > -1.0 && bmx > .49) || return countNo(filtExtrema)
-    #     metb.prob > 0.6 || return countNo(filtProb)
-    # end
-
-    if !isnothing(bufPos)
-        metp = calcMetrics(pvalsUse, bufPos)
-        metp2 = calcMetrics(pvalsUse2, bufPos)
+    if isNew
+        canStandAlone || return countNo(:cantAlone)
+        bmn > -0.7 - 0.25 * ctx.numDays || return countNo(:maxLoss)
+        # Directional Bias
+        # metLong = calcMetrics(getVals(ctx.probs.plong), bufCombi)
+        # metShort = calcMetrics(getVals(ctx.probs.pshort), bufCombi)
+        # metShort.ev < metLong.ev || return countNo(filtMid)
+    else
+        pmn, pmx = extrema(bufPos)
+        bmn >= 0.0 || bmn >= -0.7 - 0.25 * ctx.numDays || bmn >= 0.75 * pmn || return countNo(:maxLoss)
+        metp = calcMetrics(pvalsUse, bufPos, capPos, adjPos)
+        metp2 = calcMetrics(pvalsUse2, bufPos, capPos, adjPos)
         # (metp.prob ≈ 1.0 && metb.prob <= .999) && return countNo(:lostProb100)
         metb.prob ≈ 1.0 || metb.prob >= metp.prob || return countNo(:noImpProb1)
         metb2.prob ≈ 1.0 || metb2.prob >= metp2.prob || return countNo(:noImpProb2)
@@ -95,25 +89,7 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufPos::Union{Nothing,AV
         # impShort = metShort.ev - metShortP.ev
         # impLong = metLong.ev - metLongP.ev
         # impLong > impShort || return countNo(filtMid)
-    else
-        # Directional Bias
-        # metLong = calcMetrics(getVals(ctx.probs.plong), bufCombi)
-        # metShort = calcMetrics(getVals(ctx.probs.pshort), bufCombi)
-        # metShort.ev < metLong.ev || return countNo(filtMid)
     end
-
-    # (bufCombi[2] >= .21 && bufCombi[numBins()+1] >= .21) || return countNo(filtSides)
-    # bufBoth[binsMid()] > .1 || return countNo(filtMid)
-
-    # metinvb = calcMetrics(getVals(ctx.probs.pposInv), bufBoth)
-    # metinvp = calcMetrics(getVals(ctx.probs.pposInv), bufPos)
-    # metinvb.evr > metinvp.evr || return countNo(filtEvr)
-
-    # kel = calcKelly!(pvalsUse, bufBoth)
-    # isfinite(kel) || return countNo(filtEvr) # TODO: changge filt var if keep this
-
-    # metc = calcMetrics(getVals(probUse), bufCombi)
-    # metc.ev > 0 || return countNo(filtEv) # We don't want to do this because it won't let us fill in holes
 
     @atomic passed.count += 1
     return metb.evr
@@ -125,9 +101,9 @@ countNo(sym::Symbol) = ( @atomic filt[sym].count += 1 ; NaN )
 
 # TODO: assert center same
 # @assert prob.center == first(s)[2].center
-byEv(prob::Prob) = s::Coll{LegRet,4} -> calcMetrics(getVals(prob), combineTo(Vals, s)).ev
-byEvr(prob::Prob) = s::Coll{LegRet,4} -> calcMetrics(getVals(prob), combineTo(Vals, s)).evr
-byKelly(prob::Prob) = s::Coll{LegRet,4} -> calcKelly(getVals(prob), combineTo(Vals, s))
+byEv(prob::Prob, numPos::Real) = s::Coll{LegRet,4} -> calcMetrics(getVals(prob), combineTo(Vals, s), getCap(numPos), getAdj(numPos)).ev
+byEvr(prob::Prob, numPos::Real) = s::Coll{LegRet,4} -> calcMetrics(getVals(prob), combineTo(Vals, s), getCap(numPos), getAdj(numPos)).evr
+byKelly(prob::Prob, numPos::Real) = s::Coll{LegRet,4} -> calcKelly(getVals(prob), combineTo(Vals, s), getCap(numPos), getAdj(numPos))
 function byMetrics(prob::Prob)
     function(s::Coll{LegRet,4})
         k = calcKelly(getVals(prob), combineTo(Vals, s))
@@ -135,10 +111,10 @@ function byMetrics(prob::Prob)
         return k * m.evr * m.prob
     end
 end
-function byProb(prob::Prob)
+function byProb(prob::Prob, numPos::Real)
     function(s::Coll{LegRet,4})
         vals = combineTo(Vals, s)
-        p = calcMetrics(getVals(prob), vals).prob
+        p = calcMetrics(getVals(prob), vals, getCap(numPos), getAdj(numPos)).prob
         return scoreProb(p, extrema(vals)[1])
     end
 end

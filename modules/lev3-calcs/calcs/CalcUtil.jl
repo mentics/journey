@@ -10,14 +10,16 @@ avg(vs) = sum(vs) / length(vs)
 (normalize!(vs::T)::T) where T = vs ./= sum(vs)
 
 using SH, ProbTypes
-calcMetrics(pv::AVec{Float64}, v::AVec{Float64}) = calcMetrics1(pv, v, 1.0, 0.05) # calcMetrics2(pv, v)
-calcMetrics(p::Prob, v::AVec{Float64}) = calcMetrics(getVals(p), v)
+calcMetrics(pv::AVec{Float64}, v::AVec{Float64}, cap::Float64, adjust::Float64) = calcMetrics1(pv, v, cap, adjust) # calcMetrics2(pv, v)
+# calcMetrics(p::Prob, v::AVec{Float64}) = calcMetrics(getVals(p), v)
 
-calcMetrics1(p::Prob, v::AVec{Float64}) = calcMetrics(getVals(p), v)
-function calcMetrics1(pv::AVec{Float64}, v::AVec{Float64}, cap::Float64=2.0, adjust::Float64=0.04)
+# calcMetrics1(p::Prob, v::AVec{Float64}) = calcMetrics(getVals(p), v)
+function calcMetrics1(pv::AVec{Float64}, v::AVec{Float64}, cap::Float64, adjust::Float64)
+    # error("cap: $(cap)")
     profit = loss = prob = 0.0
     # adjustCap = 1.0
     # adjust = 0.0
+    # @info "check" cap adjust
     for (p, v) in Iterators.zip(pv, v)
         # vadj = min(5.0, 0.0 < v < adjustCap ? v - (v*adjust/adjustCap) : (v - adjust)) # TODO: should make the cap adjust somehow with the position we're processing
         vadj = min(cap, v - adjust) # TODO: should make the cap adjust somehow with the position we're processing

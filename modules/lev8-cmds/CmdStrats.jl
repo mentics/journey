@@ -11,7 +11,6 @@ using StoreOrder
 export ana, an, sortar, sortar2, sa, ar, arv, ret, comp
 export dr, drf, adr, adrf, dra, ret, retf
 export ctx, curStrat, curRet, probs, pvals, ivs
-export atmiv, setvr, getvr
 
 function comp(i::Int)
     valsStart = combineTo(Vals, curStrat())
@@ -24,14 +23,16 @@ function comp(i::Int)
         #     [:start, :add, :both],
         #     [:startFlat, :addFlat, :bothFlat]
         # ]
-        start = calcMetrics(pvals, valsStart)
-        add = calcMetrics(pvals, valsAdd)
-        both = calcMetrics(pvals, valsBoth)
+        start = hereMetrics(pvals, valsStart)
+        add = hereMetrics(pvals, valsAdd)
+        both = hereMetrics(pvals, valsBoth)
         data = [(;name=n, nt...) for (n, nt) in zip(["start$(ind)", "add$(ind)", "both$(ind)"], [start, add, both])]
         pretyble(data) # TODO: create Tables impl for tuple of namedtuples
     end
     return
 end
+
+hereMetrics(pv, v) = Scoring.calcMetricsBoth(pv, v, length(lastPosStrat[]))
 
 # draw(CmdStrats.lastCtx[].probs.ppos.vals)
 # draw(CmdStrats.lastCtx[].probs.pposInv.vals)
@@ -55,8 +56,8 @@ function makeProbs(numDays::Int, targetDate::Date, sp::Currency)::Tuple
     # pposInv = isnothing(lastPosRet[]) ? nothing : invert(ppos)
     # pflat = probFlat(ph)
     # pposHyb = Prob(getCenter(ph), normalize!(getVals(ph) .+ (getVals(pposInv) .* 2)))
-    # return (pnd, ph)
-    return (ph,pnd)
+    return (pnd, ph)
+    # return (ph,pnd)
 end
 
 ana(exs...; kws...) = an(exs...; kws..., maxRun=0)
@@ -86,14 +87,16 @@ function an(exs...; maxRun::Int=120, keep::Int=1000, nthreads::Int=Threads.nthre
     len1, len2 = length.(allSpreads2)
     if maxRun == 0; maxRun = binomial(len1, 2) + binomial(len2, 2) + len1 * len2 end
     resetCountsScore()
-    ctx = makeCtx(coal(scorer, calcScore1), probs, numDays; maxRun, keep, posRet=lastPosRet[], nthreads)
+    numPos = length(lastPosStrat[])
+    ctx = makeCtx(coal(scorer, calcScore1), probs, numDays; maxRun, keep, posRet=lastPosRet[], nthreads, numPos)
+    @info "ctx" keys(ctx)
 
     @info "RunStrats running" maxRun keep nthreads exps sum(length, allSpreads2) sp numDays
     @time strats = runStrats(allSpreads2, ctx)
     showCountsScore()
     global lastRes[] = strats
     global lastCtx[] = ctx
-    sortar(byEvr(probs[1]))
+    sortar(byEvr(probs[1], numPos))
     global lastView[] = copy(strats)
     if !headless
         sa()
@@ -159,8 +162,6 @@ curStrat() = lastPosStrat[]
 curRet() = lastPosRet[]
 probs() = lastCtx[].probs
 pvals() = map(x->getVals(x), probs())
-getvr() = Globals.get(:vtyRatio)
-setvr(vr::Float64) = Globals.set(:vtyRatio, vr)
 
 #region Local
 const lastExp = Ref{Date}()
@@ -192,8 +193,8 @@ function toTuple(s::Union{Nothing,Strat}, lrs::Vector{LegRet})
     strikes = legsTosh(s, exps) # join(map(l -> "$(first(string(side(l))))$(s(strike(l), 1))$(first(string(style(l))))@$(searchsortedfirst(exps, expiration(l)))", legs(ar)), " / ")
     length(lrs) > length(s) && (strikes *= " + cur")
     vals = combineTo(Vals, lrs)
-    met = calcMetrics(pv, vals)
-    met2 = calcMetrics(pv2, vals)
+    met = hereMetrics(pv, vals)
+    met2 = hereMetrics(pv2, vals)
     # TODO: calc breakevens
     kel = calcKelly(pv, vals)
     return (;prob=met.prob, kel, ev=met.ev, evr=met.evr, ev2=met2.ev, evr2=met2.evr, bes="", pnl=extrema(vals), netOpen=!isnothing(s) ? getNetOpen(s) : 0.0, legs=strikes, expir=exps)
