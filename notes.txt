@@ -1,21 +1,14 @@
-1: done
-2: nothing
-3: nothing
-4: done
-5: nothing
-6: nothing
-7: done
+2,3,5,6
 
+can try setvr(.8) ; ana(1,2,3)
 
-it didn't send email today (4/25) so figure out why windows task scheduler didn't work
+in "found entry" emails, include comparison of "ev was X, now could by Y"
 
 When entering or closing a trade, check to see if it already took the other side today to avoid day trading. Especially important if I'm closing out worthless legs early.
 
 Write up process doc. eg.: as soon as can buy back short legs for $.01, then do so
 
 Auto look for opportunities to close out short legs that have gone to .01 early. query db for way out of money items, then filter by quote
-
-need isinvalid to also avoid legs in passed in curpos
 
 can store level be this low?
 Globals is at data level?
@@ -66,8 +59,6 @@ remove duplication in runstrats results
 get rid of duplicates and conflicting legs in processing
 make sure expired processor is working
 create 1 mil random valid strats and make sure that all of them get called into scoring during a run
-
-consider having a SchedLive module and SchedBackground module to consolidate all scheduling code
 
 Keep worthless long calendar positions until expiration in case they get value back
 

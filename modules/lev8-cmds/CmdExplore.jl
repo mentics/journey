@@ -41,7 +41,8 @@ function whyNotCombi(combi::Combi)
     vo = StratGen.validOption(Globals.get(:Strats)[:maxStrikeDist], market().curp)
     optInvalid = findfirst(map(!, vo.(oqs)))
     @info "Options valid?" optInvalid
-    conflict = map(lr -> Positions.isConflict(getOption(lr), getSide(lr)), combi)
+    legsPos = getLeg.(positions())
+    conflict = map(lr -> isConflict.(getLeg(lr), legsPos), combi)
     @info "Is position conflict?" conflict # Tuple(c for c in conflict)
 
     if (inspreads == (nothing,nothing))
@@ -54,7 +55,7 @@ function whyNotCombi(combi::Combi)
         if conflict != (false, false, false, false)
             ind = findfirst(conflict)
             answer *= "  conflicted with position "
-            answer *= string(positions()[Positions.conflicter(getOption(combi[ind]), getSide(combi[ind]))])
+            answer *= string(find(p -> isConflict(combi[ind], getLeg(p)), legsPos))
             answer *= '\n'
         end
         println("Was not in spreads $(answer)")

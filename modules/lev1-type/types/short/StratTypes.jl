@@ -19,6 +19,7 @@ SH.to(::Type{Ret}, lr::LegRet)::Ret = lr[2]
 
 # SH.getValMid(lrs) = sum(getValMid, getRets(lrs))
 SH.getNetOpen(s::Strat) = mapreduce(getNetOpen, +, tos(LegMeta, s))
+SH.getLeg(lr::LegRet) = getLeg(lr[1])
 
 using SmallTypes
 isCal((lr1, lr2)) = getExpiration(lr1) != getExpiration(lr2)

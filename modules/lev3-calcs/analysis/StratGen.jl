@@ -8,26 +8,26 @@ export allSpreads
 #==
 Run with:
 using Strats, Positions, Expirations, Markets, Chains
-allSpreads(chains(), isConflict, marketPrices(), expirs()[1:2])
+allSpreads(chains(), fIsConflict, marketPrices(), expirs()[1:2])
 returns (callSpreads, putSpreads)
 ==#
-allSpreads(chs::Dict{Date,OptionChain}, isConflict, (sp, cp)::NTuple{2,Currency}, exps)::Spreads2 = allToSpreads(allLegs(chs, isConflict, (sp, cp), exps))
+allSpreads(chs::Dict{Date,OptionChain}, fIsConflict, (sp, cp)::NTuple{2,Currency}, exps)::Spreads2 = allToSpreads(allLegs(chs, fIsConflict, (sp, cp), exps))
 
 #region Local
 getCfg(sym::Symbol) = Globals.get(:Strats)[sym]
 
 validOption(maxStrikeDist::Int, cp::Currency) = oq -> getBid(oq) >= 0.03 && abs(getStrike(oq) - cp) <= maxStrikeDist
 
-# isConflict(oq, side), usually Positions.isConflict
-fleg(isConflict, cp::Currency) = validLeg(isConflict, getCfg(:maxPutHeight), getCfg(:maxCallHeight), cp)
-validLeg(isConflict, maxPutHeight::Int, maxCallHeight::Int, cp::Currency) =
+# fIsConflict(oq, side), usually Positions.fIsConflict
+fleg(fIsConflict, cp::Currency) = validLeg(fIsConflict, getCfg(:maxPutHeight), getCfg(:maxCallHeight), cp)
+validLeg(fIsConflict, maxPutHeight::Int, maxCallHeight::Int, cp::Currency) =
     # ((oq::OptionQuote, side::Side.T),) -> begin
     ((oq, side),) -> begin
         if side == Side.short
             (getStyle(oq) == Style.put && getStrike(oq) > cp + maxPutHeight) && return false
             (getStyle(oq) == Style.call && getStrike(oq) < cp - maxCallHeight) && return false
         end
-        isConflict(getOption(oq), side) && return false
+        fIsConflict(getOption(oq), side) && return false
         return true
     end
 
@@ -65,7 +65,7 @@ legsFor(fleg, sp::Currency, forDate::Date, opts)::AllLegs4 =
 
 validOptions(cp::Currency, chs::Dict{Date,OptionChain}, exps) = Iterators.filter(validOption(getCfg(:maxStrikeDist), cp), forDates(chs, exps))
 
-allLegs(chs::Dict{Date,OptionChain}, isConflict, (sp, cp)::NTuple{2,Currency}, exps)::AllLegs4 = legsFor(fleg(isConflict, cp), sp, minimum(exps), validOptions(cp, chs, exps))
+allLegs(chs::Dict{Date,OptionChain}, fIsConflict, (sp, cp)::NTuple{2,Currency}, exps)::AllLegs4 = legsFor(fleg(fIsConflict, cp), sp, minimum(exps), validOptions(cp, chs, exps))
 
 # (callSpreads, putSpreads)
 allToSpreads(all::AllLegs4)::Spreads2 = (spreads(all[1], all[3]), spreads(all[2], all[4]))
@@ -78,7 +78,7 @@ function spreads(v1, v2)
     for x1 in v1, x2 in v2
         # TODO: this is messy
         # !incShortCals && isShortCal(x1, x2) && continue
-        if !doLegsConflict(x1, x2)
+        if !isConflict(x1, x2)
             i += 1
             res[i] = getStrike(x1) < getStrike(x2) ? (x1, x2) : (x2, x1)
         end

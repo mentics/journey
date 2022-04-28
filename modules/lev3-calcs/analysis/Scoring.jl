@@ -12,25 +12,25 @@ const MID = fill(1.0/numVals(), numVals())
 
 scoreRand(args...) = rand()
 
+filtkeys() = [:ev, :evr, :standsAlone, :cantAlone, :maxLoss, :noImpProb1, :noImpProb2, :lostProb100,
+              :noImpEv1, :noImpEvr1, :noImpEv2, :noImpEvr2]
 function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufPos::Union{Nothing,AVec{Float64}}, bufBoth::AVec{Float64})::Float64
     pvalsUse = getVals(ctx.probs[1])
     metb = CalcUtil.calcMetrics(pvalsUse, bufBoth)
     pvalsUse2 = getVals(ctx.probs[2])
     metb2 = CalcUtil.calcMetrics(pvalsUse2, bufBoth)
     if isempty(bufCombi)
-        # This means we're calcing base score from existing position, so only bufPos will be valid but it's passed into bufBoth also in that case.
+        # This means we're calcing base score from existing position, so only bufPos will be valid but it's also passed into bufBoth.
         return metb.ev
     end
-    if isnothing(bufPos)
-        # metc = calcMetrics(pvalsUse, bufCombi)
-        metb.ev > .1 || return countNo(filtEv)
-        metb2.ev > .1 || return countNo(filtEv)
-    end
+    canStandAlone = metb.ev > .1 && metb.evr > 1.0 && metb2.ev > .1 && metb2.evr > 1.0
+    canStandAlone && countNo(:standsAlone)
+    (!isnothing(bufPos) || canStandAlone) || return countNo(:cantAlone)
     # bufCombi[365] >= 0 || return countNo(filtEvrInv)
     # TODO: created dict for filter reason so we can just create new symbols on the fly
 
     bmn, bmx = extrema(bufBoth)
-    bmn > -1.7 || return countNo(filtExtrema)
+    bmn > -1.7 || return countNo(:maxLoss)
     # metb.prob < 1.0 || (@atomic passed.count += 1 ; return true)
 
     # return metb.evr
@@ -60,9 +60,9 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufPos::Union{Nothing,AV
     if !isnothing(bufPos)
         metp = calcMetrics(pvalsUse, bufPos)
         metp2 = calcMetrics(pvalsUse2, bufPos)
-        (metp.prob ≈ 1.0 && metb.prob <= .999) && return countNo(filtProb)
-        metb.prob ≈ 1.0 || metb.prob >= metp.prob || return countNo(filtProb)
-        metb2.prob ≈ 1.0 || metb2.prob >= metp2.prob || return countNo(filtProb)
+        # (metp.prob ≈ 1.0 && metb.prob <= .999) && return countNo(:lostProb100)
+        metb.prob ≈ 1.0 || metb.prob >= metp.prob || return countNo(:noImpProb1)
+        metb2.prob ≈ 1.0 || metb2.prob >= metp2.prob || return countNo(:noImpProb2)
 
         # bufBoth[1] > .2 || return countNo(filtSides)
 
@@ -76,10 +76,14 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufPos::Union{Nothing,AV
         #     metb.ev > 1.1 * metp.ev || return countNo(filtEvr)
         #     #     metb.loss > metp.loss || return countNo(filtEvrB)
         # else
-            metb.evr > 1.0 * metp.evr || return countNo(filtEvr)
-            metb.ev > 1.0 * metp.ev || return countNo(filtEv)
-            metb2.evr > 1.0 * metp2.evr || return countNo(filtEvr)
-            metb2.ev > 1.0 * metp2.ev || return countNo(filtEv)
+            wasImproved(canStandAlone, metp.ev, metb.ev) || return countNo(:noImpEv1)
+            wasImproved(canStandAlone, metp.evr, metb.evr) || return countNo(:noImpEvr1)
+            wasImproved(canStandAlone, metp2.ev, metb2.ev) || return countNo(:noImpEv2)
+            wasImproved(canStandAlone, metp2.evr, metb2.evr) || return countNo(:noImpEvr2)
+            # metb.evr > reqimp * metp.evr || return countNo(filtEvr)
+            # metb.ev > reqimp * metp.ev || return countNo(filtEv)
+            # metb2.evr > reqimp * metp2.evr || return countNo(filtEvr)
+            # metb2.ev > reqimp * metp2.ev || return countNo(filtEv)
             #     metb.loss > metp.loss || return countNo(filtEvrB)
         # end
 
@@ -115,7 +119,9 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufPos::Union{Nothing,AV
     return metb.evr
 end
 
-countNo(x::Atomic) = ( @atomic x.count += 1 ; NaN )
+wasImproved(simple::Bool, prev, cur) = simple ? cur > prev : cur > prev #^1.01
+
+countNo(sym::Symbol) = ( @atomic filt[sym].count += 1 ; NaN )
 
 # TODO: assert center same
 # @assert prob.center == first(s)[2].center
@@ -189,22 +195,23 @@ function compareVals(pv::Vector{Float64}, ideal::Vector{Float64}, vals::Vector{F
     return sum
 end
 
-resetCountsScore() = resetAtomics(filtProb, filtEv, filtEvr, filtEvrB, filtMid, filtEvrInv, filtSides, filtExtrema) # filtLong, filtShort, filtMid, filtPos, filtEvrB, passed)
-showCountsScore() = @info "Score counts" filtProb.count filtEv.count filtEvr.count filtEvrB.count filtMid.count filtEvrInv.count filtSides.count filtExtrema.count # filtLong.count filtShort.count filtMid.count filtPos.count passed.count
+resetCountsScore() = ( empty!(filt) ; push!(filt, [k => Atomic{Int}(0) for k in filtkeys()]...) ) # = resetAtomics(filtProb, filtEv, filtEvr, filtEvrB, filtMid, filtEvrInv, filtSides, filtExtrema) # filtLong, filtShort, filtMid, filtPos, filtEvrB, passed)
+showCountsScore() = ( res = filter(kv -> kv.second.count != 0, filt) ; @info "Score counts" passed.count res ) # @info "Score counts" filtProb.count filtEv.count filtEvr.count filtEvrB.count filtMid.count filtEvrInv.count filtSides.count filtExtrema.count # filtLong.count filtShort.count filtMid.count filtPos.count passed.count
 
 #region Local
-const filtProb = Atomic{Int}(0)
-const filtEv = Atomic{Int}(0)
-const filtEvr = Atomic{Int}(0)
-const filtEvrB = Atomic{Int}(0)
-# const filtLong = Atomic{Int}(0)
-# const filtShort = Atomic{Int}(0)
-const filtMid = Atomic{Int}(0)
-# const filtPos = Atomic{Int}(0)
-const filtEvrInv = Atomic{Int}(0)
-const filtSides = Atomic{Int}(0)
-const filtExtrema = Atomic{Int}(0)
+# const filtProb = Atomic{Int}(0)
+# const filtEv = Atomic{Int}(0)
+# const filtEvr = Atomic{Int}(0)
+# const filtEvrB = Atomic{Int}(0)
+# # const filtLong = Atomic{Int}(0)
+# # const filtShort = Atomic{Int}(0)
+# const filtMid = Atomic{Int}(0)
+# # const filtPos = Atomic{Int}(0)
+# const filtEvrInv = Atomic{Int}(0)
+# const filtSides = Atomic{Int}(0)
+# const filtExtrema = Atomic{Int}(0)
 const passed = Atomic{Int}(0)
+const filt = Dict{Symbol,Atomic{Int}}()
 #endregion
 
 end

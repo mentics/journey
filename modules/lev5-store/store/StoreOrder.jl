@@ -1,8 +1,9 @@
 module StoreOrder
+using Dates
 using SH, OrderTypes
 using LogUtil, StoreUtil
 
-export storeOrder, doesExistOrd
+export storeOrder, doesExistOrd, queryLegOrders
 
 function storeOrder(ord::Order{S})::Nothing where S
     @log debug "storeOrder"
@@ -21,6 +22,8 @@ function storeLegOrder(oid::Int, leg::LegOrder)::Nothing
            getPrillDir(leg), tsCreated(leg), noth(tsFilled(leg)))
     return
 end
+
+queryLegOrders(d::Date)::Vector{LegOrder} = LegOrder.(select("select * from LegOrd where cast(tsFilled//(1000*24*60*60) as date) = ?", d))
 
 doesExistOrd(oid) = !isempty(select("select oid from Ord where oid = ?", (oid)))
 

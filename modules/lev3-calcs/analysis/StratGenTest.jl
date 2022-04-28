@@ -6,9 +6,9 @@ using Shorthand
 const t = StratGen
 
 function runTests()
-    @testset "doLegsConflict" begin
+    @testset "isConflict" begin
         legs = shLegs("s447c1@1 / l447c1@1", [today()+Day(3)])
-        @test t.doLegsConflict(legs[1], legs[2])
+        @test t.isConflict(legs[1], legs[2])
     end
 
     @testset "makeLeg" begin

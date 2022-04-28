@@ -1,5 +1,5 @@
 # run for SchedStrat:
-#   julia --sysimage=C:/data/tmp/sysimage-journey.dll --threads=auto --project --load=repl-sched.jl
+# cd /c/data/julia/journey ; julia --sysimage=C:/data/tmp/sysimage-journey.dll --threads=auto --project --load=repl-sched.jl
 
 include("repl-inc.jl")
 try
@@ -14,5 +14,11 @@ using Globals
 using Markets
 urpon()
 
+using SystemUtil
+setAllowSuspend(false)
+
+# TODO: set vtyRatio
+
 using Sched, SchedStrat
+# TODO: read trades we made today to make this list automatically
 SchedStrat.start(2,3,5,6)

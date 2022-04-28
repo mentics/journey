@@ -218,10 +218,10 @@ end
 
 using LegTypes
 function isValidCombi(combi::Combi)
-    res = doLegsConflict(combi[1], combi[3]) ||
-        doLegsConflict(combi[1], combi[4]) ||
-        doLegsConflict(combi[2], combi[3]) ||
-        doLegsConflict(combi[2], combi[4])
+    res = isConflict(combi[1], combi[3]) ||
+        isConflict(combi[1], combi[4]) ||
+        isConflict(combi[2], combi[3]) ||
+        isConflict(combi[2], combi[4])
     # TODO: consider counting how many there are and maybe fixing earlier
     # if res
     #     @error "invalid combi" getindex.(combi, 1)

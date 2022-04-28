@@ -85,11 +85,11 @@ toRet2(trades, ex)::Ret = tradesToRet(trades, expir(ex; td=true), market().start
 drpos2(ex=1) = drawRet!(toRet2(todo(ex), ex), "pos2")#, probs(), market().curp, "pos2")
 #endregion
 
-ctr(trad::Trade{Filled}, at::Real; kws...) = closePos(trad; kws..., pre=false, at=PriceT(at))
-ct(trad::Trade{Filled}; kws...) = closePos(trad; kws..., pre=true)
+ctr(trad::Trade{<:Closeable}, at::Real; kws...) = closePos(trad; kws..., pre=false, at=PriceT(at))
+ct(trad::Trade{<:Closeable}; kws...) = closePos(trad; kws..., pre=true)
 # ctrt(i::Int, at::Real; kws...) = closePos(trad; kws..., pre=false, at=PriceT(at))
 # ctt(i::Int; kws...) = ct(todo()[i]); kws..., pre=true)
-function closePos(trad::Trade{Filled}; ratio=0.25, at=nothing, pre=true, kws...)
+function closePos(trad::Trade{<:Closeable}; ratio=0.25, at=nothing, pre=true, kws...)
     canTrade(pre)
     if !intest()
         if ( openDate = toDateLocal(tsFilled(trad)) ; openDate == market().startDay || openDate == today() )

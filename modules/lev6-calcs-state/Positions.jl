@@ -7,10 +7,6 @@ export positions, isConflict, verifyPoss, verifyPos
 
 positions(; age=Hour(1))::Vector{Position} = cache!(getPoss, POSITIONS_TYPE, POSITIONS, age)
 
-isConflict(opt::Option, side::Side.T) = !isnothing(conflicter(opt, side))
-conflicter(opt::Option, side::Side.T) = findfirst(pos -> isConflict(opt, side, pos), positions())
-isConflict(opt::Option, side::Side.T, pos::Position) = opt == getOption(pos) && side != getSide(pos)
-
 using CollUtil, LegTradeTypes
 function verifyPoss(legs::AVec{LegTrade})::Vector{Bool}
     poss = positions(; age=Minute(10))

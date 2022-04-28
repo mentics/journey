@@ -9,6 +9,7 @@ struct Option
     expiration::Date
     strike::Currency
 end
+Option(row::NamedTuple) = Option(Style.T(row.style), row.expiration, C(Float64(row.strike)))
 Option(;style=Style.call, expiration=today()+Day(1), strike=C(450.0)) = Option(style, expiration, strike)
 SH.getStyle(o::Option) = o.style
 SH.getStrike(o::Option) = o.strike

@@ -10,7 +10,7 @@ avg(vs) = sum(vs) / length(vs)
 (normalize!(vs::T)::T) where T = vs ./= sum(vs)
 
 using SH, ProbTypes
-calcMetrics(pv::AVec{Float64}, v::AVec{Float64}) = calcMetrics1(pv, v, 2.0, 0.04) # calcMetrics2(pv, v)
+calcMetrics(pv::AVec{Float64}, v::AVec{Float64}) = calcMetrics1(pv, v, 1.0, 0.05) # calcMetrics2(pv, v)
 calcMetrics(p::Prob, v::AVec{Float64}) = calcMetrics(getVals(p), v)
 
 calcMetrics1(p::Prob, v::AVec{Float64}) = calcMetrics(getVals(p), v)

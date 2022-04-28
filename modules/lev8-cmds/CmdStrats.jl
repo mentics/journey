@@ -6,6 +6,7 @@ using Strats, Rets, StratGen, RunStrats
 using ProbHist, Markets, Expirations, Chains, Positions
 using Trading, CmdUtil
 using OutputUtil, DrawStrat
+using StoreOrder
 
 export ana, an, sortar, sortar2, sa, ar, arv, ret, comp
 export dr, drf, adr, adrf, dra, ret, retf
@@ -46,7 +47,7 @@ end
 function makeProbs(numDays::Int, targetDate::Date, sp::Currency)::Tuple
     phOrig = probHist(sp, numDays)
     ph = Prob(getCenter(phOrig), smooth(getVals(phOrig)))
-    pnd = probsNormDist(sp, calcIvsd(targetDate, 1.1))
+    pnd = probsNormDist(sp, calcIvsd(targetDate, 1.05))
     # pshort = probMid(ph, binMin(), 1.0)
     # plong = probMid(ph, 1., binMax())
     # pmid = probMid(ph, .5*(1.0+binMin()), .5*(1.0+binMax()))
@@ -54,8 +55,8 @@ function makeProbs(numDays::Int, targetDate::Date, sp::Currency)::Tuple
     # pposInv = isnothing(lastPosRet[]) ? nothing : invert(ppos)
     # pflat = probFlat(ph)
     # pposHyb = Prob(getCenter(ph), normalize!(getVals(ph) .+ (getVals(pposInv) .* 2)))
-    return (pnd, ph)
-    # return (ph,pnd)
+    # return (pnd, ph)
+    return (ph,pnd)
 end
 
 ana(exs...; kws...) = an(exs...; kws..., maxRun=0)
@@ -76,21 +77,10 @@ function an(exs...; maxRun::Int=120, keep::Int=1000, nthreads::Int=Threads.nthre
     global lastPosRet[] = (noPos || isempty(lastPosStrat[])) ? nothing : combineTo(Ret, lastPosStrat[])
 
     numDays = mktNumDays(targetDate) + addDays
-    # phOrig = probHist(sp, numDays)
-    # ph = Prob(getCenter(phOrig), smooth(getVals(phOrig)))
-    # pshort = probMid(ph, binMin(), 1.0)
-    # plong = probMid(ph, 1., binMax())
-    # # pmid = probMid(ph, .5*(1.0+binMin()), .5*(1.0+binMax()))
-    # # ppos = isnothing(lastPosRet[]) ? nothing : retToProb(lastPosRet[])
-    # # pposInv = isnothing(lastPosRet[]) ? nothing : invert(ppos)
-    # pflat = probFlat(ph)
-    # # pposHyb = Prob(getCenter(ph), normalize!(getVals(ph) .+ (getVals(pposInv) .* 2)))
-    # pnd = probsNormDist(sp, calcIvsd(targetDate))
-    # probs = (;ph, plong, pshort, pnd, pflat)
-    # # probs = (;ph, plong, pshort, pnd)
     probs = getProbs(numDays, targetDate, sp)
 
-    allSpreads2 = allSpreads(chs, isConflict, (sp, mkt.curp), exps)
+    legs = vcat(getLeg.(positions()), getLeg.(lastPosStrat[]), getLeg.(queryLegOrders(today())))
+    allSpreads2 = allSpreads(chs, isConflict(legs), (sp, mkt.curp), exps)
     !isnothing(sprFilt) && (allSpreads2 = map(v->filter(sprFilt, v), allSpreads2))
     global lastSpreads2[] = allSpreads2
     len1, len2 = length.(allSpreads2)
@@ -112,6 +102,10 @@ function an(exs...; maxRun::Int=120, keep::Int=1000, nthreads::Int=Threads.nthre
     end
     return
 end
+
+# isConflict(opt::Option, side::Side.T) = !isnothing(conflicter(opt, side))
+# conflicter(opt::Option, side::Side.T) = findfirst(pos -> isConflict(opt, side, pos), positions())
+# isConflict(opt::Option, side::Side.T, pos::Position) = opt == getOption(pos) && side != getSide(pos)
 
 # Had to create own isLess for floats because the built in isless has NaN greater than everything but we want it less
 isl(x1::Float64, x2::Float64)::Bool = isnan(x1) ? true : (isnan(x2) ? false : isless(x1, x2))

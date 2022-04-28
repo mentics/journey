@@ -19,6 +19,7 @@ struct LegOrder
     tsCreated::Int
     tsFilled::Union{Nothing,Int}
 end
+LegOrder(row::NamedTuple) = LegOrder(row.olid, Filled, Action.T(row.act), C(Float64(row.prilldir)), Leg(row), row.tscreated, row.tsfilled)
 SH.getId(o::LegOrder) = o.id
 SH.getAction(o::LegOrder) = o.action
 SH.getStyle(o::LegOrder) = getStyle(o.leg)
