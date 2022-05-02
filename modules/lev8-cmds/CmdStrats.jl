@@ -56,8 +56,8 @@ function makeProbs(numDays::Int, targetDate::Date, sp::Currency)::Tuple
     # pposInv = isnothing(lastPosRet[]) ? nothing : invert(ppos)
     # pflat = probFlat(ph)
     # pposHyb = Prob(getCenter(ph), normalize!(getVals(ph) .+ (getVals(pposInv) .* 2)))
-    return (pnd, ph)
-    # return (ph,pnd)
+    # return (pnd, ph)
+    return (ph,pnd)
 end
 
 ana(exs...; kws...) = an(exs...; kws..., maxRun=0)

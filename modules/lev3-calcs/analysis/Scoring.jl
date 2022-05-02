@@ -17,7 +17,7 @@ getAdj(numPos::Real)::Float64 = 0.03 * (.25 * numPos)
 calcMetricsBoth(pvals, bufBoth, numPos) = calcMetrics(pvals, bufBoth, getCap(4 + numPos), getAdj(4 + numPos))
 
 filtkeys() = [:ev, :evr, :standsAlone, :cantAlone, :maxLoss, :noImpProb1, :noImpProb2, :lostProb100,
-              :noImpEv1, :noImpEvr1, :noImpEv2, :noImpEvr2, :special]
+              :noImpEv1, :noImpEvr1, :noImpEv2, :noImpEvr2, :sides, :special]
 function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufPos::Union{Nothing,AVec{Float64}}, bufBoth::AVec{Float64})::Float64
     numPos = ctx.numPos
     adjCombi = getAdj(4) ; adjPos = getAdj(numPos) ; adjBoth = getAdj(4 + numPos) # TODO: should be length of combi, but it's always 4 right now
@@ -35,7 +35,6 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufPos::Union{Nothing,AV
 
     metc = isNew ? metb : calcMetrics(pvalsUse, bufCombi, capCombi, adjCombi)
     metc2 = isNew ? metb2 : calcMetrics(pvalsUse2, bufCombi, capCombi, adjCombi)
-    bufCombi[end] > .14 || return countNo(:special)
 
     canStandAlone = metc.ev > .1 && metc.evr > 1.0 && metc2.ev > .1 && metc2.evr > 1.0
     canStandAlone && countNo(:standsAlone)
@@ -43,8 +42,11 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufPos::Union{Nothing,AV
     bmn, bmx = extrema(bufBoth)
 
     if isNew
-        canStandAlone || return countNo(:cantAlone)
+        # canStandAlone || return countNo(:cantAlone)
         bmn > -0.7 - 0.25 * ctx.numDays || return countNo(:maxLoss)
+
+        (bufCombi[2] > .14 && bufCombi[end-1] > .14) || return countNo(:special)
+
         # Directional Bias
         # metLong = calcMetrics(getVals(ctx.probs.plong), bufCombi)
         # metShort = calcMetrics(getVals(ctx.probs.pshort), bufCombi)
@@ -58,6 +60,8 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufPos::Union{Nothing,AV
         metb.prob ≈ 1.0 || metb.prob >= metp.prob || return countNo(:noImpProb1)
         metb2.prob ≈ 1.0 || metb2.prob >= metp2.prob || return countNo(:noImpProb2)
 
+        bufCombi[1] > 0.0 || return countNo(:sides)
+        # bufBoth[1] > .2 || return countNo(filtSides)
         # bufBoth[1] > .2 || return countNo(filtSides)
 
         # binNearest(worst ret for best strat for target date / market().startPrice)
