@@ -1,10 +1,10 @@
 module RetTypes
-using SH, Bins
+using SH, Bins, BaseTypes
 
 export Ret, retMid, valAt, valAtPrice
 
 struct Ret
-    center::Float64
+    center::Float64 # TODO: should we make it currency to indicate what it should represent?
     vals::Vector{Float64}
 end
 Ret() = Ret(1.0, Bins.with(1.0))
@@ -16,7 +16,8 @@ Base.getindex(r::Ret, i::Int) = r.vals[i]
 valFirst(r::Ret)::Float64 = r.vals[1]
 valLast(r::Ret)::Float64 = r.vals[end]
 
-valAtPrice(ret::Ret, x::Float64) = valAt(ret, x/getCenter(ret))
+valAtPrice(ret::Ret, x::Currency) = valAt(ret, x/getCenter(ret))
+# TODO: unit tests for this
 function SH.valAt(ret::Ret, x::Float64)
     Bins.isLeft(x) && return valFirst(ret)
     Bins.isRight(x) && return valLast(ret)
@@ -29,7 +30,7 @@ function SH.valAt(ret::Ret, x::Float64)
     # TODO: special calc for between 1-2 and end-1 end
     left = ret[bl]
     right = ret[br]
-    ratio = (x - binX(bl))/(br - bl)
+    ratio = (x - Bins.x(bl))/(br - bl)
     return left + ratio * (right - left)
 end
 

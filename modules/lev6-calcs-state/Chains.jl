@@ -69,10 +69,10 @@ function procChain(exp::Date, cp::Currency, data::Vector{Dict{String,Any}})::Opt
     res = Vector{OptionQuote}()
     for raw in data
         strike = Currency(raw["strike"])
-        if abs(strike - cp) > 48
-        # if abs(1.0 - strike / cp) > 0.1
-            continue
-        end
+        # if abs(strike - cp) > 48
+        # # if abs(1.0 - strike / cp) > 0.1
+        #     continue
+        # end
         style = isCall(raw) ? Style.call : Style.put
         if isnothing(raw["bid"]) || isnothing(raw["ask"])
             if isMarketOpen()

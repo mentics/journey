@@ -14,7 +14,7 @@ getAdj(numPos::Real)::Float64 = 0.03 * (.25 * numPos)
 calcMetricsBoth(pvals, bufBoth, numPos) = calcMetrics(pvals, bufBoth, getCap(4 + numPos), getAdj(4 + numPos))
 
 filtkeys() = [:ev, :evr, :standsAlone, :cantAlone, :maxLoss, :noImpProb1, :noImpProb2, :lostProb100,
-              :noImpEv1, :noImpEvr1, :noImpEv2, :noImpEvr2, :sides, :special]
+              :noImpEv1, :noImpEvr1, :noImpEv2, :noImpEvr2, :sides, :probStandAlone, :special]
 function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufPos::Union{Nothing,AVec{Float64}}, bufBoth::AVec{Float64})::Float64
     numPos = ctx.numPos
     adjCombi = getAdj(4) ; adjPos = getAdj(numPos) ; adjBoth = getAdj(4 + numPos) # TODO: should be length of combi, but it's always 4 right now
@@ -38,11 +38,13 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufPos::Union{Nothing,AV
 
     bmn, bmx = extrema(bufBoth)
 
+    # TODO: if prob >= 1.0, require canStandAlone
+
     if isNew
         # canStandAlone || return countNo(:cantAlone)
         bmn > -0.7 - 0.25 * ctx.numDays || return countNo(:maxLoss)
 
-        (bufCombi[2] > .14 && bufCombi[end-1] > .14) || return countNo(:special)
+        (bufCombi[1] > .12 && bufCombi[end] > .12) || return countNo(:special)
 
         # Directional Bias
         # metLong = calcMetrics(getVals(ctx.probs.plong), bufCombi)
@@ -90,6 +92,9 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufPos::Union{Nothing,AV
         # impShort = metShort.ev - metShortP.ev
         # impLong = metLong.ev - metLongP.ev
         # impLong > impShort || return countNo(filtMid)
+
+        metb.prob < 0.999 || metb2.prob < 0.999 || canStandAlone || return countNo(:probStandAlone)
+        # @info "kept" metb.prob metb2.prob canStandAlone
     end
 
     @atomic passed.count += 1

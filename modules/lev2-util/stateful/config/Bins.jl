@@ -36,6 +36,7 @@ const MIDSI = collect(zip(2:(NUM+1), MIDS))
 const IND_MID = 1 + 1 + div(NUM, 2) # 1 for left bin, and 1 for rounding up for odd number of bins
 # numVals() = NUM+2
 # numBins() = NUM
+x(i::Int)::Float64 = XS[i]
 xs() = XS
 xsi() = XSI
 midsi() = MIDSI

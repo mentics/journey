@@ -27,7 +27,7 @@ end
 
 function drawRet!(r::Ret, label::AStr)
     sp = r.center
-    xs = sp .* binXs()
+    xs = sp .* Bins.xs()
     vals = getVals(r)
     p = lines!(xs, vals; label)
     display(p)

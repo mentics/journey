@@ -3,11 +3,12 @@ using Dates
 using SH, BaseTypes, SmallTypes, OptionTypes, LegTypes, TradeTypes, LegTradeTypes, StatusTypes, LegMetaTypes
 using Globals, BaseUtil, DateUtil, StoreUtil, FileUtil
 
-export newTrade, loadTrade, loadLegTrade, findTrades, queryLegStatus, queryNumLegs, queryLeftovers
+export newTrade, loadTrade, loadLegTrade, findTrades
+export queryLegStatus, queryNumLegs, queryLeftovers, queryEntered
 export findTradeEntered
 
 function newTrade(primitDir::PriceT, legs::Coll{LegMeta,4}, underBid::Currency, underAsk::Currency)::Int
-    @assert sum(getBid, legs) <= primitDir <= sum(getAsk, legs) "Invalid primitDir $(primitDir)\n$(legs)"
+    @assert sum(getBid, legs) <= primitDir <= sum(getAsk, legs) "Invalid primitDir $(primitDir) $(sum(getBid, legs)) $(sum(getAsk, legs))\n$(legs)"
     exp = minimum(getExpiration, legs)
     tid = 0
     inTransaction() do
@@ -54,9 +55,11 @@ function findTrades(exp::Date, states::Type{<:Status}...)::Vector{Trade}
     loadTrade.(tids)
 end
 # TODO: make this work with local timezone to date properly
-findTradeEntered(d::Date) = loadTrade.(selectCol("select tid from Trade where cast(cast(tsCreated//1000 as timestamp) as date)=?", d))
+findTradeEntered(d::Date)::Vector{Trade} = loadTrade.(selectCol("select tid from Trade where cast(cast(tsCreated//1000 as timestamp) as date)=?", d))
 
-queryLegStatus(lid::Int) = strToStatus(select("select status from VLegTrade where lid=?", lid)[1].status)
+queryEntered(d::Date)::Vector{NamedTuple} = select("select tid, cast(cast(tsCreated//1000 as timestamp) as date) enteredDate, targetDate from Trade where cast(cast(tsCreated//1000 as timestamp) as date)=?", d)
+
+queryLegStatus(lid::Int)::Status = strToStatus(select("select status from VLegTrade where lid=?", lid)[1].status)
 
 queryNumLegs(tid::Int)::Union{Nothing,Int} = (res = selectCol("select count(lid) from LegTrade where tid=?", tid) ; isempty(res) ? nothing : res[1] )
 

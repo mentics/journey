@@ -17,9 +17,6 @@ urpon()
 using SystemUtil
 setAllowSuspend(false)
 
-# TODO: set vtyRatio
-
 using Sched, SchedStrat
-# TODO: read trades we made today to make this list automatically
 setvr(.7)
-SchedStrat.start(1,2,4,5)
+SchedStrat.start()

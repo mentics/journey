@@ -2,6 +2,10 @@ spread bins to 10 percent each way?
 
 in "found entry" emails, include comparison of "ev was X, now could by Y"
 
+Customize todo output to easily ignore legs we can let expire
+
+Automaticaly search for worthless short legs in the future we can close early
+
 When entering or closing a trade, check to see if it already took the other side today to avoid day trading. Especially important if I'm closing out worthless legs early.
 
 Write up process doc. eg.: as soon as can buy back short legs for $.01, then do so

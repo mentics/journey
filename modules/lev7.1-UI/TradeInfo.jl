@@ -45,7 +45,7 @@ function Base.string(trad::Trade{S}) where S
                 # TODO: clean up?
                 mkt = market()
                 # TODO: include this info in legs and original IV and current IV and prices based on those
-                sat = C(valAtPrice(combineTo(Ret, [trad], getTargetDate(trad), mkt.startPrice, Globals.get(:vtyRatio)), Float64(mkt.curp)))
+                sat = C(valAtPrice(combineTo(Ret, [trad], getTargetDate(trad), mkt.startPrice, Globals.get(:vtyRatio)), mkt.curp))
 
                 res *= " @$(SEC(sat))/($(maxl),$(maxp))"
             else

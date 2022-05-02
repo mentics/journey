@@ -2,16 +2,17 @@ module SchedStrat
 using Dates
 using Globals, LogUtil, OutputUtil
 using Sched, Emails, DataHelper
-using Calendars, Markets
+using Calendars, Markets, Expirations
+using StoreTrade
 using CmdStrats
 using SchedBg
 using SystemUtil
 
 # To be used with repl-sched.jl
 
-function start(inds...)
-    isempty(inds) || Globals.set(:anasExps, collect(inds))
-    @log info "Scheduling analysis"
+function start()
+    inds = updateInds()
+    @log info "Scheduling analysis" inds
     Sched.add(JOB_NAME, @__MODULE__, "run", "whenUpdate", false)
     # TODO: Make sure the Calendars update is scheduled
     @assert SchedBg.Jobs[1][1] == "update-$(Calendars)"
@@ -47,7 +48,8 @@ whenUpdate(from::DateTime, isMktOpen::Bool, nextMktChange::DateTime) = whenMarke
 function run()
     isMarketOpen() || ( (@log info "SchedStrat stopping because market closed") ; stop() ; return )
     urpon()
-    Globals.has(:anasExps) && (global UseExps = DefaultExps[Globals.get(:anasExps)])
+    inds = updateInds() # Globals.get(:anasExps)
+    Globals.has(:anasExps) && (global UseExps = DefaultExps[inds])
     # TODO: it should call into a service level module and not a command, so extract it
     exps = nextExps()
     @log info "Running scheduled analysis" exps UseExps
@@ -63,6 +65,12 @@ function run()
 end
 
 nextExps() = ( Index[] = mod1(Index[] + 1, length(UseExps)); UseExps[Index[]] )
+
+function updateInds()
+    exAvoid = map(row -> searchsortedfirst(expirs(), row.targetdate), queryEntered(today()))
+    inds = setdiff(eachindex(DefaultExps), exAvoid)
+    return Globals.set(:anasExps, collect(inds))
+end
 #endregion
 
 end
