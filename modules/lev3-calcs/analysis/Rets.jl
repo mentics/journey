@@ -121,15 +121,17 @@ function lineVals(sp, m1, x01, split, m2, x02)
 end
 
 function valsFor(f, ctx)::Vector{Float64}
-    v = Vector{Float64}(undef, numVals())
-    v[1] = leftVal(f, ctx)
-    i = 1
-    for x in binXs()[2:end-1]
-        i += 1
+    v = Bins.empty()
+    v[1] = Bins.valLeft(f, ctx)
+    for (i, x) in Bins.midsi()
         v[i] = f(ctx, x)
     end
-    @assert i == numVals() - 1
-    v[end] = rightVal(f, ctx)
+    # i = 1
+    # for x in Bins.mids()
+    #     i += 1
+    #     v[i] = f(ctx, x)
+    # end
+    v[end] = Bins.valRight(f, ctx)
     return v
 end
 #endregion

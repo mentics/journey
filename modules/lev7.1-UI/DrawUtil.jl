@@ -52,7 +52,7 @@ end
 export drawProb
 function drawProb(ax, prob, colorIndex, scale)
     colors = (GLMakie.RGBA(0.5, 0.5, 1.0, 0.5), GLMakie.RGBA(0.0, 0.5, 0.5, 0.5), GLMakie.RGBA(0.5, 0.5, 0.5, 0.5))
-    p = barplot!(ax, getCenter(prob) .* binXs(), scale * 100.0 .* getVals(prob); color=colors[colorIndex], gap=0.0, inspectable=false)
+    p = barplot!(ax, getCenter(prob) .* Bins.xs(), scale * 100.0 .* getVals(prob); color=colors[colorIndex], gap=0.0, inspectable=false)
     p.inspectable[] = false
     display(p)
     return p

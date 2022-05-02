@@ -7,9 +7,6 @@ export calcScore1, scoreRand, probMid, probFlat
 export byEv, byEvr, byKelly, byProb, byMetrics
 export resetCountsScore, showCountsScore
 
-const FLAT = fill(1.0/numVals(), numVals())
-const MID = fill(1.0/numVals(), numVals())
-
 scoreRand(args...) = rand()
 
 getCap(numPos::Real)::Float64 = 2.0 + 0.5 * (.25 * (numPos - 4))
@@ -36,7 +33,7 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufPos::Union{Nothing,AV
     metc = isNew ? metb : calcMetrics(pvalsUse, bufCombi, capCombi, adjCombi)
     metc2 = isNew ? metb2 : calcMetrics(pvalsUse2, bufCombi, capCombi, adjCombi)
 
-    canStandAlone = metc.ev > .1 && metc.evr > 1.0 && metc2.ev > .1 && metc2.evr > 1.0
+    canStandAlone = metc.ev > .05 && metc.evr > 1.0 && metc2.ev > .05 && metc2.evr > 1.0
     canStandAlone && countNo(:standsAlone)
 
     bmn, bmx = extrema(bufBoth)
@@ -60,7 +57,7 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufPos::Union{Nothing,AV
         metb.prob ≈ 1.0 || metb.prob >= metp.prob || return countNo(:noImpProb1)
         metb2.prob ≈ 1.0 || metb2.prob >= metp2.prob || return countNo(:noImpProb2)
 
-        bufCombi[1] > 0.0 || return countNo(:sides)
+        # bufCombi[1] > 0.0 || return countNo(:sides)
         # bufBoth[1] > .2 || return countNo(filtSides)
         # bufBoth[1] > .2 || return countNo(filtSides)
 
@@ -129,7 +126,7 @@ byEvC(prob::Prob) = (c, b) -> calcMetrics(getVals(prob), combineTo(Vals, c)).ev
 function probMid(p::Prob, from::Float64=.97, to::Float64=1.03)
     left = binNearest(from)
     right = binNearest(to)
-    vals = fill(0.0, numVals())
+    vals = Bins.with(0.0)
     pv1 = getVals(p)
     sum = 0.0
     for i in left:right
@@ -140,14 +137,14 @@ function probMid(p::Prob, from::Float64=.97, to::Float64=1.03)
     return Prob(getCenter(p), vals)
 end
 
-function probFlat(p::Prob)
-    vals = fill(1.0 / numVals(), numVals())
-    pvals = getVals(p)
-    vals[1] = 1.1 * pvals[1]
-    vals[end] = 1.1 * pvals[end]
-    normalize!(vals)
-    return Prob(getCenter(p), vals)
-end
+# function probFlat(p::Prob)
+#     vals = with(1.0 / Bins.VNUM) # this is implemented hacky anyway and probably get removed, so... ok to call const here
+#     pvals = getVals(p)
+#     vals[1] = 1.1 * pvals[1]
+#     vals[end] = 1.1 * pvals[end]
+#     normalize!(vals)
+#     return Prob(getCenter(p), vals)
+# end
 
 # function prob2(p::Prob, from::Float64=.97, to::Float64=1.03, mult::Float64=2.0)
 #     left = binNearest(from)

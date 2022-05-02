@@ -6,31 +6,30 @@ const t = Rets
 
 function runTests()
     @testset "RetAtExp" begin
-        # NOTE: Extreme vals are not just in a line because Bins.leftVal/rightVal which averages further out
         # Long Call
-        testAt(lineRet(Style.call, Side.long, NETO_NEG), [NETO_NEG, NETO_NEG, NETO_NEG, NETO_NEG + SPLIT*10*binWidth(), 28.9025])
+        testAt(lineRet(Style.call, Side.long, NETO_NEG), [NETO_NEG, NETO_NEG, NETO_NEG, NETO_NEG + SPLIT*10*Bins.WIDTH, 40.152499999999975])
         # Long Put
-        testAt(lineRet(Style.put, Side.long, NETO_NEG), reverse([NETO_NEG, NETO_NEG, NETO_NEG, NETO_NEG + SPLIT*10*binWidth(), 28.9025]))
+        testAt(lineRet(Style.put, Side.long, NETO_NEG), reverse([NETO_NEG, NETO_NEG, NETO_NEG, NETO_NEG + SPLIT*10*Bins.WIDTH, 40.152499999999975]))
         # Short Call
-        testAt(lineRet(Style.call, Side.short, NETO_POS), [NETO_POS, NETO_POS, NETO_POS, NETO_POS - SPLIT*10*binWidth(), -30.6625])
+        testAt(lineRet(Style.call, Side.short, NETO_POS), [NETO_POS, NETO_POS, NETO_POS, NETO_POS - SPLIT*10*Bins.WIDTH, -41.912499999999966])
         # Short Put
-        testAt(lineRet(Style.put, Side.short, NETO_POS), reverse([NETO_POS, NETO_POS, NETO_POS, NETO_POS - SPLIT*10*binWidth(), -30.6625]))
+        testAt(lineRet(Style.put, Side.short, NETO_POS), reverse([NETO_POS, NETO_POS, NETO_POS, NETO_POS - SPLIT*10*Bins.WIDTH, -41.912499999999966]))
     end
 
     @testset "RetAfterExp" begin
         # TODO: verify the following
         # Exp2 Long Call
-        testAt(curveRet(Style.call, Side.long, NETO_NEG), [-4.959999999999993, -3.627265976507423, -3.1169047522659445, -2.4977928426642597, 28.902500000000522])
-            # [NETO_NEG, NETO_NEG, NETO_NEG, NETO_NEG + SPLIT*10*binWidth(), 28.9025])
+        testAt(curveRet(Style.call, Side.long, NETO_NEG), [NETO_NEG, -4.031640904959338, -3.1169047522659445, -1.7734559965167795, 40.1525])
+            # [NETO_NEG, NETO_NEG, NETO_NEG, NETO_NEG + SPLIT*10*Bins.WIDTH, 28.9025])
         # Exp2 Long Put
-        testAt(curveRet(Style.put, Side.long, NETO_NEG), [28.902499999999954, -2.5022659765073945, -3.1169047522659445, -3.622792842664203, -4.959999999999483])
-            # reverse([NETO_NEG, NETO_NEG, NETO_NEG, NETO_NEG + SPLIT*10*binWidth(), 28.9025]))
+        testAt(curveRet(Style.put, Side.long, NETO_NEG), [40.1525, -1.781640904959338, -3.1169047522659445, -4.023455996516666, NETO_NEG])
+            # reverse([NETO_NEG, NETO_NEG, NETO_NEG, NETO_NEG + SPLIT*10*Bins.WIDTH, 28.9025]))
         # Exp2 Short Call
-        testAt(curveRet(Style.call, Side.short, NETO_POS), [3.199999999999993, 1.867265976507423, 1.3569047522659448, 0.7377928426642599, -30.662500000000524])
-            # [NETO_POS, NETO_POS, NETO_POS, NETO_POS - SPLIT*10*binWidth(), -30.6625])
+        testAt(curveRet(Style.call, Side.short, NETO_POS), [NETO_POS, 2.2716409049593382, 1.3569047522659448, 0.013455996516779756, -41.9125])
+            # [NETO_POS, NETO_POS, NETO_POS, NETO_POS - SPLIT*10*Bins.WIDTH, -30.6625])
         # Exp2 Short Put
-        testAt(curveRet(Style.put, Side.short, NETO_POS), [-30.662499999999955, 0.7422659765073947, 1.3569047522659448, 1.862792842664203, 3.199999999999483])
-            # reverse([NETO_POS, NETO_POS, NETO_POS, NETO_POS - SPLIT*10*binWidth(), -30.6625]))
+        testAt(curveRet(Style.put, Side.short, NETO_POS), [-41.9125, 0.021640904959338236, 1.3569047522659448, 2.263455996516666, NETO_POS])
+            # reverse([NETO_POS, NETO_POS, NETO_POS, NETO_POS - SPLIT*10*Bins.WIDTH, -30.6625]))
     end
 
     @testset "combine!" begin
@@ -57,8 +56,8 @@ const EXP1 = today() + Day(1)
 const EXP2 = today() + Day(3)
 const SPLIT = 450.0
 
-const MID = div(numVals(), 2)+1
-const TEST_XS = [1, MID-10, MID, MID+10, numVals()]
+const MID = div(Bins.VNUM, 2)+1
+const TEST_XS = [1, MID-10, MID, MID+10, Bins.VNUM]
 
 lineRet(style::Style.T, side::Side.T, neto) =
     makeRet(Leg(;option=Option(style, EXP1, SPLIT), side), MET, C(neto), EXP1, C(SPLIT), .8)

@@ -29,17 +29,10 @@ function tradierExpirations()
 end
 
 function tradierCalendar()::Dict{Date,Dict{String,Any}}
-    dc = today()
-    mc = Month(dc).value
-    yc = Year(dc).value
-    dn = today() + Month(1)
-    mn = Month(dn).value
-    yn = Year(dn).value
-    monthCur = tradierGet("/markets/calendar?month=$(mc)&year=$(yc)", Call(nameof(var"#self#")))
-    monthNext = tradierGet("/markets/calendar?month=$(mn)&year=$(yn)", Call(nameof(var"#self#")))
     res = Dict{Date,Dict{String,Any}}()
-    for dict in (monthCur["calendar"]["days"]["day"], monthNext["calendar"]["days"]["day"])
-        for day in dict
+    for d in (today() - Month(1), today(), today() + Month(1))
+        raw = tradierGet("/markets/calendar?year=$(Year(d).value)&month=$(Month(d).value)", Call(nameof(var"#self#")))
+        for day in raw["calendar"]["days"]["day"]
             res[Date(day["date"])] = day
         end
     end

@@ -48,10 +48,12 @@ function sleepWait(cond::Threads.Condition, seconds::Float64)
     lock(cond)
     try
         tim = Timer(tim -> lockNotify(cond), seconds)
-        before = now(UTC)
+        # before = now(UTC)
         wait(cond)
-        after = now(UTC)
-        isopen(tim) && ( @info "interrupted sleep wait" (after - before) seconds stacktrace() ; close(tim) )
+        # after = now(UTC)
+        # isopen(tim) && ( @info "interrupted sleep wait" (after - before) seconds stacktrace() ; close(tim) )
+        # isopen(tim) && close(tim)
+        close(tim)
     finally
         unlock(cond)
     end

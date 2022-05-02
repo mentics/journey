@@ -10,7 +10,7 @@ rmet(i::Int) = calcMetrics(pvals(1), arv(i))
 using Kelly, Bins
 rkelly(i::Int) = rkelly(ar(i))
 function rkelly(lr::Strat)
-    buf = Vector{Float64}(undef, numVals())
+    buf = Bins.empty()
     getVals!(buf, lr)
     # risk = abs(minimum(buf))
     # buf ./= risk
@@ -19,25 +19,25 @@ function rkelly(lr::Strat)
     calcKelly(pvals(1), buf)
 end
 
-restk(i::Int) = restk(pvals(1), arv(i))
-function restk(pv, v)
-    probWin = 0.0
-    valWin = 0.0
-    valLose = 0.0
-    pvs = probsVals(probs)
-    for i in binItr()
-        val = valAt(scss, i)
-        if val > 0
-            probWin += pvs[i]
-            valWin += val * pvs[i]
-        else
-            valLose += val * pvs[i]
-        end
-    end
-    multWin = -valWin / valLose
-    k = singleKelly(probWin, multWin)
-    @info "estKelly" k probWin multWin valWin valLose
-end
+# restk(i::Int) = restk(pvals(1), arv(i))
+# function restk(pv, v)
+#     probWin = 0.0
+#     valWin = 0.0
+#     valLose = 0.0
+#     pvs = probsVals(probs)
+#     for i in binItr()
+#         val = valAt(scss, i)
+#         if val > 0
+#             probWin += pvs[i]
+#             valWin += val * pvs[i]
+#         else
+#             valLose += val * pvs[i]
+#         end
+#     end
+#     multWin = -valWin / valLose
+#     k = singleKelly(probWin, multWin)
+#     @info "estKelly" k probWin multWin valWin valLose
+# end
 
 function rstats()
     alls = vcat(CmdStrats.lastSpreads2[][1], CmdStrats.lastSpreads2[][1])

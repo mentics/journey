@@ -63,8 +63,8 @@ end
 #region Local
 makeThreadCtx(thrKeep::Int, thrMaxRun::Int, baseScore::Float64) = (;
     thrMaxRun,
-    bufRet1 = Vector{Float64}(undef, numVals()),
-    bufRet2 = Vector{Float64}(undef, numVals()),
+    bufRet1 = Bins.empty(),
+    bufRet2 = Bins.empty(),
     scores = fill(baseScore, thrKeep),
     res = Vector{Combi}(undef, round(Int, 10*log(thrMaxRun) * thrKeep)), # multiple because ramp up makes it go over TODO: this mult is too big, maybe just for test weirdness?
     procCnt = Ref{Int}()

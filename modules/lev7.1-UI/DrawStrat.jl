@@ -7,10 +7,10 @@ export drawRet, drawRet!
 
 function drawRet(r::Ret, probs, cp::Real, label::AStr)
     sp = r.center
-    xs = sp .* binXs()
+    xs = sp .* Bins.xs()
     vals = getVals(r)
 
-    xrange = (xs[1] - 0.5 * sp * binWidth(), xs[end] + 0.5 * sp * binWidth())
+    xrange = (xs[1] - 0.5 * sp * Bins.width(), xs[end] + 0.5 * sp * Bins.width())
     yMin, yMax = extrema(vals)
     return newFig(ticksCentered(sp, xrange, (yMin, yMax))) do fig, ax
         if !isnothing(probs)

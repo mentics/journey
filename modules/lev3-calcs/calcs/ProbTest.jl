@@ -5,12 +5,12 @@ using ProbTypes, ProbUtil
 
 function runTests()
     @testset "cdf" begin
-        zeroProbs = Prob(50.0, fill(0.0, numVals()))
-        for x in binMin():binWidth():binMax()
+        zeroProbs = Prob(50.0, Bins.with(0.0))
+        for x in Bins.XS
             @test probsCdf(zeroProbs, x) === 0.0
         end
 
-        randProbs = Prob(100.0, rand(numVals()))
+        randProbs = Prob(100.0, rand(Bins.VNUM))
         normalize!(randProbs.vals)
         @test sum(randProbs.vals) ≅ 1.0
         @test probsCdf(randProbs, 0.0) === valLeft(randProbs)
@@ -23,17 +23,16 @@ function runTests()
             prev = p
         end
 
-        flatProbs = Prob(100.0, fill(1.0, numVals()))
+        flatProbs = Prob(100.0, Bins.with(1.0))
         normalize!(flatProbs.vals)
         @test sum(flatProbs.vals) ≅ 1.0
         @test probsCdf(flatProbs, 0.0) === valLeft(flatProbs)
         @test probsCdf(flatProbs, 1.0) ≅ 0.5
         @test probsCdf(flatProbs, 1000.0) === 1.0
         prev = 0.0
-        w = 1.0 / numVals()
-        i = 0
-        for x in binMin():binWidth():binMax()
-            i += 1
+        w = 1.0 / Bins.VNUM
+
+        for (i, x) in xsi()
             @test (1.0 - probsCdf(flatProbs, x) / (i * w)) < 0.001
         end
     end

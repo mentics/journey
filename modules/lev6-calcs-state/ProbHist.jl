@@ -63,27 +63,33 @@ function makeProbHists(cfg, forDate::Date, data)::Vector{PHType}
 end
 
 function makeProbHist(rets::AVec{RetsItemType})::PHType
-    bins = zeros(numBins())
-    lower = 0.0
-    upper = 0.0
+    # bins = zeros(numBins())
+    vals = Bins.with(0.0)
+    # lower = 0.0
+    # upper = 0.0
     weightSum = 0.0
     for i in 1:length(rets)
         (;ret) = rets[i]
         weight = 200.0 / (200.0 + i)
         weightSum += weight
-        if ret <= binsLeft()
-            lower += weight
-        elseif ret >= binsRight()
-            upper += weight
+        if Bins.isLeft(ret) # ret <= binsLeft()
+            # lower += weight
+            vals[1] += weight
+        elseif Bins.isRight(ret) # ret >= binsRight()
+            # upper += weight
+            vals[end] += weight
         else
-            b = binNearest(ret)
-            if b < 1 || b > numVals()
-                @error "Invalid bin number" b ret i binsLeft()
-            end
-            bins[b-1] += weight # TODO: why -1?
+            b = Bins.nearest(ret)
+            # if !Bins.isValidInd(b)
+            #     @error "Invalid bin number" b ret i binsLeft()
+            # end
+            # vals[b-1] += weight # TODO: why -1? because binNearest works on numVals, but this was using just numBins
+            vals[b] += weight
         end
     end
-    return vcat(lower/weightSum, bins ./ weightSum, upper/weightSum)
+    # return vcat(lower/weightSum, vals ./ weightSum, upper/weightSum)
+    vals ./= weightSum
+    return vals
 end
 #endregion
 
