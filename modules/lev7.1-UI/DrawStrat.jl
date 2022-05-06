@@ -6,6 +6,7 @@ using SH, BaseTypes, StratTypes, Bins, RetTypes
 export drawRet, drawRet!
 
 function drawRet(r::Ret, probs, cp::Real, label::AStr)
+    closeWin()
     sp = r.center
     xs = sp .* Bins.xs()
     vals = getVals(r)

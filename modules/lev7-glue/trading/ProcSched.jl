@@ -1,6 +1,6 @@
 module ProcSched
 using Dates
-using SH, TradierUtil, LogUtil
+using SH, Globals, TradierUtil, LogUtil
 using TradierAccount, Store
 
 export procExpired
@@ -19,6 +19,7 @@ export procExpired
 # end
 
 function procExpired()
+    isnothing(snap()) || error("Do not procExpired when snapped")
     @log debug "procExpired"
     histExpired = tradierHistory(today() - Day(30), today(), "optexp")
     for h in histExpired

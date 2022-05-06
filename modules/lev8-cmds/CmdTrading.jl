@@ -39,6 +39,8 @@ end
 
 #region CurrentPosition
 using CmdUtil, CheckUtil
+# TODO: make it a const
+cacheTrades = Dict{Int,Trade}()
 function todo(ex=1)
     Globals.set(:todoRunLast, now(UTC))
     legOvers = queryLeftovers()
@@ -46,25 +48,31 @@ function todo(ex=1)
     println("Leftovers:")
     pretyble(to.(NamedTuple, legOvers))
     @info "Current price: $(market().curp)"
-    return tradesToClose(ex)
+    trades = tradesToClose(ex)
+    for trade in trades cacheTrades[getId(trade)] = trade end
+    return trades
 end
 
 using RetTypes, Between, DrawStrat
-toRet(trades, ex)::Ret = combineTo(Ret, trades, expir(ex; td=true), market().startPrice, Globals.get(:vtyRatio)) # TODO: choose diff start price?
+toRet(trades, exp)::Ret = combineTo(Ret, trades, exp, market().startPrice, Globals.get(:vtyRatio)) # TODO: choose diff start price?
 # TODO: change so matches todo and expirs and all: 0 for today, 1 for non-today next exp, and default is 0
 drpos(ex=1) = drawRet(toRet(tradesFor(ex), ex), probs(), market().curp, "pos")
 export drt, adrt
-drt(i::Int, ex=1) = drawRet(toRet([tradesFor(ex)[i]], ex), probs(), market().curp, "t$(i)")
-drt(trade::Trade, ex=1, i=0) = drawRet(toRet([trade], ex), probs(), market().curp, "t$(i)")
-adrt(i::Int, ex=1) = drawRet!(toRet([tradesFor(ex)[i]], ex), "t$(i)")
-adrt(trade::Trade, ex=1, i=0) = drawRet!(toRet([trade], ex), "t$(i)")
+# drt(i::Int, ex=1) = drawRet(toRet([tradesFor(ex)[i]], ex), probs(), market().curp, "t$(i)")
+# adrt(i::Int, ex=1) = drawRet!(toRet([tradesFor(ex)[i]], ex), "t$(i)")
+drt(tid::Int) = ( trade = cacheTrades[tid] ; drawRet(toRet([trade], getTargetDate(trade)), probs(), market().curp, "t$(tid)") )
+adrt(tid::Int) = ( trade = cacheTrades[tid] ; drawRet!(toRet([trade], getTargetDate(trade)), "t$(tid)") )
+drt(trade::Trade) = drawRet(toRet([trade], getTargetDate(trade)), probs(), market().curp, "t$(getId(trade))")
+adrt(trade::Trade) = drawRet!(toRet([trade], getTargetDate(trade)), "t$(getId(trade))")
+
 function drx(ex=1)
+    # TODO: read from cache
     tod = tradesToClose(ex)
-    drt(tod[1], ex, 1)
+    drt(tod[1])
     for i in 2:length(tod)
-        adrt(tod[i], ex, i)
+        adrt(tod[i])
     end
-    drawRet!(toRet(tod, ex), "all")
+    drawRet!(toRet(tod, expir(ex; td=true)), "all")
 end
 
 # drawRet(tradesToRets(todo(ex)))
@@ -85,8 +93,10 @@ toRet2(trades, ex)::Ret = tradesToRet(trades, expir(ex; td=true), market().start
 drpos2(ex=1) = drawRet!(toRet2(todo(ex), ex), "pos2")#, probs(), market().curp, "pos2")
 #endregion
 
-ctr(trad::Trade{<:Closeable}, at::Real; kws...) = closePos(trad; kws..., pre=false, at=PriceT(at))
 ct(trad::Trade{<:Closeable}; kws...) = closePos(trad; kws..., pre=true)
+ct(tid::Int; kws...) = ct(cacheTrades[tid]; kws...)
+ctr(trad::Trade{<:Closeable}, primitDir::Real; kws...) = closePos(trad; kws..., pre=false, at=PriceT(primitDir))
+ctr(tid::Int, primitDir::Real; kws...) = ctr(cacheTrades[tid], primitDir; kws...)
 # ctrt(i::Int, at::Real; kws...) = closePos(trad; kws..., pre=false, at=PriceT(at))
 # ctt(i::Int; kws...) = ct(todo()[i]); kws..., pre=true)
 function closePos(trad::Trade{<:Closeable}; ratio=0.25, at=nothing, pre=true, kws...)

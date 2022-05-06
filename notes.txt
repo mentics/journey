@@ -1,4 +1,12 @@
-spread bins to 10 percent each way?
+Schedule calling backupOrders after market closes
+
+For existing positions, calc how much IV already dropped of long leg so we can plot it based on that. Or does it already use the new quoted IV?
+
+Make it so can add another chart to compare
+
+Change plot to take adjustment in account
+
+Update bap to allow small improvement to see if we can get something when currently getting no candidates.
 
 in "found entry" emails, include comparison of "ev was X, now could by Y"
 
@@ -17,10 +25,20 @@ Globals is at data level?
 Utils can depend on types
 Types mostly only depend on Types
 
-lmsadd = LegMeta[]
-empty!(lmsadd)
-append!(lmsadd, tos(LegMeta, ar(1)))
-ana(3,4,5; addPos=lmsadd)
+empty!(lmsAdd)
+
+setvr(.7)
+lmsPos = LegMeta[]
+days1 = [4,5,6,7,8]
+days2 = [11,12,13,14]
+days3 = [18,19,20,21,22, 25]
+# ,26,27,28]
+for day in days1
+	snap(4,day,0,0)
+	ex = findfirst(x -> x == Date("2022-04-29"), expirs())
+	ana(ex, ex+1; lmsPos)
+	append!(lmsPos, tos(LegMeta, ar(1)))
+end
 
 Why do I get nice trades for some expirations and can't for others? Could it be the weekends messing with the volatility timing?
 looks like sorting by ev is problematic. optimizing by evr got me 100% prob profit when by ev, I couldn't find anything I liked.

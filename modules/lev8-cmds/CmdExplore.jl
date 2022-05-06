@@ -1,12 +1,20 @@
 module CmdExplore
 using BaseTypes
-using SH, Globals, Shorthand, Between, RetTypes, StratTypes, LegMetaTypes
+using SH, Globals, Shorthand, Between, SmallTypes, RetTypes, StratTypes, LegMetaTypes
 using Expirations
 using DrawStrat
 using Markets, Chains
 # using CmdStrats
 
 export sh, shc, shRet, shVals, drsh, drsh!, shLegs # shLegs is reexported form Shorthand
+
+# TODO: move this to scheduled
+function findShortsToClose()
+    filter(positions()) do p
+        oq = optQuoter(getLeg(p))
+        return getSide(p) == Side.short && abs(getBid(oq)) < .02
+    end
+end
 
 shc(args...) = Tuple(lr for lr in sh(args...))
 sh(str::AStr, exps=expirs())::Vector{LegMeta} = tos(LegMeta, shLegs(str, exps), optQuoter)

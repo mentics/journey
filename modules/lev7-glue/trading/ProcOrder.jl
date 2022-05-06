@@ -27,6 +27,7 @@ end
 reprocOrder(oid::Int)::Bool = procOrder(loadOrderLogged(oid))
 procOrder(tord::Dict{String,Any})::Bool = runSync(procOrderRaw, LOCK, tord)
 function procOrderRaw(tord::Dict{String,Any})::Bool
+    isnothing(snap()) || error("Do not procOrders when snapped")
     if tord["class"] == "combo"
         @error "TODO: Combo order still not handled, skipping"
         return false
@@ -110,6 +111,7 @@ end
 # intended to be manually called
 # example: tid: 70, lidAssigned: 274(452@4-22), lidCombo: 276(457@4-25)
 function procAssigned(tid::Int, lidAssigned::Int, lidCombo::Int, tord::Dict{String,Any})
+    isnothing(snap()) || error("Do not procOrders when snapped")
     leg1 = loadLegTrade(lidAssigned)
     leg2 = loadLegTrade(lidCombo)
     newOrder = TradierOrderConvert.fromAssigned(tord, leg1, leg2)

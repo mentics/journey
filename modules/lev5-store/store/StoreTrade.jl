@@ -59,7 +59,8 @@ findTradeEntered(d::Date)::Vector{Trade} = loadTrade.(selectCol("select tid from
 
 queryEntered(d::Date)::Vector{NamedTuple} = select("select tid, cast(cast(tsCreated//1000 as timestamp) as date) enteredDate, targetDate from Trade where cast(cast(tsCreated//1000 as timestamp) as date)=?", d)
 
-queryLegStatus(lid::Int)::Status = strToStatus(select("select status from VLegTrade where lid=?", lid)[1].status)
+# queryLegStatus(lid::Int)::T where T<:Status = strToStatus(select("select status from VLegTrade where lid=?", lid)[1].status)
+queryLegStatus(lid::Int) = strToStatus(select("select status from VLegTrade where lid=?", lid)[1].status)
 
 queryNumLegs(tid::Int)::Union{Nothing,Int} = (res = selectCol("select count(lid) from LegTrade where tid=?", tid) ; isempty(res) ? nothing : res[1] )
 

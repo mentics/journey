@@ -22,6 +22,7 @@ getTimeNext(job::JobRunning) = job.timeNext
 
 replace(name::String, mod::Module, code::String, when::String, runImmed::Bool=false)::Nothing = ( remove(name) ; add(name, mod, code, when, runImmed) )
 function add(name::String, mod::Module, code::String, when::String, runImmed::Bool=false; repok=false)::Nothing
+    now(UTC) < nextMarketChange() || Calendars.updateCalendar()
     existing = find(j -> j.job.name == name, Jobs)
     if !isnothing(existing)
         repok || error("Tried to register job with same name ", name)
@@ -36,7 +37,7 @@ function add(name::String, mod::Module, code::String, when::String, runImmed::Bo
     exprWhen = Meta.parse(when)
     when = Base.eval(mod, exprWhen)
     job = JobRunning(Job(name, mod, exprCode, exprWhen, runImmed),
-                     Base.eval(mod, exprCode), when, NEVER, runImmed ? now(UTC) : when(now(UTC), isMarketOpen(), nextMarketChange()))
+                     Base.eval(mod, exprCode), when, NEVER, runImmed ? now(UTC) : when(NEVER, isMarketOpen(), nextMarketChange()))
 
     runSync(Lock) do
         push!(Jobs, job)
@@ -83,7 +84,6 @@ maxSleep()::Period = Globals.get(:maxSchedPeriod)
 wakeUp() = lockNotify(waitCond)
 
 function run()::Nothing
-    Calendars.updateCalendar() # Must run before any other scheduling happens
     # TODO: can detect if woke up after sleep by storing a last ran time and compare to now
     try
         Running[] = true
@@ -94,14 +94,16 @@ function run()::Nothing
             while next < now(UTC)
                 next = runSync(Lock) do
                     nowRun = now(UTC)
+                    nowRun < nextMarketChange() || Calendars.updateCalendar()
                     mktOpen = isMarketOpen()
                     mktChange = nextMarketChange()
+                    @assert nowRun < mktChange
                     for job in Jobs
                         job.timeNext <= nowRun || break
                         spawnWrapped(runJob, job)
                         job.timeLast = nowRun
                         job.timeNext = job.when(nowRun, mktOpen, mktChange)
-                        @assert job.timeNext > nowRun "$(job) > $(nowRun)"
+                        @assert job.timeNext > nowRun "timeNext > nowRun: $(job) > $(nowRun)"
                     end
                     sort!(Jobs; by=getTimeNext)
                     nextMax = round(nowRun + maxSleep(), maxSleep(), RoundDown)

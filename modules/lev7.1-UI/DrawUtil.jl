@@ -2,7 +2,9 @@ module DrawUtil
 using GLMakie
 using SH, Bins
 
-export draw, draw!, newFig, ticksCentered, updateLegend
+export draw, draw!, newFig, ticksCentered, updateLegend, closeWin
+
+closeWin() = GLMakie.destroy!(GLMakie.global_gl_screen())
 
 function newFig(f, (xticks, yticks))
     fig = Figure(resolution = (1200, 1000))
@@ -51,6 +53,7 @@ end
 
 export drawProb
 function drawProb(ax, prob, colorIndex, scale)
+    closeWin()
     colors = (GLMakie.RGBA(0.5, 0.5, 1.0, 0.5), GLMakie.RGBA(0.0, 0.5, 0.5, 0.5), GLMakie.RGBA(0.5, 0.5, 0.5, 0.5))
     p = barplot!(ax, getCenter(prob) .* Bins.xs(), scale * 100.0 .* getVals(prob); color=colors[colorIndex], gap=0.0, inspectable=false)
     p.inspectable[] = false
@@ -70,14 +73,17 @@ function __init__()
 end
 
 function SH.draw(f::Function, xs)
+    closeWin()
     lines(xs, f.(xs))
 end
 
 function SH.draw(xs, ys)
+    closeWin()
     lines(xs, ys)
 end
 
 function SH.draw(vals)
+    closeWin()
     lines(vals)
 end
 

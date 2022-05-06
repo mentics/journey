@@ -18,6 +18,23 @@ const DFTEST = dateformat"yyyy-mm-dd.HH-MM"
 
 __init__() = Globals.set(:snap, nothing)
 
+# TODO: change name to mktChangeNext
+const UPDATE_PERIOD = Hour(1)
+const EXTRA = Second(73)
+function whenUpdate(from::DateTime, isMktOpen::Bool, nextMktChange::DateTime)
+    if isMktOpen
+        nn = now(UTC)
+        timeNext = round(nn, UPDATE_PERIOD, RoundUp) + EXTRA
+        if timeNext < nextMktChange
+            return timeNext
+        else
+            # timeNext - nn <
+        end
+    else
+        return nextMktChange + EXTRA
+    end
+end
+
 const toRecord = [
     ()->positions(; age=Millisecond(0)),
     ()->expirs(; up=true),
@@ -93,11 +110,11 @@ newName() = formatLocal(now(UTC), DFTEST)
 # const REGEX_NAME = r"(\d\d\d\d-\d\d-\d\d\.\d\d-\d\d)"
 findByIndex(num::Int)::String = sort(readdir(TradierConfig.SnavePath; join=false, sort=false); rev=true)[num]
 function findByParts(nums::Int...)
-    files = sort(readdir(TradierConfig.SnavePath; join=false, sort=false); rev=true)
+    files = sort(readdir(TradierConfig.SnavePath; join=false, sort=false); rev=false)
     p = vcat(fill("", 5-length(nums)), map(n -> n == 0 ? "" : string(n), nums)...)
     for file in files
         rx = ".*$(p[1]).*-.*$(p[2]).*-.*$(p[3]).*\\..*$(p[4]).*-.*$(p[5]).*"
-        println(p, rx)
+        # println(p, rx)
         if !isnothing(match(Regex(rx), file))
             return file
         end

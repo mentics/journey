@@ -14,25 +14,26 @@ calcMetrics(pv::AVec{Float64}, v::AVec{Float64}, cap::Float64, adjust::Float64) 
 # calcMetrics(p::Prob, v::AVec{Float64}) = calcMetrics(getVals(p), v)
 
 # calcMetrics1(p::Prob, v::AVec{Float64}) = calcMetrics(getVals(p), v)
-function calcMetrics1(pv::AVec{Float64}, v::AVec{Float64}, cap::Float64, adjust::Float64)
-    # error("cap: $(cap)")
+function calcMetrics1(pvals::AVec{Float64}, vals::AVec{Float64}, cap::Float64, adjust::Float64)
     profit = loss = prob = 0.0
-    # adjustCap = 1.0
-    # adjust = 0.0
+    mn = Inf
+    mx = -Inf
     # @info "check" cap adjust
-    for (p, v) in Iterators.zip(pv, v)
+    for (p, v) in Iterators.zip(pvals, vals)
         # vadj = min(5.0, 0.0 < v < adjustCap ? v - (v*adjust/adjustCap) : (v - adjust)) # TODO: should make the cap adjust somehow with the position we're processing
         vadj = min(cap, v - adjust) # TODO: should make the cap adjust somehow with the position we're processing
         ad = p * vadj
         vadj > 0.0 && (profit += ad ; prob += p)
         vadj < 0.0 && (loss += ad)
+        v < mn && (mn = v)
+        v > mx && (mx = v)
     end
     ev = profit + loss
     # TODO: is 1000 * the right multiple?
     evr = if loss > -0.01; 1000 * profit
           elseif profit == 0.0; loss
           else profit / abs(loss) end
-    return (; profit, loss, ev, evr, prob)
+    return (; profit, loss, ev, evr, prob, mn, mx)
 end
 
 calcMetrics2(p::Prob, v::AVec{Float64}) = calcMetrics(getVals(p), v)

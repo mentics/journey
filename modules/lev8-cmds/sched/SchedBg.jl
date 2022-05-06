@@ -1,12 +1,13 @@
 module SchedBg
 using Dates
 using Globals, LogUtil
-using Sched, ProcSched
+using Sched, ProcSched, Snapshots
 using Calendars, Expirations
 
 Jobs = [
     ("update-$(Calendars)", Calendars, "updateCalendar", "whenUpdate", false),
     ("run-$(ProcSched)", ProcSched, "procExpired", "whenUpdate", true),
+    # ("run-$(Snapshots)", Snapshots, "snave", "whenUpdate", false),
     # ("check-DevMode", @__MODULE__, "checkDevMode", "checkDevModeWhen", true)
 ]
 

@@ -18,7 +18,8 @@ function calcPosStrat(forDate::Date, sp::Currency, vtyRatio::Float64, extra::Uni
         lms = tos(Vector{LegMeta}, trades)
         isnothing(extra) || append!(lms, extra)
         sort!(lms; by=getStrike)
-        return [(lm, to(Ret, lm, forDate, sp, vtyRatio)) for lm in lms]
+        # return [(lm, to(Ret, lm, forDate, sp, vtyRatio)) for lm in lms]
+        return tos(LegRet, lms, forDate, sp, vtyRatio)
     else
         return Vector{LegRet}()
     end

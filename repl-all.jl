@@ -8,9 +8,9 @@ using Snapshots, Calendars, Markets, Expirations, Chains
 using CmdStrats, CmdCheck, CmdTrading, CmdExplore
 using SchedAll, Sched
 SchedAll.start()
-isrtd() = !intest() && !dev() && isMarketOpen() && tenv() == :prod && isnothing(snap()) && urp()
+isrtd() = !intest() && !dev() && isMarketOpen() && tenv() == :prod && isnothing(snap()) && urp() && Sched.ison()
 snap(1)
-an(;maxRun=100000, scorer=scoreRand, posStrat=Vector{LegRet}())
+an(;maxRun=100000, scorer=scoreRand, lmsPos=Vector{LegMeta}())
 dr(1)
 snop()
 useDbProd()

@@ -48,7 +48,7 @@ end
 
 whenUpdate(from::DateTime, isMktOpen::Bool, nextMktChange::DateTime) = whenMarket(from, isMktOpen, nextMktChange, PERIOD_UPDATE)
 
-canTrade() = ( delta = now(UTC) - market().tsUpdate ; delta <= PERIOD_UPDATE+Second(5) || error("Don't trade when market data out of date: ", delta, " seconds") )
+canTrade() = ( delta = now(UTC) - market().tsUpdate ; delta <= 2 * PERIOD_UPDATE || error("Don't trade when market data out of date: ", delta, " seconds") )
 
 function update()::Nothing
     @log debug "updateMarket"

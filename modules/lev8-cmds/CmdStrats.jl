@@ -24,7 +24,7 @@ function comp(i::Int)
         #     [:startFlat, :addFlat, :bothFlat]
         # ]
         start = hereMetrics(pvals, valsStart)
-        add = hereMetrics(pvals, valsAdd)
+        add = hereMetrics(pvals, valsAdd, 4)
         both = hereMetrics(pvals, valsBoth)
         data = [(;name=n, nt...) for (n, nt) in zip(["start$(ind)", "add$(ind)", "both$(ind)"], [start, add, both])]
         pretyble(data) # TODO: create Tables impl for tuple of namedtuples
@@ -32,7 +32,7 @@ function comp(i::Int)
     return
 end
 
-hereMetrics(pv, v) = Scoring.calcMetricsBoth(pv, v, length(lastPosStrat[]))
+hereMetrics(pv, v, numPos=(4 + length(lastPosStrat[]))) = Scoring.calcMetricsBoth(pv, v, numPos)
 
 # draw(CmdStrats.lastCtx[].probs.ppos.vals)
 # draw(CmdStrats.lastCtx[].probs.pposInv.vals)
@@ -56,13 +56,13 @@ function makeProbs(numDays::Int, targetDate::Date, sp::Currency)::Tuple
     # pposInv = isnothing(lastPosRet[]) ? nothing : invert(ppos)
     # pflat = probFlat(ph)
     # pposHyb = Prob(getCenter(ph), normalize!(getVals(ph) .+ (getVals(pposInv) .* 2)))
-    # return (pnd, ph)
-    return (ph,pnd)
+    return (pnd, ph)
+    # return (ph,pnd)
 end
 
 ana(exs...; kws...) = an(exs...; kws..., maxRun=0)
-function an(exs...; maxRun::Int=120, keep::Int=1000, nthreads::Int=Threads.nthreads(),
-            noPos::Bool=false, addPos=nothing, posStrat::Union{Nothing,Vector{LegRet}}=nothing,
+function an(exs...; maxRun::Int=120, keep::Int=100, nthreads::Int=Threads.nthreads(),
+            noPos::Bool=false, lmsAdd::Union{Nothing,Vector{LegMeta}}=nothing, lmsPos::Union{Nothing,Vector{LegMeta}}=nothing,
             getProbs=makeProbs, scorer=nothing, headless=false,
             sprFilt=nothing, addDays::Int=0)::Nothing
     Globals.set(:anRunLast, now(UTC))
@@ -74,7 +74,10 @@ function an(exs...; maxRun::Int=120, keep::Int=1000, nthreads::Int=Threads.nthre
     mkt = market()
     sp = mkt.startPrice
     chs = chains()
-    global lastPosStrat[] = noPos ? Vector{LegRet}() : (isnothing(posStrat) ? calcPosStrat(targetDate, sp, Globals.get(:vtyRatio), addPos) : posStrat)
+    # global lastPosStrat[] = noPos ? Vector{LegRet}() : (isnothing(posStrat) ? calcPosStrat(targetDate, sp, Globals.get(:vtyRatio), addPos) : posStrat)
+    global lastPosStrat[] = noPos ? Vector{LegRet}() :
+            (isnothing(lmsPos) ? calcPosStrat(targetDate, sp, Globals.get(:vtyRatio), lmsAdd) :
+                    tos(LegRet, lmsPos, targetDate, sp, Globals.get(:vtyRatio)))
     global lastPosRet[] = (noPos || isempty(lastPosStrat[])) ? nothing : combineTo(Ret, lastPosStrat[])
 
     numDays = mktNumDays(targetDate) + addDays
@@ -87,8 +90,9 @@ function an(exs...; maxRun::Int=120, keep::Int=1000, nthreads::Int=Threads.nthre
     len1, len2 = length.(allSpreads2)
     if maxRun == 0; maxRun = binomial(len1, 2) + binomial(len2, 2) + len1 * len2 end
     resetCountsScore()
+    # TODO: clarify numPos use for calcmetrics
     numPos = length(lastPosStrat[])
-    ctx = makeCtx(coal(scorer, calcScore1), probs, numDays; maxRun, keep, posRet=lastPosRet[], nthreads, numPos)
+    ctx = makeCtx(coal(scorer, calcScore1), probs, numDays; maxRun, keep, posRet=lastPosRet[], nthreads, numPos, sp)
     @info "ctx" keys(ctx)
 
     @info "RunStrats running" maxRun keep nthreads exps sum(length, allSpreads2) sp numDays
@@ -96,7 +100,8 @@ function an(exs...; maxRun::Int=120, keep::Int=1000, nthreads::Int=Threads.nthre
     showCountsScore()
     global lastRes[] = strats
     global lastCtx[] = ctx
-    sortar(byEvr(probs[1], numPos))
+    # sortar(byEvr(probs[1], 4+numPos))
+    sortar4(byScore)
     global lastView[] = copy(strats)
     if !headless
         sa()
@@ -127,6 +132,24 @@ function sortar2(by::Function)::Nothing
     lastView[] = copy(lastRes[])
     return
 end
+function sortar3(fby::Function)::Nothing
+    by = fby(probs()[1], 4 + lastCtx[].numPos)
+    useBy = isempty(lastPosStrat[]) ? by : s -> by(s, withPosStrat(s))
+    sort!(lastRes[]; rev=true, by=useBy, lt=isl)
+    lastView[] = copy(lastRes[])
+    return
+end
+function sortar4(fby::Function)::Nothing
+    by = fby(lastCtx[])
+    useBy = c -> by(combineTo(Vals, c), getVals(lastPosRet[]), combineTo(Vals, withPosStrat(c)))
+    # useBy = isempty(lastPosStrat[]) ? by : s -> by(s, withPosStrat(s))
+    sort!(lastRes[]; rev=true, by=useBy, lt=isl)
+    lastView[] = copy(lastRes[])
+    return
+end
+SH.getVals(::Nothing) = nothing
+export sortScore
+sortScore()::Nothing = sortar4(byScore)
 
 # TODO: optimize this (so much new vector)
 withPosStrat(s::Strat)::Vector{LegRet} = vcat(collect(s), lastPosStrat[])
