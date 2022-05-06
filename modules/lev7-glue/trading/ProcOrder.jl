@@ -13,7 +13,6 @@ function procOrders()::Bool
     length(tords) > 0 || return false
     res = false
     for tord in tords
-        logOrderRaw(tord)
         res |= procOrder(tord)
     end
     Store.dbChecks()
@@ -28,6 +27,7 @@ reprocOrder(oid::Int)::Bool = procOrder(loadOrderLogged(oid))
 procOrder(tord::Dict{String,Any})::Bool = runSync(procOrderRaw, LOCK, tord)
 function procOrderRaw(tord::Dict{String,Any})::Bool
     isnothing(snap()) || error("Do not procOrders when snapped")
+    logOrderRaw(tord)
     if tord["class"] == "combo"
         @error "TODO: Combo order still not handled, skipping"
         return false

@@ -121,8 +121,21 @@ using FileUtil, TradierAccount
 export backupOrders
 function backupOrders()
     ords = [(d["id"], d) for d in tradierOrders()]
-    foreach(ords) do (id, d)
-        writeJson(dirData("bak/orders/$(id).json"), d)
+    foreach(ords) do (oid, d)
+        writeJson(pathOrderBackup(oid), d)
+    end
+end
+dirOrderBackup() = dirData(joinpath("bak", "orders"))
+pathOrderBackup(oid::Int) = joinpath(dirOrderBackup(), "$(oid).json")
+using ProcOrder
+repord(oid::Int) = procOrder(loadJson(pathOrderBackup(oid)))
+function repords(oidMin::Int)
+    oids = parse.(Int, readdir(dirOrderBackup()) .|> splitext .|> first)
+    for oid in oids
+        if oid >= oidMin
+            @info "processing" oid
+            procOrder(loadJson(pathOrderBackup(oid)))
+        end
     end
 end
 
