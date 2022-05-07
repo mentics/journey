@@ -1,3 +1,5 @@
+Create something that searches backed up orders and sees if they're in the database
+
 Schedule calling backupOrders after market closes
 
 For existing positions, calc how much IV already dropped of long leg so we can plot it based on that. Or does it already use the new quoted IV?
@@ -70,9 +72,6 @@ move code out of Cmd* modules so Cmd* are very simple
 
 in LegTradeInfo, show leg status: clearly show closed legs, or closing
 
-fast run script with: julia -O0 --compile=min --startup-file=no C:/data/julia/scripts/test.jl
-julia -O0 --compile=min --startup-file=no C:/data/julia/scripts/test.jl
-
 look at source for now(UTC) and see if more efficient code to do that
 
 remove duplication in runstrats results
@@ -141,7 +140,6 @@ fix Reconcile
 
 schedule copy database backup
 
-
 for drawing a trade to be closed (todo()), plot open price for the day when it was opened
 
 when closing, save it to closing.
@@ -157,10 +155,8 @@ long running task that saves market and order data periodically and at important
 
 check the balance on threads running analysis: is it waiting on one (small number) thread at the end?
 
-
- fixing json:
-
- jq 'walk(if type=="object" and .extra then . + { greeks:.extra.greeks } else . end )' < chains-2022-01-28.10-35.json > chains2.json
+fixing json:
+jq 'walk(if type=="object" and .extra then . + { greeks:.extra.greeks } else . end )' < chains-2022-01-28.10-35.json > chains2.json
 
 wt -d C:/data/log PowerShell.exe "Get-Content debug.log -Wait -Tail 20" ; sp -D -V PowerShell.exe "Get-Content info.log -Wait -Tail 20" ; sp -D -H PowerShell.exe "Get-Content warn.log -Wait -Tail 20" ; move-focus left ; sp -D -H PowerShell.exe "Get-Content error.log -Wait -Tail 20"
 

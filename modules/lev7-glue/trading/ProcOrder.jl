@@ -6,6 +6,18 @@ using Store, StoreTrade, StoreOrder, Backups, OrderWatching, TradierAccount
 
 export procOrders, procOrder, matchOrders
 
+repord(oid::Int) = procOrder(loadJson(pathOrderBackup(oid)))
+function repords(oidMin::Int)
+    oids = parse.(Int, readdir(dirOrderBackup()) .|> splitext .|> first)
+    for oid in oids
+        if oid >= oidMin
+            @info "processing" oid
+            procOrder(loadJson(pathOrderBackup(oid)))
+        end
+    end
+end
+# reprocOrder(oid::Int)::Bool = procOrder(loadOrderLogged(oid))
+
 function procOrders()::Bool
     isnothing(snap()) || error("Do not procOrders when snapped")
     tords = tradierOrders()
@@ -23,7 +35,6 @@ end
 # Order states: open, partially_filled, filled, expired, canceled, pending, rejected, error
 # Both scheduled, and live order processing can enter here, so synchronize.
 # TODO: scheduled will probably run in a separate process, so we might need a different technique for locking.
-reprocOrder(oid::Int)::Bool = procOrder(loadOrderLogged(oid))
 procOrder(tord::Dict{String,Any})::Bool = runSync(procOrderRaw, LOCK, tord)
 function procOrderRaw(tord::Dict{String,Any})::Bool
     isnothing(snap()) || error("Do not procOrders when snapped")

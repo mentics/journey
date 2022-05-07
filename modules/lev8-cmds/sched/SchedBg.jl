@@ -6,8 +6,9 @@ using Calendars, Expirations
 
 Jobs = [
     ("update-$(Calendars)", Calendars, "updateCalendar", "whenUpdate", false),
-    ("run-$(ProcSched)", ProcSched, "procExpired", "whenUpdate", true),
     # ("run-$(Snapshots)", Snapshots, "snave", "whenUpdate", false),
+    ("run-procExpired", ProcSched, "procExpired", "whenProcExpired", true),
+    ("run-backupOrders", ProcSched, "backupOrders", "whenBackupOrders", true),
     # ("check-DevMode", @__MODULE__, "checkDevMode", "checkDevModeWhen", true)
 ]
 

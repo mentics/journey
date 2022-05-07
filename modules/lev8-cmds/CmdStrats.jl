@@ -197,7 +197,7 @@ const lastPosRet = Ref{Union{Nothing,Ret}}(nothing)
 
 # TODO: move toTuple?
 using Shorthand, CalcUtil
-tupleWidths() = [0,0,0,0,0,0,0,0,48,30] # [0,0,0,0,30,0,0,0,48,0] # TODO: update this
+tupleWidths() = [0,0,0,0,0,0,0,0,48,30,10] # [0,0,0,0,30,0,0,0,48,0] # TODO: update this
 # function toTuple(s::Strat)
 #     probsVals = getVals(first(lastCtx[].probss))
 #     lms = getLegMetas(s)
@@ -220,7 +220,8 @@ function toTuple(s::Union{Nothing,Strat}, lrs::Vector{LegRet})
     met2 = hereMetrics(pv2, vals)
     # TODO: calc breakevens
     kel = calcKelly(pv, vals)
-    return (;prob=met.prob, kel, ev=met.ev, evr=met.evr, ev2=met2.ev, evr2=met2.evr, bes="", pnl=extrema(vals), netOpen=!isnothing(s) ? getNetOpen(s) : 0.0, legs=strikes, expir=exps)
+    score = byScore(lastCtx[])(combineTo(Vals, s), getVals(lastPosRet[]), vals)
+    return (;prob=met.prob, kel, ev=met.ev, evr=met.evr, ev2=met2.ev, evr2=met2.evr, bes="", pnl=extrema(vals), netOpen=!isnothing(s) ? getNetOpen(s) : 0.0, legs=strikes, expir=exps, score)
 end
 #endregion
 

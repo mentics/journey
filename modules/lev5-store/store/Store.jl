@@ -1,9 +1,12 @@
 module Store
-using DateUtil, LogUtil, StoreUtil, OutputUtil
+using Globals, DateUtil, LogUtil, StoreUtil, OutputUtil
 using StatusTypes
 using Markets
 
-export dbChecks
+export dirOrderBackup, pathOrderBackup, dbChecks
+
+dirOrderBackup() = dirData(joinpath("bak", "orders"))
+pathOrderBackup(oid::Int) = joinpath(dirOrderBackup(), "$(oid).json")
 
 function dbChecks()
     @log debug "dbChecks"

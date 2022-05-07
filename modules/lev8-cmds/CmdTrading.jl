@@ -117,28 +117,6 @@ end
 cleg(lid::Int, p=P(0.01); isMkt=false) = ( canTrade(true) ; closeLeg(loadLegTrade(lid), P(p); pre=true, isMkt) )
 clegr(lid::Int, p=P(0.01); isMkt=false) = ( canTrade(false) ; closeLeg(loadLegTrade(lid), P(p); pre=false, isMkt) )
 
-using FileUtil, TradierAccount
-export backupOrders
-function backupOrders()
-    ords = [(d["id"], d) for d in tradierOrders()]
-    foreach(ords) do (oid, d)
-        writeJson(pathOrderBackup(oid), d)
-    end
-end
-dirOrderBackup() = dirData(joinpath("bak", "orders"))
-pathOrderBackup(oid::Int) = joinpath(dirOrderBackup(), "$(oid).json")
-using ProcOrder
-repord(oid::Int) = procOrder(loadJson(pathOrderBackup(oid)))
-function repords(oidMin::Int)
-    oids = parse.(Int, readdir(dirOrderBackup()) .|> splitext .|> first)
-    for oid in oids
-        if oid >= oidMin
-            @info "processing" oid
-            procOrder(loadJson(pathOrderBackup(oid)))
-        end
-    end
-end
-
 export pnls
 function pnls()
     trades = findTrades(Closed)

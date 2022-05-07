@@ -1,9 +1,18 @@
 module ProcSched
 using Dates
-using SH, Globals, TradierUtil, LogUtil
+using SH, Globals, TradierUtil, LogUtil, FileUtil
 using TradierAccount, Store
 
-export procExpired
+export procExpired, backupOrders
+
+# TODO: only run on weekdays?
+whenBackupOrders(from::DateTime, isMktOpen::Bool, nextMktChange::DateTime) = nextLocalTime(from, Time(14, 0))
+function backupOrders()
+    ords = [(d["id"], d) for d in tradierOrders()]
+    foreach(ords) do (oid, d)
+        writeJson(pathOrderBackup(oid), d)
+    end
+end
 
 # function procDayCanceled()
 #     select("select * from Ord o, OrdLeg ol on o.oid=ol.oid where ol.expiration < strftime('%s', 'now') * 1000 and not exists (select olr.olid from OrdLegResolve olr where ol.olid=olr.olid)")
@@ -18,6 +27,7 @@ export procExpired
 #     end
 # end
 
+whenProcExpired(from::DateTime, isMktOpen::Bool, nextMktChange::DateTime) = nextLocalTime(from, Time(6, 15))
 function procExpired()
     isnothing(snap()) || error("Do not procExpired when snapped")
     @log debug "procExpired"
@@ -67,11 +77,7 @@ function procExpired()
 end
 
 #region Local
-const PROC_EXPIRED = :procExpired
-whenUpdate(from::DateTime, isMktOpen::Bool, nextMktChange::DateTime) = nextMktChange + Minute(5)
-
 using OptionTypes, SmallTypes, StoreUtil
-# TODO: where? for proc expired
 findLegUnclosed(opt::Option, side::Side.T) = select(sqlLegsUnclosed(), getStyle(opt), getExpiration(opt), getStrike(opt), side)
 findQtyUsedPrev(opt::Option, side::Side.T)::Int = select(sqlPrevUsedExpiredQty(), getStyle(opt), getExpiration(opt), getStrike(opt), side)[1].qtyused
 

@@ -18,10 +18,13 @@ const MARKET_TZ = tz"America/New_York"
 
 export fromMarketTZ
 export toDateMarket, formatLocal
+export nextTime
 
 fromMarketTZ(d::Date, t::Time)::DateTime = DateTime(ZonedDateTime(DateTime(d, t), DateUtil.MARKET_TZ), UTC)
 toDateMarket(dt::DateTime)::Date = Date(astimezone(ZonedDateTime(dt, tz"UTC"), MARKET_TZ))
 formatLocal(dt::DateTime, format::DateFormat)::String = Dates.format(astimezone(ZonedDateTime(dt, tz"UTC"), localzone()), format)
+
+nextLocalTime(from::DateTime, tim::Time) = ( dt = DateTime(todayat(tim, localzone()), UTC) ; return from < dt ? dt : dt + Day(1) )
 
 # Shouldn't need these after convert db ts to datetime
 export toDateLocal
