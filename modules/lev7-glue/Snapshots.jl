@@ -18,23 +18,6 @@ const DFTEST = dateformat"yyyy-mm-dd.HH-MM"
 
 __init__() = Globals.set(:snap, nothing)
 
-# TODO: change name to mktChangeNext
-const UPDATE_PERIOD = Hour(1)
-const EXTRA = Second(73)
-function whenUpdate(from::DateTime, isMktOpen::Bool, nextMktChange::DateTime)
-    if isMktOpen
-        nn = now(UTC)
-        timeNext = round(nn, UPDATE_PERIOD, RoundUp) + EXTRA
-        if timeNext < nextMktChange
-            return timeNext
-        else
-            # timeNext - nn <
-        end
-    else
-        return nextMktChange + EXTRA
-    end
-end
-
 const toRecord = [
     ()->positions(; age=Millisecond(0)),
     ()->expirs(; up=true),

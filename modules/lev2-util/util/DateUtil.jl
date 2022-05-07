@@ -18,7 +18,7 @@ const MARKET_TZ = tz"America/New_York"
 
 export fromMarketTZ
 export toDateMarket, formatLocal
-export nextTime
+export nextLocalTime
 
 fromMarketTZ(d::Date, t::Time)::DateTime = DateTime(ZonedDateTime(DateTime(d, t), DateUtil.MARKET_TZ), UTC)
 toDateMarket(dt::DateTime)::Date = Date(astimezone(ZonedDateTime(dt, tz"UTC"), MARKET_TZ))

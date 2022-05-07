@@ -3,6 +3,7 @@ using Dates
 using Globals, ThreadUtil, CollUtil, LogUtil
 using Calendars
 # TODO: should not depend directly on Calendars, more generic
+# could have some generic thing that it called into for time important events: adding, each run, etc.
 
 struct Job
     name::String
@@ -95,6 +96,7 @@ function run()::Nothing
                 next = runSync(Lock) do
                     nowRun = now(UTC)
                     nowRun < nextMarketChange() || Calendars.updateCalendar()
+                    # TODO: should we disable allow suspend during a run, only allow during sleep?
                     mktOpen = isMarketOpen()
                     mktChange = nextMarketChange()
                     @assert nowRun < mktChange

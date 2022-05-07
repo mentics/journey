@@ -43,7 +43,6 @@ DefaultExps = [
     # (8,9,10)
 ]
 UseExps = copy(DefaultExps)
-whenUpdate(from::DateTime, isMktOpen::Bool, nextMktChange::DateTime) = whenMarket(from, isMktOpen, nextMktChange, PERIOD_UPDATE ÷ length(UseExps))
 
 function run()
     isMarketOpen() || ( (@log info "SchedStrat stopping because market closed") ; stop() ; return )

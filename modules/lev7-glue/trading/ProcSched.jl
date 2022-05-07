@@ -5,8 +5,6 @@ using TradierAccount, Store
 
 export procExpired, backupOrders
 
-# TODO: only run on weekdays?
-whenBackupOrders(from::DateTime, isMktOpen::Bool, nextMktChange::DateTime) = nextLocalTime(from, Time(14, 0))
 function backupOrders()
     ords = [(d["id"], d) for d in tradierOrders()]
     foreach(ords) do (oid, d)
@@ -27,7 +25,6 @@ end
 #     end
 # end
 
-whenProcExpired(from::DateTime, isMktOpen::Bool, nextMktChange::DateTime) = nextLocalTime(from, Time(6, 15))
 function procExpired()
     isnothing(snap()) || error("Do not procExpired when snapped")
     @log debug "procExpired"

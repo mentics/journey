@@ -1,16 +1,35 @@
 module SchedBg
 using Dates
-using Globals, LogUtil
+using Globals, LogUtil, DateUtil
 using Sched, ProcSched, Snapshots
 using Calendars, Expirations
 
 Jobs = [
-    ("update-$(Calendars)", Calendars, "updateCalendar", "whenUpdate", false),
-    # ("run-$(Snapshots)", Snapshots, "snave", "whenUpdate", false),
-    ("run-procExpired", ProcSched, "procExpired", "whenProcExpired", true),
-    ("run-backupOrders", ProcSched, "backupOrders", "whenBackupOrders", true),
+    ("run-backupOrders", SchedBg, "ProcSched.backupOrders", "whenBackupOrders", true),
+    ("run-procExpired", SchedBg, "ProcSched.procExpired", "whenProcExpired", true),
+    ("run-snapshots", SchedBg, "Snapshots.snave", "whenSnapshots", false),
     # ("check-DevMode", @__MODULE__, "checkDevMode", "checkDevModeWhen", true)
 ]
+
+# TODO: only run on weekdays?
+whenBackupOrders(from::DateTime, isMktOpen::Bool, nextMktChange::DateTime) = nextLocalTime(from, Time(14, 0))
+
+whenProcExpired(from::DateTime, isMktOpen::Bool, nextMktChange::DateTime) = nextLocalTime(from, Time(6, 15))
+
+whenSnapshots(from::DateTime, isMktOpen::Bool, tsMktChange::DateTime) = nextMarketPeriod(Hour(1), Second(73), Second(5))
+
+whenStrat(from::DateTime, isMktOpen::Bool, nextMktChange::DateTime) = nextMarketPeriod()
+whenMarket(from, isMktOpen, nextMktChange, PERIOD_UPDATE ÷ length(UseExps))
+
+function nextMarketPeriod(period::Period, before::Period, afterOpen::Period)
+    if isMktOpen
+        nextHour = round(from, PERIOD, RoundUp)
+        timeNext = nextHour - BEFORE
+        timeNext < tsMktChange && return timeNext
+        @log error "Next snapshot time after market when during market"
+    end
+    return tsMktChange + Minute(7)
+end
 
 function start()
     for job in Jobs

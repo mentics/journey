@@ -1,6 +1,6 @@
 using Revise
 
-include("repl-inc.jl")
+include("inc.jl")
 
 try
 using LogUtil

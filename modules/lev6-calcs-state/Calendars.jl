@@ -13,17 +13,14 @@ struct CalInfo
 end
 
 isMarketOpen() = Info[].isOpen
+# TODO: change name to mktChangeNext
 nextMarketChange() = Info[].nextChange
 getMarketOpen(d::Date) = fromMarketTZ(d, Time(Info[].cal[d]["open"]["start"]))
 getMarketClose(d::Date) = fromMarketTZ(d, Time(Info[].cal[d]["open"]["end"]))
 # DateTime(astimezone(ZonedDateTime(DateTime("$(d)T$(cal[d]["open"]["end"])"), tz"America/New_York"), tz"UTC"))
 
 #region Local
-const CALENDARS = :calendars
 const Info = Ref{CalInfo}()
-__init__() = updateCalendar()
-
-whenUpdate(from::DateTime, isMktOpen::Bool, nextMktChange::DateTime) = max(from + Second(10), nextMktChange)
 
 function updateCalendar()::Nothing
     @log debug "updateCalendar"
