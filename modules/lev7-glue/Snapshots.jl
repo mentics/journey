@@ -1,8 +1,8 @@
 module Snapshots
 using Dates
 using Globals, DateUtil, FileUtil, TradierConfig, LogUtil
+using Calendars
 using Positions, Chains, Expirations, Markets, ProbHist
-using Sched
 
 export snave, snop
 
@@ -26,13 +26,10 @@ const toRecord = [
 ]
 
 function saveSnap()
-    if dev()
-        error("Don't snave when in devMode")
-    end
-    if !isnothing(snap())
-        error("Save Snap: Don't snave when snapped")
-        return
-    end
+    !dev() || @logret "Don't snave when in devMode"
+    isnothing(snap()) || @logret "Save Snap: Don't snave when snapped"
+    isMarketOpen() || @logret "Save Snap: Don't snave when market not open"
+
     name = newName()
     try
         setRecording(name)

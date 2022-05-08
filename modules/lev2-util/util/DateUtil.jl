@@ -9,7 +9,7 @@ using Dates, BusinessDays, TimeZones
 export isBusDay, bdays, bdaysBefore, nextTradingDay, lastTradingDay
 export nowMs, tims, toms, dateToMs, msToDate
 export timeToExpir
-export shortDate
+export strShort
 export isNowWithinMarket
 
 const MARKET_TZ = tz"America/New_York"
@@ -18,13 +18,28 @@ const MARKET_TZ = tz"America/New_York"
 
 export fromMarketTZ
 export toDateMarket, formatLocal
-export nextLocalTime
+export nextLocalTime, nextMarketPeriod
 
 fromMarketTZ(d::Date, t::Time)::DateTime = DateTime(ZonedDateTime(DateTime(d, t), DateUtil.MARKET_TZ), UTC)
 toDateMarket(dt::DateTime)::Date = Date(astimezone(ZonedDateTime(dt, tz"UTC"), MARKET_TZ))
 formatLocal(dt::DateTime, format::DateFormat)::String = Dates.format(astimezone(ZonedDateTime(dt, tz"UTC"), localzone()), format)
 
 nextLocalTime(from::DateTime, tim::Time) = ( dt = DateTime(todayat(tim, localzone()), UTC) ; return from < dt ? dt : dt + Day(1) )
+function nextMarketPeriod(from::DateTime, isMktOpen::Bool, tsMktChange::DateTime, period::Period, before::Period, afterOpen::Period)
+    if isMktOpen
+        nextHour = round(from, period, RoundUp)
+        timeNext = nextHour - before
+        timeNext < tsMktChange && return timeNext
+        error("timeNext $(timeNext) after tsMktChange $(tsMktChange) when during market $(isMktOpen)")
+    end
+    return tsMktChange + afterOpen
+end
+
+const DF_SHORT = dateformat"mm-dd"
+const DTF_SHORT = dateformat"mm-dd HH:MM:SS Z"
+strShort(d::Date)::String = Dates.format(d, DF_SHORT)
+strShort(d1::Date, d2::Date)::String = strShort(d1) * '/' * strShort(d2) # "$(Dates.format(d1, DATEFORMAT_SHORT))/$(Dates.format(d2, DATEFORMAT_SHORT))"
+strShort(ts::DateTime)::String = Dates.format(ZonedDateTime(ts, localzone(); from_utc=true), DTF_SHORT)
 
 # Shouldn't need these after convert db ts to datetime
 export toDateLocal
@@ -84,11 +99,5 @@ timeToExpir(from::DateTime, to::DateTime)::Float64 = Millisecond(to - from).valu
 # timeToExpir(expFrom::Date, expTo::Date)::Float64 = bdays(expFrom, expTo) / 365.0
 
 nowMs() = round(Int, time()*1000)
-
-const DATEFORMAT_SHORT = dateformat"mm-dd"
-shortDate(d::Date)::String = Dates.format(d, DATEFORMAT_SHORT)
-shortDate(d1::Date, d2::Date)::String = shortDate(d1) * '/' * shortDate(d2) # "$(Dates.format(d1, DATEFORMAT_SHORT))/$(Dates.format(d2, DATEFORMAT_SHORT))"
-# shortDate(ts1::Int, ts2::Int)::String = shortDate(msToDate(ts1), shortDate(msToDate(ts2)))
-# shortDate(ts1::Int, d2::Date)::String = shortDate(msToDate(ts1), shortDate(d2))
 
 end

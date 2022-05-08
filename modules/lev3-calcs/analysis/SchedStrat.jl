@@ -1,35 +1,13 @@
 module SchedStrat
 using Dates
 using Globals, LogUtil, OutputUtil
-using Sched, Emails, DataHelper
+using Emails
 using Calendars, Markets, Expirations
 using StoreTrade
 using CmdStrats
-using SchedBg
 using SystemUtil
 
-# To be used with repl-sched.jl
-
-function start()
-    inds = updateInds()
-    @log info "Scheduling analysis" inds
-    Sched.add(JOB_NAME, @__MODULE__, "run", "whenUpdate", false)
-    # TODO: Make sure the Calendars update is scheduled
-    @assert SchedBg.Jobs[1][1] == "update-$(Calendars)"
-    Sched.add(SchedBg.Jobs[1]...)
-    Sched.ison() || Sched.start()
-    setAllowSuspend(false)
-end
-
-function stop()
-    @log info "Unscheduling analysis"
-    Sched.remove(JOB_NAME)
-    setAllowSuspend(true)
-end
-
 #region Local
-const JOB_NAME = "run-$(SchedStrat)"
-const PERIOD_UPDATE = Second(Minute(20))
 const Index = Ref{Int}(0)
 # TODO: consts?
 DefaultExps = [
@@ -40,12 +18,17 @@ DefaultExps = [
     (5,6,7),
     (6,7,8),
     (7,8,9),
-    # (8,9,10)
+    (8,9,10)
 ]
 UseExps = copy(DefaultExps)
 
 function run()
-    isMarketOpen() || ( (@log info "SchedStrat stopping because market closed") ; stop() ; return )
+    if isMarketOpen()
+        setAllowSuspend(false)
+    else
+        setAllowSuspend(true)
+        @logret "SchedStrat ran when market closed"
+    end
     urpon()
     inds = updateInds() # Globals.get(:anasExps)
     Globals.has(:anasExps) && (global UseExps = DefaultExps[inds])

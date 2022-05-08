@@ -3,7 +3,7 @@ using Dates
 #Crayons
 using ThreadUtil
 
-export @log, logexc, resetLog
+export @log, @logret, logexc, resetLog
 
 macro log(exs...)
     prblk = Expr(:call, :logit)
@@ -22,11 +22,13 @@ function logexc(e)
     end
 end
 
-# macro logerr(exs...)
-#     prblk = Expr(:call, :logit, "$(ERROR("ERROR")): ")
-#     inner(exs, prblk)
-#     return Expr(:block, prblk)
-# end
+macro logret(exs...)
+    # prblk = Expr(:call, :logit, "$(ERROR("ERROR")): ")
+    prblk = Expr(:call, :logboth, QuoteNode(:error))
+    inner(exs, prblk)
+    # push!(prblk.args, :(return))
+    return Expr(:block, prblk, :(return))
+end
 
 #region Local
 const BasePath = Ref{String}("C:/data/log")
@@ -67,12 +69,22 @@ function inner(exs, prblk)
     end
 end
 
+function logboth(typ::Symbol, args...)
+    content = formatArgs(args...)
+    println(content...)
+    loglog(typ, content)
+end
+
 function logit(typ::Symbol, args...)
+    loglog(typ, formatArgs(args...))
+end
+
+function loglog(typ::Symbol, content)
     haskey(Outs, typ) || start(typ)
     out = Outs[typ]
     runSync(out.lock) do
         ensureOpen(out)
-        println(out.stream, formatArgs(args...)...)
+        println(out.stream, content...)
         flush(out.stream)
     end
 end

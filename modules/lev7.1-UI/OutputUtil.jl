@@ -55,11 +55,13 @@ function ppFormat(v, _, _)
     elseif eltype(v) === PriceT
         return map(x -> round(x; digits=2), v)
     elseif eltype(v) == Date
-        return join(shortDate.(v), ',')#map(x -> string(v), v)
+        return join(strShort.(v), ',')#map(x -> string(v), v)
+    elseif v isa DateTime
+        return strShort(v)
+    elseif v isa Date
+        return strShort(v)
     elseif v isa AbstractString || v isa Symbol
         return v
-    elseif v isa Date
-        return shortDate(v)
     # elseif !(eltype(v) isa AbstractString)
     #     return join(v, ',')#map(x -> string(v), v)
     else

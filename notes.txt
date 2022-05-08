@@ -1,5 +1,3 @@
-Create something that searches backed up orders and sees if they're in the database
-
 Schedule calling backupOrders after market closes
 
 For existing positions, calc how much IV already dropped of long leg so we can plot it based on that. Or does it already use the new quoted IV?
@@ -67,6 +65,8 @@ get market calendar and notify of holidays in next 2 weeks https://documentation
 warning in results if base score is near calcutil evr cap
 
 Calc if current trade leg prices for cal spreads are matching the model we used
+
+Create something that searches backup orders and sees if they're in the database, but how to handle cancels? see if Starting trades that might match?
 
 move code out of Cmd* modules so Cmd* are very simple
 

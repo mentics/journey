@@ -13,10 +13,8 @@ end
 using Globals
 using Markets
 urpon()
-
-using SystemUtil
-setAllowSuspend(false)
-
-using Sched, SchedStrat
 setvr(.7)
-SchedStrat.start()
+
+using Sched, SchedBg
+SchedBg.add()
+Sched.start()

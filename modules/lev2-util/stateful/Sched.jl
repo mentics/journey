@@ -1,6 +1,6 @@
 module Sched
 using Dates
-using Globals, ThreadUtil, CollUtil, LogUtil
+using Globals, ThreadUtil, CollUtil, LogUtil, OutputUtil
 using Calendars
 # TODO: should not depend directly on Calendars, more generic
 # could have some generic thing that it called into for time important events: adding, each run, etc.
@@ -20,6 +20,7 @@ mutable struct JobRunning
     timeNext::DateTime
 end
 getTimeNext(job::JobRunning) = job.timeNext
+toTuple(job::JobRunning) = (;job.job.name, job.timeLast, job.timeNext, job.job.mod, job.job.codeGen, job.job.whenGen, job.job.runImmed)
 
 replace(name::String, mod::Module, code::String, when::String, runImmed::Bool=false)::Nothing = ( remove(name) ; add(name, mod, code, when, runImmed) )
 function add(name::String, mod::Module, code::String, when::String, runImmed::Bool=false; repok=false)::Nothing
@@ -65,7 +66,8 @@ function start()::Nothing
     return
 end
 restart()::Nothing = ( stop() ; start() ; return )
-list()::Vector{JobRunning} = Jobs
+# list()::Vector{JobRunning} = Jobs
+list() = pretyble(toTuple.(Jobs))
 clearJobs()::Nothing = ( empty!(Jobs) ; return )
 
 #region Local
