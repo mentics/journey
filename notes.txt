@@ -1,10 +1,6 @@
-Schedule calling backupOrders after market closes
-
 For existing positions, calc how much IV already dropped of long leg so we can plot it based on that. Or does it already use the new quoted IV?
 
 Make it so can add another chart to compare
-
-Change plot to take adjustment in account
 
 Update bap to allow small improvement to see if we can get something when currently getting no candidates.
 
@@ -12,13 +8,7 @@ in "found entry" emails, include comparison of "ev was X, now could by Y"
 
 Customize todo output to easily ignore legs we can let expire
 
-Automaticaly search for worthless short legs in the future we can close early
-
-When entering or closing a trade, check to see if it already took the other side today to avoid day trading. Especially important if I'm closing out worthless legs early.
-
 Write up process doc. eg.: as soon as can buy back short legs for $.01, then do so
-
-Auto look for opportunities to close out short legs that have gone to .01 early. query db for way out of money items, then filter by quote
 
 can store level be this low?
 Globals is at data level?
@@ -56,8 +46,6 @@ extra 2: Also line pricing to deal with how we exit--don't always get to the end
 extra 3:
 extra 4: tools to deal with closing partially before expiration because near the money, and highlight those that should be closed (if time to expir < X and ITM is within Y highlight that leg)
 
-schedule to call snave occasionally
-
 standardize on combined color in graphs
 
 get market calendar and notify of holidays in next 2 weeks https://documentation.tradier.com/brokerage-api/markets/get-calendar
@@ -69,8 +57,6 @@ Calc if current trade leg prices for cal spreads are matching the model we used
 Create something that searches backup orders and sees if they're in the database, but how to handle cancels? see if Starting trades that might match?
 
 move code out of Cmd* modules so Cmd* are very simple
-
-in LegTradeInfo, show leg status: clearly show closed legs, or closing
 
 look at source for now(UTC) and see if more efficient code to do that
 
