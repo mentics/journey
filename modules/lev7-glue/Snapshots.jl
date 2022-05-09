@@ -1,7 +1,7 @@
 module Snapshots
 using Dates
 using Globals, DateUtil, FileUtil, TradierConfig, LogUtil
-using Calendars
+using Calendars, Sched
 using Positions, Chains, Expirations, Markets, ProbHist
 
 export snave, snop
@@ -46,8 +46,9 @@ function saveSnap()
 end
 
 function useSnap(nam::AbstractString)
-    Sched.stop()
-    devon()
+    (!Sched.ison() && dev()) || error("Don't snap unless sched stopped and devon")
+    # Sched.stop()
+    # devon()
     if snap() != nam
         try
             Globals.set(:snap, nam)
@@ -74,7 +75,7 @@ function stopSnap()
         @warn "WARNING: Stop Snap: Snap might be in an inconsistent state"
         rethrow(e)
     end
-    Sched.restart()
+    # Sched.restart()
     return snap()
 end
 

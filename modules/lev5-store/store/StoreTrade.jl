@@ -36,13 +36,13 @@ function loadTrade(tid::Int)
     # legs = loadLegTrade.(select("select * from VLegTrade where tid = ?", tid), t.tsCreated)
     # return Trade{strToStatus(t.status)}(t.tid, dbToC(t.primitDir), dbToC(t.prillDirOpen), dbToC(t.prillDirClose),
     #         legs, t.tsCreated, noth(t.tsFilled), noth(t.tsClosed), TradeMeta(t.underBid, t.underAsk))
-    legs = loadLegTrade.(select("select * from VLegTrade where tid=?", tid), t.tradecreated)
+    legs = loadLegTrade.(select("select * from VLegTrade where tid=?", tid))
     return Trade{strToStatus(t.status)}(t.tid, t.targetdate, dbdc(t.primitdir), dbdc(t.prilldiropen), dbdc(t.prilldirclose),
-            legs, coal(t.tscreated, t.tradecreated), noth(t.tsfilled), noth(t.tsclosed), TradeMeta(dbdc(t.underbid), dbdc(t.underask)))
+            legs, t.tscreated, noth(t.tsfilled), noth(t.tsclosed), TradeMeta(dbdc(t.underbid), dbdc(t.underask)))
 end
 
 function loadLegTrade(lid::Int)
-    loadLegTrade(select("select * from VLegTrade where lid=?", lid)[1], 0)
+    loadLegTrade(select("select * from VLegTrade where lid=?", lid)[1])
 end
 
 dbdc(x) = isSomething(x) ? C(Float64(x)) : nothing
@@ -58,6 +58,8 @@ end
 findTradeEntered(d::Date)::Vector{Trade} = loadTrade.(selectCol("select tid from Trade where cast(cast(tsCreated//1000 as timestamp) as date)=?", d))
 
 queryEntered(d::Date)::Vector{NamedTuple} = select("select tid, cast(cast(tsCreated//1000 as timestamp) as date) enteredDate, targetDate from Trade where cast(cast(tsCreated//1000 as timestamp) as date)=?", d)
+queryLegsEntered(d::Date)::Vector{LegTrade} =
+    loadLegTrade.(select("select * from VLegTrade where cast(cast(tsCreated//1000 as timestamp) as date)=?", d))
 
 # queryLegStatus(lid::Int)::T where T<:Status = strToStatus(select("select status from VLegTrade where lid=?", lid)[1].status)
 queryLegStatus(lid::Int) = strToStatus(select("select status from VLegTrade where lid=?", lid)[1].status)
@@ -68,21 +70,17 @@ function queryLeftovers()::Vector{LegTrade}
     rows = select("select * from vlegtrade where tscreated is not null and tsclosed is null and tid in (select tid from Trade where targetDate < current_date)")
     legs = Vector{LegTrade}()
     for row in rows
-        leg = loadLegTrade(row, 0)
+        leg = loadLegTrade(row)
         push!(legs, leg) # these are filled legs, so we can count on tsCreated being there
     end
     return legs
 end
 
 #region Local
-function loadLegTrade(row::NamedTuple, tsCreated::Int)
-    # LegTrade(row.lid, strToStatus(row.status), dbToC(row.prillDirOpen), dbToC(row.prillDirClose),
-    #          Leg(Option(Style.T(row.style), msToDate(row.expiration), dbToC(row.strike)), row.quantity, Side.T(row.side)),
-    #          coal(row.tsCreated, tsCreated), noth(row.tsFilled), noth(row.tsClosed), LegTradeMeta(dbToC(row.bid), dbToC(row.ask), row.iv))
+loadLegTrade(row::NamedTuple) =
     LegTrade(row.lid, row.tid, strToStatus(row.status), dbdc(row.prilldiropen), dbdc(row.prilldirclose),
              Leg(Option(Style.T(row.style), row.expiration, dbdc(row.strike)), dbdc(row.quantity), Side.T(row.side)),
-             coal(row.tscreated, tsCreated), noth(row.tsfilled), noth(row.tsclosed), LegTradeMeta(dbdc(row.bid), dbdc(row.ask), row.iv))
-end
+             row.tscreated, noth(row.tsfilled), noth(row.tsclosed), LegTradeMeta(dbdc(row.bid), dbdc(row.ask), row.iv))
 
 using JsonConfig, DictUtil
 function deleteTrade(tid::Int)

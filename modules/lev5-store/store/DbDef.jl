@@ -63,24 +63,28 @@ from LegTrade lt cross join (select 1 act union select -1 act) dir left outer jo
 
 VLegTrade() = """
 create view if not exists VLegTrade as
-select lt.lid, lt.tid, lt.style, lt.expiration, lt.strike, lt.side, lt.quantity, ltm.bid, ltm.ask, ltm.iv, mo.pd prillDirOpen, mc.pd prillDirClose, mo.tsCreated tsCreated, mo.tsFilled tsFilled, mc.tsFilled tsClosed,
+select lt.lid, lt.tid, lt.style, lt.expiration, lt.strike, lt.side, lt.quantity, ltm.bid, ltm.ask, ltm.iv, mo.pd prillDirOpen, mc.pd prillDirClose, coalesce(mo.tsCreated, t.tsCreated) tsCreated, mo.tsFilled tsFilled, mc.tsFilled tsClosed,
     case when mo.pd is null then 'Accepted' when mc.pd is null then 'Filled' else 'Closed' end as status
-from LegTrade lt join LegTradeMeta ltm on ltm.lid=lt.lid left outer join
-    (select lfo.lid, lfo.prillDir pd, lfo.tsCreated, lfo.tsFilled from VLegFilled lfo where act=1) mo on mo.lid=lt.lid left outer join
-    (select lfc.lid, lfc.prillDir pd, lfc.tsFilled from VLegFilled lfc where act=-1) mc on mc.lid=lt.lid
+from LegTrade lt
+    join LegTradeMeta ltm on ltm.lid=lt.lid
+    join Trade t on t.tid=lt.tid
+    left outer join (select lfo.lid, lfo.prillDir pd, lfo.tsCreated, lfo.tsFilled from VLegFilled lfo where act=1) mo on mo.lid=lt.lid
+    left outer join (select lfc.lid, lfc.prillDir pd, lfc.tsFilled from VLegFilled lfc where act=-1) mc on mc.lid=lt.lid
 """
 #endregion
 
 #region VTrade
 VTrade() = """
 create view VTrade as
-select t.tid, t.tsCreated tradeCreated, t.primitDir, t.targetDate, tm.underBid, tm.underAsk,
-    mo.pd prillDirOpen, mc.pd prillDirClose, mo.tsCreated tsCreated, mo.tsFilled tsFilled, mc.tsFilled tsClosed,
+select t.tid, t.tsCreated tsCreated, t.primitDir, t.targetDate, tm.underBid, tm.underAsk,
+    mo.pd prillDirOpen, mc.pd prillDirClose, mo.tsFilled tsFilled, mc.tsFilled tsClosed,
     case when mc.qtyUsed = mc.quantity then 'Closed' when mc.qtyUsed > 0 then 'PartialClosed' when mo.qtyUsed = mo.quantity then 'Filled' when mo.qtyUsed > 0 then 'PartialFilled' else 'Starting' end as status
-from Trade t join TradeMeta tm on t.tid=tm.tid left outer join
-    lateral (select tid, sum(quantity) quantity, sum(qtyUsed) qtyUsed, sum(quantity * prillDir) pd, max(tsCreated) tsCreated, max(tsFilled) tsFilled from VLegFilled lfo where act=1 and tid=t.tid group by tid) mo on mo.tid=t.tid left outer join
-    lateral (select tid, sum(quantity) quantity, sum(qtyUsed) qtyUsed, sum(quantity * prillDir) pd, max(tsFilled) tsFilled from VLegFilled lfc where act=-1 and tid=t.tid group by tid) mc on mc.tid=t.tid
+from Trade t join TradeMeta tm on t.tid=tm.tid
+    left outer join lateral (select tid, sum(quantity) quantity, sum(qtyUsed) qtyUsed, sum(quantity * prillDir) pd, max(tsFilled) tsFilled from VLegFilled lfo where act=1 and tid=t.tid group by tid) mo on mo.tid=t.tid
+    left outer join lateral (select tid, sum(quantity) quantity, sum(qtyUsed) qtyUsed, sum(quantity * prillDir) pd, max(tsFilled) tsFilled from VLegFilled lfc where act=-1 and tid=t.tid group by tid) mc on mc.tid=t.tid
 """
+# , max(tsCreated) tsCreated # in the mo select clause
+
 # create view VTrade as
 # select t.tid, t.tsCreated, t.primitDir, tm.underBid, tm.underAsk,
 #     mo.pd prillDirOpen, mc.pd prillDirClose, mo.tsCreated tsCreated, mo.tsFilled tsFilled, mc.tsFilled tsClosed,

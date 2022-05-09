@@ -1,8 +1,8 @@
 module SchedBg
 using Dates
 using Globals, LogUtil, DateUtil
-using Sched, ProcSched, Snapshots, SchedStrat
-using Calendars, Expirations
+using Sched, Calendars
+import ProcSched, Snapshots, SchedStrat
 
 # To be used with repl-sched.jl
 
@@ -10,8 +10,8 @@ using Calendars, Expirations
 Jobs = [
     ("run-backupOrders", SchedBg, "ProcSched.backupOrders", "whenBackupOrders", true),
     ("run-procExpired", SchedBg, "ProcSched.procExpired", "whenProcExpired", true),
-    ("run-snapshots", SchedBg, "Snapshots.snave", "whenSnapshots", false),
-    ("run-strat", SchedBg, "SchedStrat.run", "whenStrat", false),
+    ("run-snapshots", SchedBg, "snaveWrapper", "whenSnapshots", false),
+    ("run-strat", SchedBg, "stratWrapper", "whenStrat", false),
 ]
 
 # TODO: only run on weekdays?
@@ -20,8 +20,10 @@ whenBackupOrders(from::DateTime, isMktOpen::Bool, tsMktChange::DateTime) = nextL
 whenProcExpired(from::DateTime, isMktOpen::Bool, tsMktChange::DateTime) = nextLocalTime(from, Time(6, 15))
 
 whenSnapshots(from::DateTime, isMktOpen::Bool, tsMktChange::DateTime) = nextMarketPeriod(from, isMktOpen, tsMktChange, Hour(1), Second(73), Second(5))
+snaveWrapper() = isMarketOpen() && Snapshots.snave()
 
 whenStrat(from::DateTime, isMktOpen::Bool, tsMktChange::DateTime) = nextMarketPeriod(from, isMktOpen, tsMktChange, Second(600) ÷ length(SchedStrat.UseExps), Second(0), Minute(4))
+stratWrapper() = isMarketOpen() && SchedStrat.run()
 
 function add()
     for job in Jobs

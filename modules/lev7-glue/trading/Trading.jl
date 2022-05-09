@@ -14,19 +14,21 @@ TODO: To handle > 4 legs, we'll need to find the optimal combination of 2 or 4 l
 =#
 
 # submitPreview(lgs, primitDir) = (submitOrder(toPayloadOpen(lgs, PriceT(primitDir); pre=true)) ; return 0)
-function submitPreview(lgs, primitDir)
-    payload = toPayloadOpen(0, lgs, PriceT(primitDir); pre=true)
+function submitPreview(legs, primitDir)
+    checkTradeLegs(legs)
+    payload = toPayloadOpen(0, legs, PriceT(primitDir); pre=true)
     @info "submitPreview" payload
     resp = submitOrder(payload)
     @info "submitPreview" resp
     return 0
 end
 
-function submitLive(lqs, primitDir, mktqt)
-    length(lqs) > 4 && error("Trades with > 4 legs not supported yet")
-    tid = newTrade(primitDir, lqs, getBid(mktqt), getAsk(mktqt))
+function submitLive(legs, primitDir, mktqt)
+    checkTradeLegs(legs)
+    length(legs) > 4 && error("Trades with > 4 legs not supported yet")
+    tid = newTrade(primitDir, legs, getBid(mktqt), getAsk(mktqt))
     Globals.set(:tidOpenLast, tid) # for override
-    payload = toPayloadOpen(tid, lqs, PriceT(primitDir); pre=false)
+    payload = toPayloadOpen(tid, legs, PriceT(primitDir); pre=false)
     @info "submitLive submitOrder payload" payload
     resp = submitOrder(payload)
     @info "submitLive submitOrder response" resp tid
@@ -38,6 +40,7 @@ function closeTrade(optQuoter, trade::Trade{<:Closeable}, primitDir::PriceT; pre
     inLegs = getLegs(trade)
     inLegs = isnothing(legsInd) ? inLegs : inLegs[legsInd]
     veri = verifyPoss(inLegs)
+    checkTradeLegs(legs)
     if !intest() && false in veri # TODO: enhance test to set positions properly to test this part?
         @warn "closeTrade: missing positions for legs" veri
         useLegs = map(first, Iterators.filter(t -> t[2], zip(inLegs, veri)))
@@ -81,6 +84,15 @@ const PreClosedLegs = Set{Int}()
 #     x = sum(quot.(optQuote.(getLegs(trad)[1]))) # TODO: should this go requote the leg?
 #     !(getBid(qt) <= x <= getAsk(qt)) && @warn "price is not inside current quote !($(getBid(qt)) < $(x) < $(getAsk(qt)))"
 # end
+
+# TODO: test
+function checkTradeLegs(legs)
+    legsDb = queryLegsEntered(today())
+    for leg in legs, legDb in legsDb
+        isConflict(leg, legDb) && @logerr "Cannot trade opposite side on same day" leg legDb
+    end
+    return true
+end
 
 function closeTinyLegs!(legs, tid, optQuoter, maxClose::Int, sid::Side.T, exp::Date; pre)
     cnt = 0

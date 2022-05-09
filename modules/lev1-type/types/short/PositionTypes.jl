@@ -1,7 +1,9 @@
 module PositionTypes
-using SH, BaseTypes, SmallTypes, OptionTypes, LegTypes
+using Dates
+# using SH, BaseTypes, SmallTypes, OptionTypes, LegTypes
+using SH, BaseTypes, LegTypes
 
-export Position
+export Position, tsAcquired
 
 # struct Position
 #     option::Option
@@ -12,13 +14,14 @@ export Position
 # end
 struct Position
     leg::Leg
-    tsAcquired::Int
     basis::Currency
+    tsAcquired::DateTime
 end
 SH.getLeg(p::Position) = p.leg
 SH.getOption(p::Position) = getOption(p.leg)
 SH.getSide(p::Position) = getSide(p.leg)
 SH.getQuantity(p::Position) = getQuantity(p.leg)
 SH.getStrike(p::Position) = getStrike(p.leg)
+tsAcquired(p::Position) = p.tsAcquired
 
 end
