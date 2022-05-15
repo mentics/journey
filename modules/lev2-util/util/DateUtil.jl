@@ -25,14 +25,15 @@ toDateMarket(dt::DateTime)::Date = Date(astimezone(ZonedDateTime(dt, tz"UTC"), M
 formatLocal(dt::DateTime, format::DateFormat)::String = Dates.format(astimezone(ZonedDateTime(dt, tz"UTC"), localzone()), format)
 
 nextLocalTime(from::DateTime, tim::Time) = ( dt = DateTime(todayat(tim, localzone()), UTC) ; return from < dt ? dt : dt + Day(1) )
-function nextMarketPeriod(from::DateTime, isMktOpen::Bool, tsMktChange::DateTime, period::Period, before::Period, afterOpen::Period)
+function nextMarketPeriod(from::DateTime, isMktOpen::Bool, tsMktChange::DateTime, period::Period, before::Period, after::Period)
+    @assert Dates.value(after) > 0
+    @assert from <= tsMktChange
     if isMktOpen
-        nextHour = round(from, period, RoundUp)
-        timeNext = nextHour - before
-        timeNext < tsMktChange && return timeNext
-        error("timeNext $(timeNext) after tsMktChange $(tsMktChange) when during market $(isMktOpen)")
+        nextPeriod = round(from + before, period, RoundUp)
+        timeNext = nextPeriod - before
+        timeNext > from && timeNext < tsMktChange && return timeNext
     end
-    return tsMktChange + afterOpen
+    return tsMktChange + after
 end
 
 const DF_SHORT = dateformat"mm-dd"
@@ -43,7 +44,8 @@ strShort(ts::DateTime)::String = Dates.format(ZonedDateTime(ts, localzone(); fro
 
 # Shouldn't need these after convert db ts to datetime
 export toDateLocal
-toDateLocal(msUtc::Int)::Date = Date(astimezone(TimeZones.unix2zdt(msUtc/1000), localzone()))
+# toDateLocal(msUtc::Int)::Date = Date(astimezone(TimeZones.unix2zdt(msUtc/1000), localzone()))
+toDateLocal(ts::DateTime)::Date = Date(ZonedDateTime(ts, localzone(); from_utc=true))
 
 ####
 

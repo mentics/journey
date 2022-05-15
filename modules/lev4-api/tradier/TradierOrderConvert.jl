@@ -18,7 +18,7 @@ function SH.to(::Type{Order}, tord::Dict{String,Any})::Order
         !isnothing(prillDir) && (prillDir *= -1)
     end
 
-    return Order{toStatus(tord["status"])}(tord["id"], tord["symbol"], class, typ, primitDir, prillDir, tos(LegOrder, legs), tier.parseToMs(tord["create_date"]), tier.parseToMs(tord["transaction_date"]))
+    return Order{toStatus(tord["status"])}(tord["id"], tord["symbol"], class, typ, primitDir, prillDir, tos(LegOrder, legs), tier.parseTs(tord["create_date"]), tier.parseTs(tord["transaction_date"]))
 end
 
 function SH.to(::Type{LegOrder}, tleg::Dict{String,Any})::LegOrder
@@ -29,7 +29,7 @@ function SH.to(::Type{LegOrder}, tleg::Dict{String,Any})::LegOrder
     @assert checkDirOrder(side, prillDir) "checkDirOrder($(side), $(prillDir))"
     return LegOrder(tleg["id"], toStatus(tleg["status"]), action, C(prillDir),
                     Leg(tier.occToOpt(tleg["option_symbol"]), abs(tleg["quantity"]), side),
-                    tier.parseToMs(tleg["create_date"]), tier.parseToMs(tleg["transaction_date"]))
+                    tier.parseTs(tleg["create_date"]), tier.parseTs(tleg["transaction_date"]))
 end
 
 function fromAssigned(tord::Dict{String,Any}, legTrade1, legTrade2)::Order
@@ -44,10 +44,10 @@ function fromAssigned(tord::Dict{String,Any}, legTrade1, legTrade2)::Order
     primitDir = getStrike(legTrade2) - getStrike(legTrade1)
 
     leg1 = LegOrder(tlegs[1]["id"], Filled, Action.close, prillDir1, switchSide(getLeg(legTrade1)),
-            tier.parseToMs(tlegs[1]["create_date"]), tier.parseToMs(tlegs[1]["transaction_date"]))
+            tier.parseTs(tlegs[1]["create_date"]), tier.parseTs(tlegs[1]["transaction_date"]))
     leg2 = LegOrder(tlegs[2]["id"], Filled, Action.close, prillDir2, switchSide(getLeg(legTrade2)),
-            tier.parseToMs(tlegs[2]["create_date"]), tier.parseToMs(tlegs[2]["transaction_date"]))
-    return Order{Filled}(tord["id"], tord["symbol"], OrderClass.combo, typ, primitDir, prillDir, [leg1, leg2], tier.parseToMs(tord["create_date"]), tier.parseToMs(tord["transaction_date"]))
+            tier.parseTs(tlegs[2]["create_date"]), tier.parseTs(tlegs[2]["transaction_date"]))
+    return Order{Filled}(tord["id"], tord["symbol"], OrderClass.combo, typ, primitDir, prillDir, [leg1, leg2], tier.parseTs(tord["create_date"]), tier.parseTs(tord["transaction_date"]))
 end
 
 tierActionLeg(tierSide) = occursin("open", tierSide) ? 1 : -1

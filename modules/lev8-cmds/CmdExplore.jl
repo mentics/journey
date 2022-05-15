@@ -1,4 +1,5 @@
 module CmdExplore
+using Dates
 using BaseTypes
 using SH, Globals, Shorthand, Between, SmallTypes, RetTypes, StratTypes, LegMetaTypes
 using Expirations
@@ -10,8 +11,8 @@ export sh, shc, shRet, shVals, drsh, drsh!, shLegs # shLegs is reexported form S
 
 # TODO: move this to scheduled
 function findShortsToClose()
-    filter(positions()) do p
-        oq = optQuoter(getLeg(p))
+    filter(positions(;age=Second(0))) do p
+        oq = optQuoter(getLeg(p), Action.close)
         return getSide(p) == Side.short && abs(getBid(oq)) < .02
     end
 end
@@ -71,6 +72,155 @@ function whyNotCombi(combi::Combi)
     else
         println("TODO: was in spreads")
     end
+end
+
+using CalcUtil
+export tryall
+function tryall(ex=3)
+    sp = market().startPrice
+    vr = getvr()
+
+    expr = expir(3)
+    ana(ex; noPos=true, headless=true)
+    lmsAll = LegMeta[]
+    pv1, pv2 = pvals()
+
+    # score = -10000.0
+    ev1 = -10000.0
+    ev2 = -10000.0
+    evSum = -10000.0
+    prob1 = 0.0
+    prob2 = 0.0
+    mn = -10000.0
+    for c in CmdStrats.lastView[]
+        append!(lmsAll, tos(LegMeta, c))
+        # scoreTmp = scoreFor(lmsAll, expr, sp, vr)
+
+        vals = getVals(combineTo(Ret, lmsAll, expr, sp, vr))
+        met1 = calcMetrics(pv1, vals, 1000.0, 0.0)
+        met2 = calcMetrics(pv2, vals, 1000.0, 0.0)
+        evSumNext = met1.ev + met2.ev
+
+        # println("old evsum ", ev1, " new evSumNext ", evSumNext)
+        # println("old ev1 ", ev1, " new ev1 ", met1.ev, " old prob1 ", prob1, " new prob1 ", met1.prob, " old mn ", mn, " new mn ", met1.mn)
+        # println("old ev2 ", ev2, " new ev2 ", met2.ev, " old prob2 ", prob2, " new prob2 ", met2.prob, " len ", length(lmsAll))
+
+        # println("old score ", score, " new score ", scoreTmp, )
+        # if scoreTmp > score
+        #     score = scoreTmp
+        # else
+        #     resize!(lmsAll, length(lmsAll) - length(c))
+        # end
+        # if (met1.ev > ev1 || met2.ev > ev2) &&
+        #         (met1.prob >= .9 * prob1 || met2.prob >= .9 * prob2) &&
+        #         evSumNext > evSum &&
+        #         (mn > 0.0 ? mn > 0.0 : met1.mn >= 1.25 * mn)
+        # if (met1.prob >= .9 * prob1 || met2.prob >= .9 * prob2)
+        if (met1.prob > prob1 || met2.prob > prob2)
+            println("new len ", length(lmsAll), " old prob1 ", prob1, " new prob1 ", met1.prob, " old prob2 ", prob2, " new prob2 ", met2.prob)
+            met1.ev > ev1 && (ev1 = met1.ev)
+            met2.ev > ev2 && (ev2 = met2.ev)
+            met1.prob > prob1 && (prob1 = met1.prob)
+            met2.prob > prob2 && (prob2 = met2.prob)
+            met1.mn > mn && (mn = met1.mn)
+        else
+            resize!(lmsAll, length(lmsAll) - length(c))
+        end
+    end
+    retAll = combineTo(Ret, lmsAll, expr, sp, vr)
+    drawRet(retAll, probs(), market().curp, "")
+
+    vals = getVals(combineTo(Ret, lmsAll, expr, sp, vr))
+    met1 = calcMetrics(pv1, vals, 1000.0, 0.0)
+    println(met1)
+    # pretyble(met1)
+end
+
+export t2
+function t2(ex=3)
+    sp = market().startPrice
+    vr = getvr()
+
+    expr = expir(3)
+    ana(ex; noPos=true, headless=true)
+    pv1, pv2 = pvals()
+
+    score = -10000.0
+    ev1 = -10000.0
+    ev2 = -10000.0
+    evSum = -10000.0
+    prob1 = 0.0
+    prob2 = 0.0
+    mn = -10000.0
+    probSum = 0.0
+    winner = nothing
+    wininds = nothing
+    cs = CmdStrats.lastView[]
+    probs = zeros(12)
+
+    Threads.@threads for i1 in 1:(length(cs)-2)
+        thrid = Threads.threadId()
+        lms = LegMeta[]
+        for i2 in (i1+1):(length(cs)-1)
+            for i3 in (i2+1):length(cs)
+            empty!(lms)
+            append!(lms, tos(LegMeta, cs[i1]))
+            append!(lms, tos(LegMeta, cs[i2]))
+            append!(lms, tos(LegMeta, cs[i3]))
+            # scoreTmp = scoreFor(lmsAll, expr, sp, vr)
+
+            vals = getVals(combineTo(Ret, lms, expr, sp, vr))
+            met1 = calcMetrics(pv1, vals, 1000.0, 0.0)
+            # met2 = calcMetrics(pv2, vals, 1000.0, 0.0)
+            # evSumNext = met1.ev + met2.ev
+            # if (met1.ev > ev1 || met2.ev > ev2) &&
+            #         (met1.prob >= .9 * prob1 || met2.prob >= .9 * prob2) &&
+            #         evSumNext > evSum &&
+            #         (mn > 0.0 ? mn > 0.0 : met1.mn >= 1.25 * mn)
+            # if (met1.prob >= .9 * prob1 || met2.prob >= .9 * prob2)
+            # probSumNext = met1.prob + met2.prob
+            # if (probSumNext > probSum)
+            if (met1.ev > 0.0 && met1.prob > probs[thrid])
+                # println(" old probSum ", probSum, " new probSum ", probSumNext, " old prob1 ", prob1, " new prob1 ", met1.prob, " old prob2 ", prob2, " new prob2 ", met2.prob)
+                # met1.ev > ev1 && (ev1 = met1.ev)
+                # met2.ev > ev2 && (ev2 = met2.ev)
+                # met1.prob > prob1 && (prob1 = met1.prob)
+                # met2.prob > prob2 && (prob2 = met2.prob)
+                # met1.mn > mn && (mn = met1.mn)
+                # probSum = probSumNext
+                probs[thrid] = met1.prob
+                winner = copy(lms)
+                wininds = (i1, i2, i3)
+                println(" new ev ", met1.ev)
+                println(wininds, " : ", met1)
+                # @goto stop
+            # else
+            #     resize!(lmsAll, length(lmsAll) - length(c))
+            end
+        end
+        end
+    end
+    @label stop
+    retAll = combineTo(Ret, winner, expr, sp, vr)
+    drawRet(retAll, probs(), market().curp, "")
+
+    vals = getVals(combineTo(Ret, winner, expr, sp, vr))
+    metWin = calcMetrics(pv1, vals, 1000.0, 0.0)
+    println(metWin)
+    println(wininds)
+
+    for ind in wininds
+        println(metricsFor(ind, expr, sp, vr))
+    end
+
+    return wininds
+end
+
+metricsFor(i::Int, expr, sp, vr) = metricsFor(collect(arl(i)), expr, sp, vr)
+
+function metricsFor(lms, expr, sp, vr)
+    vals = getVals(combineTo(Ret, lms, expr, sp, vr))
+    return calcMetrics(pvals()[1], vals, 1000.0, 0.0)
 end
 
 end

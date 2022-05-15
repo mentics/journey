@@ -32,6 +32,7 @@ whenUpdate(from::DateTime, isMktOpen::Bool, nextMktChange::DateTime) = whenMarke
 canTrade() = ( delta = now(UTC) - market().tsUpdate ; delta <= PERIOD_UPDATE+Second(5) || error("Don't trade when chains data out of date: ", delta, " seconds") )
 
 function update()::Nothing
+    isMarketOpen() || return
     @log debug "updateChains"
     setCache!(CHAINS, newVal())
     return
@@ -49,7 +50,7 @@ end
 
 # TODO: what's the right way to aggregate?
 calcNearIv(dt::Date, chs=chains())::Float64 = avg(filter(x -> x != 0.0, getIv.(getMeta.(nearOqs(market().curp, dt, chs)))))
-nearOqs(curp::Currency, dt::Date, chs)::Vector{OptionQuote} = filter(x -> abs(getStrike(x) - curp) < 20, chs[dt].chain)
+nearOqs(curp::Currency, d::Date, chs)::Vector{OptionQuote} = filter(x -> abs(getStrike(x) - curp) < 20, chs[d].chain)
 
 function chainLookup(exp::Date, style::Style.T, strike::Currency)::OptionQuote
     res = find(chains()[exp].chain) do x; getStyle(x) === style && getStrike(x) === strike end

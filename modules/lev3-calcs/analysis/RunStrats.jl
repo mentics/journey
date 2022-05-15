@@ -17,7 +17,7 @@ function makeCtx(calcScore, probs, numDays::Int; nthreads::Int=12, maxRun::Int=1
     # maxRun = min(maxRun, cntEst)
     thrMaxRun = div(maxRun, nthreads) + 1
     posVals = isnothing(posRet) ? nothing : getVals(posRet)
-    baseScore = isnothing(posRet) ? 0.0 : calcScore((;probs, kws...), nothing, VECF_EMPTY, posVals, posVals)
+    baseScore = isnothing(posRet) ? -Inf : calcScore((;probs, numDays, kws...), nothing, VECF_EMPTY, posVals, posVals)
     # baseScore = 0.0
     @info "Setting baseScore" baseScore isnothing(posRet)
     @info "kws" kws
@@ -237,7 +237,11 @@ addTestCombi(c::Combi) = ( push!(TestCombis[], collect(getLeg.(tos(LegMeta, c)))
 testClear() = empty!(TestCombis[])
 using SmallTypes, LegMetaTypes
 function testFilter(c::Combi)::Bool
-    # return true
+    return true
+    # TODO: inefficient, and this is temp code to test matching up holes
+    c = sortTuple(getStrike, c)
+    issorted(c; by=getStrike) || error("combis not sorted")
+    return getSide.(c) == (Side.short, Side.long, Side.long, Side.short)
     isempty(TestCombis[]) && return true
     legsCombi = sort!(collect(getLeg.(tos(LegMeta, c))), by=getStrike)
     for legs in TestCombis[]

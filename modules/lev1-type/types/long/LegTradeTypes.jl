@@ -1,4 +1,5 @@
 module LegTradeTypes
+using Dates
 using SH, BaseTypes, StatusTypes, LegTypes
 
 export LegTrade, LegTradeMeta, getTid
@@ -19,9 +20,9 @@ struct LegTrade
     prillDirOpen::Union{Nothing,Currency}
     prillDirClose::Union{Nothing,Currency}
     leg::Leg
-    tsCreated::Int
-    tsFilled::Union{Nothing,Int}
-    tsClosed::Union{Nothing,Int}
+    tsCreated::DateTime
+    tsFilled::Union{Nothing,DateTime}
+    tsClosed::Union{Nothing,DateTime}
     meta::LegTradeMeta
 end
 LegTrade(lt::LegTrade; leg=lt.leg) =

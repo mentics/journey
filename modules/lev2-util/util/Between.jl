@@ -3,11 +3,15 @@ using Dates
 using SH, BaseTypes, SmallTypes, QuoteTypes, OptionMetaTypes, StratTypes, LegMetaTypes, RetTypes, StatusTypes
 using Rets, LegTypes, TradeTypes, LegTradeTypes
 
+# SH.bap(lm)::Currency = getBid(lm)
+# SH.bap(hasQuotes::Coll)::Currency = sum(getBid, hasQuotes)
+SH.bap(hasQuote)::Currency = improve(getQuote(hasQuote), .2)
+SH.bap(hasQuotes::Coll)::Currency = improve(sumQuotes(getQuote.(hasQuotes)), .2)
+
 # SH.to(::Type{LegMeta}, lg::Leg, qt::Quote, met::OptionMeta)::LegMeta = ( side = getSide(side) ; LegMeta(Leg(getOption(lg), getQuantity(lg), side), qt, met) )
 # SH.to(::Type{LegMeta}, lg::Leg, qt::OptionQuote)::LegMeta = ( side = getSide(side) ; LegMeta(Leg(getOption(lg), getQuantity(lg), side), qt, met) )
 SH.to(::Type{LegMeta}, leg::Leg, oqter)::LegMeta = ( (oq, side) = (oqter(leg), getSide(leg)) ; LegMeta(Leg(getOption(leg), getQuantity(leg), side), getQuote(oq, side), getMeta(oq)) )
 
-using ChainTypes # TODO: fix when move bap?
 SH.to(::Type{Ret}, lm::LegMeta, forDate::Date, sp::Currency, vtyRatio::Float64)::Ret = makeRet(getLeg(lm), getMeta(lm), bap(lm), forDate, sp, vtyRatio)
 SH.to(::Type{Ret}, lg::Leg, forDate::Date, sp::Currency, vtyRatio::Float64) = to(Ret, to(LegMeta, lg), forDate, sp, vtyRatio)
 # SH.to(::Type{Ret}, lm::LegMeta, (forDate, sp, vtyRatio)::Tuple{Date,Currency,Float64})::Ret = makeRet(getLeg(lm), getMeta(lm), bap(lm), (forDate, sp, vtyRatio))

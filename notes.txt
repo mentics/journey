@@ -1,3 +1,13 @@
+For strat emails, send html email with fixed width font
+
+Check periodically for any near expiration for which we don't have 100% prob return
+
+as add positions, the ev/numPos shouldn't drop too much
+
+Stop checking day 1 if it's within a certain number of market hours (previous day, late in day)
+
+make all the exp indexes match: todo, drx, etc.
+
 For existing positions, calc how much IV already dropped of long leg so we can plot it based on that. Or does it already use the new quoted IV?
 
 Make it so can add another chart to compare
@@ -15,7 +25,12 @@ Globals is at data level?
 Utils can depend on types
 Types mostly only depend on Types
 
-empty!(lmsAdd)
+lmsPos = LegMeta[]
+empty!(lmsPos)
+an(2)
+lmsPos = tos(LegMeta, CmdStrats.lastPosStrat[])
+ana(2,3,4; lmsPos)
+append!(lmsPos, tos(LegMeta, ar(1)))
 
 setvr(.7)
 lmsPos = LegMeta[]
@@ -29,6 +44,9 @@ for day in days1
 	ana(ex, ex+1; lmsPos)
 	append!(lmsPos, tos(LegMeta, ar(1)))
 end
+
+Important configs:
+vtyRatio, improve in Between
 
 Why do I get nice trades for some expirations and can't for others? Could it be the weekends messing with the volatility timing?
 looks like sorting by ev is problematic. optimizing by evr got me 100% prob profit when by ev, I couldn't find anything I liked.

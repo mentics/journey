@@ -14,6 +14,7 @@ export addQuantity
 export getVals, getVals!, valAt, getCenter, draw, draw!
 
 export getNetOpen, getNetClose, getLegs, getPnl
+export bap
 
 # export tsOpen, tsClose, getNetClose
 # export getMaxClose
@@ -83,6 +84,8 @@ function draw!() end
 function getNetOpen() end
 function getNetClose() end
 function getLegs() end
+
+function bap() end
 
 ## conversions
 

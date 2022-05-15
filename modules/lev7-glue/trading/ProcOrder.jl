@@ -6,6 +6,7 @@ using Store, StoreTrade, StoreOrder, Backups, OrderWatching, TradierAccount
 
 export procOrders, procOrder, matchOrders
 
+using FileUtil
 repord(oid::Int) = procOrder(loadJson(pathOrderBackup(oid)))
 function repords(oidMin::Int)
     oids = parse.(Int, readdir(dirOrderBackup()) .|> splitext .|> first)

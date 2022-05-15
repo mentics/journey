@@ -4,7 +4,7 @@ using SH, BaseTypes, SmallTypes, OptionTypes, LegTypes, TradeTypes, LegTradeType
 using Globals, BaseUtil, DateUtil, StoreUtil, FileUtil
 
 export newTrade, loadTrade, loadLegTrade, findTrades
-export queryLegStatus, queryNumLegs, queryLeftovers, queryEntered
+export queryLegStatus, queryNumLegs, queryLeftovers, queryEntered, queryLegsEntered
 export findTradeEntered
 
 function newTrade(primitDir::PriceT, legs::Coll{LegMeta,4}, underBid::Currency, underAsk::Currency)::Int
@@ -12,7 +12,7 @@ function newTrade(primitDir::PriceT, legs::Coll{LegMeta,4}, underBid::Currency, 
     exp = minimum(getExpiration, legs)
     tid = 0
     inTransaction() do
-        res = select("insert into Trade (status, tsCreated, primitDir, targetDate) values (?, ?, ?, ?) returning tid", Starting, nowMs(), primitDir, exp)
+        res = select("insert into Trade (status, tsCreated, primitDir, targetDate) values (?, ?, ?, ?) returning tid", Starting, now(UTC), primitDir, exp)
         tid = first(res).tid
         update("insert into TradeMeta (tid, underBid, underAsk) values (?, ?, ?)", tid, underBid, underAsk)
         for lq in legs
@@ -57,9 +57,10 @@ end
 # TODO: make this work with local timezone to date properly
 findTradeEntered(d::Date)::Vector{Trade} = loadTrade.(selectCol("select tid from Trade where cast(cast(tsCreated//1000 as timestamp) as date)=?", d))
 
-queryEntered(d::Date)::Vector{NamedTuple} = select("select tid, cast(cast(tsCreated//1000 as timestamp) as date) enteredDate, targetDate from Trade where cast(cast(tsCreated//1000 as timestamp) as date)=?", d)
+# TODO: needs timezone
+queryEntered(d::Date)::Vector{NamedTuple} = select("select tid, cast(tsCreated as date) enteredDate, targetDate from Trade where cast(tsCreated as date)=?", d)
 queryLegsEntered(d::Date)::Vector{LegTrade} =
-    loadLegTrade.(select("select * from VLegTrade where cast(cast(tsCreated//1000 as timestamp) as date)=?", d))
+    loadLegTrade.(select("select * from VLegTrade where cast(tsCreated as date)=?", d)) # TODO: doesn't use timezone as it should
 
 # queryLegStatus(lid::Int)::T where T<:Status = strToStatus(select("select status from VLegTrade where lid=?", lid)[1].status)
 queryLegStatus(lid::Int) = strToStatus(select("select status from VLegTrade where lid=?", lid)[1].status)

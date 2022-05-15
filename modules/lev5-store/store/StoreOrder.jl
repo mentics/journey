@@ -23,7 +23,8 @@ function storeLegOrder(oid::Int, leg::LegOrder)::Nothing
     return
 end
 
-queryLegOrders(d::Date)::Vector{LegOrder} = LegOrder.(select("select * from LegOrd where cast(tsFilled//(1000*24*60*60) as date) = ?", d))
+# TODO: this doesn't handle timezone correctly because it converts to date in UTC and it should use market time
+queryLegOrders(d::Date)::Vector{LegOrder} = LegOrder.(select("select * from LegOrd where cast(tsFilled as date) = ?", d))
 
 doesExistOrd(oid) = !isempty(select("select oid from Ord where oid = ?", (oid)))
 

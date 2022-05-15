@@ -16,9 +16,9 @@ struct Trade{S}
     prillDirOpen::Union{Nothing,Currency}
     prillDirClose::Union{Nothing,Currency}
     legs::Vector{LegTrade}
-    tsCreated::Int
-    tsFilled::Union{Nothing,Int}
-    tsClosed::Union{Nothing,Int}
+    tsCreated::DateTime
+    tsFilled::Union{Nothing,DateTime}
+    tsClosed::Union{Nothing,DateTime}
     meta::TradeMeta
 end
 Trade(id::Int, ::Nothing, primitDir::PriceT, rargs...) = Trade{Starting}(id, minimum(getExpiration.(rargs[3])), primitDir, rargs...)

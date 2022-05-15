@@ -2,7 +2,7 @@ module DbDef
 
 #region Ddl
 DdlTrade() = """
-create table if not exists Trade(tid serial primary key, tsCreated Int not null, status Text not null, targetDate Date not null, primitDir decimal(10,2) not null)
+create table if not exists Trade(tid serial primary key, tsCreated timestamp not null, status Text not null, targetDate Date not null, primitDir decimal(10,2) not null)
 """
 
 DdlTradeMeta() = """
@@ -26,14 +26,14 @@ create table if not exists LegTradeMeta(lid Int primary key,
 DdlOrd() = """
 create table if not exists Ord(oid Int not null primary key, symbol Text not null, class Text not null, orderType Int not null,
     status String not null, primitDir decimal(10,2), prillDir decimal(10,3) not null,
-    tsCreated Int not null, tsFilled Int not null)
+    tsCreated timestamp not null, tsFilled timestamp not null)
 """
 
 DdlLegOrd() = """
 create table if not exists LegOrd(olid Int not null primary key, oid Int not null, act Int not null,
     style Int not null, expiration Date not null, strike decimal(10,3) not null, side Int not null, quantity decimal(10,3) not null,
     prillDir decimal(10,3) not null,
-    tsCreated Int not null, tsFilled Int not null,
+    tsCreated timestamp not null, tsFilled timestamp not null,
     foreign key(oid) references Ord(oid) on delete cascade)
 """
 
@@ -133,6 +133,10 @@ DDL() = [
     DdlOrd(),
     DdlLegOrd(),
     DdlLegUsed(),
+    Views()...
+]
+
+Views() = [
     VLegUsed(),
     VLegFilled(),
     VLegTrade(),
@@ -142,8 +146,8 @@ DDL() = [
 ]
 
 Inserts() =
-    ["""insert into Ord(oid, symbol, class, orderType, status, prillDir, tsCreated, tsFilled) values(100, 'ANY', 'option', 1, 'Expired', 0, 0, 0);""",
-     """insert into LegOrd(olid, oid, act, style, expiration, strike, side, quantity, prillDir, tsCreated, tsFilled) values (100, 100, -1, 0, cast(0 as date), 0, 0, 0, 0, 0, 0);"""]
+    ["""insert into Ord(oid, symbol, class, orderType, status, prillDir, tsCreated, tsFilled) values(100, 'ANY', 'option', 1, 'Expired', 0, cast(0 as timestamp), cast(0 as timestamp));""",
+     """insert into LegOrd(olid, oid, act, style, expiration, strike, side, quantity, prillDir, tsCreated, tsFilled) values (100, 100, -1, 0, cast(0 as date), 0, 0, 0, 0, cast(0 as timestamp), cast(0 as timestamp));"""]
 # # Then for each new one:
 # # update("insert into LegMatched (lid, olid, quantity, act) values (?, ?, ?, ?)", [lid, 10, qtyExp, -1])
 # #  -- Don't want to do this because primary key olid would require all new entries for every one and want tsTransact, but can use expiration for tsTransact
@@ -184,4 +188,21 @@ update Trade set targetDate = lt.expiration from (select tid, min(expiration) as
 alter table Trade alter column targetDate set not null
 
 alter table Trade rename column expiration to targetDate
+===#
+
+#===
+# Migrate to timestamp:
+select * from Trade
+SET enable_experimental_alter_column_type_general = true
+
+drop view vlegtrade;
+drop view vtrade;
+drop view vlegfilled cascade;
+drop view vlegused cascade;
+
+alter table Trade alter tsCreated type timestamp using timestamp 'epoch' + tsCreated * '1 ms'::interval;
+alter table Ord alter tsCreated type timestamp using timestamp 'epoch' + tsCreated * '1 ms'::interval;
+alter table Ord alter tsFilled type timestamp using timestamp 'epoch' + tsFilled * '1 ms'::interval;
+alter table LegOrd alter tsCreated type timestamp using timestamp 'epoch' + tsCreated * '1 ms'::interval;
+alter table LegOrd alter tsFilled type timestamp using timestamp 'epoch' + tsFilled * '1 ms'::interval;
 ===#

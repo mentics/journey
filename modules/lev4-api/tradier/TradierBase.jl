@@ -71,7 +71,7 @@ end
 function call(f, pathQuery::AbstractString, info::CallInfo{T})::T where T
     d = ifOverride(info)
     if isnothing(d)
-        url = toTradierUrl(pathQuery)
+        url = startswith(pathQuery, "https://") ? pathQuery : toTradierUrl(pathQuery)
         response = f(url)
         if response.status != 200
             throw(HttpException(url, response))

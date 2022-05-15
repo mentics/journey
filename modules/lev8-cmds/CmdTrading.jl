@@ -56,7 +56,7 @@ end
 using RetTypes, Between, DrawStrat
 toRet(trades, exp)::Ret = combineTo(Ret, trades, exp, market().startPrice, Globals.get(:vtyRatio)) # TODO: choose diff start price?
 # TODO: change so matches todo and expirs and all: 0 for today, 1 for non-today next exp, and default is 0
-drpos(ex=1) = drawRet(toRet(tradesFor(ex), ex), probs(), market().curp, "pos")
+drpos(exp=expir(1; td=true)) = drawRet(toRet(tradesToClose(exp), exp), probs(), market().curp, "pos")
 export drt, adrt
 # drt(i::Int, ex=1) = drawRet(toRet([tradesFor(ex)[i]], ex), probs(), market().curp, "t$(i)")
 # adrt(i::Int, ex=1) = drawRet!(toRet([tradesFor(ex)[i]], ex), "t$(i)")

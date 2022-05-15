@@ -42,6 +42,7 @@ xsi() = XSI
 midsi() = MIDSI
 # mids() = MIDS
 width() = WIDTH
+center() = div(VNUM, 2)
 
 # binMin() = BIN_MIN
 # binMax() = BIN_MAX

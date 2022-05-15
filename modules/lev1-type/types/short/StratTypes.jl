@@ -18,7 +18,7 @@ SH.to(::Type{LegMeta}, lr::LegRet)::LegMeta = first(lr)
 SH.to(::Type{Ret}, lr::LegRet)::Ret = lr[2]
 
 # SH.getValMid(lrs) = sum(getValMid, getRets(lrs))
-SH.getNetOpen(s::Strat) = mapreduce(getNetOpen, +, tos(LegMeta, s))
+# SH.getNetOpen(s::Strat) = sum(getNetOpen, tos(LegMeta, s)) # mapreduce(getNetOpen, +, tos(LegMeta, s))
 SH.getLeg(lr::LegRet) = getLeg(lr[1])
 
 using SmallTypes

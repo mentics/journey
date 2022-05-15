@@ -16,7 +16,7 @@ allSpreads(chs::Dict{Date,OptionChain}, fIsConflict, (sp, cp)::NTuple{2,Currency
 #region Local
 getCfg(sym::Symbol) = Globals.get(:Strats)[sym]
 
-validOption(maxStrikeDist::Int, cp::Currency) = oq -> getBid(oq) >= 0.03 && abs(getStrike(oq) - cp) <= maxStrikeDist
+validOption(maxStrikeDist::Int, cp::Currency) = oq -> getBid(oq) >= 0.02 && abs(getStrike(oq) - cp) <= maxStrikeDist
 
 # fIsConflict(oq, side), usually Positions.fIsConflict
 fleg(fIsConflict, cp::Currency) = validLeg(fIsConflict, getCfg(:maxPutHeight), getCfg(:maxCallHeight), cp)

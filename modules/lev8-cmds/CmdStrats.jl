@@ -1,6 +1,6 @@
 module CmdStrats
 using Dates
-using SH, BaseTypes, QuoteTypes, LegMetaTypes, StratTypes, RetTypes, ProbTypes
+using SH, BaseTypes, QuoteTypes, LegTypes, LegMetaTypes, StratTypes, RetTypes, ProbTypes
 using Globals, Bins, BaseUtil, DateUtil, CollUtil, ProbUtil, Between, Scoring
 using Strats, Rets, StratGen, RunStrats
 using ProbHist, Markets, Expirations, Chains, Positions
@@ -8,25 +8,27 @@ using Trading, CmdUtil
 using OutputUtil, DrawStrat
 using StoreOrder
 
-export ana, an, sortar, sortar2, sa, ar, arv, ret, comp
+export ana, an, sortar, sortar2, sa, ar, arv, arl, ret, comp
 export dr, drf, adr, adrf, dra, ret, retf
 export ctx, curStrat, curRet, probs, pvals, ivs
 
 function comp(i::Int)
-    valsStart = combineTo(Vals, curStrat())
+    valsStart = curVals()
     valsAdd = combineTo(Vals, ar(i))
     valsBoth = combineTo(Vals, collect(Iterators.flatten((ar(i), curStrat()))))
     ind = 0
     for pvals in map(getVals, probs())
         ind += 1
-        # labels = [
-        #     [:start, :add, :both],
-        #     [:startFlat, :addFlat, :bothFlat]
-        # ]
-        start = hereMetrics(pvals, valsStart)
-        add = hereMetrics(pvals, valsAdd, 4)
-        both = hereMetrics(pvals, valsBoth)
-        data = [(;name=n, nt...) for (n, nt) in zip(["start$(ind)", "add$(ind)", "both$(ind)"], [start, add, both])]
+        if isnothing(valsStart)
+            add = hereMetrics(pvals, valsAdd, 4)
+            data = [(;name="combi", add...)]
+            # data = [(;name=n, nt...) for (n, nt) in zip(["start$(ind)", "add$(ind)", "both$(ind)"], [start, add, both])]
+        else
+            start = hereMetrics(pvals, valsStart)
+            add = hereMetrics(pvals, valsAdd, 4)
+            both = hereMetrics(pvals, valsBoth)
+            data = [(;name=n, nt...) for (n, nt) in zip(["start$(ind)", "add$(ind)", "both$(ind)"], [start, add, both])]
+        end
         pretyble(data) # TODO: create Tables impl for tuple of namedtuples
     end
     return
@@ -46,17 +48,20 @@ hereMetrics(pv, v, numPos=(4 + length(lastPosStrat[]))) = Scoring.calcMetricsBot
 # invert(v::Vector{Float64}) = normalize!(map(x -> x === 0.0 ? 1.0 : 0.0, v))
 
 function makeProbs(numDays::Int, targetDate::Date, sp::Currency)::Tuple
-    phOrig = probHist(sp, numDays)
+    phOrig = probHist(sp, round(Int, 1.5 * (3 + numDays)))
+    pnd = probsNormDist(sp, calcIvsd(targetDate, 1.0 + .25 * numDays * .05))
+    # return (pnd, pnd)
     ph = Prob(getCenter(phOrig), smooth(getVals(phOrig)))
-    pnd = probsNormDist(sp, calcIvsd(targetDate, 1.05))
+    pflat = probFlat(Float64(sp), 0.0)
+    # pflat = probFlat(getCenter(pnd), pnd.vals[1])
+    # return (pflat, ph)
+    return (pnd, ph)
     # pshort = probMid(ph, binMin(), 1.0)
     # plong = probMid(ph, 1., binMax())
     # pmid = probMid(ph, .5*(1.0+binMin()), .5*(1.0+binMax()))
     # ppos = isnothing(lastPosRet[]) ? nothing : retToProb(lastPosRet[])
     # pposInv = isnothing(lastPosRet[]) ? nothing : invert(ppos)
-    # pflat = probFlat(ph)
     # pposHyb = Prob(getCenter(ph), normalize!(getVals(ph) .+ (getVals(pposInv) .* 2)))
-    return (pnd, ph)
     # return (ph,pnd)
 end
 
@@ -169,6 +174,7 @@ end
 
 ar(i::Int) = i == 0 ? lastPosStrat[] : lastView[][i]
 arv(i::Int)= combineTo(Vals, i == 0 ? lastPosRet[] : lastView[][i])
+arl(i::Int)= tos(LegMeta, ar(i))
 
 ret(i::Int) = i == 0 ? lastPosRet[] : combineTo(Ret, withPosStrat(ar(i))) # combineRets(getRets(withPosStrat(ar(i))))
 retf(i::Int) = combineTo(Ret, ar(i))
@@ -183,6 +189,7 @@ locDraw!(x, label) = ( drawRet!(x, string(label)) ; return )
 ctx() = lastCtx[]
 curStrat() = lastPosStrat[]
 curRet() = lastPosRet[]
+curVals() = getVals(curRet())
 probs() = lastCtx[].probs
 pvals() = map(x->getVals(x), probs())
 
@@ -197,18 +204,7 @@ const lastPosRet = Ref{Union{Nothing,Ret}}(nothing)
 
 # TODO: move toTuple?
 using Shorthand, CalcUtil
-tupleWidths() = [0,0,0,0,0,0,0,0,48,30,10] # [0,0,0,0,30,0,0,0,48,0] # TODO: update this
-# function toTuple(s::Strat)
-#     probsVals = getVals(first(lastCtx[].probss))
-#     lms = getLegMetas(s)
-#     exps = unique!(sort!(getExpiration.(lms)))
-#     strikes = legsTosh(lms, exps) # join(map(l -> "$(first(string(side(l))))$(s(strike(l), 1))$(first(string(style(l))))@$(searchsortedfirst(exps, expiration(l)))", legs(ar)), " / ")
-#     vals = getVals(s)
-#     evRat = calcEvPnl(probsVals, vals)
-#     # TODO: calc breakevens
-#     # TODO: calc prob profit
-#     return (evRatio=evRat, bes="", pnl=extrema(vals), netOpen=getNetOpen(s), probProfit="", legs=strikes, expir=exps, kel)
-# end
+tupleWidths() = [0,0,0,0,0,0,0,0,0,48,30,10]
 function toTuple(s::Union{Nothing,Strat}, lrs::Vector{LegRet})
     pv = getVals(probs()[1])
     pv2 = getVals(probs()[2])
@@ -221,8 +217,26 @@ function toTuple(s::Union{Nothing,Strat}, lrs::Vector{LegRet})
     # TODO: calc breakevens
     kel = calcKelly(pv, vals)
     score = byScore(lastCtx[])(combineTo(Vals, s), getVals(lastPosRet[]), vals)
-    return (;prob=met.prob, kel, ev=met.ev, evr=met.evr, ev2=met2.ev, evr2=met2.evr, bes="", pnl=extrema(vals), netOpen=!isnothing(s) ? getNetOpen(s) : 0.0, legs=strikes, expir=exps, score)
+    return (;prob=met.prob, kel, ev=met.ev, evr=met.evr, ev2=met2.ev, evr2=met2.evr, pnl=extrema(vals), netOpen=!isnothing(s) ? bap(tos(LegMeta, s)) : 0.0, legs=strikes, expir=exps, score)
 end
 #endregion
+
+export showScore, scoreFor
+function showScore(i::Int)
+    s = ar(i)
+    lrs = withPosStrat(s)
+    valsBoth = combineTo(Vals, lrs)
+    # lastCtx[].calcScore(lastCtx[], nothing, combineTo(Vals, s), getVals(lastPosRet[]), vals, true)
+    scoreFor(combineTo(Vals, s), getVals(lastPosRet[]), valsBoth, true)
+end
+
+function scoreFor(lms::Coll{LegMeta})
+    scoreFor(collect(lms), minimum(getExpiration.(lms)), market().startPrice, getvr())
+end
+function scoreFor(lms::Vector{LegMeta}, expr::Date, args...)
+    valsCombi = getVals(combineTo(Ret, lms, expr, args...))
+    lastCtx[].calcScore(lastCtx[], nothing, valsCombi, nothing, valsCombi, show)
+end
+scoreFor(valsCombi, valsPos, valsBoth, show=false) = lastCtx[].calcScore(lastCtx[], nothing, valsCombi, valsPos, valsBoth, show)
 
 end

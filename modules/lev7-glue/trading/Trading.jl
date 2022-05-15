@@ -1,7 +1,7 @@
 module Trading
 using Dates
-using SH, Globals, DateUtil
-using BaseTypes, SmallTypes, OptionTypes, StatusTypes, TradeTypes, LegTradeTypes
+using SH, Globals, DateUtil, LogUtil
+using BaseTypes, SmallTypes, OptionTypes, LegTypes, StatusTypes, TradeTypes, LegTradeTypes
 using StoreTrade
 using TradierOrder, TradierAccount
 using LegTradeInfo, TradeInfo # TODO: needed? getting calcQuote
@@ -40,7 +40,7 @@ function closeTrade(optQuoter, trade::Trade{<:Closeable}, primitDir::PriceT; pre
     inLegs = getLegs(trade)
     inLegs = isnothing(legsInd) ? inLegs : inLegs[legsInd]
     veri = verifyPoss(inLegs)
-    checkTradeLegs(legs)
+    checkTradeLegs(inLegs)
     if !intest() && false in veri # TODO: enhance test to set positions properly to test this part?
         @warn "closeTrade: missing positions for legs" veri
         useLegs = map(first, Iterators.filter(t -> t[2], zip(inLegs, veri)))

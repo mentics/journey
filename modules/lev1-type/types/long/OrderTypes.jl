@@ -1,5 +1,5 @@
 module OrderTypes
-using EnumX
+using EnumX, Dates
 using SH, BaseTypes, SmallTypes, StatusTypes, LegTypes
 
 export Order
@@ -16,8 +16,8 @@ struct LegOrder
     action::Action.T
     prillDir::Union{Nothing,Currency}
     leg::Leg
-    tsCreated::Int
-    tsFilled::Union{Nothing,Int}
+    tsCreated::DateTime
+    tsFilled::Union{Nothing,DateTime}
 end
 LegOrder(row::NamedTuple) = LegOrder(row.olid, Filled, Action.T(row.act), C(Float64(row.prilldir)), Leg(row), row.tscreated, row.tsfilled)
 SH.getId(o::LegOrder) = o.id
@@ -40,8 +40,8 @@ struct Order{S}
     primitDir::Union{Nothing,PriceT}
     prillDir::Union{Nothing,Currency}
     legs::Vector{LegOrder}
-    tsCreated::Int
-    tsFilled::Union{Nothing,Int}
+    tsCreated::DateTime
+    tsFilled::Union{Nothing,DateTime}
 end
 SH.getId(o::Order) = o.id
 SH.getSymbol(o::Order) = o.sym

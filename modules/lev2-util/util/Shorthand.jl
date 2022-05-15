@@ -38,7 +38,7 @@ function shLeg(sh::AbstractString, expir::Vector{Date})::Leg
     return Leg(Option(styl, expir[ex], parse(Currency, xs[2])), Float64(qty), sid)
 end
 
-# shLegs(sh::AbstractString, expir::Date)::Vector{Leg} = shLegs(sh, [expir])
+shLegs(sh::AbstractString, expir::Date)::Vector{Leg} = shLegs(sh, [expir])
 function shLegs(sh::AbstractString, expir::Vector{Date})::Vector{Leg}
     ss = split(sh, r"\s*/\s*")
     return [shLeg(s, expir) for s in ss]

@@ -49,6 +49,11 @@ function tradierClock()
     return (;isMktOpen, nextMktChange)
 end
 
+function tradierDividends()
+    raw = tradierGet("https://api.tradier.com/beta/markets/fundamentals/dividends?symbols=SPY", CallVec(nameof(var"#self#")))
+    return raw
+end
+
 end
 
 # function tradierQuotes(symbols::Array) # , cfg::TradierConfig=cfg())

@@ -29,10 +29,9 @@ function calcMetrics1(pvals::AVec{Float64}, vals::AVec{Float64}, cap::Float64, a
         v > mx && (mx = v)
     end
     ev = profit + loss
-    # TODO: is 1000 * the right multiple?
-    evr = if loss > -0.01; 1000 * profit
+    evr = if loss < 0.0; profit / abs(loss - 1)
           elseif profit == 0.0; loss
-          else profit / abs(loss) end
+          else profit * (1 + loss) end
     return (; profit, loss, ev, evr, prob, mn, mx)
 end
 

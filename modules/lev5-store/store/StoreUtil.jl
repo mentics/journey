@@ -73,7 +73,7 @@ procArg(a::DataType) = string(a)
 # procArg(a::Date) = dateToMs(a)
 # procArg(a::Union{Currency,PriceT}) = a isa Int ? error("what") : round(Int, a*1000)
 # procArg(a::Union{Currency,PriceT}) = a # round(Int, a*1000)
-# procArg(a::DateTime) = string(a)
+procArg(a::DateTime) = a # string(a)
 # TODO: cleanup
 
 tableNames() = select("show tables")

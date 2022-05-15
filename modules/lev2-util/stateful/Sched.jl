@@ -24,12 +24,13 @@ toTuple(job::JobRunning) = (;job.job.name, job.timeLast, job.timeNext, job.job.m
 
 replace(name::String, mod::Module, code::String, when::String, runImmed::Bool=false)::Nothing = ( remove(name) ; add(name, mod, code, when, runImmed) )
 function add(name::String, mod::Module, code::String, when::String, runImmed::Bool=false; repok=false)::Nothing
-    now(UTC) < nextMarketChange() || Calendars.updateCalendar()
+    nn = now(UTC)
+    nn < nextMarketChange() || Calendars.updateCalendar()
     existing = find(j -> j.job.name == name, Jobs)
     if !isnothing(existing)
         repok || error("Tried to register job with same name ", name)
         if repok && runImmed
-            existing.timeNext = now(UTC)
+            existing.timeNext = nn
             wakeUp()
         end
         return
@@ -39,13 +40,15 @@ function add(name::String, mod::Module, code::String, when::String, runImmed::Bo
     exprWhen = Meta.parse(when)
     when = Base.eval(mod, exprWhen)
     job = JobRunning(Job(name, mod, exprCode, exprWhen, runImmed),
-                     Base.eval(mod, exprCode), when, NEVER, runImmed ? now(UTC) : when(NEVER, isMarketOpen(), nextMarketChange()))
+                     Base.eval(mod, exprCode), when, NEVER, runImmed ? nn : when(nn, isMarketOpen(), nextMarketChange()))
 
     runSync(Lock) do
         push!(Jobs, job)
         sort!(Jobs; by=getTimeNext)
-        # @info "Checking new job times" job.timeNext getTimeNext(first(Jobs)) now(UTC)
-        (now(UTC) - getTimeNext(first(Jobs)) <= maxSleep()) && ( @log debug "Waking up sched" ; wakeUp() )
+        if getTimeNext(first(Jobs)) < NextRun[]
+            @log debug "Waking up sched for sooner new job" getTimeNext(first(Jobs)) NextRun[]
+            wakeUp()
+        end
     end
     return
 end
@@ -77,13 +80,14 @@ const Lock = ReentrantLock()
 const Running = Ref{Bool}(false)
 const Stop = Ref{Bool}(false)
 const waitCond = Threads.Condition()
+const NextRun = Ref{DateTime}(NEVER)
 
-function __init__()::Nothing
-    Globals.has(:maxSchedPeriod) || Globals.set(:maxSchedPeriod, Second(2))
-    return
-end
+# function __init__()::Nothing
+#     Globals.has(:maxSchedPeriod) || Globals.set(:maxSchedPeriod, Second(2))
+#     return
+# end
 
-maxSleep()::Period = Globals.get(:maxSchedPeriod)
+# maxSleep()::Period = Globals.get(:maxSchedPeriod)
 wakeUp() = lockNotify(waitCond)
 
 function run()::Nothing
@@ -93,9 +97,8 @@ function run()::Nothing
         @log info "Sched thread has started"
         while true
             Stop[] && break
-            next = NEVER
-            while next < now(UTC)
-                next = runSync(Lock) do
+            while NextRun[] <= now(UTC)
+                NextRun[] = runSync(Lock) do
                     nowRun = now(UTC)
                     nowRun < nextMarketChange() || Calendars.updateCalendar()
                     # TODO: should we disable allow suspend during a run, only allow during sleep?
@@ -110,14 +113,15 @@ function run()::Nothing
                         @assert job.timeNext > nowRun "timeNext > nowRun: $(job) > $(nowRun)"
                     end
                     sort!(Jobs; by=getTimeNext)
-                    nextMax = round(nowRun + maxSleep(), maxSleep(), RoundDown)
-                    return isempty(Jobs) ? nextMax : min(nextMax, first(Jobs).timeNext)
+                    # nextMax = round(nowRun + maxSleep(), maxSleep(), RoundDown)
+                    # return isempty(Jobs) ? nextMax : min(nextMax, first(Jobs).timeNext)
+                    return isempty(Jobs) ? Day(1) : first(Jobs).timeNext
                 end
             end
             nn = now(UTC)
-            dur = next - nn
-            dur > Millisecond(0) || @error "Sched has zero wait" next nn
-            @log debug "Sched sleeping for $(dur)"
+            dur = NextRun[] - nn
+            dur > Millisecond(0) || @error "Sched has zero wait" NextRun[] nn
+            @log debug "Sched sleeping for $(dur) until $(NextRun[])"
             sleepWait(waitCond, Millisecond(max(dur, Millisecond(0))).value/1000)
         end
         return

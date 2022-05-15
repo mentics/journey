@@ -31,10 +31,10 @@ function dbChecks()
 
     # TODO: and opened yesterday: this is normal when just opened trade before ord fills, so Starting + since this morning's market open is ok
     # rows = select("select * from VLegFilled where qtyUsed < quantity and act=1 and tid not in (select tid from Trade where status=? and tsCreated>?)", Starting, msMarketOpen(today()))
-    rows = select(sqlUnfilledCheck(), Starting, nowMs() - 6*60*60*1000) # msMarketOpen(today()))
+    rows = select(sqlUnfilledCheck(), Starting, now(UTC) - Hour(6)) # msMarketOpen(today()))
     !isempty(rows) && report("LegTrade with unfilled open", rows)
 
-    rows = select("select * from LegTrade where style=-1 and side=-1 and expiration > current_date and strike - 4 > ?", market().curp)
+    rows = select("select * from VLegTrade where status != 'Closed' and style=-1 and side=-1 and expiration > current_date and strike - 4 > ?", market().curp)
     !isempty(rows) && report("Dangerous puts found", rows)
 
     rows = select("select * from legord where prillDir != 0 and sign(prillDir) = sign(side)")
@@ -55,9 +55,9 @@ report(msg, out) = ( (@error msg out) ; (@log error msg out) )
 sqlTimeCheck() = """
 select tid, min(tsCreated) c1, max(tsCreated) c2, (max(tsCreated) - min(tsCreated)) cd, min(tsFilled) f1, max(tsFilled) f2, (max(tsFilled) - min(tsFilled)) fd
 from VLegUsed vlu join LegTrade vt on vt.lid=vlu.lid
-where act=1 and tsFilled > 1649267718928
+where act=1 and tsFilled > timestamp '2022-04-06 17:55:18.928'
 group by tid
-having (max(tsCreated) - min(tsCreated)) > 10*1000 or (max(tsFilled) - min(tsFilled)) > 10*1000
+having (max(tsCreated) - min(tsCreated)) > interval '10 seconds' or (max(tsFilled) - min(tsFilled)) > interval '10 seconds'
 """
 
 sqlUnfilledCheck() = """
@@ -69,7 +69,7 @@ using PositionTypes, Positions, SH, Dates, StoreTrade
 function findUnknownPositions()
     notFound = Tuple{Position,Ref{Float64}}[]
     tposs = [(p, Ref(getQuantity(p))) for p in positions(;age=Second(0))] # filter(p -> getExpiration(getOption(p)) == today(), positions())
-    tlegs = [(leg, Ref(getQuantity(leg))) for leg in StoreTrade.loadLegTrade.(select("select * from vlegtrade where status='Filled'"), 0)]
+    tlegs = [(leg, Ref(getQuantity(leg))) for leg in StoreTrade.loadLegTrade.(select("select * from vlegtrade where status='Filled'"))]
     # @info "findUnknownPositions" length(tposs) length(tlegs)
     for tpos in tposs
         pos = tpos[1]

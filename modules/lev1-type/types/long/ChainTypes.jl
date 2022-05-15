@@ -23,11 +23,6 @@ SH.getStrike(oq::OptionQuote) = getStrike(oq.option)
 SH.getBid(oq::OptionQuote) = getBid(oq.quot)
 SH.getAsk(oq::OptionQuote) = getAsk(oq.quot)
 
-# TODO: Put this in the right place
-export bap
-bap(lms::Coll)::Currency = sum(lm -> bap(lm), lms)
-bap(lm)::Currency = getBid(lm)
-
 struct OptionChain
     chain::Vector{OptionQuote}
     ts::Int

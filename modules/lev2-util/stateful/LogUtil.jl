@@ -3,7 +3,9 @@ using Dates
 #Crayons
 using ThreadUtil
 
-export @log, @logret, @logerr, resetLog
+export nstr, @log, @logret, @logerr, resetLog
+
+nstr(n::Real)::String = string(round(n; digits=4))
 
 macro log(exs...)
     prblk = Expr(:call, :logit)

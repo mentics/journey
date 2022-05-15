@@ -25,6 +25,8 @@ Base.show(io::IO, q::Quote) = print(io, (q.action == Action.open ? "Qo" : "Qc") 
 
 # TODO: Move these
 export sumQuotes, improve
+# Rounding breaks things when adding a collection of them, so don't round here.
+# improve(q::Quote, r::Float64)::Currency = round(getBid(q) + r * (getAsk(q) - getBid(q)), RoundUp; digits=2)
 improve(q::Quote, r::Float64)::Currency = getBid(q) + r * (getAsk(q) - getBid(q))
 
 function sumQuotes(qs)

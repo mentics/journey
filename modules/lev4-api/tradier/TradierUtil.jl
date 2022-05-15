@@ -31,8 +31,6 @@ function occToOpt(occ::AStr)::Option
 end
 
 toDateStr(ms::Int)::String = Dates.format(TimeZones.unix2zdt(ms / 1000.0), TRADIER_DATETIME)
-
-# parseToMs(dt::AStr)::Int = toms(DateTime(dt, TRADIER_DATETIME))
 parseTs(dt::AStr)::DateTime = DateTime(dt, TRADIER_DATETIME)
 
 toTierAct(act::Action.T, side::Side.T) = Int(act) * Int(side) == 1 ? "buy" : "sell"
