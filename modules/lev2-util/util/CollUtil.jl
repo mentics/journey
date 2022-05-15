@@ -1,6 +1,6 @@
 module CollUtil
 
-export find, ensureVector, sortExp!, sortTuple, del!, prinsert!
+export find, findFrom, ensureVector, sortExp!, sortTuple, del!, prinsert!
 # uniqueSortTuple
 
 function del!(pred, v)::Bool
@@ -14,6 +14,17 @@ end
 function find(f, itr)
     for x in itr
         f(x) && return x
+    end
+    return nothing
+end
+
+# function argument f must return trinary: (-1: not found stop, 0: not found continue, 1: found)
+function findFrom(f, start::Int, v::Vector{T})::Union{Nothing,Tuple{Int,T}} where T
+    for i in start:length(v)
+        x = v[i]
+        res = f(x)
+        res == -1 && return nothing
+        res == 1 && return (i, x)
     end
     return nothing
 end

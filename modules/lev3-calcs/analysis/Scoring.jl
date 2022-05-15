@@ -54,7 +54,7 @@ calcMetricsBoth(pvals, bufBoth, numPos) = calcMetrics(pvals, bufBoth, getCap(num
 #     # return metb.mn
 # end
 
-filtkeys() = [:ev, :ev1, :ev2, :noImpEv, :noImpEvOr, :standsAlone, :cantAlone, :maxLoss, :maxLossAbs, :noImpProb, :noImpProb2, :noImpLoss,
+filtkeys() = [:ev, :ev1, :ev2, :noImpEv, :noImpEvOr, :standsAlone, :cantAlone, :maxLoss, :maxLossAbs, :prob, :noImpProb, :noImpProb2, :noImpLoss,
               :probStandAlone, :sides, :sidesMaxLoss, :special, :special2]
 function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufPos::Union{Nothing,AVec{Float64}}, bufBoth::AVec{Float64}, show=false)::Float64
     MAX_LOSS = -5

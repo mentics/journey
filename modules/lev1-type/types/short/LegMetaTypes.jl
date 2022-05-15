@@ -16,6 +16,7 @@ struct LegMeta
         end
         if side == Side.short && getBid(newQuote) == 0.0
             @error "LegMeta() received 0.0 bid which may cause problems" newQuote leg meta
+            error("LegMeta() received 0.0 bid which may cause problems")
         end
         new(leg, newQuote, meta)
     end
