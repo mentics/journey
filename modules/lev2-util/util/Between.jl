@@ -3,10 +3,10 @@ using Dates
 using SH, BaseTypes, SmallTypes, QuoteTypes, OptionMetaTypes, StratTypes, LegMetaTypes, RetTypes, StatusTypes
 using Rets, LegTypes, TradeTypes, LegTradeTypes
 
-# SH.bap(lm)::Currency = getBid(lm)
-# SH.bap(hasQuotes::Coll)::Currency = sum(getBid, hasQuotes)
-SH.bap(hasQuote)::Currency = improve(getQuote(hasQuote), .2)
-SH.bap(hasQuotes::Coll)::Currency = improve(sumQuotes(getQuote.(hasQuotes)), .2)
+SH.bap(lm)::Currency = getBid(lm)
+SH.bap(hasQuotes::Coll)::Currency = sum(getBid, hasQuotes)
+# SH.bap(hasQuote)::Currency = improve(getQuote(hasQuote), .2)
+# SH.bap(hasQuotes::Coll)::Currency = improve(sumQuotes(getQuote.(hasQuotes)), .2)
 
 # SH.to(::Type{LegMeta}, lg::Leg, qt::Quote, met::OptionMeta)::LegMeta = ( side = getSide(side) ; LegMeta(Leg(getOption(lg), getQuantity(lg), side), qt, met) )
 # SH.to(::Type{LegMeta}, lg::Leg, qt::OptionQuote)::LegMeta = ( side = getSide(side) ; LegMeta(Leg(getOption(lg), getQuantity(lg), side), qt, met) )

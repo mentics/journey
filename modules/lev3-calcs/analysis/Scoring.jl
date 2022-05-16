@@ -57,7 +57,7 @@ calcMetricsBoth(pvals, bufBoth, numPos) = calcMetrics(pvals, bufBoth, getCap(num
 filtkeys() = [:ev, :ev1, :ev2, :noImpEv, :noImpEvOr, :standsAlone, :cantAlone, :maxLoss, :maxLossAbs, :prob, :noImpProb, :noImpProb2, :noImpLoss,
               :probStandAlone, :sides, :sidesMaxLoss, :special, :special2]
 function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufPos::Union{Nothing,AVec{Float64}}, bufBoth::AVec{Float64}, show=false)::Float64
-    MAX_LOSS = -5
+    MAX_LOSS = -1
     # AML = abs(MAX_LOSS)
     factor = 1.0
     numPos = ctx.numPos
@@ -78,7 +78,8 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufPos::Union{Nothing,AV
     metb.ev > -0.21 || return countNo(:ev1)
     # metb.mn > 0.32 || return countNo(:maxLoss)
     # bufCombi[end] > 0.14 || return countNo(:sides)
-    # bufBoth[end] > 0.2 || return countNo(:sides)
+    bufBoth[1] > 0.1 || return countNo(:sides)
+    bufBoth[end] > 0.1 || return countNo(:sides)
     metb.mn > MAX_LOSS || return countNo(:maxLossAbs)
     metb.prob >= .25 || return countNo(:prob)
     # return scoreProb(metb.prob, metb.mn)
