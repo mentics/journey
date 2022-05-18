@@ -1,3 +1,9 @@
+Skip if netOpen is too negative
+
+Make a general "alert me if predicate" type of function that runs in sched
+
+make 0 mean today everywhere
+
 For strat emails, send html email with fixed width font
 
 Check periodically for any near expiration for which we don't have 100% prob return

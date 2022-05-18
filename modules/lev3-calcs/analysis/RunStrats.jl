@@ -16,14 +16,20 @@ function makeCtx(calcScore, probs, numDays::Int; nthreads::Int=12, maxRun::Int=1
     # cntEst = binomial(sum(length, legs4), 4) # TODO: too high
     # maxRun = min(maxRun, cntEst)
     thrMaxRun = div(maxRun, nthreads) + 1
-    posVals = isnothing(posRet) ? nothing : getVals(posRet)
-    baseScore = isnothing(posRet) ? -Inf : calcScore((;probs, numDays, kws...), nothing, VECF_EMPTY, posVals, posVals)
+    if isnothing(posRet)
+        posVals = nothing ; baseScore = -Inf ; metp = nothing ; metp2 = nothing
+    else
+        posVals = getVals(posRet)
+        baseScore = calcScore((;probs, numDays, kws...), nothing, VECF_EMPTY, posVals, posRet)
+        metp = calcMetrics(probs[1], posRet)
+        metp2 = calcMetrics(probs[2], posRet)
+    end
     # baseScore = 0.0
     @info "Setting baseScore" baseScore isnothing(posRet)
     @info "kws" kws
 
     return (;
-        calcScore, probs, maxRun, baseScore, posVals, numDays, kws...,
+        calcScore, probs, maxRun, baseScore, posRet, numDays, metp, metp2, kws...,
         threads = [makeThreadCtx(div(keep, nthreads), thrMaxRun, baseScore) for _ in 1:nthreads]
     )
 end
@@ -191,21 +197,24 @@ function resetStats()
     @atomic invalidCombi.count = 0
 end
 
-
 function procStrat((ctx, tctx), combi::Combi)::Bool
     testFilter(combi) || return false
     isValidCombi(combi) || ( @atomic invalidCombi.count += 1 ; return false )
     buf1, buf2 = (tctx.bufRet1, tctx.bufRet2)
     getVals!(buf1, combi)
-    !isnothing(ctx.posVals) && getVals!(buf2, combi, ctx.posVals)
-    score = ctx.calcScore(ctx, tctx, buf1, ctx.posVals, isnothing(ctx.posVals) ? buf1 : buf2)
-    isfinite(score) || ( @atomic notFinite.count += 1 ; return false )
-    # score > first(tctx.scores)
-    prinsert!(tctx.scores, score) || ( @atomic lowScore.count += 1 ; return false )
-    # simpleSort!(length(tctx.scores), tctx.scores, score)
-    # tctx.scores[1] = score
-    # sort!(tctx.scores)
-    # @info "scores" shouldKeep score tctx.scores[1]
+    !isnothing(ctx.posRet) &&
+    if isnothing(ctx.posRet)
+        score = ctx.calcScore(ctx, tctx, buf1, buf1, ctx.posRet)
+    else
+        getVals!(buf2, combi, getVals(ctx.posRet))
+        score = ctx.calcScore(ctx, tctx, buf1, buf2, ctx.posRet)
+    end
+    if isfinite(score)
+        prinsert!(tctx.scores, score) || ( @atomic lowScore.count += 1 ; return false )
+    else
+        @atomic notFinite.count += 1
+        return false
+    end
     return true
 end
 

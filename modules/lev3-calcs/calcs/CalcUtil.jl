@@ -1,19 +1,45 @@
 module CalcUtil
-using BaseTypes
+using SH, BaseTypes, ProbTypes, RetTypes
 
 export avg, normalize!, smooth, smooth!
-export calcMetrics, calcKelly, calcKelly!
+export calcMetrics #, calcKelly, calcKelly!
 export ivToStdDev
 
 avg(vs) = sum(vs) / length(vs)
 
 (normalize!(vs::T)::T) where T = vs ./= sum(vs)
 
-using SH, ProbTypes
-calcMetrics(pv::AVec{Float64}, v::AVec{Float64}, cap::Float64, adjust::Float64) = calcMetrics1(pv, v, cap, adjust) # calcMetrics2(pv, v)
-# calcMetrics(p::Prob, v::AVec{Float64}) = calcMetrics(getVals(p), v)
+calcMetrics(prob::Prob, ret::Ret) = ( @assert getCenter(prob) == getCenter(ret) ; calcMetrics(prob, getVals(ret), ret.numLegs) )
+function calcMetrics(prob::Prob, vals::AVec{Float64}, numLegs::Int)
+    pvals = getVals(prob)
+    profit = 0.0
+    for (p, v) in Iterators.zip(pvals, vals)
+        v > 0.0 && (profit += p * v)
+    end
+    mm = calcMetrics1(pvals, vals, 2 * profit, 0.02 * numLegs)
+    # @info "cap" (2 * profit) (0.02 * numLegs) mm
+    return mm
+end
 
-# calcMetrics1(p::Prob, v::AVec{Float64}) = calcMetrics(getVals(p), v)
+smooth(v::AVec{Float64}, cnt::Int=10)::AVec{Float64} = smooth!(copy(v), cnt)
+function smooth!(v::AVec{Float64}, cnt::Int=10)::AVec{Float64}
+    len = length(v)
+    for _ in 1:cnt
+        for j in 3:(len-1)
+            nv = 0.5 * (v[j] + v[j-1])
+            v[j-1] = nv
+            v[j] = nv
+        end
+        for j in (len-1):-1:3
+            nv = 0.5 * (v[j] + v[j-1])
+            v[j-1] = nv
+            v[j] = nv
+        end
+    end
+    return v
+end
+
+#region Local
 function calcMetrics1(pvals::AVec{Float64}, vals::AVec{Float64}, cap::Float64, adjust::Float64)
     profit = loss = prob = 0.0
     mn = Inf
@@ -29,10 +55,34 @@ function calcMetrics1(pvals::AVec{Float64}, vals::AVec{Float64}, cap::Float64, a
         v > mx && (mx = v)
     end
     ev = profit + loss
-    evr = if loss < 0.0; profit / abs(loss - 1)
-          elseif profit == 0.0; loss
-          else profit * (1 + loss) end
+    # evr = if loss < 0.0; profit / (1 - loss)
+    #       elseif profit == 0.0; loss
+    #       else profit * (1 + loss) end
+    evr = calcEvr(profit, loss)
     return (; profit, loss, ev, evr, prob, mn, mx)
+end
+
+function calcEvr(profit::Float64, loss::Float64)::Float64
+    @assert profit >= 0.0
+    @assert loss <= 0.0
+    # tot = profit - loss
+    # tot > 0.0 || return NaN
+    p = profit #/tot
+    l = loss #/tot
+    # ev = p + l
+    return p / (1 - 2*l) + 2*l / (1 + p)
+    # evr = if p == 0.0; l
+    #       elseif l == 0.0; p
+    #       else ev / (1 - l) end
+    # return evr
+end
+
+#  fig, ax1, hm1 = heatmap(CalcUtil.getEvrs()...) ; Colorbar(fig[:,end+1], hm1) ; fig
+function getEvrs()
+    ps = range(0.0, 10.0; length=100)
+    ls = range(-10.0, 0.0; length=100)
+    evrs = [CalcUtil.calcEvr(p, l) for p in ps, l in ls]
+    return (ps, ls, evrs)
 end
 
 calcMetrics2(p::Prob, v::AVec{Float64}) = calcMetrics(getVals(p), v)
@@ -126,34 +176,15 @@ ivToStdDev(iv::Float64, timeToExpY::Float64) = iv / sqrt(1.0/timeToExpY)
 #     end
 # end
 
-smooth(v::AVec{Float64}, cnt::Int=10)::AVec{Float64} = smooth!(copy(v), cnt)
-function smooth!(v::AVec{Float64}, cnt::Int=10)::AVec{Float64}
-    len = length(v)
-    for _ in 1:cnt
-        for j in 3:(len-1)
-            nv = 0.5 * (v[j] + v[j-1])
-            v[j-1] = nv
-            v[j] = nv
-        end
-        for j in (len-1):-1:3
-            nv = 0.5 * (v[j] + v[j-1])
-            v[j-1] = nv
-            v[j] = nv
-        end
-    end
-    return v
-end
-
-#region Local
-function findMidBin(v::Vector{Float64})
-    @assert sum(v) ≈ 1.0
-    s = 0.0
-    for i in eachindex(v)
-        s += v[i]
-        s >= 0.5 && return i
-    end
-    return -1
-end
+# function findMidBin(v::Vector{Float64})
+#     @assert sum(v) ≈ 1.0
+#     s = 0.0
+#     for i in eachindex(v)
+#         s += v[i]
+#         s >= 0.5 && return i
+#     end
+#     return -1
+# end
 #endregion
 
 end

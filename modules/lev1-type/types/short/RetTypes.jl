@@ -4,10 +4,11 @@ using SH, Bins, BaseTypes
 export Ret, retMid, valAt, valAtPrice
 
 struct Ret
-    center::Float64 # TODO: should we make it currency to indicate what it should represent?
     vals::Vector{Float64}
+    center::Float64
+    numLegs::Int
 end
-Ret() = Ret(1.0, Bins.with(1.0))
+Ret() = Ret(Bins.with(1.0), 1.0, 4)
 SH.getCenter(r::Ret) = r.center
 SH.getVals(r::Ret) = r.vals
 # SH.valAt(r::Ret, i::Int) = r.vals[i]

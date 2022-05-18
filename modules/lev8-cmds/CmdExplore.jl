@@ -8,7 +8,12 @@ using Markets, Chains
 # using CmdStrats
 
 export sh, shc, shRet, shVals, drsh, drsh!, shLegs # shLegs is reexported form Shorthand
+export drlms, drlms!
 
+drlms(lms, label="") = drawRet(combineTo(Ret, lms, minimum(getExpiration.(lms)), market().startPrice, getvr()), nothing, market().startPrice, label)
+drlms!(lms, label="") = drawRet!(combineTo(Ret, lms, minimum(getExpiration.(lms)), market().startPrice, getvr()), label)
+
+export findShortsToClose
 # TODO: move this to scheduled
 function findShortsToClose()
     filter(positions(;age=Second(0))) do p
@@ -27,6 +32,7 @@ function shlr(str::AStr, exps=expirs(), sp=market().startPrice)
 end
 shRet(str::AStr, exps, sp=market().startPrice) = combineTo(Ret, shlr(str, exps, sp))
 shVals(str::AStr, exps, sp=market().startPrice) = getVals(shRet(str, exps, sp))
+drsh(str::AStr, ex::Int) = (sp = market().startPrice ; drawRet(shRet(str, expirs()[ex:ex+2], sp), nothing, sp, "sh") )
 drsh(str::AStr, exps) = (sp = market().startPrice ; drawRet(shRet(str, exps, sp), nothing, sp, "sh") )
 drsh!(str::AStr, exps) = (sp = market().startPrice ; drawRet!(shRet(str, exps, sp), "sh+") )
 

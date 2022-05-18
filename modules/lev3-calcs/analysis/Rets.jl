@@ -54,10 +54,13 @@ function combineRetVals(rets)::Vector{Float64}
     c = first(rets).center ; @assert isnothing(findfirst(x->x.center!=c, rets))
     return mapreduce(r->r.vals, +, rets)
 end
-function combineRets(rets)::Ret
+function combineRets(rets::Coll{Ret})::Ret
     c = first(rets).center ; @assert isnothing(findfirst(x->x.center!=c, rets))
-    return Ret(c, mapreduce(r->r.vals, +, rets))
+    vals, numLegs = mapreduce(r -> (r.vals, r.numLegs), tupadd, rets)
+    return Ret(vals, c, numLegs)
 end
+(tupadd((x11, x12)::Tuple{T1,T2}, (x21, x22)::Tuple{T1,T2})::Tuple{T1,T2}) where {T1,T2} = (x11 + x21, x12 + x22)
+# r1.vals + r2.vals, r1.numLegs + r2.numLegs
 
 #region Local
 function atExp(style::Style.T, strike::Float64, side::Side.T, qty::Float64, neto::Float64, sp::Float64)::Ret
@@ -76,7 +79,7 @@ function atExp(style::Style.T, strike::Float64, side::Side.T, qty::Float64, neto
         @assert neto > 0.0
         vals = lineVals(sp, qty, -qty * (strike - neto), strike, 0.0, qty * neto)
     end
-    return Ret(sp, vals)
+    return Ret(vals, sp, 1)
 end
 
 function afterExp(leg::Leg, m::OptionMeta, neto::Float64, targetDate::Date, sp::Float64, vtyRatio::Float64)::Ret
@@ -96,7 +99,7 @@ function afterExp(leg::Leg, m::OptionMeta, neto::Float64, targetDate::Date, sp::
             # (isfinite(y) && (-100.0 < y < 100.0)) || error("afterExp: calced nan ", x, " ", (sp, m1, x01, split, m2, x02))
             return y
         end
-        return Ret(sp, vals)
+        return Ret(vals, sp, 1)
     end
 end
 

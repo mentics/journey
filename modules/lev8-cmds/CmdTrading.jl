@@ -1,7 +1,7 @@
 module CmdTrading
 using Dates
 using Globals, BaseTypes, SH, SmallTypes, StratTypes, StatusTypes, TradeTypes, LegTradeTypes, LegMetaTypes
-using DateUtil
+using DateUtil, LogUtil
 using Trading, Quoting
 using Calendars, Markets, Expirations, Chains, StoreTrade
 using CmdStrats
@@ -44,7 +44,14 @@ cacheTrades = Dict{Int,Trade}()
 function todo(ex=1)
     Globals.set(:todoRunLast, now(UTC))
     legOvers = queryLeftovers()
-    @assert isnothing(findfirst(leg -> getSide(leg) != Side.long, legOvers)) "Found short leftovers $(setObj(legOvers))"
+    if !isnothing(findfirst(leg -> getSide(leg) != Side.long, legOvers))
+        msg = "Found short leftovers $(setObj(legOvers))"
+        if Hour(Dates.now()) >= 7
+            error(msg)
+        else
+            @log warn msg
+        end
+    end
     println("Leftovers:")
     pretyble(to.(NamedTuple, legOvers))
     @info "Current price: $(market().curp)"

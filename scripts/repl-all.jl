@@ -5,12 +5,12 @@ using SH, BaseTypes, Globals, Bins, SmallTypes, StratTypes, LegTypes, LegMetaTyp
 using DateUtil, Scoring
 using StoreUtil, Store
 using Snapshots, Calendars, Markets, Expirations, Chains
-using CmdStrats, CmdCheck, CmdTrading, CmdExplore
+using CmdStrats, CmdCheck, CmdTrading, CmdExplore, CmdSched
 using SchedLive, Sched
 isrtd() = !intest() && !dev() && isMarketOpen() && tenv() == :prod && isnothing(snap()) && urp() && Sched.ison()
 devon()
 snap(1)
-an(;maxRun=100000, scorer=scoreRand, lmsPos=Vector{LegMeta}())
+an(1;maxRun=100000, scorer=scoreRand, lmsPos=Vector{LegMeta}())
 dr(1)
 snop()
 useDbProd()

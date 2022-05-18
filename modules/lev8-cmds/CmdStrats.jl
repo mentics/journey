@@ -13,20 +13,20 @@ export dr, drf, adr, adrf, dra, ret, retf
 export ctx, curStrat, curRet, probs, pvals, ivs
 
 function comp(i::Int)
-    valsStart = curVals()
-    valsAdd = combineTo(Vals, ar(i))
-    valsBoth = combineTo(Vals, collect(Iterators.flatten((ar(i), curStrat()))))
+    retStart = curRet()
+    retAdd = combineTo(Ret, ar(i))
+    retBoth = combineTo(Ret, collect(Iterators.flatten((ar(i), curStrat()))))
     ind = 0
-    for pvals in map(getVals, probs())
+    for prob in probs()
         ind += 1
-        if isnothing(valsStart)
-            add = hereMetrics(pvals, valsAdd, 4)
+        if isnothing(retStart)
+            add = hereMetrics(prob, retAdd)
             data = [(;name="combi", add...)]
             # data = [(;name=n, nt...) for (n, nt) in zip(["start$(ind)", "add$(ind)", "both$(ind)"], [start, add, both])]
         else
-            start = hereMetrics(pvals, valsStart)
-            add = hereMetrics(pvals, valsAdd, 4)
-            both = hereMetrics(pvals, valsBoth)
+            start = hereMetrics(prob, retStart)
+            add = hereMetrics(prob, retAdd)
+            both = hereMetrics(prob, retBoth)
             data = [(;name=n, nt...) for (n, nt) in zip(["start$(ind)", "add$(ind)", "both$(ind)"], [start, add, both])]
         end
         pretyble(data) # TODO: create Tables impl for tuple of namedtuples
@@ -34,7 +34,7 @@ function comp(i::Int)
     return
 end
 
-hereMetrics(pv, v, numPos=(4 + length(lastPosStrat[]))) = Scoring.calcMetricsBoth(pv, v, numPos)
+hereMetrics(pv, r) = Scoring.calcMetrics(pv, r)
 
 # draw(CmdStrats.lastCtx[].probs.ppos.vals)
 # draw(CmdStrats.lastCtx[].probs.pposInv.vals)
@@ -48,14 +48,17 @@ hereMetrics(pv, v, numPos=(4 + length(lastPosStrat[]))) = Scoring.calcMetricsBot
 # invert(v::Vector{Float64}) = normalize!(map(x -> x === 0.0 ? 1.0 : 0.0, v))
 
 function makeProbs(numDays::Int, targetDate::Date, sp::Currency)::Tuple
-    phOrig = probHist(sp, round(Int, 1.5 * (3 + numDays)))
-    pnd = probsNormDist(sp, calcIvsd(targetDate, 1.0 + .25 * numDays * .05))
-    # return (pnd, pnd)
-    ph = Prob(getCenter(phOrig), smooth(getVals(phOrig)))
-    pflat = probFlat(Float64(sp), 0.0)
+    # phOrig = probHist(sp, round(Int, 1.5 * (3 + numDays)))
+    pnd = probsNormDist(sp, calcIvsd(targetDate, 1.1 + .25 * numDays * .05))
+    # pnd = probsNormDist(sp, calcIvsd(targetDate))
+    return (pnd, pnd)
+    # ph = Prob(getCenter(phOrig), smooth(getVals(phOrig)))
+    # pflat = probFlat(Float64(sp), pnd[1]/2)
+    # pflat = probRoof(Float64(sp), pnd[1]/2)
+    # return (pnd, pflat)
     # pflat = probFlat(getCenter(pnd), pnd.vals[1])
     # return (pflat, ph)
-    return (pnd, ph)
+    # return (pnd, ph)
     # pshort = probMid(ph, binMin(), 1.0)
     # plong = probMid(ph, 1., binMax())
     # pmid = probMid(ph, .5*(1.0+binMin()), .5*(1.0+binMax()))
@@ -65,15 +68,18 @@ function makeProbs(numDays::Int, targetDate::Date, sp::Currency)::Tuple
     # return (ph,pnd)
 end
 
-ana(exs...; kws...) = an(exs...; kws..., maxRun=0)
-function an(exs...; maxRun::Int=120, keep::Int=100, nthreads::Int=Threads.nthreads(),
+export aa
+aa(ex) = ana((ex:ex+2)...)
+ana(exs::Int...; kws...) = an(exs...; kws..., maxRun=0)
+ana(exps::Date...; kws...) = an(exps...; kws..., maxRun=0)
+an(exs::Int...; kws...) = an(getindex.(Ref(expirs()), exs)...; kws...)
+function an(exps::Date...; maxRun::Int=120, keep::Int=100, nthreads::Int=Threads.nthreads(),
             noPos::Bool=false, lmsAdd::Union{Nothing,Vector{LegMeta}}=nothing, lmsPos::Union{Nothing,Vector{LegMeta}}=nothing,
             getProbs=makeProbs, scorer=nothing, headless=false,
-            sprFilt=nothing, addDays::Int=0)::Nothing
+            sprFilt=nothing, addDays::Int=0)::Int
     Globals.set(:anRunLast, now(UTC))
-    exs == () && (exs = (1,2))
-    @assert issorted(exs)
-    exps = getindex.(Ref(expirs()), exs)
+    @assert issorted(exps)
+    # exps = getindex.(Ref(expirs()), exs)
     targetDate = first(exps)
     lastExp[] = targetDate
     mkt = market()
@@ -95,9 +101,7 @@ function an(exs...; maxRun::Int=120, keep::Int=100, nthreads::Int=Threads.nthrea
     len1, len2 = length.(allSpreads2)
     if maxRun == 0; maxRun = binomial(len1, 2) + binomial(len2, 2) + len1 * len2 end
     resetCountsScore()
-    # TODO: clarify numPos use for calcmetrics
-    numPos = length(lastPosStrat[])
-    ctx = makeCtx(coal(scorer, calcScore1), probs, numDays; maxRun, keep, posRet=lastPosRet[], nthreads, numPos, sp)
+    ctx = makeCtx(coal(scorer, calcScore1), probs, numDays; maxRun, keep, posRet=lastPosRet[], nthreads, sp)
     @info "ctx" keys(ctx)
 
     @info "RunStrats running" maxRun keep nthreads exps sum(length, allSpreads2) sp numDays
@@ -105,15 +109,14 @@ function an(exs...; maxRun::Int=120, keep::Int=100, nthreads::Int=Threads.nthrea
     showCountsScore()
     global lastRes[] = strats
     global lastCtx[] = ctx
-    # sortar(byEvr(probs[1], 4+numPos))
-    sortar4(byScore)
+    sortar(byScore)
     global lastView[] = copy(strats)
     if !headless
         sa()
         isempty(lastView[]) || (isempty(lastPosStrat[]) ? dr(1) : dra(1))
         isempty(lastView[]) || isempty(lastPosStrat[]) || comp(1)
     end
-    return
+    return length(lastView[])
 end
 
 # isConflict(opt::Option, side::Side.T) = !isnothing(conflicter(opt, side))
@@ -125,28 +128,20 @@ isl(x1::Float64, x2::Float64)::Bool = isnan(x1) ? true : (isnan(x2) ? false : is
 
 # sortar(by::Function)::Nothing = ( sortExp!(by, lastRes[]; rev=true, lt=isl) ; nothing )
 # sortar(by::Function)::Nothing = ( sort!(lastRes[]; rev=true, by, lt=isl) ; nothing )
+# function sortar1(by::Function)::Nothing
+#     useBy = isempty(lastPosStrat[]) ? by : s -> by(withPosStrat(s))
+#     sort!(lastRes[]; rev=true, by=useBy, lt=isl)
+#     lastView[] = copy(lastRes[])
+#     return
+# end
+# function sortar2(by::Function)::Nothing
+#     useBy = isempty(lastPosStrat[]) ? by : s -> by(s, withPosStrat(s))
+#     sort!(lastRes[]; rev=true, by=useBy, lt=isl)
+#     lastView[] = copy(lastRes[])
+#     return
+# end
 function sortar(by::Function)::Nothing
-    useBy = isempty(lastPosStrat[]) ? by : s -> by(withPosStrat(s))
-    sort!(lastRes[]; rev=true, by=useBy, lt=isl)
-    lastView[] = copy(lastRes[])
-    return
-end
-function sortar2(by::Function)::Nothing
-    useBy = isempty(lastPosStrat[]) ? by : s -> by(s, withPosStrat(s))
-    sort!(lastRes[]; rev=true, by=useBy, lt=isl)
-    lastView[] = copy(lastRes[])
-    return
-end
-function sortar3(fby::Function)::Nothing
-    by = fby(probs()[1], 4 + lastCtx[].numPos)
-    useBy = isempty(lastPosStrat[]) ? by : s -> by(s, withPosStrat(s))
-    sort!(lastRes[]; rev=true, by=useBy, lt=isl)
-    lastView[] = copy(lastRes[])
-    return
-end
-function sortar4(fby::Function)::Nothing
-    by = fby(lastCtx[])
-    useBy = c -> by(combineTo(Vals, c), getVals(lastPosRet[]), combineTo(Vals, withPosStrat(c)))
+    useBy = c -> by(lastCtx[], combineTo(Vals, c), combineTo(Vals, withPosStrat(c)), lastPosRet[])
     # useBy = isempty(lastPosStrat[]) ? by : s -> by(s, withPosStrat(s))
     sort!(lastRes[]; rev=true, by=useBy, lt=isl)
     lastView[] = copy(lastRes[])
@@ -154,7 +149,7 @@ function sortar4(fby::Function)::Nothing
 end
 SH.getVals(::Nothing) = nothing
 export sortScore
-sortScore()::Nothing = sortar4(byScore)
+sortScore()::Nothing = sortar(byScore)
 
 # TODO: optimize this (so much new vector)
 withPosStrat(s::Strat)::Vector{LegRet} = vcat(collect(s), lastPosStrat[])
@@ -189,7 +184,7 @@ locDraw!(x, label) = ( drawRet!(x, string(label)) ; return )
 ctx() = lastCtx[]
 curStrat() = lastPosStrat[]
 curRet() = lastPosRet[]
-curVals() = getVals(curRet())
+# curVals() = getVals(curRet())
 probs() = lastCtx[].probs
 pvals() = map(x->getVals(x), probs())
 
@@ -206,18 +201,18 @@ const lastPosRet = Ref{Union{Nothing,Ret}}(nothing)
 using Shorthand, CalcUtil
 tupleWidths() = [0,0,0,0,0,0,0,0,0,48,30,10]
 function toTuple(s::Union{Nothing,Strat}, lrs::Vector{LegRet})
-    pv = getVals(probs()[1])
-    pv2 = getVals(probs()[2])
     exps = unique!(sort!(collect(getExpiration.(s))))
     strikes = legsTosh(s, exps) # join(map(l -> "$(first(string(side(l))))$(s(strike(l), 1))$(first(string(style(l))))@$(searchsortedfirst(exps, expiration(l)))", legs(ar)), " / ")
     length(lrs) > length(s) && (strikes *= " + cur")
-    vals = combineTo(Vals, lrs)
-    met = hereMetrics(pv, vals)
-    met2 = hereMetrics(pv2, vals)
+    ret = combineTo(Ret, lrs)
+    met = hereMetrics(probs()[1], ret)
+    met2 = hereMetrics(probs()[2], ret)
     # TODO: calc breakevens
-    kel = calcKelly(pv, vals)
-    score = byScore(lastCtx[])(combineTo(Vals, s), getVals(lastPosRet[]), vals)
-    return (;prob=met.prob, kel, ev=met.ev, evr=met.evr, ev2=met2.ev, evr2=met2.evr, pnl=extrema(vals), netOpen=!isnothing(s) ? bap(tos(LegMeta, s)) : 0.0, legs=strikes, expir=exps, score)
+    kel = NaN # calcKelly(pv, ret)
+    score = byScore(lastCtx[], combineTo(Vals, s), getVals(lastPosRet[]), ret)
+    pnl = extrema(getVals(ret))
+    netOpen=!isnothing(s) ? bap(tos(LegMeta, s)) : 0.0
+    return (;prob=met.prob, kel, ev=met.ev, evr=met.evr, ev2=met2.ev, evr2=met2.evr, pnl, netOpen, legs=strikes, expir=exps, score)
 end
 #endregion
 
