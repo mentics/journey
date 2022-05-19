@@ -70,7 +70,7 @@ function makeProbHist(rets::AVec{RetsItemType})::PHType
     weightSum = 0.0
     for i in 1:length(rets)
         (;ret) = rets[i]
-        weight = 200.0 / (200.0 + i)
+        weight = 20.0 / (20.0 + i)
         weightSum += weight
         if Bins.isLeft(ret) # ret <= binsLeft()
             # lower += weight

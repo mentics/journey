@@ -18,55 +18,49 @@ scoreRand(args...) = rand()
 # sigbal(x::Float64)::Float64 = ( y = (-.5) + (1 / (1 + ℯ^-x)) ; x < 0.0 ? 2 * y : y )
 
 filtkeys() = [:ev, :ev1, :ev2, :noImpEv, :noImpEvOr, :standsAlone, :cantAlone, :maxLoss, :maxLossAbs, :prob, :noImpProb, :noImpProb2, :noImpLoss,
-              :probStandAlone, :sides, :sidesMaxLoss, :special, :special2]
+              :probStandAlone, :sides, :sidesMaxLoss, :special, :special2, :noImpSum]
 function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, posRet::Union{Nothing,Ret}, show=false)::Float64
     MAX_LOSS = -3
     factor = 1.0
-    metb = calcMetrics(ctx.probs[1], bufBoth, 4 + posRet.numLegs)
+    numLegs = isnothing(posRet) ? 4 : 4 + posRet.numLegs
+    metb = calcMetrics(ctx.probs[1], bufBoth, numLegs)
 
-    if isempty(bufCombi)
-        # This means we're calcing base score from existing position, so only bufPos will be valid but it's also passed into bufBoth.
-        return -10000
-        # return score(metb, metb, factor)
-    end
-    # metb.ev > -0.21 || return countNo(:ev1)
-    # metb.mn > 0.32 || return countNo(:maxLoss)
-    # bufCombi[end] > 0.14 || return countNo(:sides)
+    # if isempty(bufCombi)
+    #     # This means we're calcing base score from existing position, so only bufPos will be valid but it's also passed into bufBoth.
+    #     # return -10000
+    #     return score(metb, metb, factor)
+    # end
     # bufBoth[1] > 0.14 || return countNo(:sides)
     # bufBoth[end] > 0.14 || return countNo(:sides)
     metb.mn > MAX_LOSS || return countNo(:maxLossAbs)
-    # metb.prob >= .25 || return countNo(:prob)
-    # return scoreProb(metb.prob, metb.mn)
 
     # req(ctx.sp, bufCombi, 410, 420, 0.0) || return countNo(:sides)
 
     isNew = isnothing(posRet)
-    metb2 = calcMetrics(ctx.probs[2], bufBoth, 4 + posRet.numLegs)
-
-    # metb2.ev > -0.21 || return countNo(:ev2)
-    # println("ev1 ", metb.ev, " ev2 ", metb2.ev)
-    # println(metb.ev, " ", metb2.ev)
-    # return score(metb, metb2, factor)
+    metb2 = calcMetrics(ctx.probs[2], bufBoth, numLegs)
+    return score(metb, metb2, factor)
 
     if isNew
-        (bufBoth[1] > .14 && bufBoth[end] > .14) || return countNo(:sides)
+        # (bufBoth[1] > .14 && bufBoth[end] > .14) || return countNo(:sides)
         # metb.ev > 0.0 || metb2.ev > 0.0 || return countNo(:ev)
         (metb.ev + metb2.ev) > 0.04 || return countNo(:ev) # || (factor = upFactor(factor, .8, "sumev", show))
+        # metb.mn > 2.0 || return countNo(:maxLossAbs)
+        # bufBoth[end] > 0.0 || return countNo(:sides)
+        # return metb.profit - 2 * metb.loss
     else
         metp = ctx.metp ; metp2 = ctx.metp2
+        # metb.mn > MAX_LOSS / (1.0 + numLegs/8) || return countNo(:maxLossAbs)
 
-        # improvProb = (5*metb.prob + metb2.prob) - (5*metp.prob + metp2.prob)
-        # improvEv = (metb.ev + metb2.ev) - (metp.ev + metp2.ev)
-        # improvEvr = (5*metb.evr + metb2.evr) - (5*metp.evr + metp2.evr)
-        # improvLoss = 2*((5*metb.loss + metb2.loss) - (5*metp.loss + metp2.loss))
+        improvProb = (5*metb.prob + metb2.prob) - (5*metp.prob + metp2.prob)
+        improvEv = (5*metb.ev + metb2.ev) - (5*metp.ev + metp2.ev)
+        improvEvr = (5*metb.evr + metb2.evr) - (5*metp.evr + metp2.evr)
+        improvLoss = ((5*metb.loss + metb2.loss) - (5*metp.loss + metp2.loss))
+        improvProb + improvEv + improvEvr + improvLoss > 0.01 || return countNo(:noImpSum)
 
-        (metb.prob + metb2.prob) >= (metp.prob + metp2.prob) || return countNo(:noImpProb)
-        (metb.ev > metp.ev) || (metb2.ev > metp2.ev) || return countNo(:noImpEvOr)
-        # ((metb.ev >= -.2) && (metb2.ev >= -.2)) || return countNo(:ev) TODO: this is bad because out of our control when price moves.
-        (metb.loss + metb2.loss) >= (metp.loss + metp2.loss) || return countNo(:noImpLoss)
-
-        # bufBoth[1] > .6 * bufPos[1] || return countNo(:sides)
-        # bufBoth[end] > .6 * bufPos[end] || return countNo(:sides)
+        # (metb.prob + metb2.prob) >= (metp.prob + metp2.prob) || return countNo(:noImpProb)
+        # (metb.ev > metp.ev) || (metb2.ev > metp2.ev) || return countNo(:noImpEvOr)
+        # # ((metb.ev >= -.2) && (metb2.ev >= -.2)) || return countNo(:ev) TODO: this is bad because out of our control when price moves.
+        # (metb.loss + metb2.loss) >= (metp.loss + metp2.loss) || return countNo(:noImpLoss)
 
         # return improvProb + improvLoss #+ improvEvr
 
@@ -104,8 +98,10 @@ countNo(sym::Symbol) = ( @atomic filt[sym].count += 1 ; NaN )
 # function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufPos::Union{Nothing,AVec{Float64}}, bufBoth::AVec{Float64})::Float64
 byScore(ctx, c, b, pr) = calcScore1(ctx, nothing, c, b, pr)
 byProb(ctx, c, b, pr) = ( metb = calcMetrics(ctx.probs[1], b) ; scoreProb(metb.prob, metb.mn) )
-bySym(sym::Symbol) = (ctx, c, b, pr) -> calcMetrics(ctx.probs[1], b)[sym]
-bySym2(sym::Symbol) = (ctx, c, b, pr) -> calcMetrics(ctx.probs[2], b)[sym]
+bySym(sym::Symbol) = (ctx, c, b, pr) -> calcMetrics(ctx.probs[1], b, numLegsBoth(pr))[sym]
+bySym2(sym::Symbol) = (ctx, c, b, pr) -> calcMetrics(ctx.probs[2], b, numLegsBoth(pr))[sym]
+numLegsBoth(r::Nothing) = 4
+numLegsBoth(r::Ret) = 4 + r.numLegs
 
 # TODO: assert center same
 # @assert prob.center == first(s)[2].center

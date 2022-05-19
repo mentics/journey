@@ -19,11 +19,13 @@ const MARKET_TZ = tz"America/New_York"
 export fromMarketTZ
 export toDateMarket, formatLocal
 export nextLocalTime, nextMarketPeriod
+# export isAfterLocal
 
 fromMarketTZ(d::Date, t::Time)::DateTime = DateTime(ZonedDateTime(DateTime(d, t), DateUtil.MARKET_TZ), UTC)
 toDateMarket(dt::DateTime)::Date = Date(astimezone(ZonedDateTime(dt, tz"UTC"), MARKET_TZ))
 formatLocal(dt::DateTime, format::DateFormat)::String = Dates.format(astimezone(ZonedDateTime(dt, tz"UTC"), localzone()), format)
 
+# isAfterLocal(tim::Time) = now(localzone()) > todayat(tim, localzone()) # ZonedDateTime(DateTime(today(), Time(14, 0)), localzone(); from_utc=false)
 nextLocalTime(from::DateTime, tim::Time) = ( dt = DateTime(todayat(tim, localzone()), UTC) ; return from < dt ? dt : dt + Day(1) )
 function nextMarketPeriod(from::DateTime, isMktOpen::Bool, tsMktChange::DateTime, period::Period, before::Period, after::Period)
     @assert Dates.value(after) > 0

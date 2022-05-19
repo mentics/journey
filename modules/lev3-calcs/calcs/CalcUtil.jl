@@ -16,7 +16,7 @@ function calcMetrics(prob::Prob, vals::AVec{Float64}, numLegs::Int)
     for (p, v) in Iterators.zip(pvals, vals)
         v > 0.0 && (profit += p * v)
     end
-    mm = calcMetrics1(pvals, vals, 2 * profit, 0.02 * numLegs)
+    mm = calcMetrics1(pvals, vals, 1.0 + 2 * profit, 0.02 * numLegs)
     # @info "cap" (2 * profit) (0.02 * numLegs) mm
     return mm
 end
@@ -71,6 +71,7 @@ function calcEvr(profit::Float64, loss::Float64)::Float64
     l = loss #/tot
     # ev = p + l
     return p / (1 - 2*l) + 2*l / (1 + p)
+    # return p / (1 - l) + l / (1 + p)
     # evr = if p == 0.0; l
     #       elseif l == 0.0; p
     #       else ev / (1 - l) end

@@ -16,20 +16,17 @@ function comp(i::Int)
     retStart = curRet()
     retAdd = combineTo(Ret, ar(i))
     retBoth = combineTo(Ret, collect(Iterators.flatten((ar(i), curStrat()))))
-    ind = 0
-    for prob in probs()
-        ind += 1
-        if isnothing(retStart)
-            add = hereMetrics(prob, retAdd)
-            data = [(;name="combi", add...)]
-            # data = [(;name=n, nt...) for (n, nt) in zip(["start$(ind)", "add$(ind)", "both$(ind)"], [start, add, both])]
-        else
-            start = hereMetrics(prob, retStart)
-            add = hereMetrics(prob, retAdd)
-            both = hereMetrics(prob, retBoth)
-            data = [(;name=n, nt...) for (n, nt) in zip(["start$(ind)", "add$(ind)", "both$(ind)"], [start, add, both])]
-        end
-        pretyble(data) # TODO: create Tables impl for tuple of namedtuples
+    comp(retStart, retAdd, retBoth)
+end
+
+comp(lmss::Vector{LegMeta}...) = comp(map(lmss) do lms
+    combineTo(Ret, lms, minimum(getExpiration.(lms)), lastCtx[].sp, getvr())
+end...)
+
+function comp(rets::Ret...)
+    for (ip, prob) in enumerate(probs())
+        pretyble([(;name=ir, calcMetrics(prob, ret)...) for (ir, ret) in enumerate(rets)])
+        # TODO: create Tables impl for tuple of namedtuples
     end
     return
 end
@@ -48,17 +45,17 @@ hereMetrics(pv, r) = Scoring.calcMetrics(pv, r)
 # invert(v::Vector{Float64}) = normalize!(map(x -> x === 0.0 ? 1.0 : 0.0, v))
 
 function makeProbs(numDays::Int, targetDate::Date, sp::Currency)::Tuple
-    # phOrig = probHist(sp, round(Int, 1.5 * (3 + numDays)))
-    pnd = probsNormDist(sp, calcIvsd(targetDate, 1.1 + .25 * numDays * .05))
+    phOrig = probHist(sp, round(Int, 1.5 * (3 + numDays)))
+    pnd = probsNormDist(sp, calcIvsd(targetDate, 1.1))# + .25 * numDays * .05))
     # pnd = probsNormDist(sp, calcIvsd(targetDate))
-    return (pnd, pnd)
-    # ph = Prob(getCenter(phOrig), smooth(getVals(phOrig)))
+    # return (pnd, pnd)
+    ph = Prob(getCenter(phOrig), smooth(getVals(phOrig)))
     # pflat = probFlat(Float64(sp), pnd[1]/2)
     # pflat = probRoof(Float64(sp), pnd[1]/2)
     # return (pnd, pflat)
     # pflat = probFlat(getCenter(pnd), pnd.vals[1])
     # return (pflat, ph)
-    # return (pnd, ph)
+    return (pnd, ph)
     # pshort = probMid(ph, binMin(), 1.0)
     # plong = probMid(ph, 1., binMax())
     # pmid = probMid(ph, .5*(1.0+binMin()), .5*(1.0+binMax()))
@@ -69,7 +66,7 @@ function makeProbs(numDays::Int, targetDate::Date, sp::Currency)::Tuple
 end
 
 export aa
-aa(ex) = ana((ex:ex+2)...)
+aa(ex; kws...) = ana((ex:ex+2)...; kws...)
 ana(exs::Int...; kws...) = an(exs...; kws..., maxRun=0)
 ana(exps::Date...; kws...) = an(exps...; kws..., maxRun=0)
 an(exs::Int...; kws...) = an(getindex.(Ref(expirs()), exs)...; kws...)
@@ -169,7 +166,7 @@ end
 
 ar(i::Int) = i == 0 ? lastPosStrat[] : lastView[][i]
 arv(i::Int)= combineTo(Vals, i == 0 ? lastPosRet[] : lastView[][i])
-arl(i::Int)= tos(LegMeta, ar(i))
+arl(i::Int)= collect(tos(LegMeta, ar(i)))
 
 ret(i::Int) = i == 0 ? lastPosRet[] : combineTo(Ret, withPosStrat(ar(i))) # combineRets(getRets(withPosStrat(ar(i))))
 retf(i::Int) = combineTo(Ret, ar(i))
@@ -209,7 +206,7 @@ function toTuple(s::Union{Nothing,Strat}, lrs::Vector{LegRet})
     met2 = hereMetrics(probs()[2], ret)
     # TODO: calc breakevens
     kel = NaN # calcKelly(pv, ret)
-    score = byScore(lastCtx[], combineTo(Vals, s), getVals(lastPosRet[]), ret)
+    score = byScore(lastCtx[], combineTo(Vals, s), combineTo(Vals, withPosStrat(s)), lastPosRet[])
     pnl = extrema(getVals(ret))
     netOpen=!isnothing(s) ? bap(tos(LegMeta, s)) : 0.0
     return (;prob=met.prob, kel, ev=met.ev, evr=met.evr, ev2=met2.ev, evr2=met2.evr, pnl, netOpen, legs=strikes, expir=exps, score)

@@ -1,3 +1,5 @@
+Is there a way to score by: how easy it might be to fill holes later?
+
 Skip if netOpen is too negative
 
 Make a general "alert me if predicate" type of function that runs in sched

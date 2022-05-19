@@ -17,21 +17,22 @@ function makeCtx(calcScore, probs, numDays::Int; nthreads::Int=12, maxRun::Int=1
     # maxRun = min(maxRun, cntEst)
     thrMaxRun = div(maxRun, nthreads) + 1
     if isnothing(posRet)
-        posVals = nothing ; baseScore = -Inf ; metp = nothing ; metp2 = nothing
+        baseScore = -Inf ; metp = nothing ; metp2 = nothing
+        return (;
+            calcScore, probs, maxRun, baseScore, numDays, posRet, kws...,
+            threads = [makeThreadCtx(div(keep, nthreads), thrMaxRun, baseScore) for _ in 1:nthreads]
+        )
     else
         posVals = getVals(posRet)
         baseScore = calcScore((;probs, numDays, kws...), nothing, VECF_EMPTY, posVals, posRet)
+        @info "Setting baseScore" baseScore isnothing(posRet)
         metp = calcMetrics(probs[1], posRet)
         metp2 = calcMetrics(probs[2], posRet)
+        return (;
+            calcScore, probs, maxRun, baseScore, numDays, posRet, metp, metp2, kws...,
+            threads = [makeThreadCtx(div(keep, nthreads), thrMaxRun, baseScore) for _ in 1:nthreads]
+        )
     end
-    # baseScore = 0.0
-    @info "Setting baseScore" baseScore isnothing(posRet)
-    @info "kws" kws
-
-    return (;
-        calcScore, probs, maxRun, baseScore, posRet, numDays, metp, metp2, kws...,
-        threads = [makeThreadCtx(div(keep, nthreads), thrMaxRun, baseScore) for _ in 1:nthreads]
-    )
 end
 
 function runStrats(allSpreads2::Spreads2, ctx)
@@ -202,13 +203,8 @@ function procStrat((ctx, tctx), combi::Combi)::Bool
     isValidCombi(combi) || ( @atomic invalidCombi.count += 1 ; return false )
     buf1, buf2 = (tctx.bufRet1, tctx.bufRet2)
     getVals!(buf1, combi)
-    !isnothing(ctx.posRet) &&
-    if isnothing(ctx.posRet)
-        score = ctx.calcScore(ctx, tctx, buf1, buf1, ctx.posRet)
-    else
-        getVals!(buf2, combi, getVals(ctx.posRet))
-        score = ctx.calcScore(ctx, tctx, buf1, buf2, ctx.posRet)
-    end
+    useBuf2 = isnothing(ctx.posRet) ? buf1 : getVals!(buf2, combi, getVals(ctx.posRet))
+    score = ctx.calcScore(ctx, tctx, buf1, useBuf2, ctx.posRet)
     if isfinite(score)
         prinsert!(tctx.scores, score) || ( @atomic lowScore.count += 1 ; return false )
     else
