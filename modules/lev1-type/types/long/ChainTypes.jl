@@ -1,7 +1,7 @@
 module ChainTypes
 using BaseTypes, SH, SmallTypes, OptionTypes, QuoteTypes, OptionMetaTypes
 
-export OptionQuote, OptionChain, getExtrinsic
+export OptionQuote, OptionChain
 
 struct OptionQuote
     option::Option
@@ -22,17 +22,6 @@ SH.getExpiration(oq::OptionQuote) = getExpiration(oq.option)
 SH.getStrike(oq::OptionQuote) = getStrike(oq.option)
 SH.getBid(oq::OptionQuote) = getBid(oq.quot)
 SH.getAsk(oq::OptionQuote) = getAsk(oq.quot)
-function getExtrinsic(oq::OptionQuote, curp::Currency)::Tuple{Currency,Currency,Currency}
-    bid = getBid(oq)
-    ask = getAsk(oq)
-    s = getStrike(oq)
-    dist = abs(curp - s)
-    if Style.call == getStyle(oq)
-        return s > curp ? (bid, ask, max(0., (bid + ask)/2)) : (bid - dist, ask - dist, max(0., (bid - dist + ask - dist))/2)
-    else
-        return s < curp ? (bid, ask, max(0., (bid + ask)/2)) : (bid - dist, ask - dist, max(0., (bid - dist + ask - dist))/2)
-    end
-end
 
 struct OptionChain
     chain::Vector{OptionQuote}

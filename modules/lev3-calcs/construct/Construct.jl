@@ -105,9 +105,7 @@ end
 -(a::Tuple{Currency, Currency}, b::Tuple{Currency, Currency}) = (a[1] - b[1], a[2] - b[2])
 abs(t::Tuple{Currency, Currency}) = map(abs, t)
 
-# -.28, .72
-# .36, -.64
-
+# TODO: simplify with OptionUtil netLong/netShort
 function extrinsicDiffs(oqs1::Vector{OptionQuote}, sp)
     toLong = [] # Tuple{Float64, Float64, OptionQuote, OptionQuote}[]
     toShort = [] # Tuple{Float64, Float64, OptionQuote, OptionQuote}[]

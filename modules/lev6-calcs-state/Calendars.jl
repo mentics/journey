@@ -40,12 +40,13 @@ function updateCalendar(;from=(firstdayofmonth(today()) - Month(1)), to=(lastday
     return
 end
 
-ensureCal(dt::Dates.AbstractDateTime...)::Nothing = ensureSince(Date.(dt)...)
-function ensureSince(dt::Date...)::Nothing
-    needFrom, needTo = extrema(dt)
+ensureCal(dt::Dates.AbstractDateTime...)::Nothing = ensureCal(Date.(dt)...)
+function ensureCal(dt::Date...)::Nothing
+    from, to = extrema(dt)
+    Info[].ts > DateTime(0) || ( updateCalendar(;from, to) ; return )
     mn, mx = extrema(keys(Info[].cal))
-    from = min(needFrom, mn)
-    to = max(needTo, mx)
+    from = min(from, mn)
+    to = max(to, mx)
     (mn === from && mx === to) || updateCalendar(;from, to)
     return
 end
