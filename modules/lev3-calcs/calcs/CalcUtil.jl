@@ -1,5 +1,5 @@
 module CalcUtil
-using SH, BaseTypes, ProbTypes, RetTypes
+using SH, BaseTypes, Bins, ProbTypes, RetTypes
 
 export avg, normalize!, smooth, smooth!
 export calcMetrics #, calcKelly, calcKelly!
@@ -8,18 +8,6 @@ export ivToStdDev
 avg(vs) = sum(vs) / length(vs)
 
 (normalize!(vs::T)::T) where T = vs ./= sum(vs)
-
-calcMetrics(prob::Prob, ret::Ret) = ( @assert getCenter(prob) == getCenter(ret) ; calcMetrics(prob, getVals(ret), ret.numLegs) )
-function calcMetrics(prob::Prob, vals::AVec{Float64}, numLegs::Int)
-    pvals = getVals(prob)
-    profit = 0.0
-    for (p, v) in Iterators.zip(pvals, vals)
-        v > 0.0 && (profit += p * v)
-    end
-    mm = calcMetrics1(pvals, vals, 1.0 + 2 * profit, 0.02 * numLegs)
-    # @info "cap" (2 * profit) (0.02 * numLegs) mm
-    return mm
-end
 
 smooth(v::AVec{Float64}, cnt::Int=10)::AVec{Float64} = smooth!(copy(v), cnt)
 function smooth!(v::AVec{Float64}, cnt::Int=10)::AVec{Float64}
@@ -39,14 +27,28 @@ function smooth!(v::AVec{Float64}, cnt::Int=10)::AVec{Float64}
     return v
 end
 
+calcMetrics(prob::Prob, ret::Ret, bins=Bins.inds()) = ( @assert getCenter(prob) == getCenter(ret) ; calcMetrics(prob, getVals(ret), ret.numLegs, bins) )
+function calcMetrics(prob::Prob, vals::AVec{Float64}, numLegs::Int, bins=Bins.inds())
+    pvals = getVals(prob)
+    profit = 0.0
+    for (p, v) in Iterators.zip(pvals, vals)
+        v > 0.0 && (profit += p * v)
+    end
+    mm = calcMetrics1(pvals, vals, 1.0 + profit, 0.005 * numLegs, bins)
+    # @info "cap" (2 * profit) (0.02 * numLegs) mm
+    return mm
+end
+
 #region Local
-function calcMetrics1(pvals::AVec{Float64}, vals::AVec{Float64}, cap::Float64, adjust::Float64)
+function calcMetrics1(pvals::AVec{Float64}, vals::AVec{Float64}, cap::Float64, adjust::Float64, binsi)
     profit = loss = prob = 0.0
     mn = Inf
     mx = -Inf
     # @info "check" cap adjust
-    for (p, v) in Iterators.zip(pvals, vals)
-        # vadj = min(5.0, 0.0 < v < adjustCap ? v - (v*adjust/adjustCap) : (v - adjust)) # TODO: should make the cap adjust somehow with the position we're processing
+    # for (p, v) in Iterators.zip(pvals, vals)
+    for i in binsi
+        p = pvals[i]
+        v = vals[i]
         vadj = min(cap, v - adjust) # TODO: should make the cap adjust somehow with the position we're processing
         ad = p * vadj
         vadj > 0.0 && (profit += ad ; prob += p)
@@ -55,9 +57,6 @@ function calcMetrics1(pvals::AVec{Float64}, vals::AVec{Float64}, cap::Float64, a
         v > mx && (mx = v)
     end
     ev = profit + loss
-    # evr = if loss < 0.0; profit / (1 - loss)
-    #       elseif profit == 0.0; loss
-    #       else profit * (1 + loss) end
     evr = calcEvr(profit, loss)
     return (; profit, loss, ev, evr, prob, mn, mx)
 end
@@ -70,8 +69,10 @@ function calcEvr(profit::Float64, loss::Float64)::Float64
     p = profit #/tot
     l = loss #/tot
     # ev = p + l
-    return p / (1 - 2*l) + 2*l / (1 + p)
+    # return p / (1 - 2*l) + 2*l / (1 + p)
     # return p / (1 - l) + l / (1 + p)
+    # return p / (1 - l)
+    return p / (1 - 2*l)
     # evr = if p == 0.0; l
     #       elseif l == 0.0; p
     #       else ev / (1 - l) end

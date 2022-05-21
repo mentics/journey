@@ -61,7 +61,18 @@ end
 function loadChains(expirations::Vector{Date}, cp::Currency)::CHAINS_TYPE
     chains = CHAINS_TYPE()
     for exp in expirations
-        chains[exp] = procChain(exp, cp, tradierOptionChain(exp))
+        try
+            tradChain = tradierOptionChain(exp)
+            chains[exp] = procChain(exp, cp, tradChain)
+        catch e
+            if isnothing(snap())
+                rethrow(e)
+            else
+                # TODO: log it
+                println("Exception loading chain $(exp) in $(expirations)")
+                println(e)
+            end
+        end
     end
     return chains
 end
@@ -76,7 +87,7 @@ function procChain(exp::Date, cp::Currency, data::Vector{Dict{String,Any}})::Opt
         # end
         style = isCall(raw) ? Style.call : Style.put
         if isnothing(raw["bid"]) || isnothing(raw["ask"])
-            if isMarketOpen()
+            if !isnothing(snap()) || isMarketOpen()
                 @log debug "nothing bid found" exp strike style
             end
             continue

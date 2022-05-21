@@ -7,7 +7,7 @@ using Calendars
 
 export whenMarket, tooOld
 
-tooOld(period::Period)::Period = isMarketOpen() ? 2*period : Hour(10) # convert(Millisecond, nextMarketChange() - now(UTC) + (period ÷ 2))
+tooOld(period::Period)::Period = isnothing(snap()) ? (isMarketOpen() ? 2*period : Hour(10)) : Year(1) # convert(Millisecond, nextMarketChange() - now(UTC) + (period ÷ 2))
 
 function whenMarket(from::DateTime, isMktOpen::Bool, nextMktChange::DateTime, period::Period)
     # untilChange = nextMktChange - from

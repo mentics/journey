@@ -1,6 +1,6 @@
 module CmdStrats
 using Dates
-using SH, BaseTypes, QuoteTypes, LegTypes, LegMetaTypes, StratTypes, RetTypes, ProbTypes
+using SH, BaseTypes, SmallTypes, QuoteTypes, LegTypes, LegMetaTypes, StratTypes, RetTypes, ProbTypes
 using Globals, Bins, BaseUtil, DateUtil, CollUtil, ProbUtil, Between, Scoring
 using Strats, Rets, StratGen, RunStrats
 using ProbHist, Markets, Expirations, Chains, Positions
@@ -45,17 +45,17 @@ hereMetrics(pv, r) = Scoring.calcMetrics(pv, r)
 # invert(v::Vector{Float64}) = normalize!(map(x -> x === 0.0 ? 1.0 : 0.0, v))
 
 function makeProbs(numDays::Int, targetDate::Date, sp::Currency)::Tuple
-    phOrig = probHist(sp, round(Int, 1.5 * (3 + numDays)))
-    pnd = probsNormDist(sp, calcIvsd(targetDate, 1.1))# + .25 * numDays * .05))
+    pnd = probsNormDist(sp, calcIvsd(targetDate, 1.))# + .25 * numDays * .05))
+    return (pnd, pnd)
+    # phOrig = probHist(sp, round(Int, 1.5 * (3 + numDays)))
     # pnd = probsNormDist(sp, calcIvsd(targetDate))
-    # return (pnd, pnd)
-    ph = Prob(getCenter(phOrig), smooth(getVals(phOrig)))
+    # ph = Prob(getCenter(phOrig), smooth(getVals(phOrig)))
     # pflat = probFlat(Float64(sp), pnd[1]/2)
     # pflat = probRoof(Float64(sp), pnd[1]/2)
     # return (pnd, pflat)
     # pflat = probFlat(getCenter(pnd), pnd.vals[1])
     # return (pflat, ph)
-    return (pnd, ph)
+    # return (pnd, ph)
     # pshort = probMid(ph, binMin(), 1.0)
     # plong = probMid(ph, 1., binMax())
     # pmid = probMid(ph, .5*(1.0+binMin()), .5*(1.0+binMax()))
@@ -98,7 +98,9 @@ function an(exps::Date...; maxRun::Int=120, keep::Int=100, nthreads::Int=Threads
     len1, len2 = length.(allSpreads2)
     if maxRun == 0; maxRun = binomial(len1, 2) + binomial(len2, 2) + len1 * len2 end
     resetCountsScore()
-    ctx = makeCtx(coal(scorer, calcScore1), probs, numDays; maxRun, keep, posRet=lastPosRet[], nthreads, sp)
+    # TODO: how not to forget biasUse is set?
+    biasUse = Side.long
+    ctx = makeCtx(coal(scorer, calcScore1), probs, numDays; maxRun, keep, posRet=lastPosRet[], nthreads, sp, biasUse)
     @info "ctx" keys(ctx)
 
     @info "RunStrats running" maxRun keep nthreads exps sum(length, allSpreads2) sp numDays

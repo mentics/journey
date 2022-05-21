@@ -1,6 +1,18 @@
+lms0 = arl(0) ; lms1 = arl(1) ; lms2 = vcat(lms0, lms1)
+aa(2; lmsPos=lms2)
+But the TO metrics of the prev isn't equaling the FROM in the next?
+
+A close order used the wrong limit because bfly, and market closed shorts, and used total limit for quantity 2 single leg instead / 2
+
+Set min score for each expiration so I can wait for a better one
+
+The challenge is that once it's prob=1, any new trades would likely punch holes and so we would filter that out, but... I guess that's what allowing farther out trades to lower prob is for.
+
+Scan all expirs and notify if too few trades based on days out
+
 Is there a way to score by: how easy it might be to fill holes later?
 
-Skip if netOpen is too negative
+Skip if combi before creating ret if netOpen is too negative to optimize
 
 Make a general "alert me if predicate" type of function that runs in sched
 

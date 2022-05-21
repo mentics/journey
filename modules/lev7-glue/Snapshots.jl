@@ -4,7 +4,7 @@ using Globals, DateUtil, FileUtil, TradierConfig, LogUtil
 using Calendars, Sched
 using Positions, Chains, Expirations, Markets, ProbHist
 
-export snave, snop
+export snave, snop, snapTs
 
 # snap() = isnothing(getSnap()) ? nothing : Dates.format(tims(market().ts), DFTEST)
 Globals.snap(num::Int) = snap(findByIndex(num))
@@ -12,9 +12,10 @@ Globals.snap(num1::Int, num2::Int, num::Int...) = snap(findByParts(num1, num2, n
 Globals.snap(nam::AbstractString) = useSnap(nam)
 snop() = stopSnap()
 snave() = saveSnap()
+snapTs(nam::AbstractString) = DateTime(nam, Snapshots.SNAP_DATEFORMAT)
 
 #region Local
-const DFTEST = dateformat"yyyy-mm-dd.HH-MM"
+const SNAP_DATEFORMAT = dateformat"yyyy-mm-dd.HH-MM"
 
 __init__() = Globals.set(:snap, nothing)
 
@@ -86,7 +87,7 @@ function updateAll()
     return
 end
 
-newName() = formatLocal(now(UTC), DFTEST)
+newName() = formatLocal(now(UTC), SNAP_DATEFORMAT)
 
 # const REGEX_NAME = r"(\d\d\d\d-\d\d-\d\d\.\d\d-\d\d)"
 findByIndex(num::Int)::String = sort(readdir(TradierConfig.SnavePath; join=false, sort=false); rev=true)[num]
@@ -101,6 +102,10 @@ function findByParts(nums::Int...)
         end
     end
 end
+
+countSnaps()::Int = length(readdir(TradierConfig.SnavePath))
+earliestSnap()::Date = Date(readdir(TradierConfig.SnavePath; sort=true, join=false)[1], SNAP_DATEFORMAT)
+countChains()::Int = count(x -> occursin("tradierOptionChain", x), readdir(joinpath(TradierConfig.SnavePath, snap()); join=false, sort=false))
 #endregion
 
 end

@@ -8,8 +8,28 @@ export tradierQuote, tradierOptionChain, tradierHistQuotes, tradierExpirations, 
 tradierQuote()::TradierResp =
     tradierGet("/markets/quotes?symbols=$(getDefaultSymbol())&greeks=false", Call(nameof(var"#self#")))["quotes"]["quote"]
 
-tradierOptionChain(exp::Date)::TradierRespVec =
-    tradierGet("/markets/options/chains?symbol=$(getDefaultSymbol())&expiration=$(Dates.format(exp, TRADIER_DATE_FORMAT))&greeks=true", Call(nameof(var"#self#"), exp))["options"]["option"]
+tradierOptionChain(exp::Date)::TradierRespVec = begin
+        raw = tradierGet("/markets/options/chains?symbol=$(getDefaultSymbol())&expiration=$(Dates.format(exp, TRADIER_DATE_FORMAT))&greeks=true", Call(nameof(var"#self#"), exp))
+        if isnothing(raw)
+            println("nothing: ", exp)
+            error("stop")
+        end
+        if isnothing(raw["options"])
+            println("nothing2: ", exp)
+            error("stop")
+        end
+        # if !haskey(raw, "options")
+        #     println("no first, exp: $(exp) ", keys(raw))
+        # end
+        # if !haskey(raw["options"], "option")
+        #     println("no second, exp: $(exp) ", keys(raw))
+        # end
+        return raw["options"]["option"]
+end
+    # ( raw = tradierGet("/markets/options/chains?symbol=$(getDefaultSymbol())&expiration=$(Dates.format(exp, TRADIER_DATE_FORMAT))&greeks=true", Call(nameof(var"#self#"), exp)) ;
+    # println(keys(raw["options"])) ;
+    #     error("stop")
+    # )
 
 function tradierHistQuotes(interval, dStart=nothing, dEnd=nothing)::TradierRespVec
     if isnothing(dStart)
@@ -28,10 +48,10 @@ function tradierExpirations()
     return sort(map(s -> Date(s["date"], TRADIER_DATE_FORMAT), raw["expirations"]["expiration"]))
 end
 
-function tradierCalendar()::Dict{Date,Dict{String,Any}}
+function tradierCalendar(from::Date, to::Date)::Dict{Date,Dict{String,Any}}
     res = Dict{Date,Dict{String,Any}}()
-    for d in (today() - Month(1), today(), today() + Month(1))
-        raw = tradierGet("/markets/calendar?year=$(Year(d).value)&month=$(Month(d).value)", Call(nameof(var"#self#")))
+    foreach((Month(d).value, Year(d).value) for d in range(firstdayofmonth(from), firstdayofmonth(to); step=Month(1))) do (m, y)
+        raw = tradierGet("/markets/calendar?year=$(y)&month=$(m)", Call(nameof(var"#self#")))
         for day in raw["calendar"]["days"]["day"]
             res[Date(day["date"])] = day
         end

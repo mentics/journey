@@ -27,7 +27,13 @@ function update()::Nothing
     setCache!(EXPIRS, exps)
     return
 end
-newVal()::Vector{Date} = tradierExpirations()[1:20]
+# TODO: clean this up
+using Globals, Snapshots
+# newVal()::Vector{Date} = tradierExpirations()[1:20]
+function newVal()::Vector{Date}
+    num = isnothing(snap()) ? 20 : Snapshots.countChains()
+    tradierExpirations()[1:num]
+end
 # getExpirations(numExpirs::Int)::EXPIRS_TYPE = tradierExpirations()[1:numExpirs]
 #endregion
 
