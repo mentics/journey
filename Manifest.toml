@@ -479,9 +479,9 @@ version = "0.5.4"
 
 [[deps.Intervals]]
 deps = ["Dates", "Printf", "RecipesBase", "Serialization", "TimeZones"]
-git-tree-sha1 = "323a38ed1952d30586d0fe03412cde9399d3618b"
+git-tree-sha1 = "b993074580045d1551d30990dc0fa5ba6feef92b"
 uuid = "d8418881-c3e1-53bb-8760-2df7ec849ed5"
-version = "1.5.0"
+version = "1.6.0"
 
 [[deps.InverseFunctions]]
 deps = ["Test"]

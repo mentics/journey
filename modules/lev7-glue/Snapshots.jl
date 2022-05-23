@@ -12,7 +12,7 @@ Globals.snap(num1::Int, num2::Int, num::Int...) = snap(findByParts(num1, num2, n
 Globals.snap(nam::AbstractString) = useSnap(nam)
 snop() = stopSnap()
 snave() = saveSnap()
-snapTs(nam::AbstractString) = DateTime(nam, Snapshots.SNAP_DATEFORMAT)
+snapTs(nam::AbstractString) = fromLocal(nam, Snapshots.SNAP_DATEFORMAT)
 
 #region Local
 const SNAP_DATEFORMAT = dateformat"yyyy-mm-dd.HH-MM"

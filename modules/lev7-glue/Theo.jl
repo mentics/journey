@@ -8,11 +8,15 @@ using Snapshots
 Loaded = BitSet()
 AllCalls = NamedTuple[]
 AllPuts = NamedTuple[]
+DictCalls = Dict{Date,Vector{NamedTuple}}()
+DictPuts = Dict{Date,Vector{NamedTuple}}()
 
 function reset()
     empty!(Loaded)
     empty!(AllCalls)
     empty!(AllPuts)
+    empty!(DictCalls)
+    empty!(DictPuts)
 end
 
 function run()
@@ -28,18 +32,50 @@ function run()
     end
 end
 
+using DrawUtil
+function drawStrikeDist(expr::Date, inter, style::Style.T=Style.call)
+    nts = dict(style)[expr]
+    ptsLo = ptsLong(nts, inter)
+    ptsSho = ptsShort(nts, inter)
+    ptsLoInv = ptsLong(nts, -inter)
+    ptsShoInv = ptsShort(nts, -inter)
+    # display(draw(ptsLo))
+    # draw!(ptsSho)
+    # draw!(ptsLoInv)
+    # draw!(ptsShoInv)
+    # return (ptsLo, ptsSho)
+    condorLo = [(ptsLo[i][1], ptsLo[i][2] + ptsShoInv[i][2]) for i in eachindex(ptsLo)]
+    condorSho = [(ptsLo[i][1], ptsLoInv[i][2] + ptsSho[i][2]) for i in eachindex(ptsLo)]
+    display(draw(condorLo))
+    display(draw!(condorSho))
+    return (condorLo, condorSho)
+end
+ptsLong(nts, inter) = [(x.absTex.value/1000/60/60, x.netLo) for x in filter(x -> x.strikeDist in inter, nts)]
+ptsShort(nts, inter) = [(x.absTex.value/1000/60/60, x.netSho) for x in filter(x -> x.strikeDist in inter, nts)]
+dateCounts() = sort!([(expr, length(Theo.DictCalls[expr])) for expr in keys(DictCalls)]; by=x->x[1])
+
 #region Local
-function process(ts::DateTime)::Tuple{Vector{NamedTuple},Vector{NamedTuple}}
+dict(style::Style.T) = Style.call == style ? DictCalls : DictPuts
+
+function process(ts::Dates.AbstractDateTime)::Tuple{Vector{NamedTuple},Vector{NamedTuple}}
     curp = market().curp
-    resc = NamedTuple[]
-    resp = NamedTuple[]
+    calls = NamedTuple[]
+    puts = NamedTuple[]
     for (expr, chain) in chains()
+        haskey(DictCalls, expr) || (DictCalls[expr] = NamedTuple[])
+        haskey(DictPuts, expr) || (DictPuts[expr] = NamedTuple[])
+        resc = NamedTuple[]
+        resp = NamedTuple[]
         exprDT = getMarketClose(expr)
         absTex = exprDT - ts
         procExpr(ts, curp, absTex, filter(x -> Style.call == getStyle(x), chain.chain), resc)
         procExpr(ts, curp, absTex, filter(x -> Style.put == getStyle(x), chain.chain), resp)
+        append!(DictCalls[expr], resc)
+        append!(DictPuts[expr], resp)
+        append!(calls, resc)
+        append!(puts, resp)
     end
-    return (resc, resp)
+    return (calls, puts)
 end
 
 # TODO: check that we have data within a few minutes of expiration because snave sched should be giving us that now

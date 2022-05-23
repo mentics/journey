@@ -32,8 +32,9 @@ function shlr(str::AStr, exps=expirs(), sp=market().startPrice)
 end
 shRet(str::AStr, exps, sp=market().startPrice) = combineTo(Ret, shlr(str, exps, sp))
 shVals(str::AStr, exps, sp=market().startPrice) = getVals(shRet(str, exps, sp))
-drsh(str::AStr, ex::Int) = (sp = market().startPrice ; drawRet(shRet(str, expirs()[ex:ex+2], sp), nothing, sp, "sh") )
+drsh(str::AStr, ex::Int) = drsh(str, expirs()[ex:ex+2]) # (sp = market().startPrice ; drawRet(shRet(str, expirs()[ex:ex+2], sp), nothing, sp, "sh") )
 drsh(str::AStr, exps) = (sp = market().startPrice ; drawRet(shRet(str, exps, sp), nothing, sp, "sh") )
+drsh!(str::AStr, ex::Int) = drsh!(str, expirs()[ex:ex+2])
 drsh!(str::AStr, exps) = (sp = market().startPrice ; drawRet!(shRet(str, exps, sp), "sh+") )
 
 # TODO: need to move all probs calcs to util

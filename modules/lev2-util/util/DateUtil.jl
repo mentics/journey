@@ -16,13 +16,14 @@ const MARKET_TZ = tz"America/New_York"
 
 #### new stuff
 
-export fromMarketTZ
-export toDateMarket, formatLocal
+export fromMarketTZ, toDateMarket
+export fromLocal, formatLocal
 export nextLocalTime, nextMarketPeriod
 # export isAfterLocal
 
 fromMarketTZ(d::Date, t::Time)::DateTime = DateTime(ZonedDateTime(DateTime(d, t), DateUtil.MARKET_TZ), UTC)
 toDateMarket(dt::DateTime)::Date = Date(astimezone(ZonedDateTime(dt, tz"UTC"), MARKET_TZ))
+fromLocal(str::AbstractString, df::DateFormat) = DateTime(ZonedDateTime(DateTime(str, df), localzone()), UTC)
 formatLocal(dt::DateTime, format::DateFormat)::String = Dates.format(astimezone(ZonedDateTime(dt, tz"UTC"), localzone()), format)
 
 # isAfterLocal(tim::Time) = now(localzone()) > todayat(tim, localzone()) # ZonedDateTime(DateTime(today(), Time(14, 0)), localzone(); from_utc=false)
