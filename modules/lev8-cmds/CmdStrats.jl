@@ -165,7 +165,7 @@ function sa(cnt::Int=20)::Nothing
     return
 end
 function analysisResults(cnt::Int=20)::Vector{NamedTuple}
-    lastView[] = copy(lastRes[])
+    # lastView[] = copy(lastRes[])
     view = lastView[][1:min(cnt,end)]
     tups = [toTuple(s, withPosStrat(s)) for s in view]
     return tups
@@ -203,20 +203,17 @@ const lastPosRet = Ref{Union{Nothing,Ret}}(nothing)
 
 # TODO: move toTuple?
 using Shorthand, CalcUtil
-tupleWidths() = [0,0,0,0,0,0,0,0,0,48,30,10]
+tupleWidths() = [0,0,0,0,0,0,48,30,10]
 function toTuple(s::Union{Nothing,Strat}, lrs::Vector{LegRet})
     exps = unique!(sort!(collect(getExpiration.(s))))
     strikes = legsTosh(s, exps) # join(map(l -> "$(first(string(side(l))))$(s(strike(l), 1))$(first(string(style(l))))@$(searchsortedfirst(exps, expiration(l)))", legs(ar)), " / ")
     length(lrs) > length(s) && (strikes *= " + cur")
     ret = combineTo(Ret, lrs)
     met = hereMetrics(probs()[1], ret)
-    met2 = hereMetrics(probs()[2], ret)
-    # TODO: calc breakevens
-    kel = NaN # calcKelly(pv, ret)
     score = byScore(lastCtx[], combineTo(Vals, s), combineTo(Vals, withPosStrat(s)), lastPosRet[])
     pnl = extrema(getVals(ret))
     netOpen=!isnothing(s) ? bap(tos(LegMeta, s)) : 0.0
-    return (;prob=met.prob, kel, ev=met.ev, evr=met.evr, ev2=met2.ev, evr2=met2.evr, pnl, netOpen, legs=strikes, expir=exps, score)
+    return (;prob=met.prob, ev=met.ev, evr=met.evr, pnl, netOpen, legs=strikes, expir=exps, score)
 end
 #endregion
 

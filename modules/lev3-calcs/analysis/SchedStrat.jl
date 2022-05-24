@@ -22,6 +22,8 @@ DefaultExps = [
 ]
 UseExps = copy(DefaultExps)
 
+MinEvrs = Dict{Int,Float64}()
+
 function run()
     if isMarketOpen()
         setAllowSuspend(false)
@@ -33,17 +35,18 @@ function run()
     inds = updateInds() # Globals.get(:anasExps)
     Globals.has(:anasExps) && (global UseExps = DefaultExps[inds])
     # TODO: it should call into a service level module and not a command, so extract it
-    exps = nextExps()
-    !isnothing(exps) || return
-    @log info "Running scheduled analysis" exps UseExps
+    exs = nextExps()
+    !isnothing(exs) || return
+    @log info "Running scheduled analysis" exs UseExps
     # TODO: scorer just for it
-    ana(exps...; headless=true, nthreads=(Threads.nthreads()-2))
+    ana(exs...; headless=true, nthreads=(Threads.nthreads()-2))
     res = CmdStrats.analysisResults()
     if !isempty(res)
+        !haskey(MinEvrs, exs[1]) || res[1].evr >= MinEvrs[exs[1]] || return
         io = IOBuffer()
         pretyble(io, res; rowcol=true, widths=CmdStrats.tupleWidths())
         # TODO: include output of comp(1)
-        sendEmail("***REMOVED***", "Found potential entry for $(exps)", String(take!(io)))
+        sendEmail("***REMOVED***", "Found potential entry for $(exs)", String(take!(io)))
     end
     return
 end

@@ -13,24 +13,27 @@ scoreRand(args...) = rand()
 # sigbal(x::Float64)::Float64 = ( y = (-.5) + (1 / (1 + ℯ^-x)) ; x < 0.0 ? 2 * y : y )
 sigbal(x::Float64)::Float64 = y = -1 + (2 / (1 + ℯ^-x))
 
+# TODO: would probably speed things up a little if we typed ctx
 filtkeys() = [:ev, :ev1, :ev2, :noImpEvr, :noImpEvOr, :standsAlone, :cantAlone, :maxLoss, :maxLossAbs, :prob, :noImpProb, :noImpProb2, :noImpLoss,
               :probStandAlone, :sides, :sidesMaxLoss, :special, :special2, :noImpSum, :biasWrong]
-function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, posRet::Union{Nothing,Ret}, show=false)::Float64
+function calcScore1(ctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, posRet::Union{Nothing,Ret}, show=false)::Float64
     MAX_LOSS = -3
     factor = 1.0
     numLegs = isnothing(posRet) ? 4 : 4 + posRet.numLegs
-    metb = calcMetrics(ctx.probs[1], bufBoth, numLegs)
-    # metb2 = calcMetrics(ctx.probs[2], bufBoth, numLegs)
 
-    metbLeft20 = calcMetrics(ctx.probs[2], bufBoth, numLegs)
-    metbRight20 = calcMetrics(ctx.probs[3], bufBoth, numLegs)
+    metsBoth = []
+    for prob in ctx.probs
+        push!(metsBoth, calcMetrics(prob, bufBoth, numLegs))
+    end
 
     if isempty(bufCombi)
         # This means we're calcing base score from existing position, so only bufPos will be valid but it's also passed into bufBoth.
         # return -10000
-        show && ( @info "pos scoring" metb metbLeft20 metbRight20 )
-        return score(factor, metb, metbLeft20, metbRight20)
+        show && ( @info "pos scoring" metsBoth )
+        return score(factor, metsBoth)
     end
+
+    metb = metsBoth[1]
 
     # bufCombi[1] > 0.0 || return countNo(:sides)
     # bufCombi[end] > 0.04 || return countNo(:sides)
@@ -55,21 +58,46 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, 
         # bufBoth[end] > 0.0 || return countNo(:sides)
         # return metb.profit - 2 * metb.loss
     else
-        metp = ctx.metp # ; metp2 = ctx.metp2
-        # metb.mn > MAX_LOSS / (1.0 + numLegs/8) || return countNo(:maxLossAbs)
-
         probLency = .85 - .15 * sigbal(.43 * ctx.numDays - 6.0)
-        # (2*metb.prob + metb2.prob) >= probLency * (2*metp.prob + metp2.prob) || return countNo(:noImpProb)
-        (2*metb.prob) >= probLency * (2*metp.prob) || return countNo(:noImpProb)
+        isok = false
+        for i in eachindex(ctx.probs)
+            metp = ctx.metsPos[i]
+            metb = metsBoth[i]
 
-        # if (metb.mn < 0.0)
-        #     mnLency = probLency # .85 - .15 * sigbal(.43 * ctx.numDays - 6.0)
-        #     (2*metb.mn) >= mnLency * (2*metp.mn) || return countNo(:noImpLoss)
-        # end
+            # (2*metb.prob + metb2.prob) >= probLency * (2*metp.prob + metp2.prob) || return countNo(:noImpProb)
+            metb.prob >= probLency * metp.prob || continue
 
-        isnothing(ctx.biasUse) || bias(ctx.biasUse, ctx.probs[1], bufBoth, posRet, numLegs) || return countNo(:biasWrong)
+            # if (metb.mn < 0.0)
+            #     mnLency = probLency # .85 - .15 * sigbal(.43 * ctx.numDays - 6.0)
+            #     metb.mn >= mnLency * metp.mn || return countNo(:noImpLoss)
+            # end
 
-        metb.evr >= metp.evr || return countNo(:noImpEvr)
+            # metb.mn >= probLency * metp.mn || continue
+            metb.evr >= probLency * metp.evr || continue
+            # metb.loss >= probLency * metp.loss || continue
+
+            isnothing(ctx.biasUse) || bias(ctx.biasUse, ctx.probs[1], bufBoth, posRet, numLegs) || continue
+            isok = true
+            break
+        end
+        isok || return countNo(:special)
+
+        # metp = metsPos[1]
+        # # metb.mn > MAX_LOSS / (1.0 + numLegs/8) || return countNo(:maxLossAbs)
+
+        # probLency = .85 - .15 * sigbal(.43 * ctx.numDays - 6.0)
+        # # (2*metb.prob + metb2.prob) >= probLency * (2*metp.prob + metp2.prob) || return countNo(:noImpProb)
+        # (2*metb.prob) >= probLency * (2*metp.prob) || return countNo(:noImpProb)
+
+        # # if (metb.mn < 0.0)
+        # #     mnLency = probLency # .85 - .15 * sigbal(.43 * ctx.numDays - 6.0)
+        # #     metb.mn >= mnLency * metp.mn || return countNo(:noImpLoss)
+        # # end
+
+        # metb.mn >= probLency * metp.mn || return countNo(:noImpLoss)
+        # metb.evr >= probLency * metp.evr || return countNo(:noImpEvr)
+
+        # isnothing(ctx.biasUse) || bias(ctx.biasUse, ctx.probs[1], bufBoth, posRet, numLegs) || return countNo(:biasWrong)
 
         # improvProb = (5*metb.prob + metb2.prob) - (5*metp.prob + metp2.prob)
         # improvEv = (5*metb.ev + metb2.ev) - (5*metp.ev + metp2.ev)
@@ -94,20 +122,15 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, 
     end
     @atomic passed.count += 1
     # return score(factor, metb, metb2)
-    show && ( @info "scoring" metb metbLeft20 metbRight20 )
-    return score(factor, metb, metbLeft20, metbRight20)
+    show && ( @info "scoring" metsBoth )
+    return score(factor, metsBoth)
 end
 
-score(met) = met.evr
-# score(metb, factor::Float64)::Float64 = factor * (metb.ev + metb.evr) # scoreProb(metb.prob, metb.mn)
-function score(factor::Float64, metb, metOther...)::Float64
-    # return factor * (metb.evr + metb2.evr) / 2
-    res = factor * (metb.evr + sum(x -> x.evr, metOther; init=0.0))
-    isfinite(res) || error("found prob ", res)
+score(met::NamedTuple) = met.evr
+function score(factor::Float64, mets::Vector)::Float64
+    res = factor * (score(mets[1]) + sum(score, mets)) # this doubles weight of mets[1]
+    isfinite(res) || error("something wrong with scoring ", res)
     return res
-    # mn = metb.mn + metb2.mn
-    # numer = factor * (metb.ev + metb2.ev)
-    # return mn < 0.0 ? numer / (1 - mn) : numer * (1 + mn)
 end
 
 # wasImproved(simple::Bool, prev, cur) = simple ? cur > prev : cur > prev #^1.01
@@ -120,7 +143,7 @@ upFactor(factor, k, str, show=false) = ( res = k * factor ; show && println("$(n
 countNo(sym::Symbol) = ( @atomic filt[sym].count += 1 ; NaN )
 
 # function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufPos::Union{Nothing,AVec{Float64}}, bufBoth::AVec{Float64})::Float64
-byScore(ctx, c, b, pr) = calcScore1(ctx, nothing, c, b, pr)
+byScore(ctx, c, b, pr) = calcScore1(ctx, c, b, pr)
 byProb(ctx, c, b, pr) = ( metb = calcMetrics(ctx.probs[1], b) ; scoreProb(metb.prob, metb.mn) )
 bySym(sym::Symbol) = (ctx, c, b, pr) -> calcMetrics(ctx.probs[1], b, numLegsBoth(pr))[sym]
 bySym2(sym::Symbol) = (ctx, c, b, pr) -> calcMetrics(ctx.probs[2], b, numLegsBoth(pr))[sym]
