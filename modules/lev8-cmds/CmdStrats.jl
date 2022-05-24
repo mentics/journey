@@ -50,23 +50,22 @@ function makeProbs(numDays::Int, targetDate::Date, sp::Currency)::Tuple
     pnd = probsNormDist(sp, ivsd)# + .25 * numDays * .05))
     pndL = probsNormDist(sp, ivsd, -shift)# + .25 * numDays * .05))
     pndR = probsNormDist(sp, ivsd, shift)# + .25 * numDays * .05))
-    return (pnd, pndL, pndR)
+    probs = (pnd, pndL, pndR)
     # phOrig = probHist(sp, round(Int, 1.5 * (3 + numDays)))
     # pnd = probsNormDist(sp, calcIvsd(targetDate))
     # ph = Prob(getCenter(phOrig), smooth(getVals(phOrig)))
     # pflat = probFlat(Float64(sp), pnd[1]/2)
     # pflat = probRoof(Float64(sp), pnd[1]/2)
-    # return (pnd, pflat)
     # pflat = probFlat(getCenter(pnd), pnd.vals[1])
-    # return (pflat, ph)
-    # return (pnd, ph)
     # pshort = probMid(ph, binMin(), 1.0)
     # plong = probMid(ph, 1., binMax())
     # pmid = probMid(ph, .5*(1.0+binMin()), .5*(1.0+binMax()))
     # ppos = isnothing(lastPosRet[]) ? nothing : retToProb(lastPosRet[])
     # pposInv = isnothing(lastPosRet[]) ? nothing : invert(ppos)
     # pposHyb = Prob(getCenter(ph), normalize!(getVals(ph) .+ (getVals(pposInv) .* 2)))
-    # return (ph,pnd)
+    # probs = (ph,pnd)
+    Scoring.MetricBuf[] = Vector{NamedTuple}(undef, length(probs))
+    return probs
 end
 
 export aa
@@ -103,8 +102,8 @@ function an(exps::Date...; maxRun::Int=120, keep::Int=100, nthreads::Int=Threads
     if maxRun == 0; maxRun = binomial(len1, 2) + binomial(len2, 2) + len1 * len2 end
     resetCountsScore()
     # TODO: how not to forget biasUse is set?
-    biasUse = nothing # Side.long
-    ctx = makeCtx(coal(scorer, calcScore1), probs, numDays; maxRun, keep, posRet=lastPosRet[], nthreads, sp, biasUse)
+    # biasUse = nothing # Side.long
+    ctx = makeCtx(coal(scorer, calcScore1), probs, numDays; maxRun, keep, posRet=lastPosRet[], nthreads) # sp, biasUse
     # @info "ctx" keys(ctx)
 
     @log info "RunStrats running" maxRun keep nthreads exps sum(length, allSpreads2) sp numDays
@@ -113,6 +112,7 @@ function an(exps::Date...; maxRun::Int=120, keep::Int=100, nthreads::Int=Threads
     global lastRes[] = strats
     global lastCtx[] = ctx
     sortar(byScore)
+    return length(lastView[])
     if headless
         println("Ran strats for ", exps[1])
     else

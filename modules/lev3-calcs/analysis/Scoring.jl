@@ -13,17 +13,19 @@ scoreRand(args...) = rand()
 # sigbal(x::Float64)::Float64 = ( y = (-.5) + (1 / (1 + ℯ^-x)) ; x < 0.0 ? 2 * y : y )
 sigbal(x::Float64)::Float64 = y = -1 + (2 / (1 + ℯ^-x))
 
-# TODO: would probably speed things up a little if we typed ctx
+# TODO: would probably speed things up a little if we typed ctx and tctx
+const MetricBuf = Ref{Vector{NamedTuple}}()
 filtkeys() = [:ev, :ev1, :ev2, :noImpEvr, :noImpEvOr, :standsAlone, :cantAlone, :maxLoss, :maxLossAbs, :prob, :noImpProb, :noImpProb2, :noImpLoss,
               :probStandAlone, :sides, :sidesMaxLoss, :special, :special2, :noImpSum, :biasWrong]
-function calcScore1(ctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, posRet::Union{Nothing,Ret}, show=false)::Float64
+calcScore1(ctx, bufCombi, bufBoth, posRet, show=false) = calcScore1(ctx, (; metsBoth=MetricBuf[]), bufCombi, bufBoth, posRet, show)
+function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, posRet::Union{Nothing,Ret}, show=false)::Float64
     MAX_LOSS = -3
     factor = 1.0
     numLegs = isnothing(posRet) ? 4 : 4 + posRet.numLegs
 
-    metsBoth = []
-    for prob in ctx.probs
-        push!(metsBoth, calcMetrics(prob, bufBoth, numLegs))
+    metsBoth = tctx.metsBoth
+    for i in eachindex(ctx.probs)
+        metsBoth[i] = calcMetrics(ctx.probs[i], bufBoth, numLegs)
     end
 
     if isempty(bufCombi)
@@ -76,7 +78,7 @@ function calcScore1(ctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, posRet
             metb.evr >= probLency * metp.evr || continue
             # metb.loss >= probLency * metp.loss || continue
 
-            isnothing(ctx.biasUse) || bias(ctx.biasUse, ctx.probs[1], bufBoth, posRet, numLegs) || continue
+            # isnothing(ctx.biasUse) || bias(ctx.biasUse, ctx.probs[1], bufBoth, posRet, numLegs) || continue
             isok = true
             break
         end

@@ -10,20 +10,18 @@ export runStrats, makeCtx
 
 const VECF_EMPTY = Vector{Float64}()
 
-function makeCtx(calcScore, probs, numDays::Int; nthreads::Int=12, maxRun::Int=120, keep::Int=10000, posRet::Union{Nothing,Ret}, kws...)
+function makeCtx(calcScore, probs, numDays::Int; nthreads::Int=12, maxRun::Int=120, keep::Int=10000, posRet::Union{Nothing,Ret})
     maxRun < nthreads && error("maxRun should be more than nthreads", maxRun, nthreads)
     keep < nthreads && error("keep should be more than nthreads", keep, nthreads)
-    # cntEst = binomial(sum(length, legs4), 4) # TODO: too high
-    # maxRun = min(maxRun, cntEst)
     thrMaxRun = div(maxRun, nthreads) + 1
     if isnothing(posRet)
         return (;
-            calcScore, probs, maxRun, baseScore=-Inf, numDays, posRet, kws...,
-            threads = [makeThreadCtx(div(keep, nthreads), thrMaxRun, baseScore) for _ in 1:nthreads]
+            calcScore, probs, maxRun, baseScore=-Inf, numDays, posRet,
+            threads = [makeThreadCtx(div(keep, nthreads), thrMaxRun, baseScore, length(probs)) for _ in 1:nthreads]
         )
     else
         posVals = getVals(posRet)
-        baseScore = calcScore((;probs, numDays, kws...), VECF_EMPTY, posVals, posRet)
+        baseScore = calcScore((;probs, numDays), VECF_EMPTY, posVals, posRet)
         # @info "Setting baseScore" baseScore isnothing(posRet)
         metsPos = []
         for prob in probs
@@ -31,8 +29,8 @@ function makeCtx(calcScore, probs, numDays::Int; nthreads::Int=12, maxRun::Int=1
         end
 
         return (;
-            calcScore, probs, maxRun, baseScore, numDays, posRet, metsPos, kws...,
-            threads = [makeThreadCtx(div(keep, nthreads), thrMaxRun, baseScore) for _ in 1:nthreads]
+            calcScore, probs, maxRun, baseScore, numDays, posRet, metsPos,
+            threads = [makeThreadCtx(div(keep, nthreads), thrMaxRun, baseScore, length(probs)) for _ in 1:nthreads]
         )
     end
 end
@@ -70,13 +68,14 @@ function runStrats(allSpreads2::Spreads2, ctx)
 end
 
 #region Local
-makeThreadCtx(thrKeep::Int, thrMaxRun::Int, baseScore::Float64) = (;
+makeThreadCtx(thrKeep::Int, thrMaxRun::Int, baseScore::Float64, numProbs::Int) = (;
     thrMaxRun,
     bufRet1 = Bins.empty(),
     bufRet2 = Bins.empty(),
     scores = fill(baseScore, thrKeep),
     res = Vector{Combi}(undef, round(Int, 10*log(thrMaxRun) * thrKeep)), # multiple because ramp up makes it go over TODO: this mult is too big, maybe just for test weirdness?
-    procCnt = Ref{Int}()
+    procCnt = Ref{Int}(),
+    metsBoth = Vector{NamedTuple}(undef, numProbs)
 )
 
 function runThread(ctx, all::Spreads2, threadId::Int, itrInds::StepRange{Int,Int})
@@ -206,7 +205,7 @@ function procStrat((ctx, tctx), combi::Combi)::Bool
     buf1, buf2 = (tctx.bufRet1, tctx.bufRet2)
     getVals!(buf1, combi)
     useBuf2 = isnothing(ctx.posRet) ? buf1 : getVals!(buf2, combi, getVals(ctx.posRet))
-    score = ctx.calcScore(ctx, buf1, useBuf2, ctx.posRet)
+    score = ctx.calcScore(ctx, tctx, buf1, useBuf2, ctx.posRet)
     if isfinite(score)
         prinsert!(tctx.scores, score) || ( @atomic lowScore.count += 1 ; return false )
     else
