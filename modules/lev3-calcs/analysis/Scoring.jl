@@ -20,20 +20,27 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, 
     factor = 1.0
     numLegs = isnothing(posRet) ? 4 : 4 + posRet.numLegs
     metb = calcMetrics(ctx.probs[1], bufBoth, numLegs)
-    metb2 = calcMetrics(ctx.probs[2], bufBoth, numLegs)
+    # metb2 = calcMetrics(ctx.probs[2], bufBoth, numLegs)
 
     if isempty(bufCombi)
         # This means we're calcing base score from existing position, so only bufPos will be valid but it's also passed into bufBoth.
-        # return -10000
-        return score(metb, metb2, factor)
+        return -10000
+        metbLeft20 = calcMetrics(ctx.probs[1], bufBoth, numLegs, Bins.shiftis(-30))
+        metbRight20 = calcMetrics(ctx.probs[1], bufBoth, numLegs, Bins.shiftis(30))
+        return score(factor, metb, metbLeft20, metbRight20)
     end
 
-    # bufCombi[1] > 0.04 || return countNo(:sides)
+    # bufCombi[1] > 0.0 || return countNo(:sides)
     # bufCombi[end] > 0.04 || return countNo(:sides)
     # bufBoth[1] > 0.14 || return countNo(:sides)
     # bufBoth[end] > 0.14 || return countNo(:sides)
     metb.mn > MAX_LOSS || return countNo(:maxLossAbs)
-    # return score(metb, metb2, factor)
+    # metb.loss > -.3 || return countNo(:maxLossAbs)
+    # return metb.loss
+
+    metbLeft20 = calcMetrics(ctx.probs[1], bufBoth, numLegs, Bins.shiftis(-30))
+    metbRight20 = calcMetrics(ctx.probs[1], bufBoth, numLegs, Bins.shiftis(30))
+    # return score(factor, metb, metbLeft20, metbRight20)
 
     # req(ctx.sp, bufCombi, 410, 420, 0.0) || return countNo(:sides)
 
@@ -48,11 +55,17 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, 
         # bufBoth[end] > 0.0 || return countNo(:sides)
         # return metb.profit - 2 * metb.loss
     else
-        metp = ctx.metp ; metp2 = ctx.metp2
+        metp = ctx.metp # ; metp2 = ctx.metp2
         # metb.mn > MAX_LOSS / (1.0 + numLegs/8) || return countNo(:maxLossAbs)
 
-        probLeniency = .85 - .15 * sigbal(.43 * ctx.numDays - 6.0)
-        (2*metb.prob + metb2.prob) >= probLeniency * (2*metp.prob + metp2.prob) || return countNo(:noImpProb)
+        probLency = .85 - .15 * sigbal(.43 * ctx.numDays - 6.0)
+        # (2*metb.prob + metb2.prob) >= probLency * (2*metp.prob + metp2.prob) || return countNo(:noImpProb)
+        (2*metb.prob) >= probLency * (2*metp.prob) || return countNo(:noImpProb)
+
+        # if (metb.mn < 0.0)
+        #     mnLency = probLency # .85 - .15 * sigbal(.43 * ctx.numDays - 6.0)
+        #     (2*metb.mn) >= mnLency * (2*metp.mn) || return countNo(:noImpLoss)
+        # end
 
         isnothing(ctx.biasUse) || bias(ctx.biasUse, ctx.probs[1], bufBoth, posRet, numLegs) || return countNo(:biasWrong)
 
@@ -78,14 +91,15 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, 
         # return metb.evr
     end
     @atomic passed.count += 1
-    return score(metb, metb2, factor)
+    # return score(factor, metb, metb2)
+    return score(factor, metb, metbLeft20, metbRight20)
 end
 
-score(met) = score(met, met, 1.0)
+score(met) = met.evr
 # score(metb, factor::Float64)::Float64 = factor * (metb.ev + metb.evr) # scoreProb(metb.prob, metb.mn)
-function score(metb, metb2, factor::Float64)::Float64
+function score(factor::Float64, metb, metOther...)::Float64
     # return factor * (metb.evr + metb2.evr) / 2
-    res = factor * (2*metb.evr + metb2.evr)
+    res = factor * (metb.evr + sum(x -> x.evr, metOther; init=0.0))
     isfinite(res) || error("found prob ", res)
     return res
     # mn = metb.mn + metb2.mn

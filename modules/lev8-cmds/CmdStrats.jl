@@ -99,7 +99,7 @@ function an(exps::Date...; maxRun::Int=120, keep::Int=100, nthreads::Int=Threads
     if maxRun == 0; maxRun = binomial(len1, 2) + binomial(len2, 2) + len1 * len2 end
     resetCountsScore()
     # TODO: how not to forget biasUse is set?
-    biasUse = nothing # Side.long
+    biasUse = Side.long
     ctx = makeCtx(coal(scorer, calcScore1), probs, numDays; maxRun, keep, posRet=lastPosRet[], nthreads, sp, biasUse)
     @info "ctx" keys(ctx)
 

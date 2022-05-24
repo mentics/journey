@@ -23,6 +23,10 @@ getMarketClose(d::Date) = fromMarketTZ(d, Time(Info[].cal[d]["open"]["end"]))
 const Info = Ref{CalInfo}(CalInfo(false, DateTime(0), Dict{Date,Dict{String,Any}}(), DateTime(0)))
 const Lock = ReentrantLock()
 
+function __init__()
+    updateCalendar()
+end
+
 function check()
     isnothing(snap()) || error("Session timing doesn't work when snapped")
     Info[].nextChange < now(UTC) && updateCalendar()
@@ -31,7 +35,6 @@ end
 function updateCalendar(;from=(firstdayofmonth(today()) - Month(1)), to=(lastdayofmonth(today() + Month(3))))::Nothing
     runSync(Lock) do
         @log debug "updateCalendar"
-        # TODO: lock
         isOpen, nextChange = tradierClock()
         cal = tradierCalendar(from, to)
         Info[] = CalInfo(isOpen, nextChange, cal, now(UTC))

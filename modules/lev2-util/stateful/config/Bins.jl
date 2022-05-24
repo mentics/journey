@@ -39,6 +39,7 @@ center() = div(VNUM, 2)
 inds() = 1:VNUM
 halfRight() = center():VNUM
 halfLeft() = 1:center()
+shiftis(off::Int) = off < 0 ? (1:(VNUM + 2*off)) : (2*off):VNUM
 
 # Averaging values further out causes problems when combining rets, so I removed that. Can widen bins if need more span.
 valLeft(f, ctx) = f(ctx, XLEFT)

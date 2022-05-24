@@ -12,4 +12,8 @@ for (root, dirs, files) in walkdir("modules")
     end
 end
 
-using CheckUtil
+sobj = nothing
+function saveObj(x)
+    global sobj = x
+    return "[Set obj type $(typeof(x))]"
+end

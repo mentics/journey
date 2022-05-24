@@ -38,14 +38,14 @@ end
 #endregion
 
 #region CurrentPosition
-using CmdUtil, CheckUtil
+using CmdUtil
 # TODO: make it a const
 cacheTrades = Dict{Int,Trade}()
 function todo(ex=1)
     Globals.set(:todoRunLast, now(UTC))
     legOvers = queryLeftovers()
     if !isnothing(findfirst(leg -> getSide(leg) != Side.long, legOvers))
-        msg = "Found short leftovers $(setObj(legOvers))"
+        msg = "Found short leftovers $(saveObj(legOvers))"
         if Hour(Dates.now()) >= 7
             error(msg)
         else
