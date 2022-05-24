@@ -29,6 +29,7 @@ function __init__()
         :testing => false,
         :tierEnv => :paper,
         :snap => nothing,
+        :useCurp => false,
         :Strats => Dict{Symbol,Any}(
             :maxStrikeDist => 20,
             :maxPutHeight => 4,

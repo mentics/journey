@@ -41,10 +41,9 @@ const MARKET_TYPE = Market
 const USE_CURP = :useCurp
 const PERIOD_UPDATE = Second(12)
 
-function __init__()
-    Globals.has(USE_CURP) || Globals.set(USE_CURP, false)
-    return
-end
+# function __init__()
+#     Globals.has(USE_CURP) || Globals.set(USE_CURP, false)
+# end
 
 whenUpdate(from::DateTime, isMktOpen::Bool, nextMktChange::DateTime) = whenMarket(from, isMktOpen, nextMktChange, PERIOD_UPDATE)
 

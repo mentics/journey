@@ -3,12 +3,12 @@ using Bins, CalcUtil, ProbTypes, NormDists
 
 export probsNormDist, probsCdf
 
-function probsNormDist(center::Real, stdDev::Float64)::Prob
+function probsNormDist(center::Real, stdDev::Float64, shift::Float64=0.0)::Prob
     d = NormDist(1.0, stdDev)
     vals = Bins.empty()
-    vals[1] = cdf(d, Bins.XLEFT)
+    vals[1] = cdf(d, Bins.XLEFT - shift)
     for (i, x) in Bins.midsi()
-        vals[i] = Bins.width() * pdf(d, x)
+        vals[i] = Bins.width() * pdf(d, x - shift)
     end
     # i = 1
     # for x in binXs()[2:end-1]
@@ -33,8 +33,7 @@ function probsNormDist(center::Real, stdDev::Float64)::Prob
     #     leftCdf = rightCdf
     # end
 
-    vals[end] = 1.0 - cdf(d, Bins.XRIGHT)
-    @info "Checking prob ndf" sum(vals)
+    vals[end] = 1.0 - cdf(d, Bins.XRIGHT - shift)
     normalize!(vals)
     return Prob(Float64(center), vals)
 end

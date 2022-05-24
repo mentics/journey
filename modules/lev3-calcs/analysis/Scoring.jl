@@ -13,7 +13,7 @@ scoreRand(args...) = rand()
 # sigbal(x::Float64)::Float64 = ( y = (-.5) + (1 / (1 + ℯ^-x)) ; x < 0.0 ? 2 * y : y )
 sigbal(x::Float64)::Float64 = y = -1 + (2 / (1 + ℯ^-x))
 
-filtkeys() = [:ev, :ev1, :ev2, :noImpEv, :noImpEvOr, :standsAlone, :cantAlone, :maxLoss, :maxLossAbs, :prob, :noImpProb, :noImpProb2, :noImpLoss,
+filtkeys() = [:ev, :ev1, :ev2, :noImpEvr, :noImpEvOr, :standsAlone, :cantAlone, :maxLoss, :maxLossAbs, :prob, :noImpProb, :noImpProb2, :noImpLoss,
               :probStandAlone, :sides, :sidesMaxLoss, :special, :special2, :noImpSum, :biasWrong]
 function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, posRet::Union{Nothing,Ret}, show=false)::Float64
     MAX_LOSS = -3
@@ -22,11 +22,13 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, 
     metb = calcMetrics(ctx.probs[1], bufBoth, numLegs)
     # metb2 = calcMetrics(ctx.probs[2], bufBoth, numLegs)
 
+    metbLeft20 = calcMetrics(ctx.probs[2], bufBoth, numLegs)
+    metbRight20 = calcMetrics(ctx.probs[3], bufBoth, numLegs)
+
     if isempty(bufCombi)
         # This means we're calcing base score from existing position, so only bufPos will be valid but it's also passed into bufBoth.
-        return -10000
-        metbLeft20 = calcMetrics(ctx.probs[1], bufBoth, numLegs, Bins.shiftis(-30))
-        metbRight20 = calcMetrics(ctx.probs[1], bufBoth, numLegs, Bins.shiftis(30))
+        # return -10000
+        show && ( @info "pos scoring" metb metbLeft20 metbRight20 )
         return score(factor, metb, metbLeft20, metbRight20)
     end
 
@@ -37,9 +39,7 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, 
     metb.mn > MAX_LOSS || return countNo(:maxLossAbs)
     # metb.loss > -.3 || return countNo(:maxLossAbs)
     # return metb.loss
-
-    metbLeft20 = calcMetrics(ctx.probs[1], bufBoth, numLegs, Bins.shiftis(-30))
-    metbRight20 = calcMetrics(ctx.probs[1], bufBoth, numLegs, Bins.shiftis(30))
+    # return score(factor, metb)
     # return score(factor, metb, metbLeft20, metbRight20)
 
     # req(ctx.sp, bufCombi, 410, 420, 0.0) || return countNo(:sides)
@@ -69,6 +69,8 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, 
 
         isnothing(ctx.biasUse) || bias(ctx.biasUse, ctx.probs[1], bufBoth, posRet, numLegs) || return countNo(:biasWrong)
 
+        metb.evr >= metp.evr || return countNo(:noImpEvr)
+
         # improvProb = (5*metb.prob + metb2.prob) - (5*metp.prob + metp2.prob)
         # improvEv = (5*metb.ev + metb2.ev) - (5*metp.ev + metp2.ev)
         # improvEvr = (5*metb.evr + metb2.evr) - (5*metp.evr + metp2.evr)
@@ -92,6 +94,7 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, 
     end
     @atomic passed.count += 1
     # return score(factor, metb, metb2)
+    show && ( @info "scoring" metb metbLeft20 metbRight20 )
     return score(factor, metb, metbLeft20, metbRight20)
 end
 
@@ -209,7 +212,7 @@ function resetCountsScore()
     @atomic passed.count = 0
     empty!(filt) ; push!(filt, [k => Atomic{Int}(0) for k in filtkeys()]...)
 end
-showCountsScore() = ( res = filter(kv -> kv.second.count != 0, filt) ; @info "Score counts" passed.count res ) # @info "Score counts" filtProb.count filtEv.count filtEvr.count filtEvrB.count filtMid.count filtEvrInv.count filtSides.count filtExtrema.count # filtLong.count filtShort.count filtMid.count filtPos.count passed.count
+showCountsScore() = ( res = filter(kv -> kv.second.count != 0, filt) ; @log info "Score counts" passed.count res ) # @info "Score counts" filtProb.count filtEv.count filtEvr.count filtEvrB.count filtMid.count filtEvrInv.count filtSides.count filtExtrema.count # filtLong.count filtShort.count filtMid.count filtPos.count passed.count
 
 #region Local
 const passed = Atomic{Int}(0)

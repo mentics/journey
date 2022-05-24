@@ -19,7 +19,7 @@ function sendEmail(to::AStr, subject::AStr, body::AStr)
     rcpt = ["<$(to)>"]
     from = "<***REMOVED***>"
     resp = SMTPClient.send(url, rcpt, from, body, opt)
-    @info "Email response" resp
+    # @info "Email response" resp
 end
 
 end

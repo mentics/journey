@@ -17,8 +17,6 @@ snapTs(nam::AbstractString) = fromLocal(nam, Snapshots.SNAP_DATEFORMAT)
 #region Local
 const SNAP_DATEFORMAT = dateformat"yyyy-mm-dd.HH-MM"
 
-__init__() = Globals.set(:snap, nothing)
-
 const toRecord = [
     ()->positions(; age=Millisecond(0)),
     ()->expirs(; up=true),

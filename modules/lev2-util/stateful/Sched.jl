@@ -82,12 +82,6 @@ const Stop = Ref{Bool}(false)
 const waitCond = Threads.Condition()
 const NextRun = Ref{DateTime}(NEVER)
 
-# function __init__()::Nothing
-#     Globals.has(:maxSchedPeriod) || Globals.set(:maxSchedPeriod, Second(2))
-#     return
-# end
-
-# maxSleep()::Period = Globals.get(:maxSchedPeriod)
 wakeUp() = lockNotify(waitCond)
 
 function run()::Nothing

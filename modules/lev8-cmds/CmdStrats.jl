@@ -1,7 +1,7 @@
 module CmdStrats
 using Dates
 using SH, BaseTypes, SmallTypes, QuoteTypes, LegTypes, LegMetaTypes, StratTypes, RetTypes, ProbTypes
-using Globals, Bins, BaseUtil, DateUtil, CollUtil, ProbUtil, Between, Scoring
+using Globals, Bins, BaseUtil, LogUtil, DateUtil, CollUtil, ProbUtil, Between, Scoring
 using Strats, Rets, StratGen, RunStrats
 using ProbHist, Markets, Expirations, Chains, Positions
 using Trading, CmdUtil
@@ -45,8 +45,12 @@ hereMetrics(pv, r) = Scoring.calcMetrics(pv, r)
 # invert(v::Vector{Float64}) = normalize!(map(x -> x === 0.0 ? 1.0 : 0.0, v))
 
 function makeProbs(numDays::Int, targetDate::Date, sp::Currency)::Tuple
-    pnd = probsNormDist(sp, calcIvsd(targetDate, 1.))# + .25 * numDays * .05))
-    return (pnd, pnd)
+    ivsd = calcIvsd(targetDate, 1.)
+    shift = ivsd/2
+    pnd = probsNormDist(sp, ivsd)# + .25 * numDays * .05))
+    pndL = probsNormDist(sp, ivsd, -shift)# + .25 * numDays * .05))
+    pndR = probsNormDist(sp, ivsd, shift)# + .25 * numDays * .05))
+    return (pnd, pndL, pndR)
     # phOrig = probHist(sp, round(Int, 1.5 * (3 + numDays)))
     # pnd = probsNormDist(sp, calcIvsd(targetDate))
     # ph = Prob(getCenter(phOrig), smooth(getVals(phOrig)))
@@ -99,18 +103,19 @@ function an(exps::Date...; maxRun::Int=120, keep::Int=100, nthreads::Int=Threads
     if maxRun == 0; maxRun = binomial(len1, 2) + binomial(len2, 2) + len1 * len2 end
     resetCountsScore()
     # TODO: how not to forget biasUse is set?
-    biasUse = Side.long
+    biasUse = nothing # Side.long
     ctx = makeCtx(coal(scorer, calcScore1), probs, numDays; maxRun, keep, posRet=lastPosRet[], nthreads, sp, biasUse)
-    @info "ctx" keys(ctx)
+    # @info "ctx" keys(ctx)
 
-    @info "RunStrats running" maxRun keep nthreads exps sum(length, allSpreads2) sp numDays
-    @time strats = runStrats(allSpreads2, ctx)
+    @log info "RunStrats running" maxRun keep nthreads exps sum(length, allSpreads2) sp numDays
+    strats = runStrats(allSpreads2, ctx)
     showCountsScore()
     global lastRes[] = strats
     global lastCtx[] = ctx
     sortar(byScore)
-    global lastView[] = copy(strats)
-    if !headless
+    if headless
+        println("Ran strats for ", exps[1])
+    else
         sa()
         isempty(lastView[]) || (isempty(lastPosStrat[]) ? dr(1) : dra(1))
         isempty(lastView[]) || isempty(lastPosStrat[]) || comp(1)
@@ -143,7 +148,7 @@ function sortar(by::Function)::Nothing
     useBy = c -> by(lastCtx[], combineTo(Vals, c), combineTo(Vals, withPosStrat(c)), lastPosRet[])
     # useBy = isempty(lastPosStrat[]) ? by : s -> by(s, withPosStrat(s))
     sort!(lastRes[]; rev=true, by=useBy, lt=isl)
-    lastView[] = copy(lastRes[])
+    lastView[] = lastRes[] # copy(lastRes[])
     return
 end
 SH.getVals(::Nothing) = nothing
@@ -218,10 +223,9 @@ end
 export showScore, scoreFor
 function showScore(i::Int)
     s = ar(i)
-    lrs = withPosStrat(s)
-    valsBoth = combineTo(Vals, lrs)
-    # lastCtx[].calcScore(lastCtx[], nothing, combineTo(Vals, s), getVals(lastPosRet[]), vals, true)
-    scoreFor(combineTo(Vals, s), getVals(lastPosRet[]), valsBoth, true)
+    combiVals = i == 0 ? RunStrats.VECF_EMPTY : combineTo(Vals, s)
+    bothVals = i == 0 ? getVals(lastPosRet[]) : combineTo(Vals, withPosStrat(s))
+    scoreFor(combiVals, lastPosRet[], bothVals, true)
 end
 
 function scoreFor(lms::Coll{LegMeta})
@@ -231,6 +235,6 @@ function scoreFor(lms::Vector{LegMeta}, expr::Date, args...)
     valsCombi = getVals(combineTo(Ret, lms, expr, args...))
     lastCtx[].calcScore(lastCtx[], nothing, valsCombi, nothing, valsCombi, show)
 end
-scoreFor(valsCombi, valsPos, valsBoth, show=false) = lastCtx[].calcScore(lastCtx[], nothing, valsCombi, valsPos, valsBoth, show)
+scoreFor(valsCombi, posRet, valsBoth, show=true) = lastCtx[].calcScore(lastCtx[], nothing, valsCombi, valsBoth, posRet, show)
 
 end

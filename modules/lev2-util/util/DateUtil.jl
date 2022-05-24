@@ -52,11 +52,10 @@ toDateLocal(ts::DateTime)::Date = Date(ZonedDateTime(ts, localzone(); from_utc=t
 
 ####
 
-function __init__()
+# function __init__()
     # TODO: need this?
     # BusinessDays.initcache(:USNYSE)
-    nothing
-end
+# end
 
 # function numDays() end
 

@@ -1,15 +1,15 @@
 module RunStrats
 using Dates, ThreadPools
-using CollUtil, ThreadUtil, CalcUtil
-using SH, Bins, Rets, StratTypes, RetTypes
+using LogUtil, CollUtil, ThreadUtil, CalcUtil
+using SH, Bins, Rets, StratTypes, RetTypes, LegTypes
 using Strats
 using Scoring
+using SmallTypes, LegMetaTypes # Just for test filter
 
 export runStrats, makeCtx
 
 const VECF_EMPTY = Vector{Float64}()
 
-# Vector{Float64}=VECF_EMPTY
 function makeCtx(calcScore, probs, numDays::Int; nthreads::Int=12, maxRun::Int=120, keep::Int=10000, posRet::Union{Nothing,Ret}, kws...)
     maxRun < nthreads && error("maxRun should be more than nthreads", maxRun, nthreads)
     keep < nthreads && error("keep should be more than nthreads", keep, nthreads)
@@ -25,7 +25,7 @@ function makeCtx(calcScore, probs, numDays::Int; nthreads::Int=12, maxRun::Int=1
     else
         posVals = getVals(posRet)
         baseScore = calcScore((;probs, numDays, kws...), nothing, VECF_EMPTY, posVals, posRet)
-        @info "Setting baseScore" baseScore isnothing(posRet)
+        # @info "Setting baseScore" baseScore isnothing(posRet)
         metp = calcMetrics(probs[1], posRet)
         metp2 = calcMetrics(probs[2], posRet)
         return (;
@@ -49,9 +49,9 @@ function runStrats(allSpreads2::Spreads2, ctx)
     keptCnt = sum(Iterators.map(tc->length(tc.res), ctx.threads))
     procCnt = sum(Iterators.map(tc->tc.procCnt[], ctx.threads))
     if procCnt >= ctx.maxRun
-        @warn "Truncated processing" procCnt ctx.maxRun notFinite.count lowScore.count invalidCombi.count keptCnt
+        @log warn "Truncated processing" procCnt ctx.maxRun notFinite.count lowScore.count invalidCombi.count keptCnt
     else
-        @info "Processing completed" procCnt ctx.maxRun notFinite.count lowScore.count invalidCombi.count keptCnt
+        @log info "Processing completed" procCnt ctx.maxRun notFinite.count lowScore.count invalidCombi.count keptCnt
     end
     # TODO: Remove above after sure @sync waits for all to finish
     res = Vector{Combi}(undef,keptCnt)
@@ -214,15 +214,6 @@ function procStrat((ctx, tctx), combi::Combi)::Bool
     return true
 end
 
-const LK2 = ReentrantLock()
-function syncOut(e)
-    runSync(LK2) do
-        showerror(stderr, e, catch_backtrace())
-        println(stderr)
-    end
-end
-
-using LegTypes
 function isValidCombi(combi::Combi)
     res = isConflict(combi[1], combi[3]) ||
         isConflict(combi[1], combi[4]) ||
@@ -236,20 +227,27 @@ function isValidCombi(combi::Combi)
     return !res
 end
 
-global TestCombis = Ref{Vector{Vector{Leg}}}(Vector{Vector{Leg}}())
-testCombi(c::Combi) = ( empty!(TestCombis[]) ; push!(TestCombis[], collect(getLeg.(tos(LegMeta, c)))) )
-addTestCombi(c::Combi) = ( push!(TestCombis[], collect(getLeg.(tos(LegMeta, c)))) )
-testClear() = empty!(TestCombis[])
-using SmallTypes, LegMetaTypes
+const LK2 = ReentrantLock()
+function syncOut(e)
+    runSync(LK2) do
+        showerror(stderr, e, catch_backtrace())
+        println(stderr)
+    end
+end
+
+const TestCombis = Vector{Vector{Leg}}()
+testCombi(c::Combi) = ( empty!(TestCombis) ; push!(TestCombis, collect(getLeg.(tos(LegMeta, c)))) )
+addTestCombi(c::Combi) = ( push!(TestCombis, collect(getLeg.(tos(LegMeta, c)))) )
+testClear() = empty!(TestCombis)
 function testFilter(c::Combi)::Bool
     return true
     # TODO: inefficient, and this is temp code to test matching up holes
     c = sortTuple(getStrike, c)
     issorted(c; by=getStrike) || error("combis not sorted")
     return getSide.(c) == (Side.short, Side.long, Side.long, Side.short)
-    isempty(TestCombis[]) && return true
+    isempty(TestCombis) && return true
     legsCombi = sort!(collect(getLeg.(tos(LegMeta, c))), by=getStrike)
-    for legs in TestCombis[]
+    for legs in TestCombis
         legsCombi == legs && return true
     end
     return false
@@ -262,18 +260,3 @@ end
 #endregion
 
 end
-
-#==
-f1(ctx, x) = ctx.y * x
-ctx1 = (;f=f1, y=55)
-
-function f2(ctx)
-    s = 0.0
-    for i in 1:100
-        s += ctx.f(ctx, i)
-    end
-    return s
-end
-
-@btime f2($ctx1)
-==#
