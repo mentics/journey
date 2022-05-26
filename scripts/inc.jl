@@ -5,7 +5,9 @@ timestamp_logger(logger) = TransformerLogger(logger) do log
 end
 ConsoleLogger(stdout, Logging.Info; show_limited=false, right_justify=80) |> timestamp_logger |> global_logger
 
-for (root, dirs, files) in walkdir("modules")
+isdefined(Main, :CODE_DIR) || (CODE_DIR = ".")
+
+for (root, dirs, files) in walkdir(joinpath(CODE_DIR, "modules"))
     occursin("ignore", root) && continue
     if !isempty(filter(x->endswith(x, ".jl"), files))
         push!(LOAD_PATH, root)

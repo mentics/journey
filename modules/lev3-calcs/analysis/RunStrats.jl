@@ -14,22 +14,22 @@ function makeCtx(calcScore, probs, numDays::Int; nthreads::Int=12, maxRun::Int=1
     maxRun < nthreads && error("maxRun should be more than nthreads", maxRun, nthreads)
     keep < nthreads && error("keep should be more than nthreads", keep, nthreads)
     thrMaxRun = div(maxRun, nthreads) + 1
+
     if isnothing(posRet)
         return (;
-            calcScore, probs, maxRun, baseScore=-Inf, numDays, posRet,
-            threads = [makeThreadCtx(div(keep, nthreads), thrMaxRun, baseScore, length(probs)) for _ in 1:nthreads]
+            calcScore, probs, maxRun, numDays, posRet, metsPos=nothing,
+            threads = [makeThreadCtx(div(keep, nthreads), thrMaxRun, -Inf, length(probs)) for _ in 1:nthreads]
         )
     else
-        posVals = getVals(posRet)
-        baseScore = calcScore((;probs, numDays), VECF_EMPTY, posVals, posRet)
-        # @info "Setting baseScore" baseScore isnothing(posRet)
-        metsPos = []
+        metsPos = NamedTuple[]
         for prob in probs
             push!(metsPos, calcMetrics(prob, posRet))
         end
 
+        posVals = getVals(posRet)
+        baseScore = calcScore((;probs, numDays), VECF_EMPTY, posVals, posRet)
         return (;
-            calcScore, probs, maxRun, baseScore, numDays, posRet, metsPos,
+            calcScore, probs, maxRun, numDays, posRet, metsPos,
             threads = [makeThreadCtx(div(keep, nthreads), thrMaxRun, baseScore, length(probs)) for _ in 1:nthreads]
         )
     end

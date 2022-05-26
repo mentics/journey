@@ -19,7 +19,7 @@ filtkeys() = [:ev, :ev1, :ev2, :noImpEvr, :noImpEvOr, :standsAlone, :cantAlone, 
               :probStandAlone, :sides, :sidesMaxLoss, :special, :special2, :noImpSum, :biasWrong]
 calcScore1(ctx, bufCombi, bufBoth, posRet, show=false) = calcScore1(ctx, (; metsBoth=MetricBuf[]), bufCombi, bufBoth, posRet, show)
 function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, posRet::Union{Nothing,Ret}, show=false)::Float64
-    MAX_LOSS = -3
+    MAX_LOSS = -3.0
     factor = 1.0
     numLegs = isnothing(posRet) ? 4 : 4 + posRet.numLegs
 
@@ -35,25 +35,29 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, 
         return score(factor, metsBoth)
     end
 
-    metb = metsBoth[1]
-
-    # bufCombi[1] > 0.0 || return countNo(:sides)
-    # bufCombi[end] > 0.04 || return countNo(:sides)
-    # bufBoth[1] > 0.14 || return countNo(:sides)
-    # bufBoth[end] > 0.14 || return countNo(:sides)
-    metb.mn > MAX_LOSS || return countNo(:maxLossAbs)
+    # bufCombi[1] > 0.14 || return countNo(:sides)
+    # bufCombi[end] > 0.14 || return countNo(:sides)
+    # bufBoth[1] > 0.04 || return countNo(:sides)
+    # bufBoth[end] > 0.04 || return countNo(:sides)
+    metsBoth[1].mn > MAX_LOSS || return countNo(:maxLossAbs)
+    # metsBoth[1].mn > -1.5 || return countNo(:maxLossAbs)
     # metb.loss > -.3 || return countNo(:maxLossAbs)
-    # return metb.loss
-    # return score(factor, metb)
-    # return score(factor, metb, metbLeft20, metbRight20)
+    # return metsBoth[1].prob
+    # spread = .02
+    # req(bufBoth, Bins.nearest(1.0 - spread), Bins.nearest(1.0 + spread), 0.14) || return countNo(:sides)
+    # req(bufCombi, Bins.nearest(1.0 - spread), Bins.nearest(1.0 + spread), 0.32) || return countNo(:sides)
+    # minimum(bufCombi) > MAX_LOSS || return countNo(:maxLossAbs)
+    # return score(factor, metsBoth)
 
     # req(ctx.sp, bufCombi, 410, 420, 0.0) || return countNo(:sides)
+    # req(bufBoth, Bins.nearest(.95), Bins.nearest(1.05), MAX_LOSS, 80) || return countNo(:sides)
 
     isNew = isnothing(posRet)
 
     if isNew
-        (bufBoth[1] >= .34 && bufBoth[end] >= .34) || return countNo(:sides)
-        bufBoth[end] >= bufBoth[1] || return countNo(:sides)
+        # req(bufBoth, Bins.nearest(.96), Bins.nearest(1.04), .1) || return countNo(:sides)
+        (bufBoth[1] >= .14 && bufBoth[end] >= .14) || return countNo(:sides)
+        # bufBoth[end] >= bufBoth[1] || return countNo(:sides)
         # metb.ev > 0.0 || metb2.ev > 0.0 || return countNo(:ev)
         # (metb.ev + metb2.ev) > 0.04 || return countNo(:ev) # || (factor = upFactor(factor, .8, "sumev", show))
         # metb.mn > 2.0 || return countNo(:maxLossAbs)
@@ -243,11 +247,9 @@ showCountsScore() = ( res = filter(kv -> kv.second.count != 0, filt) ; @log info
 const passed = Atomic{Int}(0)
 const filt = Dict{Symbol,Atomic{Int}}()
 
-function req(sp, buf, prLeft, prRight, greaterThan)
-    left = Bins.nearest(Float64(prLeft/sp))
-    right = Bins.nearest(Float64(prRight/sp))
-
-    for i in range(left, right; step=(right - left) ÷ 10)
+req(sp::Real, buf, prLeft::Float64, prRight::Float64, greaterThan::Float64, numChecks::Int=10) = req(buf, Bins.nearest(Float64(prLeft/sp)), Bins.nearest(Float64(prRight/sp)), greaterThan, numChecks)
+function req(buf, binLeft::Int, binRight::Int, greaterThan::Float64, numChecks::Int=10)
+    for i in range(binLeft, binRight; step=(binRight - binLeft) ÷ numChecks)
         buf[i] > greaterThan || return false
     end
     return true

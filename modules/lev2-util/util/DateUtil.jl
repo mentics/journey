@@ -12,20 +12,48 @@ export timeToExpir
 export strShort
 export isNowWithinMarket
 
-const MARKET_TZ = tz"America/New_York"
-
 #### new stuff
 
-export fromMarketTZ, toDateMarket
-export fromLocal, formatLocal
+export ZERO_SECOND
+export timeIn
+
+export fromMarketTZ, toDateMarket, toTimeMarket
+export fromLocal
+export formatLocal
 export nextLocalTime, nextMarketPeriod
+# export toDateLocal
 # export isAfterLocal
 
+const MARKET_TZ = tz"America/New_York"
+const ZERO_SECOND = Second(0)
+const DAY_SECOND = Second(Day(1))
+
+#region Basic
+# TODO: maybe could simplify with Intervals
+timeIn(timeFrom::Time, in::NTuple{2,Time})::Second = round(max(in[2], timeFrom) - max(in[1], timeFrom), Second)
+timeIn(timeFrom::Time, mn::Time)::Second = DAY_SECOND - round(max(mn, timeFrom).instant, Second)
+#endregion
+
+#region Conversions
 fromMarketTZ(d::Date, t::Time)::DateTime = DateTime(ZonedDateTime(DateTime(d, t), DateUtil.MARKET_TZ), UTC)
-toDateMarket(dt::DateTime)::Date = Date(astimezone(ZonedDateTime(dt, tz"UTC"), MARKET_TZ))
+# toDateMarket(dt::DateTime)::Date = Date(astimezone(ZonedDateTime(dt, tz"UTC"), MARKET_TZ))
+toDateMarket(ts::DateTime)::Date = Date(ZonedDateTime(ts, MARKET_TZ; from_utc=true))
+# toDateLocal(ts::DateTime)::Date = Date(ZonedDateTime(ts, localzone(); from_utc=true))
+toTimeMarket(ts::DateTime)::Time = Time(ZonedDateTime(ts, MARKET_TZ; from_utc=true))
+#endregion
+
+#region Parsing
 fromLocal(str::AbstractString, df::DateFormat) = DateTime(ZonedDateTime(DateTime(str, df), localzone()), UTC)
 formatLocal(dt::DateTime, format::DateFormat)::String = Dates.format(astimezone(ZonedDateTime(dt, tz"UTC"), localzone()), format)
+#endregion
 
+#region Formatting
+strShort(d::Date)::String = Dates.format(d, DF_SHORT)
+strShort(d1::Date, d2::Date)::String = strShort(d1) * '/' * strShort(d2) # "$(Dates.format(d1, DATEFORMAT_SHORT))/$(Dates.format(d2, DATEFORMAT_SHORT))"
+strShort(ts::DateTime)::String = Dates.format(ZonedDateTime(ts, localzone(); from_utc=true), DTF_SHORT)
+#endregion
+
+#region Finding
 # isAfterLocal(tim::Time) = now(localzone()) > todayat(tim, localzone()) # ZonedDateTime(DateTime(today(), Time(14, 0)), localzone(); from_utc=false)
 nextLocalTime(from::DateTime, tim::Time) = ( dt = DateTime(todayat(tim, localzone()), UTC) ; return from < dt ? dt : dt + Day(1) )
 function nextMarketPeriod(from::DateTime, isMktOpen::Bool, tsMktChange::DateTime, period::Period, before::Period, after::Period)
@@ -38,19 +66,17 @@ function nextMarketPeriod(from::DateTime, isMktOpen::Bool, tsMktChange::DateTime
     end
     return tsMktChange + after
 end
+#endregion
 
+#region Iterating
+#endregion
+
+#region Local
 const DF_SHORT = dateformat"mm-dd"
 const DTF_SHORT = dateformat"mm-dd HH:MM:SS Z"
-strShort(d::Date)::String = Dates.format(d, DF_SHORT)
-strShort(d1::Date, d2::Date)::String = strShort(d1) * '/' * strShort(d2) # "$(Dates.format(d1, DATEFORMAT_SHORT))/$(Dates.format(d2, DATEFORMAT_SHORT))"
-strShort(ts::DateTime)::String = Dates.format(ZonedDateTime(ts, localzone(); from_utc=true), DTF_SHORT)
+#endregion
 
-# Shouldn't need these after convert db ts to datetime
-export toDateLocal
-# toDateLocal(msUtc::Int)::Date = Date(astimezone(TimeZones.unix2zdt(msUtc/1000), localzone()))
-toDateLocal(ts::DateTime)::Date = Date(ZonedDateTime(ts, localzone(); from_utc=true))
-
-####
+###############################
 
 # function __init__()
     # TODO: need this?

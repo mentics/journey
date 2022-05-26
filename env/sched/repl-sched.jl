@@ -1,9 +1,8 @@
-# using Revise
-
 # run for SchedStrat:
-# cd /c/data/julia/journey ; julia --sysimage=C:/data/tmp/sysimage-journey.dll --threads=auto --project --load=scripts/repl-sched.jl
+# cd /c/data/julia/journey/env/sched/ ; julia --sysimage=C:/data/tmp/sysimage-journey.dll --threads=auto --project --load=repl-sched.jl
 
-include("inc.jl")
+CODE_DIR = "../.."
+include("../../scripts/inc.jl")
 try
 using LogUtil
 LogUtil.init("C:/data/log/sched")

@@ -2,6 +2,12 @@ lms0 = arl(0) ; lms1 = arl(1) ; lms2 = vcat(lms0, lms1)
 aa(2; lmsPos=lms2)
 But the TO metrics of the prev isn't equaling the FROM in the next?
 
+Increase frequency of schedstrat after optimizing finding good candidates
+
+Maybe need to deliberately wait for price move or time before recommending because we're getting things that sort of cancel each other out, though... maybe we need that to get little improvements?
+
+Use scholes formula (or make our own) against real prices and calculate exact parameters so it generally works. Use bands for volatility in there. Then we can use that to calc price anytime. Then can do backtesting.
+
 calc metrics for if price moved X up or down and include that in score
 
 Change todo output not to include net close for already closed legs

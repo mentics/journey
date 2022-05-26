@@ -8,10 +8,8 @@ exit()
 julia --trace-compile=C:/data/tmp/precomp-journey.jl --threads=auto
 @assert Threads.nthreads() == 12
 using Pkg ; Pkg.activate(".")
-include("repl-all.jl")
+include("scripts/repl-all.jl")
 exit()
-Verify sysimage running in repl with:
-unsafe_string(Base.JLOptions().image_file)
 ============#
 # then run this:
 
@@ -25,11 +23,15 @@ function findUsings(base, fil)
         if startswith(line, "using")
             append!(res, split(line, r"[,\s]+")[2:end])
         elseif startswith(line, "import")
-            m = match(r"\s(.+?)(?:\:|$)", line)
-            if isnothing(m)
-                error(line)
+            if !occursin(":", line)
+                append!(res, split(line, r"[,\s]+")[2:end])
+            else
+                m = match(r"\s(.+?)(?:\:|$)", line)
+                if isnothing(m)
+                    error(line)
+                end
+                push!(res, m[1])
             end
-            push!(res, m[1])
         end
     end
     return res
@@ -51,9 +53,10 @@ unique!(usings)
 ignore = ["Base.Threads"]
 filter!(us -> length(us) > 0 && !(us in mods) && !(us in ignore), usings)
 
+precomp = "C:/data/tmp/precomp-journey.jl"
 precompFiltered = "C:/data/tmp/precomp-filtered.jl"
 open(precompFiltered, "w") do out
-    for line in eachline(precompFiltered)
+    for line in eachline(precomp)
         for mod in mods
             if occursin(mod*'.', line)
                 @goto SKIP
@@ -65,4 +68,7 @@ open(precompFiltered, "w") do out
 end
 
 using PackageCompiler
-PackageCompiler.create_sysimage(usings; sysimage_path="C:/data/tmp/sysimage-journey.dll", precompile_statements_file=precompFiltered)
+PackageCompiler.create_sysimage(usings; sysimage_path="C:/data/tmp/new/sysimage-journey.dll", precompile_statements_file=precompFiltered)
+
+# Run repl with --sysimage=C:/data/tmp/sysimage-journey.dll and verify sysimage running in repl with:
+# unsafe_string(Base.JLOptions().image_file)

@@ -29,7 +29,7 @@ Base.show(io::IO, trade::Trade{S}) where S = println(io, string(trade))
 
 function Base.string(trad::Trade{S}) where S
     # strBasic(trad::Trade) = "Trade $(getTid(trad)) $(shStatus(trad)) $(shortDate(dateOpen(trad), getTargetDate(trad)))"
-    res = "Trade $(getId(trad)) $(shStatus(S)) $(strShort(toDateLocal(tsCreated(trad)), getTargetDate(trad)))"
+    res = "Trade $(getId(trad)) $(shStatus(S)) $(strShort(toDateMarket(tsCreated(trad)), getTargetDate(trad)))"
     pdo = getPrillDirOpen(trad)
     if !isnothing(pdo)
         res *= " op:$(pdo)"

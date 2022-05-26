@@ -28,13 +28,14 @@ function smooth!(v::AVec{Float64}, cnt::Int=10)::AVec{Float64}
 end
 
 calcMetrics(prob::Prob, ret::Ret, bins=Bins.inds()) = ( @assert getCenter(prob) == getCenter(ret) ; calcMetrics(prob, getVals(ret), ret.numLegs, bins) )
-function calcMetrics(prob::Prob, vals::AVec{Float64}, numLegs::Int, bins=Bins.inds())
+function calcMetrics(prob::Prob, vals::AVec{Float64}, numLegs::Int, binsi=Bins.inds())
     pvals = getVals(prob)
     profit = 0.0
-    for (p, v) in Iterators.zip(pvals, vals)
-        v > 0.0 && (profit += p * v)
+    for i in binsi
+        v = vals[i]
+        v > 0.0 && (profit += pvals[i] * v)
     end
-    mm = calcMetrics1(pvals, vals, 1.0 + profit, 0.005 * numLegs, bins)
+    mm = calcMetrics1(pvals, vals, 1.0 + profit, 0.005 * numLegs, binsi)
     # @info "cap" (2 * profit) (0.02 * numLegs) mm
     return mm
 end
@@ -49,7 +50,7 @@ function calcMetrics1(pvals::AVec{Float64}, vals::AVec{Float64}, cap::Float64, a
     for i in binsi
         p = pvals[i]
         v = vals[i]
-        vadj = min(cap, v - adjust) # TODO: should make the cap adjust somehow with the position we're processing
+        vadj = min(cap, v - adjust)
         ad = p * vadj
         vadj > 0.0 && (profit += ad ; prob += p)
         vadj < 0.0 && (loss += ad)
@@ -61,6 +62,9 @@ function calcMetrics1(pvals::AVec{Float64}, vals::AVec{Float64}, cap::Float64, a
     return (; profit, loss, ev, evr, prob, mn, mx)
 end
 
+# not sure where that number comes from but needed to normalize
+# adjprofit(ind, profit) = profit * ((201 - abs(ind - 201 - 1))/116.79617818664343)
+
 function calcEvr(profit::Float64, loss::Float64)::Float64
     @assert profit >= 0.0
     @assert loss <= 0.0
@@ -69,10 +73,10 @@ function calcEvr(profit::Float64, loss::Float64)::Float64
     p = profit #/tot
     l = loss #/tot
     # ev = p + l
-    # return p / (1 - 2*l) + 2*l / (1 + p)
+    return p / (1 - 2*l) + 2*l / (1 + p)
     # return p / (1 - l) + l / (1 + p)
     # return p / (1 - l)
-    return p / (1 - 2*l)
+    # return p / (1 - 2*l) # used this before, but it let profit overshadow loss... but maybe it was just because it was a deep hole right near price with less than 2 days left
     # evr = if p == 0.0; l
     #       elseif l == 0.0; p
     #       else ev / (1 - l) end

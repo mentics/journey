@@ -109,7 +109,7 @@ ctr(tid::Int, primitDir::Real; kws...) = ctr(cacheTrades[tid], primitDir; kws...
 function closePos(trad::Trade{<:Closeable}; ratio=0.25, at=nothing, pre=true, kws...)
     canTrade(pre)
     if !intest()
-        if ( openDate = toDateLocal(tsFilled(trad)) ; openDate == market().startDay || openDate == today() )
+        if ( openDate = toDateMarket(tsFilled(trad)) ; openDate == market().startDay || openDate == today() )
             @info "dupe in test" intest()
             msg = string("Attempted to close trade that was opened the same day ", getId(trad), ' ', openDate)
             pre ? (@error msg) : error(msg)

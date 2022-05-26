@@ -48,9 +48,10 @@ function makeProbs(numDays::Int, targetDate::Date, sp::Currency)::Tuple
     ivsd = calcIvsd(targetDate, 1.)
     shift = ivsd/2
     pnd = probsNormDist(sp, ivsd)# + .25 * numDays * .05))
-    pndL = probsNormDist(sp, ivsd, -shift)# + .25 * numDays * .05))
-    pndR = probsNormDist(sp, ivsd, shift)# + .25 * numDays * .05))
-    probs = (pnd, pndL, pndR)
+    # pndL = probsNormDist(sp, ivsd, -shift)# + .25 * numDays * .05))
+    # pndR = probsNormDist(sp, ivsd, shift)# + .25 * numDays * .05))
+    # probs = (pnd, pndL, pndR)
+    probs = (pnd,)
     # phOrig = probHist(sp, round(Int, 1.5 * (3 + numDays)))
     # pnd = probsNormDist(sp, calcIvsd(targetDate))
     # ph = Prob(getCenter(phOrig), smooth(getVals(phOrig)))
@@ -112,7 +113,6 @@ function an(exps::Date...; maxRun::Int=120, keep::Int=100, nthreads::Int=Threads
     global lastRes[] = strats
     global lastCtx[] = ctx
     sortar(byScore)
-    return length(lastView[])
     if headless
         println("Ran strats for ", exps[1])
     else

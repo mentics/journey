@@ -15,8 +15,10 @@ function drawRet(r::Ret, probs, cp::Real, label::AStr)
     yMin, yMax = extrema(vals)
     return newFig(ticksCentered(sp, xrange, (yMin, yMax))) do fig, ax
         # TODO: draw on fig arg
-        for (i, prob) in enumerate(probs)
-            drawProb(ax, prob, i, (yMax - yMin)/10.0)
+        if !isnothing(probs)
+            for (i, prob) in enumerate(probs)
+                drawProb(ax, prob, i, (yMax - yMin)/10.0)
+            end
         end
         hlines!(ax, 0.0).inspectable[] = false
         vlines!(ax, sp; label="sp").inspectable[] = false

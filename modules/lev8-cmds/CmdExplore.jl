@@ -23,7 +23,8 @@ function findShortsToClose()
 end
 
 shc(args...) = Tuple(lr for lr in sh(args...))
-sh(str::AStr, exps=expirs())::Vector{LegMeta} = tos(LegMeta, shLegs(str, exps), optQuoter)
+sh(str::AStr, exs::Int...) = sh(str, expir.(exs))
+sh(str::AStr, exps::Coll{Date}=expirs())::Vector{LegMeta} = tos(LegMeta, shLegs(str, collect(exps)), optQuoter)
 function shlr(str::AStr, exps=expirs(), sp=market().startPrice)
     lms = sh(str, exps)
     exp = minimum(getExpiration, lms)

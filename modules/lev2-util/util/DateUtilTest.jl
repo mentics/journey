@@ -3,9 +3,14 @@ using Test, Dates, TimeZones
 using DateUtil
 
 function runTests()
+    @testset "timeIn" begin
+        @test Second(1800) == timeIn(Time(1,00), (Time(0,30), Time(1,30)))
+        @test Second(1800) == timeIn(Time(23,30), (Time(23,00)))
+    end
+
     @testset "new date tests" begin
         # @test toDateLocal(Int(datetime2unix(now(UTC))*1000)) == today()
-        @test toDateLocal(now(UTC)) == today()
+        @test toDateMarket(now(UTC)) == today()
     end
 
     @testset "nextMarketPeriod" begin
