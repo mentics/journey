@@ -14,8 +14,8 @@ export isNowWithinMarket
 
 #### new stuff
 
-export ZERO_SECOND
-export timeIn
+export ZERO_SECOND, ZERO_TIME, ZERO_DATETIME, ZERO_TWOTIME
+export TwoTime, timeIn
 
 export fromMarketTZ, toDateMarket, toTimeMarket
 export fromLocal
@@ -24,13 +24,17 @@ export nextLocalTime, nextMarketPeriod
 # export toDateLocal
 # export isAfterLocal
 
-const MARKET_TZ = tz"America/New_York"
+#region Basic
 const ZERO_SECOND = Second(0)
 const DAY_SECOND = Second(Day(1))
+const ZERO_TIME = Time(0)
+const ZERO_DATETIME = DateTime(0)
 
-#region Basic
+const TwoTime = Pair{Time,Time}
+const ZERO_TWOTIME = Pair(ZERO_TIME, ZERO_TIME)
+
 # TODO: maybe could simplify with Intervals
-timeIn(timeFrom::Time, in::NTuple{2,Time})::Second = round(max(in[2], timeFrom) - max(in[1], timeFrom), Second)
+timeIn(timeFrom::Time, in::TwoTime)::Second = round(max(in[2], timeFrom) - max(in[1], timeFrom), Second)
 timeIn(timeFrom::Time, mn::Time)::Second = DAY_SECOND - round(max(mn, timeFrom).instant, Second)
 #endregion
 
@@ -74,6 +78,7 @@ end
 #region Local
 const DF_SHORT = dateformat"mm-dd"
 const DTF_SHORT = dateformat"mm-dd HH:MM:SS Z"
+const MARKET_TZ = tz"America/New_York"
 #endregion
 
 ###############################

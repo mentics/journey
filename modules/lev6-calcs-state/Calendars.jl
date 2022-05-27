@@ -4,26 +4,27 @@ using Globals, DateUtil, LogUtil, ThreadUtil, MarketDurUtil
 using TradierData
 
 export isMarketOpen, nextMarketChange, getMarketOpen, getMarketClose
-export getDursToExpr
+export calcDurToExpr
 
 isMarketOpen() = ( check() ; Info[].isOpen )
 # TODO: change name to mktChangeNext
 nextMarketChange() = ( check() ; Info[].nextChange )
-getMarketOpen(d::Date) = fromMarketTZ(d, Time(Info[].cal[d]["open"]["start"]))
-getMarketClose(d::Date) = fromMarketTZ(d, Time(Info[].cal[d]["open"]["end"]))
+getMarketOpen(d::Date) = fromMarketTZ(d, ttFrom(Info[].markTime[d].opens))
+getMarketClose(d::Date) = fromMarketTZ(d, ttTo(Info[].markTime[d].opens))
 # DateTime(astimezone(ZonedDateTime(DateTime("$(d)T$(cal[d]["open"]["end"])"), tz"America/New_York"), tz"UTC"))
 
-function getDursToExpr(ts::DateTime, expr::Date)::MarketDur
+function calcDurToExpr(ts::DateTime, exp::Date)::MarketDur
     dateBegin = toDateMarket(ts)
-    if dateBegin == expr
-        return getDursToClose(ts)
+    durExp = calcDurToClose(ts, marketTime(exp))
+    if dateBegin == exp
+        return durExp
     else
-        durs = getDursForDay(ts)
-        for date in (dateBegin + Day(1)):Day(1):(expr - Day(1))
-            durs += getDurs(date)
+        dur = calcDurForDay(ts, marketTime(dateBegin))
+        for date in (dateBegin + Day(1)):Day(1):(exp - Day(1))
+            dur += marketDur(date)
         end
-        durs += getDursToClose(ts)
-        return durs
+        dur += durExp
+        return dur
     end
 end
 
@@ -31,13 +32,12 @@ end
 struct CalInfo
     isOpen::Bool
     nextChange::DateTime
-    cal::Dict{Date,Dict{String,Any}}
+    markTime::Dict{Date,MarketTime}
+    markDur::Dict{Date,MarketDur}
     ts::DateTime
 end
 
-const ROUNDUR = Second
-const DAY_BEGIN = Time(0,0)
-const Info = Ref{CalInfo}(CalInfo(false, DateTime(0), Dict{Date,Dict{String,Any}}(), DateTime(0)))
+const Info = Ref{CalInfo}(CalInfo(false, ZERO_DATETIME, Dict(), Dict(), ZERO_DATETIME))
 const Lock = ReentrantLock()
 
 function __init__()
@@ -54,7 +54,9 @@ function updateCalendar(;from=(firstdayofmonth(today()) - Month(1)), to=(lastday
         @log debug "updateCalendar"
         isOpen, nextChange = tradierClock()
         cal = tradierCalendar(from, to)
-        Info[] = CalInfo(isOpen, nextChange, cal, now(UTC))
+        markTime = Dict(d => MarketTime(data) for (d, data) in cal)
+        markDur = Dict(d => MarketDur(mt) for (d, mt) in markTime)
+        Info[] = CalInfo(isOpen, nextChange, markTime, markDur, now(UTC))
         @log info "Updated calendar" isOpen nextChange
     end
     return
@@ -71,42 +73,8 @@ function ensureCal(dt::Date...)::Nothing
     return
 end
 
-roundur(period::Period)::Second = round(period, ROUNDUR)
-
-function getDurs(d::Date)::MarketDur
-    data = Info[].cal[d]
-    if data["status"] == "closed"
-        return MarketDur(Hour(24), ZERO, ZERO, ZERO)
-    else
-        # closed = ZERO ; pre = ZERO ; open = ZERO ; post = ZERO
-        preBegin, preEnd = timesFor(data["premarket"])
-        openBegin, openEnd = timesFor(data["open"])
-        postBegin, postEnd = timesFor(data["postmarket"])
-        closed = (preBegin - DAY_BEGIN) + (openBegin - preEnd) + (postBegin - openEnd) + (DAY_BEGIN - postEnd + Day(1))
-        pre = preEnd - preBegin
-        open = openEnd - openBegin
-        post = postEnd - postBegin
-        @assert closed + pre + open + post == Day(1)
-        return MarketDur(closed, pre, open, post)
-    end
-end
-
-function getDursToClose(tsFrom::DateTime)::MarketDur
-    markTime = Info[].cal[toDateMarket(tsFrom)]
-    timeFrom = toTimeMarket(tsFrom)
-    openBegin, openEnd = timesFor(data["open"])
-    if timeFrom >= openEnd
-        return DURS_ZEROroundur
-    elseif timeFrom >= openBegin
-        return MarketDur(ZERO, ZERO, roundur(openEnd - timeFrom), ZERO)
-    else
-        open = openEnd - openBegin
-        preBegin, preEnd = timesFor(data["premarket"])
-        closed = roundur((openBegin - max(preEnd, timeFrom)) + (max(preBegin, timeFrom) - timeFrom))
-        pre = roundur(preEnd - max(preBegin, timeFrom))
-        return MarketDur(closed, pre, open, ZERO)
-    end
-end
+marketTime(d::Date)::MarketTime = Info[].markTime[d]
+marketDur(d::Date)::MarketDur = Info[].markDur[d]
 #endregion
 
 end
