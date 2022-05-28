@@ -20,7 +20,7 @@ function comp(i::Int)
 end
 
 comp(lmss::Vector{LegMeta}...) = comp(map(lmss) do lms
-    combineTo(Ret, lms, minimum(getExpiration.(lms)), lastCtx[].sp, getvr())
+    combineTo(Ret, lms, minimum(getExpiration.(lms)), C(lastPosRet[].center), getvr())
 end...)
 
 function comp(rets::Ret...)
@@ -214,6 +214,11 @@ function toTuple(s::Union{Nothing,Strat}, lrs::Vector{LegRet})
     pnl = extrema(getVals(ret))
     netOpen=!isnothing(s) ? bap(tos(LegMeta, s)) : 0.0
     return (;prob=met.prob, ev=met.ev, evr=met.evr, pnl, netOpen, legs=strikes, expir=exps, score)
+end
+
+function metFor(lms::Vector{LegMeta})
+    ret = combineTo(Ret, lms, minimum(getExpiration.(lms)), C(lastPosRet[].center), getvr())
+    hereMetrics(probs()[1], ret)
 end
 #endregion
 

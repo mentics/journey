@@ -3,30 +3,15 @@ using Dates
 using Globals, DateUtil, LogUtil, ThreadUtil, MarketDurUtil
 using TradierData
 
-export isMarketOpen, nextMarketChange, getMarketOpen, getMarketClose
-export calcDurToExpr
+export isMarketOpen, nextMarketChange, getMarketOpen, getMarketClose, marketTime
 
 isMarketOpen() = ( check() ; Info[].isOpen )
 # TODO: change name to mktChangeNext
 nextMarketChange() = ( check() ; Info[].nextChange )
-getMarketOpen(d::Date) = fromMarketTZ(d, ttFrom(Info[].markTime[d].opens))
-getMarketClose(d::Date) = fromMarketTZ(d, ttTo(Info[].markTime[d].opens))
+getMarketOpen(d::Date) = fromMarketTZ(d, ttFrom(marketTime(d).opens))
+getMarketClose(d::Date) = fromMarketTZ(d, ttTo(marketTime(d).opens))
 # DateTime(astimezone(ZonedDateTime(DateTime("$(d)T$(cal[d]["open"]["end"])"), tz"America/New_York"), tz"UTC"))
-
-function calcDurToExpr(ts::DateTime, exp::Date)::MarketDur
-    dateBegin = toDateMarket(ts)
-    durExp = calcDurToClose(ts, marketTime(exp))
-    if dateBegin == exp
-        return durExp
-    else
-        dur = calcDurForDay(ts, marketTime(dateBegin))
-        for date in (dateBegin + Day(1)):Day(1):(exp - Day(1))
-            dur += marketDur(date)
-        end
-        dur += durExp
-        return dur
-    end
-end
+marketTime(d::Date)::MarketTime = Info[].markTime[d]
 
 #region Local
 struct CalInfo
@@ -73,8 +58,23 @@ function ensureCal(dt::Date...)::Nothing
     return
 end
 
-marketTime(d::Date)::MarketTime = Info[].markTime[d]
 marketDur(d::Date)::MarketDur = Info[].markDur[d]
+
+function calcDurToExpr(tsFrom::DateTime, dateTo::Date)::MarketDur
+    dateFrom = toDateMarket(tsFrom)
+    durExp = calcDurToClose(toTimeMarket(tsFrom), marketTime(dateTo))
+    if dateFrom == dateTo
+        println("dates are same $(toTimeMarket(tsFrom)) ", durExp)
+        return durExp
+    else
+        dur = calcDurForDay(tsFrom, marketTime(dateFrom))
+        for date in (dateFrom + Day(1)):Day(1):(dateTo - Day(1))
+            dur += marketDur(date)
+        end
+        dur += durExp
+        return dur
+    end
+end
 #endregion
 
 end

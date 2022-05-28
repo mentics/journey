@@ -1,10 +1,10 @@
 module MarketDurUtil
 using Dates
 using DateUtil
-using MarketDurs
-import MarketDurs:ttFrom,ttTo
+using MarketDurTypes
 
-export MarketDur, MarketTime, calcDurForDay, calcDurToClose, ttFrom, ttTo
+export MarketDur, MarketTime, ZERO_DUR, ttFrom, ttTo
+export calcDurForDay, calcDurToClose
 
 calcDurForDay(tsFrom::DateTime, mt::MarketTime)::MarketDur = calcDurForDay(toTimeMarket(tsFrom), mt)
 function calcDurForDay(from::Time, mt::MarketTime)::MarketDur
@@ -19,23 +19,23 @@ function calcDurForDay(from::Time, mt::MarketTime)::MarketDur
     return MarketDur(closed, pre, open, post)
 end
 
-function calcDurToClose(tsFrom::DateTime, mt::MarketTime)::MarketDur
-    from = toTimeMarket(tsFrom)
+function calcDurToClose(from::Time, mt::MarketTime)::MarketDur
     if from >= ttTo(mt.opens)
-        return DURS_ZERO
+        return ZERO_DUR
     elseif from >= ttFrom(mt.opens)
-        return MarketDur(ZERO, ZERO, roundur(ttTo(mt.opens) - from), ZERO)
+        return MarketDur(ZERO_SECOND, ZERO_SECOND, roundur(ttTo(mt.opens) - from), ZERO_SECOND)
     else
+        closed = roundur((ttFrom(mt.opens) - max(ttTo(mt.pres), from)) + (max(ttFrom(mt.pres), from) - from))
+        pre = roundur(ttTo(mt.pres) - max(ttFrom(mt.pres), from))
         open = ttTo(mt.opens) - ttFrom(mt.opens)
-        closed = roundur((ttFrom(mt.opens) - max(preEnd, from)) + (max(preBegin, from) - from))
-        pre = roundur(preEnd - max(preBegin, from))
-        return MarketDur(closed, pre, open, ZERO)
+        return MarketDur(closed, pre, open, ZERO_SECOND)
     end
 end
 
 #region Local
 const ROUNDUR = Second
-roundur(period::Period)::Second = round(period, ROUNDUR)
+roundur(period::Union{Period,Dates.CompoundPeriod})::Second = round(period, ROUNDUR)
+Base.round(p::Dates.CompoundPeriod, ::Type{P}) where P<:Period = round(convert(Nanosecond, p), P)
 #endregion
 
 end

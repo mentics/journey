@@ -1,22 +1,44 @@
 module CalendarsTest
 using Test, Dates
-using Calendars
+using MarketDurTypes
+using DateUtil, MarketDurUtil
+using Calendars, Expirations
+
+const cal = Calendars
 
 function runTests()
     @testset "calcDurToExpr" begin
-        dateExpr = Date("2022-06-01")
-        time1 = Time(02,00)
-        time2 = Time(09,28)
-        time3 = Time(12,32)
-        time4 = Time(12,00)
-        time5 = Time(23,50)
-        closed::Second
-        pre::Second
-        open::Second
-        post::Second
+        dateTo = findWeekOpen(expirs())
+        markTime = cal.marketTime(dateTo)
 
-        @test calcDurToExpr(DateTime(dateExpr, time1), dateExpr) == MarketDur(Hour(16), Hour(4), Hour(6), Hour(4))
-        println()
+        dur1 = Hour(2)
+        time1 = toTimeMarket(getMarketClose(dateTo)) - dur1
+        ts1 = fromMarketTZ(dateTo, time1)
+        ts0 = fromMarketTZ(dateTo, time1)
+
+        expDur1 = MarketDur(; open=dur1)
+        expDayToClose = calcDurToClose(ZERO_TIME, markTime)
+        expDayFull = cal.marketDur(dateTo)
+        expWeekend = DUR_CLOSED
+
+        @test cal.calcDurToExpr(ts0, dateTo) == expDayToClose
+
+        @test cal.calcDurToExpr(ts1, dateTo) == calcDurToClose(time1, markTime)
+        @test cal.calcDurToExpr(ts1, dateTo) == expDur1
+
+        @test cal.calcDurToExpr(ts1 - Day(3), dateExpr) == expDur1 + expDayToClose + multDur(expDayFull, 3)
+        @test cal.calcDurToExpr(ts1 - Day(8), dateExpr) == expDur1 + expDayToClose + multDur(expDayFull, 5) + multDur(expWeekend, 2)
+    end
+end
+
+multDur(dur::MarketDur, k::Real)::MarketDur = MarketDur(k * dur.closed, k * dur.pre, k * dur.open, k * dur.post)
+
+function findWeekOpen(exps::Vector{Date})::Date
+    for exp in exps
+        isopen = isnothing(findfirst(1:4) do i
+            !marketTime(exp - Day(i)).isOpen
+        end)
+        isopen && return exp
     end
 end
 

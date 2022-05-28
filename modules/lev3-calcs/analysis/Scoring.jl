@@ -35,16 +35,17 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, 
         return score(factor, metsBoth)
     end
 
+    metsBoth[1].mn > MAX_LOSS || return countNo(:maxLossAbs)
+
     # bufCombi[1] > 0.14 || return countNo(:sides)
     # bufCombi[end] > 0.14 || return countNo(:sides)
     # bufBoth[1] > 0.04 || return countNo(:sides)
     # bufBoth[end] > 0.04 || return countNo(:sides)
-    metsBoth[1].mn > MAX_LOSS || return countNo(:maxLossAbs)
     # metsBoth[1].mn > -1.5 || return countNo(:maxLossAbs)
     # metb.loss > -.3 || return countNo(:maxLossAbs)
     # return metsBoth[1].prob
     # spread = .02
-    # req(bufBoth, Bins.nearest(1.0 - spread), Bins.nearest(1.0 + spread), 0.14) || return countNo(:sides)
+    # req(bufBoth, Bins.nearest(1.0 - spread), Bins.nearest(1.0 + spread), 0.) || return countNo(:sides)
     # req(bufCombi, Bins.nearest(1.0 - spread), Bins.nearest(1.0 + spread), 0.32) || return countNo(:sides)
     # minimum(bufCombi) > MAX_LOSS || return countNo(:maxLossAbs)
     # return score(factor, metsBoth)
@@ -56,7 +57,7 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, 
 
     if isNew
         # req(bufBoth, Bins.nearest(.96), Bins.nearest(1.04), .1) || return countNo(:sides)
-        (bufBoth[1] >= .14 && bufBoth[end] >= .14) || return countNo(:sides)
+        # (bufBoth[1] >= .14 && bufBoth[end] >= .14) || return countNo(:sides)
         # bufBoth[end] >= bufBoth[1] || return countNo(:sides)
         # metb.ev > 0.0 || metb2.ev > 0.0 || return countNo(:ev)
         # (metb.ev + metb2.ev) > 0.04 || return countNo(:ev) # || (factor = upFactor(factor, .8, "sumev", show))

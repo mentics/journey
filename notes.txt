@@ -2,6 +2,10 @@ lms0 = arl(0) ; lms1 = arl(1) ; lms2 = vcat(lms0, lms1)
 aa(2; lmsPos=lms2)
 But the TO metrics of the prev isn't equaling the FROM in the next?
 
+count notes separate from weekends in marketdur/timing
+
+we should assert that opens.end is always == posts.begin so if it isn't sometime we can fix our code
+
 Increase frequency of schedstrat after optimizing finding good candidates
 
 Maybe need to deliberately wait for price move or time before recommending because we're getting things that sort of cancel each other out, though... maybe we need that to get little improvements?
