@@ -4,7 +4,7 @@ using BaseTypes
 
 export loadJson, writeJson
 export readLastLines
-export writeStr, writeCsv, appendCsv
+export writeStr, writeCsv, appendCsv, readCsv
 
 #region Json
 function (loadJson(path::AStr, typ::Type{T}=Dict)::T) where T
@@ -36,6 +36,12 @@ function appendCsv(path::AStr, data::Vector{<:Dict}; keys=keys(data[1]))
         writedlm(io, mat, ',')
     end
     nothing
+end
+function writeCsv(path::AStr, data::Vector{NamedTuple})
+    writedlm(path, data, ',')
+end
+function readCsv(path::AStr)
+    readdlm(path, ',')
 end
 
 function readLastLines(path::AStr, n::Int=1, maxLineLength::Int=1000)::String

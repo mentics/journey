@@ -1,12 +1,13 @@
 module TradierData
 using Dates
+using BaseTypes
 using DictUtil, CollUtil, DateUtil
 using TradierConfig, TradierBase
 
 export tradierQuote, tradierOptionChain, tradierHistQuotes, tradierExpirations, tradierCalendar, tradierClock
 
-tradierQuote()::TradierResp =
-    tradierGet("/markets/quotes?symbols=$(getDefaultSymbol())&greeks=false", Call(nameof(var"#self#")))["quotes"]["quote"]
+tradierQuote(sym::AStr=getDefaultSymbol())::TradierResp =
+    tradierGet("/markets/quotes?symbols=$(sym)&greeks=false", Call(nameof(var"#self#")))["quotes"]["quote"]
 
 tradierOptionChain(exp::Date)::TradierRespVec = begin
         raw = tradierGet("/markets/options/chains?symbol=$(getDefaultSymbol())&expiration=$(Dates.format(exp, TRADIER_DATE_FORMAT))&greeks=true", Call(nameof(var"#self#"), exp))
@@ -31,13 +32,13 @@ end
     #     error("stop")
     # )
 
-function tradierHistQuotes(interval, dStart=nothing, dEnd=nothing)::TradierRespVec
+function tradierHistQuotes(interval, dStart=nothing, dEnd=nothing, sym::AStr=getDefaultSymbol())::TradierRespVec
     if isnothing(dStart)
-        raw = tradierGet("/markets/history?symbol=$(getDefaultSymbol())&interval=$(interval)", Call(nameof(var"#self#"), interval))
+        raw = tradierGet("/markets/history?symbol=$(sym)&interval=$(interval)", Call(nameof(var"#self#"), interval))
     else
         strStart = Dates.format(dStart, TRADIER_DATE_FORMAT)
         strEnd = Dates.format(dEnd, TRADIER_DATE_FORMAT)
-        path = "/markets/history?symbol=$(getDefaultSymbol())&interval=$(interval)&start=$(strStart)&end=$(strEnd)"
+        path = "/markets/history?symbol=$(sym)&interval=$(interval)&start=$(strStart)&end=$(strEnd)"
         raw = tradierGet(path, Call(nameof(var"#self#"), interval))
     end
     return ensureVector(getLastDict(raw, "history", "day"))

@@ -32,6 +32,42 @@ function run()
     end
 end
 
+function toPricing(data)::Vector{NamedTuple}
+    res = similar(data, NamedTuple)
+    for i in 1:length(data)
+        # ts, oq1, absTex, strikeDist, insic=getExtrinsic(oq1, curp), mid, netLo, netSho, strikeDiff
+        o = data[i]
+        res[i] = (; ts=o.ts, curp=o.curp, toTuple(o.oq1)...)
+    end
+    return res
+end
+
+using FileUtil
+function writeCsvPricing()
+    @assert length(AllCalls) > 100
+    basePath = "C:/data/tmp/pricing"
+    writeCsv(joinpath(basePath, "calls.csv"), toPricing(AllCalls))
+    writeCsv(joinpath(basePath, "puts.csv"), toPricing(AllPuts))
+end
+
+using ChainTypes, OptionTypes, QuoteTypes, OptionMetaTypes
+toTuple(oq::OptionQuote) = (;
+    toTuple(oq.option)...,
+    toTuple(oq.quot)...,
+    toTuple(oq.meta)...
+)
+toTuple(opt::Option) = (;
+    style=opt.style,
+    expiration=opt.expiration,
+    strike=opt.strike
+)
+toTuple(q::Quote) = (;
+    action=q.action,
+    bid=q.bid,
+    ask=q.ask
+)
+toTuple(om::OptionMeta) = (; iv=om.iv)
+
 using DrawUtil
 function drawStrikeDist(expr::Date, inter, style::Style.T=Style.call)
     nts = dict(style)[expr]
@@ -89,7 +125,7 @@ function procExpr(ts::DateTime, curp::Currency, absTex::Period, oqs::Vector{Opti
         strikeDist = getStrike(oq1) - curp
         mid = (s1 + s2)/2
         push!(res, (;
-            ts, oq1, absTex, strikeDist, insic=getExtrinsic(oq1, curp), mid, netLo, netSho, strikeDiff
+            ts, curp, oq1, absTex, strikeDist, insic=getExtrinsic(oq1, curp), mid, netLo, netSho, strikeDiff
         ))
     end
 end

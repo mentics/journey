@@ -51,7 +51,7 @@ ensureCal(dt::Dates.AbstractDateTime...)::Nothing = ensureCal(Date.(dt)...)
 function ensureCal(dt::Date...)::Nothing
     from, to = extrema(dt)
     Info[].ts > DateTime(0) || ( updateCalendar(;from, to) ; return )
-    mn, mx = extrema(keys(Info[].cal))
+    mn, mx = extrema(keys(Info[].markTime))
     from = min(from, mn)
     to = max(to, mx)
     (mn === from && mx === to) || updateCalendar(;from, to)
@@ -62,16 +62,14 @@ marketDur(d::Date)::MarketDur = Info[].markDur[d]
 
 function calcDurToExpr(tsFrom::DateTime, dateTo::Date)::MarketDur
     dateFrom = toDateMarket(tsFrom)
-    durExp = calcDurToClose(toTimeMarket(tsFrom), marketTime(dateTo))
     if dateFrom == dateTo
-        println("dates are same $(toTimeMarket(tsFrom)) ", durExp)
-        return durExp
+        return calcDurToClose(toTimeMarket(tsFrom), marketTime(dateTo))
     else
         dur = calcDurForDay(tsFrom, marketTime(dateFrom))
         for date in (dateFrom + Day(1)):Day(1):(dateTo - Day(1))
             dur += marketDur(date)
         end
-        dur += durExp
+        dur += calcDurToClose(ZERO_TIME, marketTime(dateTo))
         return dur
     end
 end

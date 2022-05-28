@@ -1,10 +1,12 @@
 module OptionUtil
-using SH, BaseTypes, SmallTypes, ChainTypes
+using SH, BaseTypes, SmallTypes, ChainTypes, QuoteTypes
 
-export netLong, netShort, getExtrinsic
+export getMid, netLong, netShort, getExtrinsic
 
 netLong(oq1::OptionQuote, oq2::OptionQuote) = -max(0.01, getAsk(oq1)) + max(0., getBid(oq2))
 netShort(oq1::OptionQuote, oq2::OptionQuote) = max(0., getBid(oq1)) - max(0.01, getAsk(oq2))
+
+getMid(q::Quote) = max(0., (q.bid + q.ask)/2)
 
 function getExtrinsic(oq::OptionQuote, curp::Currency)::Tuple{Currency,Currency,Currency}
     bid = getBid(oq)

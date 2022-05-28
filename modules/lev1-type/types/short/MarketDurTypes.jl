@@ -3,8 +3,9 @@ using Dates
 using DateUtil
 
 export MarketDur, MarketTime, ttTo, ttFrom
-export ZERO_DUR
+export ZERO_DUR, DUR_CLOSED
 
+# TODO: change TwoTime to Interval
 struct MarketTime
     isOpen::Bool
     pres::TwoTime
