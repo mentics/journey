@@ -1,4 +1,5 @@
 [deps]
+BlackBoxOptim = "a134a8b2-14d6-55f6-9291-3336d3ab0209"
 BusinessDays = "4f18b42c-503e-5345-9536-bb0f25fc7038"
 Crayons = "a8cc5b0e-0ffa-5ad4-8c14-923d3ee1735f"
 DBInterface = "a10d1c49-ce27-4219-8d33-6db1a4562965"
