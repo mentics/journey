@@ -84,14 +84,11 @@ function drawPartials(n)
 end
 
 function drawStrice(filt=(x->true))
-    # return [row.curp, strikeDist, row.vixOpen, tex.closed.value, tex.pre.value, tex.open.value, tex.post.value, strike, strikeRat]
-    data, extrin = makeDataExtr(AllCalls) do x
-        getStrike(x.oq) < x.curp && filt(x)
-    end
+    data, extrin = filter(filt, runData())
     pts = collect(zip([r[2] for r in data], extrin))
-    scatter(pts)
-
-    scatter!(pts)
+    display(scatter(pts))
+    modelPts = [(data[i][2], modelCallsItm(data[i], PandaInit[])) for i in eachindex(data)]
+    display(scatter!(modelPts))
 end
 
 function drawRes(panda=best_candidate(BboptimRes))
@@ -108,14 +105,17 @@ function run(;range=1:1000)
     prep()
 
     global CallsItm = makeDataExtr(x -> getStrike(x.oq) < x.curp, AllCalls)
-    data, extrin = (CallsItm[1][RunRange[]], CallsItm[2][RunRange[]])
+    data, extrin = runData()
     # println(length(data), ' ', length(extrin))
     global BboptimRes = bboptimize(modelOptim(data, extrin), PandaInit[]; SearchRange=searchRange(), MaxTime=10) #, NThreads=(Threads.nthreads()-1))
     PandaInit[] = best_candidate(BboptimRes)
-    drawModelStrike()
+    # drawModelStrike()
+    drawStrice()
     # xs = reduce(hcat, DataCalls)'
     # global ModelCalls = curve_fit(modelAll, xs, PriceCalls, fill(0.1, 9); lower=fill(-Inf, 9), upper=fill(Inf, 9))
 end
+
+runData() = (CallsItm[1][RunRange[]], CallsItm[2][RunRange[]])
 
 function modelOptim(data, prices)
     function(p)
@@ -235,13 +235,16 @@ end
 badSnaps() = [ DateTime("2022-04-11T13:38:00"), DateTime("2022-05-18T13:30:00") ]
 
 # TODO: add curp - open and open - closePrev to capture the intraday vty
-
+# 2022-05-27T19:58:00,414.995,call,2022-06-06,156.000,open,258.810,259.210,2.27574937513399
 function fromRow(row)::Union{Nothing,NamedTuple}
     ts = DateTime(row[1])
+    curp = row[2]
+
     isWithinOpen(ts) || return nothing
     !(ts in badSnaps()) || return nothing
     toTimeMarket(ts) != Time(9,30) || return nothing
-    curp = row[2]
+    abs(row[5] - curp) < 100 || return nothing
+
     oq = OptionQuote(Option(to(Style.T, row[3]), Date(row[4]), C(row[5])), Quote(to(Action.T, row[6]), C(row[7]), C(row[8])), OptionMeta(row[9]))
     vixOpen = getVixOpen(toDateMarket(ts))
     return (;ts, curp, vixOpen, oq)
