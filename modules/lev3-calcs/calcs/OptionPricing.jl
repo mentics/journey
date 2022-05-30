@@ -15,8 +15,31 @@ ModelPuts = nothing
 BboptimRes = nothing
 CallsItm = nothing
 
+function model1(xs, p)
+    # @info "model1" xs p
+    return @. p[1] / (p[2] * (xs - p[3]))
+end
+
+function model2(xs, p)
+    return @. p[1] / (p[2] * (xs - p[3])) + p[4] / (p[5] * (xs - p[6])) + p[7] / (p[8] * (xs - p[9])^2)
+end
+
+fit1(xys) = p -> sum((model2(xys[:,1], p) .- xys[:,2]).^2)
+
+function test()
+    data = [-100000. .0; -300. 1.; -100. 3.; -50 8.; .0 20.]
+    # println("test1: ", model1(data, [1., 2., 3.]))
+    # println("test2: ", fit1(data)([1., 2., 3.]))
+    SearchRange = fill((-100., 100.), 9)
+    res = bboptimize(fit1(data); SearchRange, MaxTime=2)
+    bc = best_candidate(res)
+    println("result: ", model1(data, bc))
+    return (bc, res)
+end
+
 logistic(x, x0, mx, k) = mx / (1.0 + ℯ^(-k * (x - x0)))
 logisticF(x0, mx, k) = x -> mx / (1.0 + ℯ^(-k * (x - x0)))
+other(x, a, b, c) = a / (b * (x - c))
 
 function findbad()
     filter(AllCalls) do r
@@ -41,7 +64,8 @@ function findbad3()
 end
 
 function resids(panda=best_candidate(BboptimRes))
-    [(modelCallsItm(CallsItm[1][i], panda) - CallsItm[2][i])^2 for i in 1:length(CallsItm[1])]
+    [(CallsItm[1][i][2], modelCallsItm(CallsItm[1][i], panda), CallsItm[2][i], (modelCallsItm(CallsItm[1][i], panda) - CallsItm[2][i])^2) for i in RunRange[]]
+    # [modelOptim(CallsItm[1][i], CallsItm[2][i])(panda) for i in 1:length(CallsItm[1])]
 end
 
 function prep()
@@ -53,48 +77,44 @@ using GLMakie
 function drawPartials(n)
     # return [row.curp, strikeDist, row.vixOpen, tex.closed.value, tex.pre.value, tex.open.value, tex.post.value, strike, strikeRat]
     data, price = makeData(AllCalls) do x
-        getStrike(x.oq) < x.curp && x.ts != DateTime("2022-04-11T13:38:00")
+        getStrike(x.oq) < x.curp
     end
     pts = collect(zip([r[n] for r in data], price))
     scatter(pts)
 end
 
-function strice()
-    # return [row.curp, strikeDist, row.vixOpen, tex.closed.value, tex.pre.value, tex.open.value, tex.post.value, strike, strikeRat]
-    data, extrin = makeDataExtr(AllCalls) do x
-        getStrike(x.oq) < x.curp && x.ts != DateTime("2022-04-11T13:38:00")
-    end
-    pts = collect(zip([r[2] for r in data], extrin))
-    scatter(pts)
-end
-
-function strice(filt)
+function drawStrice(filt=(x->true))
     # return [row.curp, strikeDist, row.vixOpen, tex.closed.value, tex.pre.value, tex.open.value, tex.post.value, strike, strikeRat]
     data, extrin = makeDataExtr(AllCalls) do x
         getStrike(x.oq) < x.curp && filt(x)
     end
     pts = collect(zip([r[2] for r in data], extrin))
     scatter(pts)
+
+    scatter!(pts)
 end
 
 function drawRes(panda=best_candidate(BboptimRes))
-    scatter([(x[2], modelCallsItm(x, panda)) for x in CallsItm[1]])
+    scatter([(x[2], modelCallsItm(x, panda)) for x in CallsItm[1][RunRange[]]])
 end
 
-function run()
+const RunRange = Ref{UnitRange{Int64}}(1:1000)
+const PandaInit = Ref{Vector{Float64}}(Vector{Float64}())
+function run(;range=1:1000)
+    global RunRange[] = range
+    if isempty(PandaInit[])
+        PandaInit[] = initDefault() # [0.0160376, 0.0686671, 0.124022, 0.627685, 0.0402868, 0.939992, 0.99831, 86.3807, -88.1671, 0.191875, -66.161, 91.5975, -10.0204, 46.8196, -10.0945, -10.281, 88.2485, -66.8913, 57.3583, -34.4107, 0.973417, 76.4187, -0.383973, 76.1867, -99.7596, 75.5632, -41.3579, 45.3754, 59.4767, -52.3964, 64.0692, 77.6899, -8.29805, -21.0307, 38.899, -0.00562926, 50.718, -64.0306, 0.428358, -24.6193, 95.8691, -7.86242, 0.886855, 72.2335, -99.0591, -31.9659]
+    end
     prep()
-    # length(DataCalls) > 1000 || prepData()
 
-    # return (;ts, curp, vixOpen, oq)
     global CallsItm = makeDataExtr(x -> getStrike(x.oq) < x.curp, AllCalls)
-    data, extrin = CallsItm
-    println(length(data), ' ', length(extrin))
-    # compare_optimizers(modelOptim(data, price); SearchRange, MaxTime=10)
-    global BboptimRes = bboptimize(modelOptim(data, extrin); SearchRange) #, MaxTime=10) #, NThreads=(Threads.nthreads()-1))
-
+    data, extrin = (CallsItm[1][RunRange[]], CallsItm[2][RunRange[]])
+    # println(length(data), ' ', length(extrin))
+    global BboptimRes = bboptimize(modelOptim(data, extrin), PandaInit[]; SearchRange=searchRange(), MaxTime=10) #, NThreads=(Threads.nthreads()-1))
+    PandaInit[] = best_candidate(BboptimRes)
+    drawModelStrike()
     # xs = reduce(hcat, DataCalls)'
     # global ModelCalls = curve_fit(modelAll, xs, PriceCalls, fill(0.1, 9); lower=fill(-Inf, 9), upper=fill(Inf, 9))
-    # return ModelCalls
 end
 
 function modelOptim(data, prices)
@@ -103,8 +123,17 @@ function modelOptim(data, prices)
     end
 end
 
-const n = Ref{Int}(1)
-SearchRange = vcat(fill((0.0, 1.0), 7), fill((0.0, 2.0), 13*n[]))
+baseStrike(strikeDist) = [414.995, strikeDist, 27.5, 633300.0, 43200.0, 117120.0, 70500.0, 156.0, 414.995/(414.995+strikeDist)]
+
+function drawModelStrike(p=best_candidate(BboptimRes))
+    scatter([(x, modelCallsItm(baseStrike(x), p)) for x in 0.0:-1.0:-250.0])
+end
+
+termCount() = 3
+termWidth() = 7
+searchRange() = vcat(fill((0.0, 1.0), 7), fill((-200.0, 200.0), termCount() * termWidth()))
+initDefault() = [(x[1] + x[2])/2 for x in searchRange()]
+
 # return [row.curp, strikeDist, row.vixOpen, tex.closed.value, tex.pre.value, tex.open.value, tex.post.value, strike, strikeRat]
 function modelCallsItm(x, p)::Float64
     closed = p[1] * x[4]
@@ -118,108 +147,33 @@ function modelCallsItm(x, p)::Float64
     off = 7
 
     res = 0.0
-    for _ in 1:n[]
-        x0 = p[off] * tex + p[off+1] * vty + p[off+2] * strikeRat
-        off += 3
-        mx = p[off] * tex + p[off+1] * vty + p[off+2] * strikeRat
-        off += 3
-        # TODO: maybe logistic for k
-        k = p[off] * tex + p[off+1] * vty + p[off+2] * strikeRat
-        off += 3
+    for _ in 1:termCount()
+        # x0 = p[off] * tex + p[off+1] * vty + p[off+2] * strikeRat
+        # off += 3
+        # mx = p[off] * tex + p[off+1] * vty + p[off+2] * strikeRat
+        # off += 3
+        # k = p[off] * tex + p[off+1] * vty + p[off+2] * strikeRat
+        # off += 3
+        # x = p[off] * tex + p[off+1] * vty + p[off+2] * strikeRat
+        # off += 3
+
+        # ll = other(x, x0, mx, k)
+        # res += p[off] * ll
+        # # @info "res" res ll off p[off] x x0 mx k
+        # off += 1
+
         x = p[off] * tex + p[off+1] * vty + p[off+2] * strikeRat
         off += 3
 
-        # x0[i] = p[i*w] * px0
-        # mx[i] = p[i*w + 1] * pmx
-        # k[i] = p[i*w + 2] * pk
-        ll = logistic(x, x0, mx, k)
+        ll = other(x, p[off], p[off+1], p[off+2])
+        off += 3
         res += p[off] * ll
         # @info "res" res ll off p[off] x x0 mx k
         off += 1
     end
-    # println("p len = ", off)
     # TODO: add line?
-    return res
+    return res < 0.0 ? 100000*res : res
 end
-
-# SearchRange = vcat(fill((0.0, 1.0), 5), fill((-1.0, 1.0), 240))
-
-# # return [row.curp, strikeDist, row.vixOpen, tex.closed.value, tex.pre.value, tex.open.value, tex.post.value, strike, strikeRat]
-# function modelCallsItm(x, p)::Float64
-#     closed = p[1] * x[4]
-#     pre = p[2] * x[5]
-#     open = p[3] * x[6]
-#     post = p[4] * x[7]
-#     tex = closed + pre + open + post
-#     vty = p[5] * x[3] # vixOpen
-#     strikeRat = x[9]
-#     rrat = sqrt(strikeRat)
-#     lrat = log(strikeRat)
-#     invrat = 1.0 / strikeRat
-
-#     rtex = sqrt(tex)
-#     ltex = log(tex)
-#     invtex = 1.0 / tex
-#     inv2tex = 1.0 / (tex^2)
-
-#     rvty = sqrt(vty)
-#     lvty = log(vty)
-#     invty = 1.0 / vty
-
-#     terms = (
-#         (strikeRat, rrat, lrat, invrat),
-#         (tex, rtex, ltex, invtex, inv2tex),
-#         (rvty, lvty, invty)
-#     )
-
-#     pind = 6
-#     res = 0.0
-#     for i in eachindex(terms[1])
-#         for j in eachindex(terms[2])
-#             for k in eachindex(terms[3])
-#                 res += p[pind] * terms[1][i] * terms[2][j] * terms[3][k] ; pind += 1
-
-#                 res += p[pind] * terms[1][i] * terms[2][j] ; pind += 1
-#                 res += p[pind] * terms[1][i] * terms[3][k] ; pind += 1
-#                 res += p[pind] * terms[2][j] * terms[3][k] ; pind += 1
-#             end
-#         end
-#     end
-
-#     extrinsic = res
-
-#     strikeDist = x[2]
-#     return -strikeDist + extrinsic
-# end
-
-# function modelCallsOtm(x, p)::Float64
-#     curp = p[1] * x[1]
-#     strikeDist = p[2] * x[2]
-#     vty = p[3] * x[3] # vixOpen
-
-#     closed = p[4] * x[4]
-#     pre = p[5] * x[5]
-#     open = p[6] * x[6]
-#     post = p[7] * x[7]
-
-#     # strike = p[8] * x[8]
-#     strikeRat = p[9] * p[9]
-
-#     tex = closed + pre + open + post
-#     rtex = sqrt(tex)
-#     ltex = log(tex)
-
-#     rvty = sqrt(vty)
-#     lvty = log(vty)
-#     invty = 1.0 / vty
-
-#     return extrinsic
-# end
-
-# function makeData(filt, allData)
-#     data = filter(filt, allData)
-#     return (makeX.(data), makePrice.(data))
-# end
 
 function makeDataExtr(filt, allData)
     data = filter(filt, allData)
@@ -286,6 +240,7 @@ function fromRow(row)::Union{Nothing,NamedTuple}
     ts = DateTime(row[1])
     isWithinOpen(ts) || return nothing
     !(ts in badSnaps()) || return nothing
+    toTimeMarket(ts) != Time(9,30) || return nothing
     curp = row[2]
     oq = OptionQuote(Option(to(Style.T, row[3]), Date(row[4]), C(row[5])), Quote(to(Action.T, row[6]), C(row[7]), C(row[8])), OptionMeta(row[9]))
     vixOpen = getVixOpen(toDateMarket(ts))

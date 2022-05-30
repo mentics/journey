@@ -19,7 +19,7 @@ whenBackupOrders(from::DateTime, isMktOpen::Bool, tsMktChange::DateTime) = nextL
 
 whenProcExpired(from::DateTime, isMktOpen::Bool, tsMktChange::DateTime) = nextLocalTime(from, Time(6, 15))
 
-whenSnapshots(from::DateTime, isMktOpen::Bool, tsMktChange::DateTime) = nextMarketPeriod(from, isMktOpen, tsMktChange, Hour(1), Second(73), Second(5))
+whenSnapshots(from::DateTime, isMktOpen::Bool, tsMktChange::DateTime) = nextMarketPeriod(from, isMktOpen, tsMktChange, Hour(1), Second(73), Second(45))
 snaveWrapper() = isMarketOpen() && Snapshots.snave()
 
 whenStrat(from::DateTime, isMktOpen::Bool, tsMktChange::DateTime) = nextMarketPeriod(from, isMktOpen, tsMktChange, Second(600) ÷ max(1, length(SchedStrat.UseExps)), Second(0), Minute(4))
