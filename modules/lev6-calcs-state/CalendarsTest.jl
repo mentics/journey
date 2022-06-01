@@ -9,16 +9,16 @@ const cal = Calendars
 function runTests()
     @testset "calcDurToExpr" begin
         dateTo = findWeekOpen(expirs())
-        markTime = cal.marketTime(dateTo)
+        markTime = cal.getMarketTime(dateTo)
 
         dur1 = Hour(2)
         time1 = toTimeMarket(getMarketClose(dateTo)) - dur1
         ts1 = fromMarketTZ(dateTo, time1)
-        ts0 = fromMarketTZ(dateTo, ZERO_TIME)
+        ts0 = fromMarketTZ(dateTo, TIME_ZERO)
 
         expDurPart = MarketDur(; open=dur1)
         expDurForDay = calcDurForDay(time1, markTime)
-        expDayToClose = calcDurToClose(ZERO_TIME, markTime)
+        expDayToClose = calcDurToClose(TIME_ZERO, markTime)
         expDayFull = cal.marketDur(dateTo)
         expWeekend = DUR_CLOSED
 
@@ -39,7 +39,7 @@ multDur(dur::MarketDur, k::Real)::MarketDur = MarketDur(k * dur.closed, k * dur.
 function findWeekOpen(exps::Vector{Date})::Date
     for exp in exps
         isopen = isnothing(findfirst(1:4) do i
-            !marketTime(exp - Day(i)).isOpen
+            !getMarketTime(exp - Day(i)).isOpen
         end)
         isopen && return exp
     end

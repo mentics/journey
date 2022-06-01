@@ -36,14 +36,14 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, 
     end
 
     metsBoth[1].mn > MAX_LOSS || return countNo(:maxLossAbs)
-
+    # metsBoth[1].prob > .8 || return countNo(:maxLossAbs)
+    # return scoreProb(metsBoth[1].prob, metsBoth[1].mn)
     # bufCombi[1] > 0.14 || return countNo(:sides)
-    # bufCombi[end] > 0.14 || return countNo(:sides)
+    bufCombi[end] > 0.04 || return countNo(:sides)
     # bufBoth[1] > 0.04 || return countNo(:sides)
     # bufBoth[end] > 0.04 || return countNo(:sides)
     # metsBoth[1].mn > -1.5 || return countNo(:maxLossAbs)
     # metb.loss > -.3 || return countNo(:maxLossAbs)
-    # return metsBoth[1].prob
     # spread = .02
     # req(bufBoth, Bins.nearest(1.0 - spread), Bins.nearest(1.0 + spread), 0.) || return countNo(:sides)
     # req(bufCombi, Bins.nearest(1.0 - spread), Bins.nearest(1.0 + spread), 0.32) || return countNo(:sides)
@@ -176,7 +176,7 @@ numLegsBoth(r::Ret) = 4 + r.numLegs
 #         return scoreProb(met.prob, met.mn)
 #     end
 # end
-# scoreProb(p, mn) = p ≈ 1.0 ? p + mn : p
+scoreProb(p, mn) = p ≈ 1.0 ? p + mn : p
 # byMin(b) = extrema(combineTo(Vals, b))[1]
 # byEvC(prob::Prob, numLegs::Int) = (c, b) -> calcMetrics(getVals(prob), combineTo(Vals, c), getCap(numLegs), getAdj(numLegs)).ev
 # byMaxLoss(prob::Prob) =

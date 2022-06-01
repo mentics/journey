@@ -1,5 +1,5 @@
 module DateUtil
-using Dates, BusinessDays, TimeZones
+using Dates, BusinessDays, TimeZones, Intervals
 # TODO: exports are filtered, but unused functions need to be cleaned up
 
 # export numDays
@@ -14,8 +14,8 @@ export isNowWithinMarket
 
 #### new stuff
 
-export ZERO_SECOND, ZERO_TIME, ZERO_DATETIME, ZERO_TWOTIME
-export TwoTime, timeIn
+export SECOND_ZERO, TIME_ZERO, DATETIME_ZERO, INTERTIME_ZERO
+export InterTime, timeIn
 
 export fromMarketTZ, toDateMarket, toTimeMarket
 export fromLocal
@@ -23,19 +23,20 @@ export formatLocal
 export nextLocalTime, nextMarketPeriod
 # export toDateLocal
 # export isAfterLocal
+export isweekend # reexport from BusinessDays
 
 #region Basic
-const ZERO_SECOND = Second(0)
-const DAY_SECOND = Second(Day(1))
-const ZERO_TIME = Time(0)
-const ZERO_DATETIME = DateTime(0)
+const SECOND_ZERO = Second(0)
+const SECOND_DAY = Second(Day(1))
+const TIME_ZERO = Time(0)
+const DATETIME_ZERO = DateTime(0)
 
-const TwoTime = Pair{Time,Time}
-const ZERO_TWOTIME = Pair(ZERO_TIME, ZERO_TIME)
+const InterTime = Interval{Time,Closed,Closed}
+const INTERTIME_ZERO = Interval(TIME_ZERO, TIME_ZERO)
 
 # TODO: maybe could simplify with Intervals
-timeIn(timeFrom::Time, in::TwoTime)::Second = round(max(in[2], timeFrom) - max(in[1], timeFrom), Second)
-timeIn(timeFrom::Time, mn::Time)::Second = DAY_SECOND - round(max(mn, timeFrom).instant, Second)
+timeIn(timeFrom::Time, in::InterTime)::Second = round(max(last(in), timeFrom) - max(first(in), timeFrom), Second)
+timeIn(timeFrom::Time, mn::Time)::Second = SECOND_DAY - round(max(mn, timeFrom).instant, Second)
 #endregion
 
 #region Conversions

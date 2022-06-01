@@ -3,15 +3,15 @@ using Dates
 using Globals, DateUtil, LogUtil, ThreadUtil, MarketDurUtil
 using TradierData
 
-export isMarketOpen, nextMarketChange, getMarketOpen, getMarketClose, marketTime
+export isMarketOpen, nextMarketChange, getMarketOpen, getMarketClose, getMarketTime
 
 isMarketOpen() = ( check() ; Info[].isOpen )
 # TODO: change name to mktChangeNext
 nextMarketChange() = ( check() ; Info[].nextChange )
-getMarketOpen(d::Date) = fromMarketTZ(d, ttFrom(marketTime(d).opens))
-getMarketClose(d::Date) = fromMarketTZ(d, ttTo(marketTime(d).opens))
+getMarketOpen(d::Date) = fromMarketTZ(d, first(getMarketTime(d).opens))
+getMarketClose(d::Date) = fromMarketTZ(d, last(getMarketTime(d).opens))
 # DateTime(astimezone(ZonedDateTime(DateTime("$(d)T$(cal[d]["open"]["end"])"), tz"America/New_York"), tz"UTC"))
-marketTime(d::Date)::MarketTime = Info[].markTime[d]
+getMarketTime(d::Date)::MarketTime = Info[].markTime[d]
 
 #region Local
 struct CalInfo
@@ -22,7 +22,7 @@ struct CalInfo
     ts::DateTime
 end
 
-const Info = Ref{CalInfo}(CalInfo(false, ZERO_DATETIME, Dict(), Dict(), ZERO_DATETIME))
+const Info = Ref{CalInfo}(CalInfo(false, DATETIME_ZERO, Dict(), Dict(), DATETIME_ZERO))
 const Lock = ReentrantLock()
 
 function __init__()
@@ -63,13 +63,13 @@ marketDur(d::Date)::MarketDur = Info[].markDur[d]
 function calcDurToExpr(tsFrom::DateTime, dateTo::Date)::MarketDur
     dateFrom = toDateMarket(tsFrom)
     if dateFrom == dateTo
-        return calcDurToClose(toTimeMarket(tsFrom), marketTime(dateTo))
+        return calcDurToClose(toTimeMarket(tsFrom), getMarketTime(dateTo))
     else
-        dur = calcDurForDay(tsFrom, marketTime(dateFrom))
+        dur = calcDurForDay(tsFrom, getMarketTime(dateFrom))
         for date in (dateFrom + Day(1)):Day(1):(dateTo - Day(1))
             dur += marketDur(date)
         end
-        dur += calcDurToClose(ZERO_TIME, marketTime(dateTo))
+        dur += calcDurToClose(TIME_ZERO, getMarketTime(dateTo))
         return dur
     end
 end

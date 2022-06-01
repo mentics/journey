@@ -1,25 +1,37 @@
 module MarketDurUtilTest
-using Test, Dates
-using MarketDurUtil, DateUtil
+using Test, Dates, Intervals
+using MarketDurTypes, MarketDurUtil, DateUtil
 
 function runTests()
-    markTime = MarketTime(true, Time(7) => Time(9, 24), Time(9, 30) => Time(16), Time(16) => Time(19, 55))
+    markTime = MarketTime(Time(7)..Time(9, 24), Time(9, 30)..Time(16), Time(16)..Time(19, 55))
     markDur = MarketDur(markTime)
     durInClose1 = Second(9432)
     timeInClose1 = Time(Nanosecond(durInClose1))
     durInPre = Minute(61)
-    timeInPre = ttFrom(markTime.pres) + durInPre
+    timeInPre = first(markTime.pres) + durInPre
     durInOpen = Second(607)
-    timeInOpen = ttFrom(markTime.opens) + durInOpen
+    timeInOpen = first(markTime.opens) + durInOpen
     durInPost = Millisecond(57*60*1000 + 23)
-    timeInPost = ttFrom(markTime.posts) + durInPost
+    timeInPost = first(markTime.posts) + durInPost
     durInClose3 = Hour(1) + Minute(3) + Nanosecond(3223)
-    timeInClose3 = ttTo(markTime.posts) + durInClose3
+    timeInClose3 = last(markTime.posts) + durInClose3
 
-    durClosed1 = Time(7) - ZERO_TIME
-    durClosed2 = ttFrom(markTime.opens) - ttTo(markTime.pres)
+    durClosed1 = Time(7) - TIME_ZERO
+    durClosed2 = first(markTime.opens) - last(markTime.pres)
     durClosed12 = durClosed1 + durClosed2
-    durClosed3 = Day(1) - (ttTo(markTime.posts) - ZERO_TIME)
+    durClosed3 = Day(1) - (last(markTime.posts) - TIME_ZERO)
+
+    @testset "Weekend Holiday" begin
+        wend = today() - Day(dayofweek(today()))
+        dataWend = Dict{String,Any}("date" => string(wend), "status" => "closed")
+        dataHoliday = Dict{String,Any}("date" => string(wend + Day(2)), "status" => "closed")
+        mtWend = MarketTime(dataWend)
+        @test mtWend.status == MarketDurTypes.MTStatus.weekend
+        mtHoliday = MarketTime(dataHoliday)
+        @test mtHoliday.status == MarketDurTypes.MTStatus.holiday
+        @test MarketDur(mtWend) == DUR_WEND
+        @test MarketDur(mtHoliday) == DUR_HOLIDAY
+    end
 
     @testset "MarketDur" begin
         @test markDur.pre == Time(9,24) - Time(7)
@@ -29,21 +41,21 @@ function runTests()
     end
 
     @testset "calcDurForDay" begin
-        @test calcDurForDay(ZERO_TIME, markTime) == markDur
+        @test calcDurForDay(TIME_ZERO, markTime) == markDur
         @test calcDurForDay(timeInClose1, markTime) == MarketDur(markDur; closed = markDur.closed - durInClose1)
         @test calcDurForDay(timeInPre, markTime) == MarketDur(markDur; closed = markDur.closed - durClosed1, pre = markDur.pre - durInPre)
-        @test calcDurForDay(timeInOpen, markTime) == MarketDur(markDur; closed = markDur.closed - durClosed12, pre = ZERO_SECOND, open = markDur.open - durInOpen)
-        @test calcDurForDay(timeInPost, markTime) == MarketDur(durClosed3, ZERO_SECOND, ZERO_SECOND, markDur.post - MarketDurUtil.roundur(durInPost))
-        @test calcDurForDay(timeInClose3, markTime) == MarketDur(MarketDurUtil.roundur(durClosed3 - durInClose3), ZERO_SECOND, ZERO_SECOND, ZERO_SECOND)
+        @test calcDurForDay(timeInOpen, markTime) == MarketDur(markDur; closed = markDur.closed - durClosed12, pre = SECOND_ZERO, open = markDur.open - durInOpen)
+        @test calcDurForDay(timeInPost, markTime) == MarketDur(durClosed3, SECOND_ZERO, SECOND_ZERO, markDur.post - MarketDurUtil.roundur(durInPost))
+        @test calcDurForDay(timeInClose3, markTime) == MarketDur(MarketDurUtil.roundur(durClosed3 - durInClose3), SECOND_ZERO, SECOND_ZERO, SECOND_ZERO)
     end
 
     @testset "calcDurToClose" begin
-        @test calcDurToClose(ZERO_TIME, markTime) == MarketDur(durClosed12, markDur.pre, markDur.open, ZERO_SECOND)
-        @test calcDurToClose(timeInClose1, markTime) == MarketDur(durClosed12 - durInClose1, markDur.pre, markDur.open, ZERO_SECOND)
-        @test calcDurToClose(timeInPre, markTime) == MarketDur(durClosed2, markDur.pre - durInPre, markDur.open, ZERO_SECOND)
-        @test calcDurToClose(timeInOpen, markTime) == MarketDur(ZERO_SECOND, ZERO_SECOND, markDur.open - durInOpen, ZERO_SECOND)
-        @test calcDurToClose(timeInPost, markTime) == ZERO_DUR
-        @test calcDurToClose(timeInClose3, markTime) == ZERO_DUR
+        @test calcDurToClose(TIME_ZERO, markTime) == MarketDur(durClosed12, markDur.pre, markDur.open, SECOND_ZERO)
+        @test calcDurToClose(timeInClose1, markTime) == MarketDur(durClosed12 - durInClose1, markDur.pre, markDur.open, SECOND_ZERO)
+        @test calcDurToClose(timeInPre, markTime) == MarketDur(durClosed2, markDur.pre - durInPre, markDur.open, SECOND_ZERO)
+        @test calcDurToClose(timeInOpen, markTime) == MarketDur(SECOND_ZERO, SECOND_ZERO, markDur.open - durInOpen, SECOND_ZERO)
+        @test calcDurToClose(timeInPost, markTime) == DUR_ZERO
+        @test calcDurToClose(timeInClose3, markTime) == DUR_ZERO
     end
 end
 
