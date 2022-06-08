@@ -9,8 +9,8 @@ export tradierQuote, tradierOptionChain, tradierHistQuotes, tradierExpirations, 
 tradierQuote(sym::AStr=getDefaultSymbol())::TradierResp =
     tradierGet("/markets/quotes?symbols=$(sym)&greeks=false", Call(nameof(var"#self#")))["quotes"]["quote"]
 
-tradierOptionChain(exp::Date)::TradierRespVec = begin
-        raw = tradierGet("/markets/options/chains?symbol=$(getDefaultSymbol())&expiration=$(Dates.format(exp, TRADIER_DATE_FORMAT))&greeks=true", Call(nameof(var"#self#"), exp))
+tradierOptionChain(exp::Date, sym::String=getDefaultSymbol())::TradierRespVec = begin
+        raw = tradierGet("/markets/options/chains?symbol=$(sym)&expiration=$(Dates.format(exp, TRADIER_DATE_FORMAT))&greeks=true", Call(nameof(var"#self#"), exp))
         if isnothing(raw)
             println("nothing: ", exp)
             error("stop")
@@ -44,8 +44,8 @@ function tradierHistQuotes(interval, dStart=nothing, dEnd=nothing, sym::AStr=get
     return ensureVector(getLastDict(raw, "history", "day"))
 end
 
-function tradierExpirations()
-    raw = tradierGet("/markets/options/expirations?symbol=$(getDefaultSymbol())&includeAllRoots=true&strikes=true", Call(nameof(var"#self#")))
+function tradierExpirations(sym::String=getDefaultSymbol())
+    raw = tradierGet("/markets/options/expirations?symbol=$(sym)&includeAllRoots=true&strikes=true", Call(nameof(var"#self#")))
     return sort(map(s -> Date(s["date"], TRADIER_DATE_FORMAT), raw["expirations"]["expiration"]))
 end
 

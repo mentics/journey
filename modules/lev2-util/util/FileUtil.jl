@@ -37,7 +37,7 @@ function appendCsv(path::AStr, data::Vector{<:Dict}; keys=keys(data[1]))
     end
     nothing
 end
-function writeCsv(path::AStr, data::Vector{NamedTuple})
+function writeCsv(path::AStr, data::Union{Vector{Tuple},Vector{NamedTuple}})
     writedlm(path, data, ',')
 end
 function readCsv(path::AStr)

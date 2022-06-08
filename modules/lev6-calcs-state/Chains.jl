@@ -50,7 +50,8 @@ end
 
 # TODO: what's the right way to aggregate?
 calcNearIv(dt::Date, chs=chains())::Float64 = avg(filter(x -> x != 0.0, getIv.(getMeta.(nearOqs(market().curp, dt, chs)))))
-nearOqs(curp::Currency, d::Date, chs)::Vector{OptionQuote} = filter(x -> abs(getStrike(x) - curp) < 20, chs[d].chain)
+nearOqs(curp::Currency, d::Date, chs, dist::Int=20)::Vector{OptionQuote} = nearOqs(curp, chs[d].chain, dist)
+nearOqs(curp::Currency, oqs, dist::Int=20)::Vector{OptionQuote} = filter(x -> abs(getStrike(x) - curp) <= dist, oqs)
 
 function chainLookup(exp::Date, style::Style.T, strike::Currency)::OptionQuote
     res = find(chains()[exp].chain) do x; getStyle(x) === style && getStrike(x) === strike end

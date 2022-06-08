@@ -45,16 +45,16 @@ hereMetrics(pv, r) = Scoring.calcMetrics(pv, r)
 # invert(v::Vector{Float64}) = normalize!(map(x -> x === 0.0 ? 1.0 : 0.0, v))
 
 function makeProbs(numDays::Int, targetDate::Date, sp::Currency)::Tuple
-    ivsd = calcIvsd(targetDate, 1.)
-    shift = ivsd/2
+    ivsd = calcIvsd(targetDate)
+    # shift = ivsd/2
     pnd = probsNormDist(sp, ivsd)# + .25 * numDays * .05))
     # pndL = probsNormDist(sp, ivsd, -shift)# + .25 * numDays * .05))
     # pndR = probsNormDist(sp, ivsd, shift)# + .25 * numDays * .05))
     # probs = (pnd, pndL, pndR)
-    probs = (pnd,)
-    # phOrig = probHist(sp, round(Int, 1.5 * (3 + numDays)))
+    phOrig = probHist(sp, numDays) # round(Int, 1.5 * (3 + numDays)))
+    ph = Prob(getCenter(phOrig), smooth(getVals(phOrig)))
+    probs = (ph, pnd)
     # pnd = probsNormDist(sp, calcIvsd(targetDate))
-    # ph = Prob(getCenter(phOrig), smooth(getVals(phOrig)))
     # pflat = probFlat(Float64(sp), pnd[1]/2)
     # pflat = probRoof(Float64(sp), pnd[1]/2)
     # pflat = probFlat(getCenter(pnd), pnd.vals[1])

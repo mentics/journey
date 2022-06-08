@@ -8,8 +8,8 @@ export toCode, toOther
 export getIv
 export getOption, getLeg, getMeta, getQuote
 export calcQuote, calcOptQuote
-export getQuantityDir
-export addQuantity
+export getQuantityDir, addQuantity
+export isCall, isPut
 
 export getVals, getVals!, valAt, getCenter, draw, draw!
 
@@ -50,6 +50,9 @@ function calcOptQuote() end
 function getQuantityDir() end
 
 function addQuantity() end
+
+function isCall() end
+function isPut() end
 
 # for Order
 export getId, getSymbol, getClass, getOrderType, getStatus, getPrimitDir, getPrillDir, tsCreated, tsFilled, tsClosed

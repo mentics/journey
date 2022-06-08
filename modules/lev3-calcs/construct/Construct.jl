@@ -1,6 +1,6 @@
 module Construct
 using SH, BaseTypes, SmallTypes, ChainTypes, LegTypes, LegMetaTypes, RetTypes
-using Globals, CollUtil
+using Globals, CollUtil, ConstructUtil
 using Expirations, Chains, Markets
 
 using DrawStrat, DrawStrat
@@ -197,7 +197,7 @@ function flys(expr, oqs::Vector{OptionQuote}, width1::Currency, width2::Currency
             return 0
         end
         !isnothing(oqRight) || continue
-        lms = bfly(oqLeft, oqMid[2], oqRight[2])
+        lms = butterfly(oqLeft, oqMid[2], oqRight[2])
         # TODO: optimize, don't need all vals, just the top line
         vals = getVals(combineTo(Ret, lms, expr, sp, vr))
         if vals[1] > PROFIT_MIN
@@ -210,20 +210,5 @@ function flys(expr, oqs::Vector{OptionQuote}, width1::Currency, width2::Currency
     println("total prof: ", prof)
     return combis
 end
-
-function bfly(oqLeft::OptionQuote, oqMid::OptionQuote, oqRight::OptionQuote, side::Side.T=Side.short)::NTuple{4,LegMeta}
-    otherSide = toOther(side)
-    # TODO: check if exactly the same if use qty 2 for mid
-    lms = (
-        LegMeta(Leg(getOption(oqLeft), 1.0, side), getQuote(oqLeft, side), getMeta(oqLeft)),
-        LegMeta(Leg(getOption(oqMid), 1.0, otherSide), getQuote(oqMid, otherSide), getMeta(oqMid)),
-        LegMeta(Leg(getOption(oqMid), 1.0, otherSide), getQuote(oqMid, otherSide), getMeta(oqMid)),
-        LegMeta(Leg(getOption(oqRight), 1.0, side), getQuote(oqRight, side), getMeta(oqRight))
-    )
-    return lms
-end
-
-export lm
-lm(oq, side) = LegMeta(Leg(getOption(oq), 1.0, side), getQuote(oq, side), getMeta(oq))
 
 end

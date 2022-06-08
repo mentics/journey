@@ -30,30 +30,28 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, 
 
     if isempty(bufCombi)
         # This means we're calcing base score from existing position, so only bufPos will be valid but it's also passed into bufBoth.
-        # return -10000
+        return metsBoth[1].evr
+        return -10000
         show && ( @info "pos scoring" metsBoth )
         return score(factor, metsBoth)
     end
 
+    isNew = isnothing(posRet)
+    metc = isNew ? metsBoth[1] : calcMetrics(ctx.probs[1], bufCombi, 4)
+    metsBoth[1].evr >= metc.evr || return countNo(:ev)
+
     metsBoth[1].mn > MAX_LOSS || return countNo(:maxLossAbs)
-    # metsBoth[1].prob > .8 || return countNo(:maxLossAbs)
-    # return scoreProb(metsBoth[1].prob, metsBoth[1].mn)
-    # bufCombi[1] > 0.14 || return countNo(:sides)
-    bufCombi[end] > 0.04 || return countNo(:sides)
-    # bufBoth[1] > 0.04 || return countNo(:sides)
-    # bufBoth[end] > 0.04 || return countNo(:sides)
-    # metsBoth[1].mn > -1.5 || return countNo(:maxLossAbs)
-    # metb.loss > -.3 || return countNo(:maxLossAbs)
-    # spread = .02
+    metc.mn > -1.0 || return countNo(:maxLossAbs)
+    # bufCombi[1] > 0.07 || return countNo(:sides)
+    # bufCombi[end] > 0.07 || return countNo(:sides)
+    # spread = .01
     # req(bufBoth, Bins.nearest(1.0 - spread), Bins.nearest(1.0 + spread), 0.) || return countNo(:sides)
-    # req(bufCombi, Bins.nearest(1.0 - spread), Bins.nearest(1.0 + spread), 0.32) || return countNo(:sides)
-    # minimum(bufCombi) > MAX_LOSS || return countNo(:maxLossAbs)
+    # req(bufCombi, Bins.nearest(1.0 - spread), Bins.nearest(1.0 + spread), 0.07) || return countNo(:special)
     # return score(factor, metsBoth)
+    return metsBoth[1].evr
 
     # req(ctx.sp, bufCombi, 410, 420, 0.0) || return countNo(:sides)
     # req(bufBoth, Bins.nearest(.95), Bins.nearest(1.05), MAX_LOSS, 80) || return countNo(:sides)
-
-    isNew = isnothing(posRet)
 
     if isNew
         # req(bufBoth, Bins.nearest(.96), Bins.nearest(1.04), .1) || return countNo(:sides)

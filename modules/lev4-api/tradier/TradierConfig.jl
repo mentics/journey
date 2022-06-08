@@ -1,6 +1,7 @@
 module TradierConfig
 using Dates
 using Globals, BaseTypes, CollUtil, DictUtil, FileUtil, LogUtil
+import SnapUtil:SnavePath
 
 export TRADIER_DATE_FORMAT, TRADIER_EMPTY, TradierResp, TradierRespVec
 export setRecording, clearOverride, setOverride
@@ -75,7 +76,6 @@ end
 #endregion
 
 #region Local
-const SnavePath = dirData("snave")
 const cfg = Dict{Symbol,Any}()
 
 function __init__()

@@ -32,6 +32,17 @@ function run()
     end
 end
 
+function toSpreadPricing(data)::Vector{Tuple}
+    res = similar(data, Tuple)
+    for i in 1:length(data)
+        # ts, oq1, oq2, absTex, strikeDist, insic=getExtrinsic(oq1, curp), mid, netLo, netSho, strikeDiff
+        o = data[i]
+        # res[i] = (; ts=o.ts, curp=o.curp, toTuple(o.oq1)..., toTuple(o.oq2)...)
+        res[i] = (o.ts, o.curp, toTuple(o.oq1)..., toTuple(o.oq2)...)
+    end
+    return res
+end
+
 function toPricing(data)::Vector{NamedTuple}
     res = similar(data, NamedTuple)
     for i in 1:length(data)
@@ -48,6 +59,8 @@ function writeCsvPricing()
     basePath = "C:/data/tmp/pricing"
     writeCsv(joinpath(basePath, "calls.csv"), toPricing(AllCalls))
     writeCsv(joinpath(basePath, "puts.csv"), toPricing(AllPuts))
+    writeCsv(joinpath(basePath, "spreads", "spread-calls.csv"), toSpreadPricing(AllCalls))
+    writeCsv(joinpath(basePath, "spreads", "spread-puts.csv"), toSpreadPricing(AllPuts))
 end
 
 using ChainTypes, OptionTypes, QuoteTypes, OptionMetaTypes
@@ -125,7 +138,7 @@ function procExpr(ts::DateTime, curp::Currency, absTex::Period, oqs::Vector{Opti
         strikeDist = getStrike(oq1) - curp
         mid = (s1 + s2)/2
         push!(res, (;
-            ts, curp, oq1, absTex, strikeDist, insic=getExtrinsic(oq1, curp), mid, netLo, netSho, strikeDiff
+            ts, curp, oq1, oq2, absTex, strikeDist, insic=getExtrinsic(oq1, curp), mid, netLo, netSho, strikeDiff
         ))
     end
 end

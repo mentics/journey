@@ -4,6 +4,7 @@ using Globals, DateUtil, LogUtil, ThreadUtil, MarketDurUtil
 using TradierData
 
 export isMarketOpen, nextMarketChange, getMarketOpen, getMarketClose, getMarketTime
+export calcTex, calcDurToExpr
 
 isMarketOpen() = ( check() ; Info[].isOpen )
 # TODO: change name to mktChangeNext
@@ -12,6 +13,33 @@ getMarketOpen(d::Date) = fromMarketTZ(d, first(getMarketTime(d).opens))
 getMarketClose(d::Date) = fromMarketTZ(d, last(getMarketTime(d).opens))
 # DateTime(astimezone(ZonedDateTime(DateTime("$(d)T$(cal[d]["open"]["end"])"), tz"America/New_York"), tz"UTC"))
 getMarketTime(d::Date)::MarketTime = Info[].markTime[d]
+# calcTimeToClose(ts::DateTime, d::Date)::Period = ts - getMarketClose(d)
+
+# in hours
+function calcTex(tsFrom::DateTime, dateTo::Date)::Float64
+    dur = calcDurToExpr(tsFrom, dateTo)
+    closed = Dates.value(dur.closed)
+    pre = Dates.value(dur.pre)
+    open = Dates.value(dur.open)
+    post = Dates.value(dur.post)
+    other = 0.3 * (Dates.value(dur.weekend) + Dates.value(dur.holiday)) # 0.3, and leaving the others at 1 was calculated by SpreadPricing.optTex()
+    tex = (closed + pre + open + post + other)/3600.0
+    return tex
+end
+
+function calcDurToExpr(tsFrom::DateTime, dateTo::Date)::MarketDur
+    dateFrom = toDateMarket(tsFrom)
+    if dateFrom == dateTo
+        return calcDurToClose(toTimeMarket(tsFrom), getMarketTime(dateTo))
+    else
+        dur = calcDurForDay(tsFrom, getMarketTime(dateFrom))
+        for date in (dateFrom + Day(1)):Day(1):(dateTo - Day(1))
+            dur += marketDur(date)
+        end
+        dur += calcDurToClose(TIME_ZERO, getMarketTime(dateTo))
+        return dur
+    end
+end
 
 #region Local
 struct CalInfo
@@ -59,20 +87,6 @@ function ensureCal(dt::Date...)::Nothing
 end
 
 marketDur(d::Date)::MarketDur = Info[].markDur[d]
-
-function calcDurToExpr(tsFrom::DateTime, dateTo::Date)::MarketDur
-    dateFrom = toDateMarket(tsFrom)
-    if dateFrom == dateTo
-        return calcDurToClose(toTimeMarket(tsFrom), getMarketTime(dateTo))
-    else
-        dur = calcDurForDay(tsFrom, getMarketTime(dateFrom))
-        for date in (dateFrom + Day(1)):Day(1):(dateTo - Day(1))
-            dur += marketDur(date)
-        end
-        dur += calcDurToClose(TIME_ZERO, getMarketTime(dateTo))
-        return dur
-    end
-end
 #endregion
 
 end

@@ -100,10 +100,6 @@ function findByParts(nums::Int...)
         end
     end
 end
-
-countSnaps()::Int = length(readdir(TradierConfig.SnavePath))
-earliestSnap()::Date = Date(readdir(TradierConfig.SnavePath; sort=true, join=false)[1], SNAP_DATEFORMAT)
-countChains()::Int = count(x -> occursin("tradierOptionChain", x), readdir(joinpath(TradierConfig.SnavePath, snap()); join=false, sort=false))
 #endregion
 
 end

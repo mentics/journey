@@ -263,6 +263,12 @@ git-tree-sha1 = "3f3a2501fa7236e9b911e0f7a588c657e822bb6d"
 uuid = "5ae413db-bbd1-5e63-b57d-d24a61df00f5"
 version = "2.2.3+0"
 
+[[deps.EnergyStatistics]]
+deps = ["Test"]
+git-tree-sha1 = "3042c19ab94ac167e6308627ca20c1403d05e54f"
+uuid = "631263cc-0f82-11ea-1caf-35c9eae72d11"
+version = "0.2.0"
+
 [[deps.EnumX]]
 git-tree-sha1 = "1d2621e1a6246c5cf1116be0055686f305210b80"
 uuid = "4e289a0a-7415-4d19-859d-a7e5c4648b56"

@@ -56,7 +56,7 @@ function MarketDur(mt::MarketTime)::MarketDur
         return isHoliday(mt) ? DUR_HOLIDAY : DUR_WEND
     end
 end
-Base.:(+)(x1::MarketDur, x2::MarketDur)::MarketDur = MarketDur(x1.closed + x2.closed, x1.pre + x2.pre, x1.open + x2.open, x1.post + x2.post)
+Base.:(+)(x1::MarketDur, x2::MarketDur)::MarketDur = MarketDur(x1.closed + x2.closed, x1.pre + x2.pre, x1.open + x2.open, x1.post + x2.post, x1.weekend + x2.weekend, x1.holiday + x2.holiday)
 
 #region Local
 timesFor(data::Dict{String,Any})::InterTime = InterTime(Time(data["start"]), Time(data["end"]))

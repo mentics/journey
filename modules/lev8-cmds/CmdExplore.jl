@@ -1,11 +1,9 @@
 module CmdExplore
 using Dates
-using BaseTypes
-using SH, Globals, Shorthand, Between, SmallTypes, RetTypes, StratTypes, LegMetaTypes
-using Expirations
+using SH, Globals, BaseTypes, SmallTypes, RetTypes, StratTypes, LegMetaTypes, ConstructUtil
+using Shorthand, Between
+using Expirations, Markets, Chains
 using DrawStrat
-using Markets, Chains
-# using CmdStrats
 
 export sh, shc, shRet, shVals, drsh, drsh!, shLegs # shLegs is reexported form Shorthand
 export drlms, drlms!
@@ -33,9 +31,9 @@ function shlr(str::AStr, exps=expirs(), sp=market().startPrice)
 end
 shRet(str::AStr, exps, sp=market().startPrice) = combineTo(Ret, shlr(str, exps, sp))
 shVals(str::AStr, exps, sp=market().startPrice) = getVals(shRet(str, exps, sp))
-drsh(str::AStr, ex::Int) = drsh(str, expirs()[ex:ex+2]) # (sp = market().startPrice ; drawRet(shRet(str, expirs()[ex:ex+2], sp), nothing, sp, "sh") )
+drsh(str::AStr, ex::Int=1) = drsh(str, expirs()[ex:ex+2]) # (sp = market().startPrice ; drawRet(shRet(str, expirs()[ex:ex+2], sp), nothing, sp, "sh") )
 drsh(str::AStr, exps) = (sp = market().startPrice ; drawRet(shRet(str, exps, sp), nothing, sp, "sh") )
-drsh!(str::AStr, ex::Int) = drsh!(str, expirs()[ex:ex+2])
+drsh!(str::AStr, ex::Int=1) = drsh!(str, expirs()[ex:ex+2])
 drsh!(str::AStr, exps) = (sp = market().startPrice ; drawRet!(shRet(str, exps, sp), "sh+") )
 
 # TODO: need to move all probs calcs to util
@@ -229,6 +227,89 @@ metricsFor(i::Int, expr, sp, vr) = metricsFor(collect(arl(i)), expr, sp, vr)
 function metricsFor(lms, expr, sp, vr)
     vals = getVals(combineTo(Ret, lms, expr, sp, vr))
     return calcMetrics(pvals()[1], vals, 1000.0, 0.0)
+end
+
+
+
+#=================== 6/4/2022 ===============#
+using OptionUtil, GLMakie
+function exploreSpreads1()
+    curp = market().curp
+    oqs = filter(oq->isCall(oq) && .9 < getStrike(oq)/curp < 1.1, chains()[Date(2022,6,8)].chain)
+    oqpairs = []
+    for i in 1:(length(oqs)-1)
+        oq1, oq2 = oqs[i], oqs[i+1]
+        push!(oqpairs, (oq1, oq2))
+    end
+    display(barplot([(getStrike(p[2])/curp, calcNetShortPerWidth(p...)) for p in oqpairs]))
+    display(barplot!([(getStrike(p[2])/curp, calcNetLongPerWidth(p...)) for p in oqpairs]))
+    return oqpairs
+end
+
+using BlacksPricing, Calendars, ChainTypes, Snapshots, QuoteTypes, OptionMetaTypes
+function priceOq(from::DateTime, curp, oq)
+    tex = calcTex(from, getExpiration(oq))/24/365 # convert to year for blackscholes
+    (tex, priceOption(getStyle(oq), Float64(getStrike(oq)), tex, getIv(oq), Float64(curp)))
+end
+
+function overtime(oq::OptionQuote, from::DateTime)
+    curp = market().curp
+    [priceOq(ts, curp, oq) for ts in from:(-Day(1)):(from - Day(180))]
+end
+
+function otCondor(side::Side.T=Side.long)
+    snap(6,0,6,58)
+    curp = market().curp
+    ts = market().tsMarket
+    expr = Date(2022,6,3)
+    oqsAll = Chains.nearOqs(curp, filter(isCall, chains()[expr].chain), 12)
+    len = length(oqsAll)
+    # oqs = oqsAll[(end-4):end]
+    # oqs = oqsAll[1:2:4*2]
+    # oqs = oqsAll[(end-4*2):2:(end)]
+    oqs = oqsAll[[1,2,len-1,len]]
+    theoqs = theoQuote.(ts, curp, oqs)
+    lms = makeCondor(theoqs, side)
+    display(drlms(lms))
+    foreach( ts:(-Day(8)):(ts - Day(80)) ) do ts
+        theoqs = theoQuote.(ts, curp, oqs)
+        lms = makeCondor(theoqs, side)
+        display(drlms!(lms, string(ts)))
+    end
+end
+
+function otCondorActual(side::Side.T=Side.long)
+    snap(6,0,6,58)
+    curp = market().curp
+    ts = market().tsMarket
+
+    oqsAll = Chains.nearOqs(curp, filter(isCall, chains()[expir(1)].chain), 12)
+    len = length(oqsAll)
+    # oqs = oqsAll[(end-4):end]
+    # oqs = oqsAll[1:2:4*2]
+    # oqs = oqsAll[(end-4*2):2:(end)]
+    oqs = oqsAll[[1,2,len-1,len]]
+    lms = makeCondor(oqs, side)
+    display(drlms(lms))
+
+    for expr in expirs()[10:19]
+        oqsAll = Chains.nearOqs(curp, filter(isCall, chains()[expr].chain), 12)
+        len = length(oqsAll)
+        # oqs = oqsAll[(end-4):end]
+        # oqs = oqsAll[1:2:4*2]
+        # oqs = oqsAll[(end-4*2):2:(end)]
+        oqs = oqsAll[[1,2,len-1,len]]
+        lms = makeCondor(oqs, side)
+        display(drlms!(lms))
+    end
+end
+
+function theoQuote(ts, curp, oq::OptionQuote)::OptionQuote
+    _, theop = priceOq(ts, curp, oq)
+    theoc = C(theop)
+    # TODO: theo wasn't within range, what to do?
+    # @assert 0.9*getBid(oq) < theop < 1.1*getAsk(oq) "$(0.9*getBid(oq)) < $(theop) < $(1.1*getAsk(oq))"
+    return OptionQuote(oq; quot=Quote(theoc, theoc))
 end
 
 end

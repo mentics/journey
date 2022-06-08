@@ -2,6 +2,8 @@ lms0 = arl(0) ; lms1 = arl(1) ; lms2 = vcat(lms0, lms1)
 aa(2; lmsPos=lms2)
 But the TO metrics of the prev isn't equaling the FROM in the next?
 
+BlackScholes will get the right answer if fed the right IV. So, try to curve fit iv.
+
 count holidays separate from weekends in marketdur/timing
 
 we should assert that opens.end is always == posts.begin so if it isn't sometime we can fix our code

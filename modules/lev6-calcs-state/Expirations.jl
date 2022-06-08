@@ -28,10 +28,10 @@ function update()::Nothing
     return
 end
 # TODO: clean this up
-using Globals, Snapshots
+using Globals, SnapUtil
 # newVal()::Vector{Date} = tradierExpirations()[1:20]
 function newVal()::Vector{Date}
-    num = isnothing(snap()) ? 20 : Snapshots.countChains()
+    num = isnothing(snap()) ? 20 : SnapUtil.countSnapExpirs()
     tradierExpirations()[1:num]
 end
 # getExpirations(numExpirs::Int)::EXPIRS_TYPE = tradierExpirations()[1:numExpirs]

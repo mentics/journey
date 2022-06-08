@@ -9,6 +9,7 @@ struct OptionQuote
     meta::OptionMeta
 end
 OptionQuote(;option=Option(), quot=Quote(), meta=OptionMeta()) = OptionQuote(option, quot, meta)
+OptionQuote(oq::OptionQuote; option=getOption(oq), quot=getQuote(oq), meta=getMeta(oq)) = OptionQuote(option, quot, meta)
 OptionQuote(oq::OptionQuote, action::Action.T, side::Side.T) = OptionQuote(getOption(oq), Quote(getQuote(oq), action, side), getMeta(oq))
 SH.getOption(oq::OptionQuote) = oq.option
 SH.getQuote(oq::OptionQuote) = oq.quot
@@ -22,6 +23,9 @@ SH.getExpiration(oq::OptionQuote) = getExpiration(oq.option)
 SH.getStrike(oq::OptionQuote) = getStrike(oq.option)
 SH.getBid(oq::OptionQuote) = getBid(oq.quot)
 SH.getAsk(oq::OptionQuote) = getAsk(oq.quot)
+SH.getIv(oq::OptionQuote) = oq.meta.iv
+SH.isCall(oq::OptionQuote) = getStyle(oq.option) == Style.call
+SH.isPut(oq::OptionQuote) = getStyle(oq.option) == Style.put
 
 struct OptionChain
     chain::Vector{OptionQuote}
