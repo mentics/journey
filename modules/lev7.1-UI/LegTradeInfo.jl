@@ -12,7 +12,7 @@ function Base.string(leg::LegTrade)
         res *= " op:$(pdo)"
         pdc = getPrillDirClose(leg)
         if isnothing(pdc)
-            if getExpiration(leg) in expirs(;td=true)
+            if getExpiration(leg) in expirs()
                 oq = optQuoter(leg, Action.close)
                 res *= " cl($(getBid(oq)), $(getAsk(oq)))"
                 res *= " urpnl:$(pdo + getBid(oq))"
@@ -30,7 +30,7 @@ function SH.to(NamedTuple, lt::LegTrade)
     open = getNetOpen(lt)
     netc = getNetClose(lt)
     if ismissing(netc)
-        if getExpiration(lt) in expirs(;td=true)
+        if getExpiration(lt) in expirs()
             oq = optQuoter(lt, Action.close)
             close = getQuote(oq)
             pnl = open + getBid(oq)

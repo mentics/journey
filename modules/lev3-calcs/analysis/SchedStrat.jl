@@ -20,7 +20,8 @@ DefaultExps = [
     (7,8,9),
     (8,9,10)
 ]
-UseExps = copy(DefaultExps)
+SimpleExps = [1,2,3]
+# UseExps = copy(DefaultExps)
 
 MinEvrs = Dict{Int,Float64}()
 
@@ -32,10 +33,10 @@ function run()
         @logret "SchedStrat ran when market closed"
     end
     urpon()
-    inds = updateInds() # Globals.get(:anasExps)
-    Globals.has(:anasExps) && (global UseExps = DefaultExps[inds])
+    useExps = Globals.has(:anasExpsOver) ? Globals.get(:anasExpsOver) : DefaultExps
+    global UseExps = (!Globals.has(:anasAvoid) || Globals.get(:anasAvoid)) ? useExps[updateInds(useExps)] : useExps
     # TODO: it should call into a service level module and not a command, so extract it
-    exs = nextExps()
+    exs = nextExps(UseExps)
     !isnothing(exs) || return
     @log info "Running scheduled analysis" exs UseExps
     # TODO: scorer just for it
@@ -51,15 +52,15 @@ function run()
     return
 end
 
-function nextExps()
-    !isempty(UseExps) || return nothing
-    Index[] = mod1(Index[] + 1, length(UseExps))
-    return UseExps[Index[]]
+function nextExps(useExps)
+    !isempty(useExps) || return nothing
+    global Index[] = mod1(Index[] + 1, length(useExps))
+    return useExps[Index[]]
 end
 
-function updateInds()
+function updateInds(useExps)
     exAvoid = map(row -> searchsortedfirst(expirs(), row.targetdate), queryEntered(today()))
-    inds = setdiff(eachindex(DefaultExps), exAvoid)
+    inds = setdiff(eachindex(useExps), exAvoid)
     Hour(4) < nextMarketChange() - now(UTC) || del!(inds, 1) # Don't keep looking for ex1 after early morning
     return Globals.set(:anasExps, collect(inds))
 end

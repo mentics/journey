@@ -6,7 +6,7 @@ using Expirations
 
 export tradesToClose
 
-tradesToClose(ex::Int=1) = tradesToClose(expir(ex; td=true)) # findTrades(expir(ex; td=true), Filled,Closing,PartialClosed)
+tradesToClose(ex::Int=0) = tradesToClose(expir(ex)) # findTrades(expir(ex; td=true), Filled,Closing,PartialClosed)
 tradesToClose(exp::Date) = findTrades(exp, Filled, Closing, PartialClosed)
 
 # TODO: must be moved, wrong level

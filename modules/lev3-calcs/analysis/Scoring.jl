@@ -20,8 +20,8 @@ filtkeys() = [:ev, :ev1, :ev2, :noImpEvr, :noImpEvOr, :standsAlone, :cantAlone, 
 calcScore1(ctx, bufCombi, bufBoth, posRet, show=false) = calcScore1(ctx, (; metsBoth=MetricBuf[]), bufCombi, bufBoth, posRet, show)
 function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, posRet::Union{Nothing,Ret}, show=false)::Float64
     MAX_LOSS = -3.0
-    factor = 1.0
     numLegs = isnothing(posRet) ? 4 : 4 + posRet.numLegs
+    minForLegs = (.02 / 4.0) * numLegs
 
     metsBoth = tctx.metsBoth
     for i in eachindex(ctx.probs)
@@ -30,28 +30,32 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, 
 
     if isempty(bufCombi)
         # This means we're calcing base score from existing position, so only bufPos will be valid but it's also passed into bufBoth.
-        return metsBoth[1].evr
-        return -10000
+        # return -10000
         show && ( @info "pos scoring" metsBoth )
-        return score(factor, metsBoth)
+        return score(metsBoth[1])
     end
 
+    # metsBoth[1].evr > 0 || return countNo(:ev1)
     isNew = isnothing(posRet)
     metc = isNew ? metsBoth[1] : calcMetrics(ctx.probs[1], bufCombi, 4)
-    metsBoth[1].evr >= metc.evr || return countNo(:ev)
 
     metsBoth[1].mn > MAX_LOSS || return countNo(:maxLossAbs)
     metc.mn > -1.0 || return countNo(:maxLossAbs)
+    if ctx.numDays > 1
+        # bufBoth[1] > minForLegs || return countNo(:sides)
+        # bufBoth[end] > minForLegs || return countNo(:sides)
+        bufCombi[1] > .02 || return countNo(:sides)
+        bufCombi[end] > .02 || return countNo(:sides)
+    end
+
     # bufCombi[1] > 0.07 || return countNo(:sides)
     # bufCombi[end] > 0.07 || return countNo(:sides)
     # spread = .01
     # req(bufBoth, Bins.nearest(1.0 - spread), Bins.nearest(1.0 + spread), 0.) || return countNo(:sides)
     # req(bufCombi, Bins.nearest(1.0 - spread), Bins.nearest(1.0 + spread), 0.07) || return countNo(:special)
     # return score(factor, metsBoth)
-    return metsBoth[1].evr
-
-    # req(ctx.sp, bufCombi, 410, 420, 0.0) || return countNo(:sides)
-    # req(bufBoth, Bins.nearest(.95), Bins.nearest(1.05), MAX_LOSS, 80) || return countNo(:sides)
+    # return metsBoth[1].evr
+    # return score(metsBoth[1])
 
     if isNew
         # req(bufBoth, Bins.nearest(.96), Bins.nearest(1.04), .1) || return countNo(:sides)
@@ -63,29 +67,32 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, 
         # bufBoth[end] > 0.0 || return countNo(:sides)
         # return metb.profit - 2 * metb.loss
     else
-        probLency = .85 - .15 * sigbal(.43 * ctx.numDays - 6.0)
-        isok = false
-        for i in eachindex(ctx.probs)
-            metp = ctx.metsPos[i]
-            metb = metsBoth[i]
+        metp = ctx.metsPos[1]
+        metsBoth[1].mn > 0.0 || metsBoth[1].mn > 1.5 * metp.mn || return countNo(:special2)
+        metsBoth[1].evr >= metp.evr || return countNo(:noImpEvr)
+        # probLency = .85 - .15 * sigbal(.43 * ctx.numDays - 6.0)
+        # isok = false
+        # for i in eachindex(ctx.probs)
+        #     metp = ctx.metsPos[i]
+        #     metb = metsBoth[i]
 
-            # (2*metb.prob + metb2.prob) >= probLency * (2*metp.prob + metp2.prob) || return countNo(:noImpProb)
-            metb.prob >= probLency * metp.prob || continue
+        #     # (2*metb.prob + metb2.prob) >= probLency * (2*metp.prob + metp2.prob) || return countNo(:noImpProb)
+        #     metb.prob >= probLency * metp.prob || continue
 
-            # if (metb.mn < 0.0)
-            #     mnLency = probLency # .85 - .15 * sigbal(.43 * ctx.numDays - 6.0)
-            #     metb.mn >= mnLency * metp.mn || return countNo(:noImpLoss)
-            # end
+        #     # if (metb.mn < 0.0)
+        #     #     mnLency = probLency # .85 - .15 * sigbal(.43 * ctx.numDays - 6.0)
+        #     #     metb.mn >= mnLency * metp.mn || return countNo(:noImpLoss)
+        #     # end
 
-            # metb.mn >= probLency * metp.mn || continue
-            metb.evr >= probLency * metp.evr || continue
-            # metb.loss >= probLency * metp.loss || continue
+        #     # metb.mn >= probLency * metp.mn || continue
+        #     metb.evr >= probLency * metp.evr || continue
+        #     # metb.loss >= probLency * metp.loss || continue
 
-            # isnothing(ctx.biasUse) || bias(ctx.biasUse, ctx.probs[1], bufBoth, posRet, numLegs) || continue
-            isok = true
-            break
-        end
-        isok || return countNo(:special)
+        #     # isnothing(ctx.biasUse) || bias(ctx.biasUse, ctx.probs[1], bufBoth, posRet, numLegs) || continue
+        #     isok = true
+        #     break
+        # end
+        # isok || return countNo(:special)
 
         # metp = metsPos[1]
         # # metb.mn > MAX_LOSS / (1.0 + numLegs/8) || return countNo(:maxLossAbs)
@@ -128,7 +135,7 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, 
     @atomic passed.count += 1
     # return score(factor, metb, metb2)
     show && ( @info "scoring" metsBoth )
-    return score(factor, metsBoth)
+    return score(metsBoth[1])
 end
 
 score(met::NamedTuple) = met.evr

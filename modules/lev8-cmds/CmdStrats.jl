@@ -53,7 +53,8 @@ function makeProbs(numDays::Int, targetDate::Date, sp::Currency)::Tuple
     # probs = (pnd, pndL, pndR)
     phOrig = probHist(sp, numDays) # round(Int, 1.5 * (3 + numDays)))
     ph = Prob(getCenter(phOrig), smooth(getVals(phOrig)))
-    probs = (ph, pnd)
+    # probs = (ph,)
+    probs = (pnd,)
     # pnd = probsNormDist(sp, calcIvsd(targetDate))
     # pflat = probFlat(Float64(sp), pnd[1]/2)
     # pflat = probRoof(Float64(sp), pnd[1]/2)
@@ -69,6 +70,10 @@ function makeProbs(numDays::Int, targetDate::Date, sp::Currency)::Tuple
     return probs
 end
 
+# cfilt
+isBfly(c) = getStrike(c[2]) == getStrike(c[3])
+isBfly2(c) = maximum(getStrike, c) - minimum(getStrike, c) <= 3.0
+
 export aa
 aa(ex; kws...) = ana((ex:ex+2)...; kws...)
 ana(exs::Int...; kws...) = an(exs...; kws..., maxRun=0)
@@ -77,7 +82,7 @@ an(exs::Int...; kws...) = an(getindex.(Ref(expirs()), exs)...; kws...)
 function an(exps::Date...; maxRun::Int=120, keep::Int=100, nthreads::Int=Threads.nthreads(),
             noPos::Bool=false, lmsAdd::Union{Nothing,Vector{LegMeta}}=nothing, lmsPos::Union{Nothing,Vector{LegMeta}}=nothing,
             getProbs=makeProbs, scorer=nothing, headless=false,
-            sprFilt=nothing, addDays::Int=0)::Int
+            sprFilt=nothing, filt=nothing, addDays::Int=0)::Int
     Globals.set(:anRunLast, now(UTC))
     @assert issorted(exps)
     # exps = getindex.(Ref(expirs()), exs)
@@ -104,7 +109,7 @@ function an(exps::Date...; maxRun::Int=120, keep::Int=100, nthreads::Int=Threads
     resetCountsScore()
     # TODO: how not to forget biasUse is set?
     # biasUse = nothing # Side.long
-    ctx = makeCtx(coal(scorer, calcScore1), probs, numDays; maxRun, keep, posRet=lastPosRet[], nthreads) # sp, biasUse
+    ctx = makeCtx(coal(scorer, calcScore1), probs, numDays; maxRun, keep, posRet=lastPosRet[], nthreads, filt) # sp, biasUse
     # @info "ctx" keys(ctx)
 
     @log info "RunStrats running" maxRun keep nthreads exps sum(length, allSpreads2) sp numDays

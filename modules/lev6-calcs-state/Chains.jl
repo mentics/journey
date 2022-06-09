@@ -19,7 +19,7 @@ end
 quoter(x, act::Action.T=Action.open)::Quote = calcQuote(chainLookup, x, act)
 optQuoter(x, act::Action.T=Action.open)::OptionQuote = calcOptQuote(chainLookup, x, act)
 
-ivs(exps=expirs(;td=true), chs=chains()) = [(exp, round(calcNearIv(exp, chs); digits=4)) for exp in exps]
+ivs(exps=expirs(), chs=chains()) = [(exp, round(calcNearIv(exp, chs); digits=4)) for exp in exps]
 calcIvsd(dt::Date, ivMult::Float64=1.0) = ivToStdDev(ivMult * calcNearIv(dt), mktTimeToExp(dt))
 
 #region Local
@@ -38,13 +38,13 @@ function update()::Nothing
     return
 end
 function newVal()::CHAINS_TYPE
-    chs = loadChains(expirs(;td=true), market().curp)
+    chs = loadChains(expirs(), market().curp)
     updateIvs(chs)
     return chs
 end
 function updateIvs(chs)::Nothing
     @log debug "updateIvs"
-    Globals.set(:vtyAvg, Dict(r[1] => r[2] for r in ivs(expirs(;td=true), chs))) # TODO: need to lock global? or just hope because it updates so seldom
+    Globals.set(:vtyAvg, Dict(r[1] => r[2] for r in ivs(expirs(), chs))) # TODO: need to lock global? or just hope because it updates so seldom
     return
 end
 
@@ -59,7 +59,7 @@ function chainLookup(exp::Date, style::Style.T, strike::Currency)::OptionQuote
 end
 # lup(ch::OptionChain; style=nothing, strike=nothing) = filter(x -> (isnothing(style) || getStyle(x) == style) && (isnothing(strike) || getStrike(x) == strike), ch.chain)
 
-function loadChains(expirations::Vector{Date}, cp::Currency)::CHAINS_TYPE
+function loadChains(expirations::AVec{Date}, cp::Currency)::CHAINS_TYPE
     chains = CHAINS_TYPE()
     for exp in expirations
         try

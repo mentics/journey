@@ -72,7 +72,7 @@ end
 
 function tradierDividends()
     raw = tradierGet("https://api.tradier.com/beta/markets/fundamentals/dividends?symbols=SPY", CallVec(nameof(var"#self#")))
-    return raw
+    return raw[1]["results"][2]["tables"]["cash_dividends"][1]
 end
 
 end

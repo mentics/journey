@@ -41,17 +41,17 @@ end
 using CmdUtil
 # TODO: make it a const
 cacheTrades = Dict{Int,Trade}()
-function todo(ex=1)
+function todo(ex=0)
     Globals.set(:todoRunLast, now(UTC))
     legOvers = queryLeftovers()
-    if !isnothing(findfirst(leg -> getSide(leg) != Side.long, legOvers))
-        msg = "Found short leftovers $(saveObj(legOvers))"
-        if Hour(Dates.now()) >= 7
-            error(msg)
-        else
-            @log warn msg
-        end
-    end
+    # if !isnothing(findfirst(leg -> getSide(leg) != Side.long, legOvers))
+    #     msg = "Found short leftovers" # $(saveObj(legOvers))"
+    #     if Hour(Dates.now()) >= Hour(7)
+    #         error(msg)
+    #     else
+    #         @log warn msg
+    #     end
+    # end
     println("Leftovers:")
     pretyble(to.(NamedTuple, legOvers))
     @info "Current price: $(market().curp)"
@@ -63,7 +63,7 @@ end
 using RetTypes, Between, DrawStrat
 toRet(trades, exp)::Ret = combineTo(Ret, trades, exp, market().startPrice, Globals.get(:vtyRatio)) # TODO: choose diff start price?
 # TODO: change so matches todo and expirs and all: 0 for today, 1 for non-today next exp, and default is 0
-drpos(exp=expir(1; td=true)) = drawRet(toRet(tradesToClose(exp), exp), probs(), market().curp, "pos")
+drpos(exp=expir(0)) = drawRet(toRet(tradesToClose(exp), exp), probs(), market().curp, "pos")
 export drt, adrt
 # drt(i::Int, ex=1) = drawRet(toRet([tradesFor(ex)[i]], ex), probs(), market().curp, "t$(i)")
 # adrt(i::Int, ex=1) = drawRet!(toRet([tradesFor(ex)[i]], ex), "t$(i)")
@@ -72,14 +72,14 @@ adrt(tid::Int) = ( trade = cacheTrades[tid] ; drawRet!(toRet([trade], getTargetD
 drt(trade::Trade) = drawRet(toRet([trade], getTargetDate(trade)), probs(), market().curp, "t$(getId(trade))")
 adrt(trade::Trade) = drawRet!(toRet([trade], getTargetDate(trade)), "t$(getId(trade))")
 
-function drx(ex=1)
+function drx(ex=0)
     # TODO: read from cache
     tod = tradesToClose(ex)
     drt(tod[1])
     for i in 2:length(tod)
         adrt(tod[i])
     end
-    drawRet!(toRet(tod, expir(ex; td=true)), "all")
+    drawRet!(toRet(tod, expir(ex)), "all")
 end
 
 # drawRet(tradesToRets(todo(ex)))
@@ -96,7 +96,7 @@ using LegTypes, OptionMetaTypes, ChainTypes, Rets
 lmToRet(lm::LegMeta, om::OptionMeta, forDate::Date, sp::Currency, vtyRatio::Float64)::Ret = makeRet(getLeg(lm), om, bap(lm), forDate, sp, vtyRatio)
 tradesToRet(trades::AVec{<:Trade}, forDate::Date, sp::Currency, vtyRatio::Float64)::Ret =
     combineRets([lmToRet(lm, getMeta(optQuoter(lm)), forDate, sp, vtyRatio) for lm in collect(mapFlattenTo(getLegs, LegMeta, trades))])
-toRet2(trades, ex)::Ret = tradesToRet(trades, expir(ex; td=true), market().startPrice, 1.0) # TODO: choose diff start price?
+toRet2(trades, ex)::Ret = tradesToRet(trades, expir(ex), market().startPrice, 1.0) # TODO: choose diff start price?
 drpos2(ex=1) = drawRet!(toRet2(todo(ex), ex), "pos2")#, probs(), market().curp, "pos2")
 #endregion
 
