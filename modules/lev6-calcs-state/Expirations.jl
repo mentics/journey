@@ -34,7 +34,7 @@ function newVal()::OffsetArray{Date}
     exps = tradierExpirations()
     num = isnothing(snap()) ? 20 : SnapUtil.countSnapExpirs()
     if exps[1] == market().startDay
-        return OffsetArray(exps[1:num], 0:num)
+        return OffsetArray(exps[1:num+1], 0:num)
     else
         return OffsetArray(vcat(exps[1], exps[1:num]), 0:num)
     end

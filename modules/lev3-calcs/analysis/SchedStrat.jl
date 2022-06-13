@@ -20,8 +20,8 @@ DefaultExps = [
     (7,8,9),
     (8,9,10)
 ]
-SimpleExps = [1,2,3]
-# UseExps = copy(DefaultExps)
+SimpleExps = [1,2]
+UseExps = copy(SimpleExps)
 
 MinEvrs = Dict{Int,Float64}()
 
@@ -43,6 +43,9 @@ function run()
     ana(exs...; headless=true, nthreads=(Threads.nthreads()-2))
     res = CmdStrats.analysisResults()
     if !isempty(res)
+        # if haskey(MinEvrs, exs[1])
+        #     @info "Checking result:" exs[1] MinEvrs[exs[1]] (res[1].evr >= MinEvrs[exs[1]])
+        # end
         !haskey(MinEvrs, exs[1]) || res[1].evr >= MinEvrs[exs[1]] || return
         io = IOBuffer()
         pretyble(io, res; rowcol=true, widths=CmdStrats.tupleWidths())

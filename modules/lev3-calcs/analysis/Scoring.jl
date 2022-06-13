@@ -41,11 +41,12 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, 
 
     metsBoth[1].mn > MAX_LOSS || return countNo(:maxLossAbs)
     metc.mn > -1.0 || return countNo(:maxLossAbs)
+    # return score(metsBoth[1])
     if ctx.numDays > 1
-        # bufBoth[1] > minForLegs || return countNo(:sides)
-        # bufBoth[end] > minForLegs || return countNo(:sides)
-        bufCombi[1] > .02 || return countNo(:sides)
-        bufCombi[end] > .02 || return countNo(:sides)
+        bufBoth[1] > minForLegs || return countNo(:sides)
+        bufBoth[end] > minForLegs || return countNo(:sides)
+        # bufCombi[1] > .02 || return countNo(:sides)
+        # bufCombi[end] > .02 || return countNo(:sides)
     end
 
     # bufCombi[1] > 0.07 || return countNo(:sides)
@@ -55,7 +56,6 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, 
     # req(bufCombi, Bins.nearest(1.0 - spread), Bins.nearest(1.0 + spread), 0.07) || return countNo(:special)
     # return score(factor, metsBoth)
     # return metsBoth[1].evr
-    # return score(metsBoth[1])
 
     if isNew
         # req(bufBoth, Bins.nearest(.96), Bins.nearest(1.04), .1) || return countNo(:sides)
@@ -69,6 +69,7 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, 
     else
         metp = ctx.metsPos[1]
         metsBoth[1].mn > 0.0 || metsBoth[1].mn > 1.5 * metp.mn || return countNo(:special2)
+        # metsBoth[1].ev >= metp.ev || return countNo(:noImpEvr)
         metsBoth[1].evr >= metp.evr || return countNo(:noImpEvr)
         # probLency = .85 - .15 * sigbal(.43 * ctx.numDays - 6.0)
         # isok = false
@@ -138,12 +139,12 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, 
     return score(metsBoth[1])
 end
 
-score(met::NamedTuple) = met.evr
-function score(factor::Float64, mets::Vector)::Float64
-    res = factor * (score(mets[1]) + sum(score, mets)) # this doubles weight of mets[1]
-    isfinite(res) || error("something wrong with scoring ", res)
-    return res
-end
+score(met::NamedTuple) = met.ev
+# function score(factor::Float64, mets::Vector)::Float64
+#     res = factor * (score(mets[1]) + sum(score, mets)) # this doubles weight of mets[1]
+#     isfinite(res) || error("something wrong with scoring ", res)
+#     return res
+# end
 
 # wasImproved(simple::Bool, prev, cur) = simple ? cur > prev : cur > prev #^1.01
 # wasImproved(simple::Bool, prev, cur, factor=.1) = simple ? cur > prev : cur > prev + log(1.0 + factor * abs(prev))
