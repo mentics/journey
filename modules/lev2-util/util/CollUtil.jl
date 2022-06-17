@@ -1,6 +1,6 @@
 module CollUtil
 
-export find, findFrom, ensureVector, sortExp!, sortTuple, del!, prinsert!
+export find, findFrom, ensureVector, sortExp!, del!, prinsert!
 # uniqueSortTuple
 
 function del!(pred, v)::Bool
@@ -35,9 +35,11 @@ ensureVector(o) = isnothing(o) ? [] : (isa(o, Array) ? o : [o])
 # sortExp!(f, v; kws...) = (sort!(StructArray((f.(v), v)); kws..., by=first); return)
 sortExp!(f, v; kws...) = Base.permute!!(v, sortperm(f.(v); kws...))
 
-# TODO: optimize this
-sortTuple(by, tup) = Tuple(sort!(collect(tup); by))
-# uniqueSortTuple(tup; kws...) = Tuple(unique!(sort!(collect(tup); kws...)))
+# # TODO: optimize this
+# sortTuple(by, tup) = Tuple(sort!(collect(tup); by))
+# # uniqueSortTuple(tup; kws...) = Tuple(unique!(sort!(collect(tup); kws...)))
+
+# sortuple(t::NTuple{4,T})::NTuple{4,T} where T =
 
 function prinsert!(v, newVal)::Bool
     newVal > v[1] || return false

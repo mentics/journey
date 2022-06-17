@@ -10,6 +10,9 @@ SH.toCode(s::Style.T) = s === Style.call ? 'c' : 'p'
 SH.to(::Type{Style.T}, s::AbstractString) = s in ("c", "C", "call") ? Style.call : (s in ("p", "P", "put") ? Style.put : error("Invalid Style code ", s))
 # SH.random(::Type{Style.T}) = rand((Style.call, Style.put))
 
+SH.isCall(s::Style.T) = s == Style.call
+SH.isPut(s::Style.T) = s == Style.put
+
 @enumx Side long=1 short=-1
 SH.toOther(x::Side.T) = x === Side.long ? Side.short : Side.long
 SH.toCode(s::Side.T) = s === Side.long ? 'l' : 's'

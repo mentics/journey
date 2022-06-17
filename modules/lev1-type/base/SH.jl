@@ -9,7 +9,7 @@ export getIv
 export getOption, getLeg, getMeta, getQuote
 export calcQuote, calcOptQuote
 export getQuantityDir, addQuantity
-export isCall, isPut
+export isCall, isPut, isLong, isShort
 
 export getVals, getVals!, valAt, getCenter, draw, draw!
 
@@ -51,6 +51,8 @@ function getQuantityDir() end
 
 function addQuantity() end
 
+function isLong() end
+function isShort() end
 function isCall() end
 function isPut() end
 

@@ -34,6 +34,7 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, 
         show && ( @info "pos scoring" metsBoth )
         return score(metsBoth[1])
     end
+    metb = metsBoth[1]
 
     # metsBoth[1].evr > 0 || return countNo(:ev1)
     isNew = isnothing(posRet)
@@ -43,8 +44,8 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, 
     metc.mn > -1.0 || return countNo(:maxLossAbs)
     # return score(metsBoth[1])
     if ctx.numDays > 1
-        bufBoth[1] > minForLegs || return countNo(:sides)
-        bufBoth[end] > minForLegs || return countNo(:sides)
+        # bufBoth[1] > minForLegs || return countNo(:sides)
+        # bufBoth[end] > minForLegs || return countNo(:sides)
         # bufCombi[1] > .02 || return countNo(:sides)
         # bufCombi[end] > .02 || return countNo(:sides)
     end
@@ -58,12 +59,12 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, 
     # return metsBoth[1].evr
 
     if isNew
+        metb.prob >= .7 || return countNo(:prob)
         # req(bufBoth, Bins.nearest(.96), Bins.nearest(1.04), .1) || return countNo(:sides)
         # (bufBoth[1] >= .14 && bufBoth[end] >= .14) || return countNo(:sides)
         # bufBoth[end] >= bufBoth[1] || return countNo(:sides)
         # metb.ev > 0.0 || metb2.ev > 0.0 || return countNo(:ev)
         # (metb.ev + metb2.ev) > 0.04 || return countNo(:ev) # || (factor = upFactor(factor, .8, "sumev", show))
-        # metb.mn > 2.0 || return countNo(:maxLossAbs)
         # bufBoth[end] > 0.0 || return countNo(:sides)
         # return metb.profit - 2 * metb.loss
     else
@@ -71,7 +72,8 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, 
         metsBoth[1].mn > 0.0 || metsBoth[1].mn > 1.5 * metp.mn || return countNo(:special2)
         # metsBoth[1].ev >= metp.ev || return countNo(:noImpEvr)
         metsBoth[1].evr >= metp.evr || return countNo(:noImpEvr)
-        # probLency = .85 - .15 * sigbal(.43 * ctx.numDays - 6.0)
+        probLency = .85 - .15 * sigbal(.43 * ctx.numDays - 6.0)
+        metb.prob >= probLency * metp.prob || return countNo(:noImpProb)
         # isok = false
         # for i in eachindex(ctx.probs)
         #     metp = ctx.metsPos[i]
@@ -139,7 +141,7 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, 
     return score(metsBoth[1])
 end
 
-score(met::NamedTuple) = met.ev
+score(met::NamedTuple) = met.evr
 # function score(factor::Float64, mets::Vector)::Float64
 #     res = factor * (score(mets[1]) + sum(score, mets)) # this doubles weight of mets[1]
 #     isfinite(res) || error("something wrong with scoring ", res)

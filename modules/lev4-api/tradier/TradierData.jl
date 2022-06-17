@@ -54,7 +54,12 @@ function tradierCalendar(from::Date, to::Date)::Dict{Date,Dict{String,Any}}
     foreach((Month(d).value, Year(d).value) for d in range(firstdayofmonth(from), firstdayofmonth(to); step=Month(1))) do (m, y)
         raw = tradierGet("/markets/calendar?year=$(y)&month=$(m)", Call(nameof(var"#self#")))
         for day in raw["calendar"]["days"]["day"]
-            res[Date(day["date"])] = day
+            d = Date(day["date"])
+            if d == Date(2022,6,20)
+                res[d] = Dict("status"=>"closed", "date"=>"2022-06-20", "description"=>"Market is closed")
+            else
+                res[d] = day
+            end
         end
     end
     return res

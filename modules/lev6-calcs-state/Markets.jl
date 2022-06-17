@@ -4,7 +4,7 @@ using DateUtil, DictUtil, LogUtil
 using Globals, BaseTypes, QuoteTypes, Caches, TradierData
 using Calendars, DataHelper
 
-export Market, market, marketPrices, urp, urpon, urpoff, mktNumDays, mktTimeToExp
+export Market, market, marketPrices, urp, urpon, urpoff, mktNumDays
 
 mutable struct Market
     startDay::Date
@@ -33,7 +33,7 @@ end
 marketPrices() = (mkt = market() ; (mkt.startPrice, mkt.curp))
 
 mktNumDays(d::Date)::Int = bdays(market().startDay, d)
-mktTimeToExp(exp::Date)::Float64 = urp() ? timeToExpir(market().tsMarket, getMarketClose(exp)) : timeToExpir(getMarketOpen(market().startDay), getMarketClose(exp))
+# mktTimeToExp(exp::Date)::Float64 = urp() ? timeToExpir(market().tsMarket, getMarketClose(exp)) : timeToExpir(getMarketOpen(market().startDay), getMarketClose(exp))
 
 #region Local
 const MARKET = :market

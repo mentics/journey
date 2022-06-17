@@ -151,7 +151,7 @@ function updateProcOrders()
     @log debug "update $(JOB_NAME)"
     procOrders() || Sched.remove(JOB_NAME)
 end
-whenUpdate(from::DateTime, isMktOpen::Bool, nextMktChange::DateTime) = whenMarket(from, isMktOpen, nextMktChange, PERIOD_UPDATE)
+whenUpdate(from::DateTime, isMktOpen::Bool, nextMktChange::DateTime) = whenMarket(from, isMktOpen, nextMktChange, Second(127))
 #endregion
 
 end

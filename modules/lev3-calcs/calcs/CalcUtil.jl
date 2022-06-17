@@ -3,7 +3,7 @@ using SH, BaseTypes, Bins, ProbTypes, RetTypes
 
 export avg, normalize!, smooth, smooth!
 export calcMetrics #, calcKelly, calcKelly!
-export ivToStdDev
+export ivTexToStdDev
 
 avg(vs) = sum(vs) / length(vs)
 
@@ -73,8 +73,8 @@ function calcEvr(profit::Float64, loss::Float64)::Float64
     p = profit #/tot
     l = loss #/tot
     # ev = p + l
-    return p / (1 - 2*l) + 2*l / (1 + p)
-    # return p / (1 - l) + l / (1 + p)
+    # return p / (1 - 2*l) + 2*l / (1 + p)
+    return p / (1 - l) + l / (1 + p)
     # return p / (1 - l)
     # return p / (1 - 2*l) # used this before, but it let profit overshadow loss... but maybe it was just because it was a deep hole right near price with less than 2 days left
     # evr = if p == 0.0; l
@@ -154,7 +154,8 @@ function calcKelly!(pv, rets)
     return kel
 end
 
-ivToStdDev(iv::Float64, timeToExpY::Float64) = iv / sqrt(1.0/timeToExpY)
+# ivToStdDev(iv::Float64, timeToExpY::Float64) = iv / sqrt(1.0/timeToExpY)
+ivTexToStdDev(iv::Float64, timeToExpY::Float64) = iv / sqrt(1.0/(timeToExpY/24/365))
 
 # function smooth!(v::Vector{Float64}, k::Float64=1.0)
 #     # Skip first and last

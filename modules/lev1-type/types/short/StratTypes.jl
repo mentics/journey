@@ -33,4 +33,10 @@ isVert((lr1, lr2)) = getExpiration(lr1) == getExpiration(lr2)
 isSideSame((lr1, lr2)) = getSide(lr1) == getSide(lr2)
 isStyleDiff((lr1, lr2)) = getStyle(lr1) != getStyle(lr2)
 
+SH.isCall(spr::Spread) = getStyle(spr[1]) == Style.call && getStyle(spr[2]) == Style.call
+SH.isPut(spr::Spread) = getStyle(spr[1]) == Style.put && getStyle(spr[1]) == Style.put
+SH.isCall(c::Combi) = isnothing(findfirst(isPut, map(getStyle, c)))
+SH.isPut(c::Combi) = isnothing(findfirst(isCall, map(getStyle, c)))
+SH.isLong(c::Combi) = getSide(c[1]) == Side.long && getSide(c[4]) == Side.long
+SH.isShort(c::Combi) = getSide(c[1]) == Side.short && getSide(c[4]) == Side.short
 end

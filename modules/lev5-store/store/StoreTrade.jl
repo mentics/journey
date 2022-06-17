@@ -58,7 +58,9 @@ end
 findTradeEntered(d::Date)::Vector{Trade} = loadTrade.(selectCol("select tid from Trade where cast(cast(tsCreated//1000 as timestamp) as date)=?", d))
 
 # TODO: needs timezone
-queryEntered(d::Date)::Vector{NamedTuple} = select("select tid, cast(tsCreated as date) enteredDate, targetDate from Trade where cast(tsCreated as date)=?", d)
+queryEntered(d::Date, states::Type{<:Status}...)::Vector{NamedTuple} =
+    isempty(states) ? select("select tid, cast(tsCreated as date) enteredDate, targetDate, status from Trade where cast(tsCreated as date)=?", d) :
+                      select("select tid, cast(tsCreated as date) enteredDate, targetDate, status from Trade where cast(tsCreated as date)=? and status in ($(join(repeat(['?'], length(states)), ',')))", d, states...)
 queryLegsEntered(d::Date)::Vector{LegTrade} =
     loadLegTrade.(select("select * from VLegTrade where cast(tsCreated as date)=?", d)) # TODO: doesn't use timezone as it should
 

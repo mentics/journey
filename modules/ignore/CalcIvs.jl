@@ -1,10 +1,12 @@
 module CalcIvs
-using Dates
-using DateUtil
+# using Dates
+# using DateUtil
 
-export ivToStdDev
+# export ivToStdDev
 
-ivToStdDev(iv::Float64, timeToExpY::Float64) = iv / sqrt(1.0/timeToExpY)
+# ivToStdDev(iv::Float64, timeToExpY::Float64) = iv / sqrt(1.0/timeToExpY)
+
+#===
 
 # TODO: use a μ that is based on historical drift
 
@@ -45,5 +47,7 @@ function infoIvs(d::Date, styl=Style.call)
     end
     return res
 end
+
+===#
 
 end

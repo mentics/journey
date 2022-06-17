@@ -155,14 +155,15 @@ using BaseTypes, QuoteTypes, OutputUtil
 # TODO: separate output part from calcs and move calc elsewhere
 function priceUse(qt, orig=nothing; ratio=nothing, at=nothing)
     if isnothing(at)
-        pr1 = improve(qt, ratio)
+        # pr1 = improve(qt, ratio)
+        pr1 = improve(orig, ratio)
     else
         pr1 = at
-        ratio = (at - getBid(qt)) / (getAsk(qt) - getBid(qt))
     end
+    ratioActual = (pr1 - getBid(qt)) / (getAsk(qt) - getBid(qt))
     pr = round(PriceT, pr1)
     orig = isnothing(orig) ? "" : "(was: $(SEC(string(orig))))"
-    @info "Using: $(PRI(string(pr))) = $(ratio) * $(qt) $(orig)"
+    @info "Using: $(PRI(string(pr))) = $(ratioActual) * $(qt) $(orig)"
     return pr
 end
 #endregion

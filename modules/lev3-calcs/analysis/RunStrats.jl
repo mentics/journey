@@ -1,5 +1,5 @@
 module RunStrats
-using Dates, ThreadPools
+using Dates, ThreadPools, TupleTools
 using LogUtil, CollUtil, ThreadUtil, CalcUtil
 using SH, Bins, Rets, StratTypes, RetTypes, LegTypes
 using Strats
@@ -105,14 +105,10 @@ function runAllStrats((ctx, tctx), sprs::Spreads2, index::Int, (resIndex, cnt)::
     index < len && for i in index
         for j in i+1:len
             cnt += 1
-            c = (sprs[i][1], sprs[i][2], sprs[j][1], sprs[j][2])
+            c = TupleTools.sort((sprs[i][1], sprs[i][2], sprs[j][1], sprs[j][2]); by=getStrike)
             if procStrat((ctx, tctx), c)
                 resIndex += 1
-                sc = sortTuple(getStrike, c)
-                # if sc in tctx.res[resIndex]
-
-                # end
-                tctx.res[resIndex] = sc
+                tctx.res[resIndex] = c
             end
             cnt == tctx.thrMaxRun && return (resIndex, cnt)
         end
@@ -125,10 +121,10 @@ function runAllStrats((ctx, tctx), sprs::Spreads2, index::Int, (resIndex, cnt)::
     index < len && for i in index
         for j in i+1:len
             cnt += 1
-            c = (sprs[i][1], sprs[i][2], sprs[j][1], sprs[j][2])
+            c = TupleTools.sort((sprs[i][1], sprs[i][2], sprs[j][1], sprs[j][2]); by=getStrike)
             if procStrat((ctx, tctx), c)
                 resIndex += 1
-                tctx.res[resIndex] = sortTuple(getStrike, c)
+                tctx.res[resIndex] = c # sortTuple(getStrike, c)
             end
             cnt == tctx.thrMaxRun && return (resIndex, cnt)
         end
@@ -139,10 +135,10 @@ function runAllStrats((ctx, tctx), sprs::Spreads2, index::Int, (resIndex, cnt)::
         x1 = sprs1[i]
         for x2 in sprs2
             cnt += 1
-            c = (x1[1], x1[2], x2[1], x2[2])
+            c = TupleTools.sort((x1[1], x1[2], x2[1], x2[2]); by=getStrike)
             if procStrat((ctx, tctx), c)
                 resIndex += 1
-                tctx.res[resIndex] = sortTuple(getStrike, c)
+                tctx.res[resIndex] = c # sortTuple(getStrike, c)
             end
             cnt == tctx.thrMaxRun && return (resIndex, cnt)
         end

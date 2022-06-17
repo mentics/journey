@@ -3,7 +3,7 @@ using Dates
 using SH, BaseTypes, SmallTypes, QuoteTypes, LegTypes, LegMetaTypes, StratTypes, RetTypes, ProbTypes
 using Globals, Bins, BaseUtil, LogUtil, DateUtil, CollUtil, ProbUtil, Between, Scoring
 using Strats, Rets, StratGen, RunStrats
-using ProbHist, Markets, Expirations, Chains, Positions
+using ProbHist, Markets, Expirations, Chains, Positions, Calendars
 using Trading, CmdUtil
 using OutputUtil, DrawStrat
 using StoreOrder
@@ -44,15 +44,15 @@ hereMetrics(pv, r) = Scoring.calcMetrics(pv, r)
 # invert(p::Prob) = Prob(getCenter(p), invert(getVals(p)))
 # invert(v::Vector{Float64}) = normalize!(map(x -> x === 0.0 ? 1.0 : 0.0, v))
 
-function makeProbs(numDays::Int, targetDate::Date, sp::Currency)::Tuple
-    ivsd = calcIvsd(targetDate)
+function makeProbs(tex::Float64, targetDate::Date, sp::Currency)::Tuple
+    ivsd = ivTexToStdDev(calcNearIv(targetDate), tex)
     # shift = ivsd/2
     pnd = probsNormDist(sp, ivsd)# + .25 * numDays * .05))
     # pndL = probsNormDist(sp, ivsd, -shift)# + .25 * numDays * .05))
     # pndR = probsNormDist(sp, ivsd, shift)# + .25 * numDays * .05))
     # probs = (pnd, pndL, pndR)
-    phOrig = probHist(sp, numDays) # round(Int, 1.5 * (3 + numDays)))
-    ph = Prob(getCenter(phOrig), smooth(getVals(phOrig)))
+    # phOrig = probHist(sp, numDays) # round(Int, 1.5 * (3 + numDays)))
+    # ph = Prob(getCenter(phOrig), smooth(getVals(phOrig)))
     # probs = (ph,)
     probs = (pnd,)
     # pnd = probsNormDist(sp, calcIvsd(targetDate))
@@ -82,37 +82,29 @@ an(exs::Int...; kws...) = an(getindex.(Ref(expirs()), exs)...; kws...)
 function an(exps::Date...; maxRun::Int=120, keep::Int=100, nthreads::Int=Threads.nthreads(),
             noPos::Bool=false, lmsAdd::Union{Nothing,Vector{LegMeta}}=nothing, lmsPos::Union{Nothing,Vector{LegMeta}}=nothing,
             getProbs=makeProbs, scorer=nothing, headless=false,
-            sprFilt=nothing, filt=nothing, addDays::Int=0)::Int
+            sprFilt=nothing, filt=nothing)::Int
     Globals.set(:anRunLast, now(UTC))
     @assert issorted(exps)
-    # exps = getindex.(Ref(expirs()), exs)
     targetDate = first(exps)
     lastExp[] = targetDate
-    mkt = market()
-    sp = mkt.startPrice
-    chs = chains()
-    # global lastPosStrat[] = noPos ? Vector{LegRet}() : (isnothing(posStrat) ? calcPosStrat(targetDate, sp, Globals.get(:vtyRatio), addPos) : posStrat)
+    sp = market().startPrice
     global lastPosStrat[] = noPos ? Vector{LegRet}() :
             (isnothing(lmsPos) ? calcPosStrat(targetDate, sp, Globals.get(:vtyRatio), lmsAdd) :
                     tos(LegRet, lmsPos, targetDate, sp, Globals.get(:vtyRatio)))
     global lastPosRet[] = (noPos || isempty(lastPosStrat[])) ? nothing : combineTo(Ret, lastPosStrat[])
 
-    numDays = mktNumDays(targetDate) + addDays
-    probs = getProbs(numDays, targetDate, sp)
-
+    tex = calcTex(market().tsMarket, targetDate)
+    probs = getProbs(tex, targetDate, sp)
     legs = vcat(getLeg.(positions()), getLeg.(lastPosStrat[]), getLeg.(queryLegOrders(today())))
-    allSpreads2 = allSpreads(chs, isConflict(legs), (sp, mkt.curp), exps)
+    allSpreads2 = allSpreads(chains(), isConflict(legs), marketPrices(), exps)
     !isnothing(sprFilt) && (allSpreads2 = map(v->filter(sprFilt, v), allSpreads2))
     global lastSpreads2[] = allSpreads2
-    len1, len2 = length.(allSpreads2)
-    if maxRun == 0; maxRun = binomial(len1, 2) + binomial(len2, 2) + len1 * len2 end
+    maxRun > 0 || (maxRun = calcMaxRun(allSpreads2))
     resetCountsScore()
-    # TODO: how not to forget biasUse is set?
-    # biasUse = nothing # Side.long
-    ctx = makeCtx(coal(scorer, calcScore1), probs, numDays; maxRun, keep, posRet=lastPosRet[], nthreads, filt) # sp, biasUse
-    # @info "ctx" keys(ctx)
 
-    @log info "RunStrats running" maxRun keep nthreads exps sum(length, allSpreads2) sp numDays
+    ctx = makeCtx(coal(scorer, calcScore1), probs, tex; maxRun, keep, posRet=lastPosRet[], nthreads, filt)
+
+    @log info "RunStrats running" maxRun keep nthreads exps sum(length, allSpreads2) sp tex
     strats = runStrats(allSpreads2, ctx)
     showCountsScore()
     global lastRes[] = strats
@@ -127,6 +119,8 @@ function an(exps::Date...; maxRun::Int=120, keep::Int=100, nthreads::Int=Threads
     end
     return length(lastView[])
 end
+
+calcMaxRun(sprs2) = ( (len1, len2) = length.(sprs2) ; binomial(len1, 2) + binomial(len2, 2) + len1 * len2 )
 
 # isConflict(opt::Option, side::Side.T) = !isnothing(conflicter(opt, side))
 # conflicter(opt::Option, side::Side.T) = findfirst(pos -> isConflict(opt, side, pos), positions())

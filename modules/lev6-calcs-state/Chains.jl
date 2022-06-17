@@ -4,9 +4,9 @@ using CollUtil, DictUtil, DateUtil, CalcUtil, LogUtil
 using Globals, BaseTypes, SH, SmallTypes, ChainTypes, QuoteTypes, OptionTypes, OptionMetaTypes
 using TradierData, Caches
 using DataHelper, Markets, Expirations
-using Calendars
+# using Calendars
 
-export chains, ivs, calcIvsd
+export chains, ivs, calcNearIv
 export quoter, optQuoter
 
 function chains(; up=false)::CHAINS_TYPE
@@ -20,7 +20,6 @@ quoter(x, act::Action.T=Action.open)::Quote = calcQuote(chainLookup, x, act)
 optQuoter(x, act::Action.T=Action.open)::OptionQuote = calcOptQuote(chainLookup, x, act)
 
 ivs(exps=expirs(), chs=chains()) = [(exp, round(calcNearIv(exp, chs); digits=4)) for exp in exps]
-calcIvsd(dt::Date, ivMult::Float64=1.0) = ivToStdDev(ivMult * calcNearIv(dt), mktTimeToExp(dt))
 
 #region Local
 const CHAINS = :chains
