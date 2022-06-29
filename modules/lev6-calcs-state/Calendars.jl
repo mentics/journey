@@ -6,7 +6,11 @@ using TradierData
 export isMarketOpen, nextMarketChange, getMarketOpen, getMarketClose, getMarketTime
 export calcTex, calcDurToExpr
 
-isMarketOpen() = ( check() ; Info[].isOpen )
+function isMarketOpen()
+    isnothing(snap()) || return true # snave is not allowed when market is not open
+    check()
+    return Info[].isOpen
+end
 # TODO: change name to mktChangeNext
 nextMarketChange() = ( check() ; Info[].nextChange )
 getMarketOpen(d::Date) = fromMarketTZ(d, first(getMarketTime(d).opens))
@@ -65,7 +69,7 @@ end
 function updateCalendar(;from=(firstdayofmonth(today()) - Month(1)), to=(lastdayofmonth(today() + Month(3))))::Nothing
     runSync(Lock) do
         @log debug "updateCalendar"
-        isOpen, nextChange = tradierClock()
+        isOpen, nextChange = today() != Date(2022,6,20) ? tradierClock() : (false, DateTime("2022-06-20T20:00:00"))
         cal = tradierCalendar(from, to)
         markTime = Dict(d => MarketTime(data) for (d, data) in cal)
         markDur = Dict(d => MarketDur(mt) for (d, mt) in markTime)

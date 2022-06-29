@@ -1,5 +1,5 @@
 module DrawUtil
-using GLMakie
+using GLMakie, GLFW
 using SH, Bins
 
 export draw, draw!, newFig, ticksCentered, updateLegend, closeWin
@@ -18,6 +18,12 @@ function newFig(f, (xticks, yticks))
     axislegend(ax)
     DataInspector(fig)
     display(fig)
+    # TODO: can try more screens: display(GLMakie.Screen(), figure_or_scene).
+    # from https://makie.juliaplots.org/v0.17.8/documentation/backends/glmakie/index.html
+    GLFW.SetWindowPos(GLMakie.gl_screens[1], 200, 80)
+    # Sometimes it wasn't popping up on top, so this is to force it to do so
+    GLFW.SetWindowAttrib(GLMakie.gl_screens[1], GLFW.FLOATING, 1)
+    GLFW.SetWindowAttrib(GLMakie.gl_screens[1], GLFW.FLOATING, 0)
     return ax
 end
 
@@ -70,6 +76,16 @@ rndDown(x, m) = rnd(x, m, RoundDown)
 function __init__()
     set_theme!(theme_black())
     update_theme!(fontsize=12)
+    # set_window_config!(;
+    #     # renderloop = renderloop,
+    #     vsync = false,
+    #     # framerate = 30.0,
+    #     float = false,
+    #     pause_rendering = false,
+    #     focus_on_show = true,
+    #     decorated = true,
+    #     title = "Journey"
+    # )
 end
 
 function SH.draw(f::Function, xs)

@@ -24,7 +24,7 @@ DefaultExps = [
 SimpleExps = [1,2,3,4,5,6,7,8]
 UseExps = copy(SimpleExps)
 
-MinEvrs = Dict{Int,Float64}(n => .01 for n in 1:8)
+MinEvrs = Dict{Int,Float64}() # n => .01 for n in 1:8)
 
 function run()
     if isMarketOpen()

@@ -1,10 +1,10 @@
 module DateUtilTest
-using Test, Dates, TimeZones
+using Test, Dates, TimeZones, Intervals
 using DateUtil
 
 function runTests()
     @testset "timeIn" begin
-        @test Second(1800) == timeIn(Time(1,00), (Time(0,30), Time(1,30)))
+        @test Second(1800) == timeIn(Time(1,00), Time(0,30)..Time(1,30))
         @test Second(1800) == timeIn(Time(23,30), (Time(23,00)))
     end
 
@@ -15,6 +15,9 @@ function runTests()
 
     @testset "nextMarketPeriod" begin
         t1 = round(now(UTC), Hour(1))
+
+        @test DateUtil.nextMarketPeriod(t1, true, t1 + Hour(1), Minute(1), Second(0), Minute(5)) == t1 + Minute(1)
+
         @test DateUtil.nextMarketPeriod(t1, true, t1, Minute(4), Second(0), Second(5)) == t1 + Second(5)
         @test DateUtil.nextMarketPeriod(t1, true, t1 + Second(2), Minute(4), Second(0), Second(5)) == t1 + Second(7)
         @test DateUtil.nextMarketPeriod(t1, true, t1 + Minute(4), Minute(4), Second(0), Second(5)) == t1 + Minute(4) + Second(5)

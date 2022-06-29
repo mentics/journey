@@ -22,8 +22,14 @@ whenProcExpired(from::DateTime, isMktOpen::Bool, tsMktChange::DateTime) = nextLo
 whenSnapshots(from::DateTime, isMktOpen::Bool, tsMktChange::DateTime) = nextMarketPeriod(from, isMktOpen, tsMktChange, Hour(1), Second(73), Second(45))
 snaveWrapper() = isMarketOpen() && Snapshots.snave()
 
-whenStrat(from::DateTime, isMktOpen::Bool, tsMktChange::DateTime) = nextMarketPeriod(from, isMktOpen, tsMktChange, Second(120) ÷ max(1, length(SchedStrat.UseExps)), Second(0), Minute(4))
+whenStrat(from::DateTime, isMktOpen::Bool, tsMktChange::DateTime) = nextMarketPeriod(from, isMktOpen, tsMktChange, Second(60), Second(0), Minute(4))
+#  ÷ max(1, length(SchedStrat.UseExps))
 stratWrapper() = isMarketOpen() && SchedStrat.run()
+
+function readd(i)
+    Sched.remove(Jobs[i][1])
+    Sched.add(Jobs[i]...)
+end
 
 function add()
     for job in Jobs

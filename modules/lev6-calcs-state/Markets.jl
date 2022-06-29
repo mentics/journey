@@ -9,6 +9,7 @@ export Market, market, marketPrices, urp, urpon, urpoff, mktNumDays
 mutable struct Market
     startDay::Date
     curQuot::Quote
+    vix::Currency
     curp::Currency
     startPrice::Currency
     open::Currency
@@ -25,7 +26,7 @@ end
 urp() = Globals.get(USE_CURP)
 
 function market(; up=false)::Market
-    cache!(MARKET_TYPE, MARKET, tooOld(PERIOD_UPDATE); up) do
+    cache!(MARKET_TYPE, MARKET, tooOld(PERIOD_UPDATE, isMarketOpen()); up) do
         up || @log error "Market not up to date"
         newVal()
     end
@@ -55,14 +56,18 @@ function update()::Nothing
     return
 end
 function newVal()::Market
-    tq = tradierQuote()
+    tqs = tradierQuotes(("SPY", "VIX"))
+    @assert tqs[1]["symbol"] == "SPY"
+    @assert tqs[2]["symbol"] == "VIX"
+    tq = tqs[1]
     q = Quote(C(tryKey(tq, "bid", 0.0)), C(tryKey(tq, "ask", 0.0)))
-    tsMarket = unix2datetime(max(tq["bid_date"], tq["ask_date"])/1000) # tq["trade_date"]
+    vix = C(tqs[2]["last"]) # TODO: make sure this is the right field to use
+    tsMarket = unix2datetime(max(tq["bid_date"], tq["ask_date"])/1000)
     startDay = nextTradingDay(toDateMarket(tsMarket))
     m = C(0.5 * (q.bid + q.ask))
     op = C(tryKey(tq, "open", m))
     sp = urp() ? m : op
-    return Market(startDay, q, m, sp, op, tsMarket, now(UTC))
+    return Market(startDay, q, vix, m, sp, op, tsMarket, now(UTC))
 end
 #endregion
 

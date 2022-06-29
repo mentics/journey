@@ -1,11 +1,14 @@
  module Scoring
-using SH, BaseTypes, SmallTypes, StratTypes, ProbTypes, RetTypes
+using SH, BaseTypes, SmallTypes, StratTypes, ProbTypes, RetTypes, VectorCalcUtil
 using CalcUtil, Bins, ThreadUtil, LogUtil
 # using Kelly
 
 export calcScore1, scoreRand, probMid, probFlat
 export bySym, bySym2, byScore, byProb
 export resetCountsScore, showCountsScore
+
+# TODO: remove after fixing calcs to not need it
+TexPerDay = 6.5 + .3 * (24 - 6.2)
 
 scoreRand(args...) = rand()
 
@@ -19,47 +22,55 @@ filtkeys() = [:ev, :ev1, :ev2, :noImpEvr, :noImpEvOr, :standsAlone, :cantAlone, 
               :probStandAlone, :sides, :sidesMaxLoss, :special, :special2, :noImpSum, :biasWrong]
 calcScore1(ctx, bufCombi, bufBoth, posRet, show=false) = calcScore1(ctx, (; metsBoth=MetricBuf[]), bufCombi, bufBoth, posRet, show)
 function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, posRet::Union{Nothing,Ret}, show=false)::Float64
+    texDays = ctx.tex / TexPerDay
     MAX_LOSS = -3.0
     numLegs = isnothing(posRet) ? 4 : 4 + posRet.numLegs
-    minForLegs = (.02 / 4.0) * numLegs
+    # minForLegs = (.02 / 4.0) * numLegs
+    metsPos = ctx.metsPos
+
+    if isempty(bufCombi)
+        # This means we're calcing base score from existing position, so only bufPos will be valid but it's also passed into bufBoth.
+        # return -10000
+        show && ( @info "pos scoring" metsBoth )
+        return score(metsPos)
+    end
 
     metsBoth = tctx.metsBoth
     for i in eachindex(ctx.probs)
         metsBoth[i] = calcMetrics(ctx.probs[i], bufBoth, numLegs)
     end
 
-    if isempty(bufCombi)
-        # This means we're calcing base score from existing position, so only bufPos will be valid but it's also passed into bufBoth.
-        # return -10000
-        show && ( @info "pos scoring" metsBoth )
-        return score(metsBoth[1])
-    end
-    metb = metsBoth[1]
+    # (bufBoth[Bins.center() ÷ 2] > 0.0 && bufBoth[Bins.center()] > 0) || return countNo(:special)
 
     # metsBoth[1].evr > 0 || return countNo(:ev1)
     isNew = isnothing(posRet)
-    metc = isNew ? metsBoth[1] : calcMetrics(ctx.probs[1], bufCombi, 4)
+    # metc = isNew ? metsBoth[1] : calcMetrics(ctx.probs[1], bufCombi, 4)
+    # metc.mn > -0.8 || return countNo(:maxLossAbs)
 
-    metsBoth[1].mn > MAX_LOSS || return countNo(:maxLossAbs)
-    metc.mn > -1.0 || return countNo(:maxLossAbs)
-    # return score(metsBoth[1])
-    if ctx.numDays > 1
+    # return score(metsBoth)
+
+    # if ctx.tex > 10
         # bufBoth[1] > minForLegs || return countNo(:sides)
         # bufBoth[end] > minForLegs || return countNo(:sides)
         # bufCombi[1] > .02 || return countNo(:sides)
         # bufCombi[end] > .02 || return countNo(:sides)
-    end
+    # end
 
     # bufCombi[1] > 0.07 || return countNo(:sides)
     # bufCombi[end] > 0.07 || return countNo(:sides)
     # spread = .01
     # req(bufBoth, Bins.nearest(1.0 - spread), Bins.nearest(1.0 + spread), 0.) || return countNo(:sides)
     # req(bufCombi, Bins.nearest(1.0 - spread), Bins.nearest(1.0 + spread), 0.07) || return countNo(:special)
-    # return score(factor, metsBoth)
-    # return metsBoth[1].evr
 
     if isNew
-        metb.prob >= .7 || return countNo(:prob)
+        if texDays > 4
+            bufBoth[1] > 0.0 && bufBoth[end] > 0.0 || return countNo(:sides)
+        else
+            (bufBoth[1] > 0.0 && bufBoth[end] > 0.0) || (bufBoth[1] >= bufBoth[end]) || return countNo(:sides)
+            # req(bufBoth, Bins.nearest(.92), Bins.nearest(1.02), 0.0) || return countNo(:sides)
+        end
+        metsBoth[1].mn > -1.0 || return countNo(:maxLossAbs)
+        metsBoth[1].prob >= .6 || return countNo(:prob)
         # req(bufBoth, Bins.nearest(.96), Bins.nearest(1.04), .1) || return countNo(:sides)
         # (bufBoth[1] >= .14 && bufBoth[end] >= .14) || return countNo(:sides)
         # bufBoth[end] >= bufBoth[1] || return countNo(:sides)
@@ -68,12 +79,18 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, 
         # bufBoth[end] > 0.0 || return countNo(:sides)
         # return metb.profit - 2 * metb.loss
     else
-        metp = ctx.metsPos[1]
-        metsBoth[1].mn > 0.0 || metsBoth[1].mn > 1.5 * metp.mn || return countNo(:special2)
+        if texDays > 3
+            (bufBoth[1] > 0.0 && bufBoth[end] > 0.0) || (bufBoth[1] >= (bufBoth[end]) - .2) || return countNo(:sides)
+        end
+        metsBoth[1].mn > MAX_LOSS || return countNo(:maxLossAbs)
+        # metp = ctx.metsPos[1]
+        # metsBoth[1].loss > 1.5 * metp.loss || return countNo(:special2)
+        # metsBoth[1].evr >= metp.evr || return countNo(:noImpEvr)
+        # probLency = .85 - .15 * sigbal(.43 * texDays - 6.0)
+        # metb.prob >= probLency * metp.prob || return countNo(:noImpProb)
+
+        # metsBoth[1].mn > -1.0 || metp.mn > 0.0 || metsBoth[1].mn > 1.5 * metp.mn || return countNo(:special2)
         # metsBoth[1].ev >= metp.ev || return countNo(:noImpEvr)
-        metsBoth[1].evr >= metp.evr || return countNo(:noImpEvr)
-        probLency = .85 - .15 * sigbal(.43 * ctx.numDays - 6.0)
-        metb.prob >= probLency * metp.prob || return countNo(:noImpProb)
         # isok = false
         # for i in eachindex(ctx.probs)
         #     metp = ctx.metsPos[i]
@@ -83,7 +100,7 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, 
         #     metb.prob >= probLency * metp.prob || continue
 
         #     # if (metb.mn < 0.0)
-        #     #     mnLency = probLency # .85 - .15 * sigbal(.43 * ctx.numDays - 6.0)
+        #     #     mnLency = probLency # .85 - .15 * sigbal(.43 * texDays - 6.0)
         #     #     metb.mn >= mnLency * metp.mn || return countNo(:noImpLoss)
         #     # end
 
@@ -100,12 +117,12 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, 
         # metp = metsPos[1]
         # # metb.mn > MAX_LOSS / (1.0 + numLegs/8) || return countNo(:maxLossAbs)
 
-        # probLency = .85 - .15 * sigbal(.43 * ctx.numDays - 6.0)
+        # probLency = .85 - .15 * sigbal(.43 * texDays - 6.0)
         # # (2*metb.prob + metb2.prob) >= probLency * (2*metp.prob + metp2.prob) || return countNo(:noImpProb)
         # (2*metb.prob) >= probLency * (2*metp.prob) || return countNo(:noImpProb)
 
         # # if (metb.mn < 0.0)
-        # #     mnLency = probLency # .85 - .15 * sigbal(.43 * ctx.numDays - 6.0)
+        # #     mnLency = probLency # .85 - .15 * sigbal(.43 * texDays - 6.0)
         # #     metb.mn >= mnLency * metp.mn || return countNo(:noImpLoss)
         # # end
 
@@ -136,12 +153,12 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, 
         # return metb.evr
     end
     @atomic passed.count += 1
-    # return score(factor, metb, metb2)
     show && ( @info "scoring" metsBoth )
-    return score(metsBoth[1])
+    return score(metsBoth)
 end
 
-score(met::NamedTuple) = met.evr
+score(mets) = sum(m.evr for m in mets) / length(mets)
+# score(met::NamedTuple) = met.evr
 # function score(factor::Float64, mets::Vector)::Float64
 #     res = factor * (score(mets[1]) + sum(score, mets)) # this doubles weight of mets[1]
 #     isfinite(res) || error("something wrong with scoring ", res)
@@ -210,6 +227,31 @@ function probFlat(center::Float64, ends::Float64)::Prob
     vals[end] = ends
     # normalize!(vals)
     return Prob(center, vals)
+end
+
+# PidealThreshUp = 0.01
+# PidealThreshDown = 0.01
+# PidealMidMult = 2.0
+function probIdeal(p::Prob)
+    pvals = getVals(p)
+    pvMax = maximum(pvals)
+    PidealMidMult = 4.0
+    PidealThreshUp = pvMax / PidealMidMult
+    PidealThreshDown = pvMax / PidealMidMult / PidealMidMult
+    cur = 1.0
+    vals = Bins.empty()
+    vals[1] = pvals[1]
+    for i in Bins.binds()
+        if cur === 1.0 && pvals[i] > PidealThreshUp
+            cur = PidealMidMult
+        elseif cur === PidealMidMult && pvals[i] < PidealThreshDown
+            cur = 0.0001
+        end
+        vals[i] = cur * pvals[i]
+    end
+    vals[end] = 0.0
+    normalize!(vals)
+    return Prob(getCenter(p), vals)
 end
 
 # function probRoof(center::Float64, ends::Float64)::Prob

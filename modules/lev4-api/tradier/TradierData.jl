@@ -4,10 +4,14 @@ using BaseTypes
 using DictUtil, CollUtil, DateUtil
 using TradierConfig, TradierBase
 
-export tradierQuote, tradierOptionChain, tradierHistQuotes, tradierExpirations, tradierCalendar, tradierClock
+export tradierQuote, tradierQuotes, tradierOptionChain, tradierHistQuotes, tradierExpirations, tradierCalendar, tradierClock
 
 tradierQuote(sym::AStr=getDefaultSymbol())::TradierResp =
     tradierGet("/markets/quotes?symbols=$(sym)&greeks=false", Call(nameof(var"#self#")))["quotes"]["quote"]
+
+tradierQuotes(syms::String...)::Vector{TradierResp} = tradierQuotes(syms)
+tradierQuotes(syms::Coll{String})::Vector{TradierResp} =
+    tradierGet("/markets/quotes?symbols=$(join(syms, ','))&greeks=false", Call(nameof(var"#self#")))["quotes"]["quote"]
 
 tradierOptionChain(exp::Date, sym::String=getDefaultSymbol())::TradierRespVec = begin
         raw = tradierGet("/markets/options/chains?symbol=$(sym)&expiration=$(Dates.format(exp, TRADIER_DATE_FORMAT))&greeks=true", Call(nameof(var"#self#"), exp))
@@ -81,14 +85,6 @@ function tradierDividends()
 end
 
 end
-
-# function tradierQuotes(symbols::Array) # , cfg::TradierConfig=cfg())
-#     raw = handle(cfg(), :tradierQuotes) do
-#         s = join(symbols, ',')
-#         return tradierGet(cfg(), "/markets/quotes?symbols=$(s)&greeks=false")
-#     end
-#     return raw["quotes"]
-# end
 
 # function tradierTimeAndSales(symbol, interval, dtStart, dtEnd, cfg::TradierConfig=cfg())
 #     return handle(cfg, :tradierTimeAndSales) do

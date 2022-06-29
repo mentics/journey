@@ -1,31 +1,8 @@
 module CalcUtil
 using SH, BaseTypes, Bins, ProbTypes, RetTypes
 
-export avg, normalize!, smooth, smooth!
 export calcMetrics #, calcKelly, calcKelly!
 export ivTexToStdDev
-
-avg(vs) = sum(vs) / length(vs)
-
-(normalize!(vs::T)::T) where T = vs ./= sum(vs)
-
-smooth(v::AVec{Float64}, cnt::Int=10)::AVec{Float64} = smooth!(copy(v), cnt)
-function smooth!(v::AVec{Float64}, cnt::Int=10)::AVec{Float64}
-    len = length(v)
-    for _ in 1:cnt
-        for j in 3:(len-1)
-            nv = 0.5 * (v[j] + v[j-1])
-            v[j-1] = nv
-            v[j] = nv
-        end
-        for j in (len-1):-1:3
-            nv = 0.5 * (v[j] + v[j-1])
-            v[j-1] = nv
-            v[j] = nv
-        end
-    end
-    return v
-end
 
 calcMetrics(prob::Prob, ret::Ret, bins=Bins.inds()) = ( @assert getCenter(prob) == getCenter(ret) ; calcMetrics(prob, getVals(ret), ret.numLegs, bins) )
 function calcMetrics(prob::Prob, vals::AVec{Float64}, numLegs::Int, binsi=Bins.inds())
@@ -35,7 +12,7 @@ function calcMetrics(prob::Prob, vals::AVec{Float64}, numLegs::Int, binsi=Bins.i
         v = vals[i]
         v > 0.0 && (profit += pvals[i] * v)
     end
-    mm = calcMetrics1(pvals, vals, 1.0 + profit, 0.005 * numLegs, binsi)
+    mm = calcMetrics1(pvals, vals, 0.5 + profit, 0.005 * numLegs, binsi)
     # @info "cap" (2 * profit) (0.02 * numLegs) mm
     return mm
 end
@@ -155,7 +132,7 @@ function calcKelly!(pv, rets)
 end
 
 # ivToStdDev(iv::Float64, timeToExpY::Float64) = iv / sqrt(1.0/timeToExpY)
-ivTexToStdDev(iv::Float64, timeToExpY::Float64) = iv / sqrt(1.0/(timeToExpY/24/365))
+ivTexToStdDev(iv::Float64, tex::Float64) = iv / sqrt(1.0/(tex/24/365))
 
 # function smooth!(v::Vector{Float64}, k::Float64=1.0)
 #     # Skip first and last

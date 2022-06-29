@@ -1,5 +1,5 @@
 # run for SchedStrat:
-# cd /c/data/julia/journey/env/sched/ ;
+# cd /c/data/julia/journey/ ;
 # julia --sysimage=C:/data/tmp/sysimage-journey.dll --threads=auto --project --load=scripts/repl-sched.jl
 
 # CODE_DIR = "../.."

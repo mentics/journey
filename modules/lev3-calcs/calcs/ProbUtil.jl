@@ -1,5 +1,6 @@
 module ProbUtil
-using Bins, CalcUtil, ProbTypes, NormDists
+using Bins, ProbTypes
+using CalcUtil, VectorCalcUtil, NormDists
 
 export probsNormDist, probsCdf
 

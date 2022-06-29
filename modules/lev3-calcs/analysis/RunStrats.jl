@@ -10,14 +10,14 @@ export runStrats, makeCtx
 
 const VECF_EMPTY = Vector{Float64}()
 
-function makeCtx(calcScore, probs, numDays::Int; nthreads::Int=12, maxRun::Int=120, keep::Int=10000, posRet::Union{Nothing,Ret}, filt=nothing)
+function makeCtx(calcScore, probs, tex::Float64; nthreads::Int=12, maxRun::Int=120, keep::Int=10000, posRet::Union{Nothing,Ret}, filt=nothing)
     maxRun < nthreads && error("maxRun should be more than nthreads", maxRun, nthreads)
     keep < nthreads && error("keep should be more than nthreads", keep, nthreads)
     thrMaxRun = div(maxRun, nthreads) + 1
 
     if isnothing(posRet)
         return (;
-            calcScore, probs, maxRun, numDays, posRet, metsPos=nothing, filt,
+            calcScore, probs, maxRun, tex, posRet, metsPos=nothing, filt, baseScore=-Inf,
             threads = [makeThreadCtx(div(keep, nthreads), thrMaxRun, -Inf, length(probs)) for _ in 1:nthreads]
         )
     else
@@ -27,9 +27,9 @@ function makeCtx(calcScore, probs, numDays::Int; nthreads::Int=12, maxRun::Int=1
         end
 
         posVals = getVals(posRet)
-        baseScore = calcScore((;probs, numDays), VECF_EMPTY, posVals, posRet)
+        baseScore = calcScore((;probs, tex, metsPos), VECF_EMPTY, posVals, posRet)
         return (;
-            calcScore, probs, maxRun, numDays, posRet, metsPos, filt,
+            calcScore, probs, maxRun, tex, posRet, metsPos, filt, baseScore,
             threads = [makeThreadCtx(div(keep, nthreads), thrMaxRun, baseScore, length(probs)) for _ in 1:nthreads]
         )
     end

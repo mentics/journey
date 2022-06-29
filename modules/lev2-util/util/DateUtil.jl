@@ -7,7 +7,7 @@ using Dates, BusinessDays, TimeZones, Intervals
 # export bdays, bdaysBefore, isbday
 # export nowMs, tims, toms, msToDate,
 export isBusDay, bdays, bdaysBefore, nextTradingDay, lastTradingDay
-export nowMs, tims, toms, dateToMs, msToDate
+export nowz, nowMs, tims, toms, dateToMs, msToDate
 export timeToExpir
 export strShort
 export isNowWithinMarket
@@ -64,8 +64,9 @@ nextLocalTime(from::DateTime, tim::Time) = ( dt = DateTime(todayat(tim, localzon
 function nextMarketPeriod(from::DateTime, isMktOpen::Bool, tsMktChange::DateTime, period::Period, before::Period, after::Period)
     @assert Dates.value(after) > 0
     @assert from <= tsMktChange
+    @assert before < period
     if isMktOpen
-        nextPeriod = round(from + before, period, RoundUp)
+        nextPeriod = round(Millisecond(1) + from + before, period, RoundUp) # add a little in case from is exactly at a period
         timeNext = nextPeriod - before
         timeNext > from && timeNext < tsMktChange && return timeNext
     end
@@ -135,5 +136,6 @@ timeToExpir(from::DateTime, to::DateTime)::Float64 = Millisecond(to - from).valu
 # timeToExpir(expFrom::Date, expTo::Date)::Float64 = bdays(expFrom, expTo) / 365.0
 
 nowMs() = round(Int, time()*1000)
+nowz() = now(localzone())
 
 end

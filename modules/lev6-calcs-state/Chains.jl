@@ -1,16 +1,15 @@
 module Chains
 using Dates
-using CollUtil, DictUtil, DateUtil, CalcUtil, LogUtil
+using CollUtil, DictUtil, DateUtil, CalcUtil, LogUtil, VectorCalcUtil
 using Globals, BaseTypes, SH, SmallTypes, ChainTypes, QuoteTypes, OptionTypes, OptionMetaTypes
 using TradierData, Caches
-using DataHelper, Markets, Expirations
-# using Calendars
+using DataHelper, Markets, Calendars, Expirations
 
 export chains, ivs, calcNearIv
 export quoter, optQuoter
 
 function chains(; up=false)::CHAINS_TYPE
-    cache!(CHAINS_TYPE, CHAINS, tooOld(PERIOD_UPDATE); up) do
+    cache!(CHAINS_TYPE, CHAINS, tooOld(PERIOD_UPDATE, isMarketOpen()); up) do
         up || @log error "Chains not up to date"
         newVal()
     end
@@ -31,7 +30,6 @@ whenUpdate(from::DateTime, isMktOpen::Bool, nextMktChange::DateTime) = whenMarke
 canTrade() = ( delta = now(UTC) - market().tsUpdate ; delta <= PERIOD_UPDATE+Second(5) || error("Don't trade when chains data out of date: ", delta, " seconds") )
 
 function update()::Nothing
-    isMarketOpen() || return
     @log debug "updateChains"
     setCache!(CHAINS, newVal())
     return
@@ -48,6 +46,7 @@ function updateIvs(chs)::Nothing
 end
 
 # TODO: what's the right way to aggregate?
+# TODO: change, or add, to the calc for VIX
 calcNearIv(dt::Date, chs=chains())::Float64 = avg(filter(x -> x != 0.0, getIv.(getMeta.(nearOqs(market().curp, dt, chs)))))
 nearOqs(curp::Currency, d::Date, chs, dist::Int=20)::Vector{OptionQuote} = nearOqs(curp, chs[d].chain, dist)
 nearOqs(curp::Currency, oqs, dist::Int=20)::Vector{OptionQuote} = filter(x -> abs(getStrike(x) - curp) <= dist, oqs)

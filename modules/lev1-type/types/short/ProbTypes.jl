@@ -1,5 +1,5 @@
 module ProbTypes
-using SH
+using SH, VectorCalcUtil
 
 export Prob
 export valLeft, valRight
@@ -12,5 +12,7 @@ SH.getCenter(p::Prob) = p.center
 SH.getVals(p::Prob) = p.vals
 valLeft(p::Prob) = p.vals[1]
 valRight(p::Prob) = p.vals[end]
+
+Base.:(+)(p1::Prob, p2::Prob) = ( @assert p1.center === p2.center ; Prob(p1.center, normalize!(p1.vals + p2.vals)) )
 
 end

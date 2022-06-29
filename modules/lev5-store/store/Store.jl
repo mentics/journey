@@ -61,7 +61,7 @@ having (max(tsCreated) - min(tsCreated)) > interval '10 seconds' or (max(tsFille
 """
 
 sqlUnfilledCheck() = """
-select f.lid from VLegFilled f join Trade t on t.tid=f.tid where f.qtyUsed < f.quantity and f.act=1
+select f.tid, f.lid from VLegFilled f join Trade t on t.tid=f.tid where f.qtyUsed < f.quantity and f.act=1
     and f.tid not in (select tid from Trade where status=? and tsCreated>?)
 """
 

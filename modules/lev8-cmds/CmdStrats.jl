@@ -1,35 +1,18 @@
 module CmdStrats
 using Dates
 using SH, BaseTypes, SmallTypes, QuoteTypes, LegTypes, LegMetaTypes, StratTypes, RetTypes, ProbTypes
-using Globals, Bins, BaseUtil, LogUtil, DateUtil, CollUtil, ProbUtil, Between, Scoring
+using Globals, Bins, BaseUtil, LogUtil, DateUtil, CollUtil, ProbUtil, VectorCalcUtil, Between, Scoring
 using Strats, Rets, StratGen, RunStrats
 using ProbHist, Markets, Expirations, Chains, Positions, Calendars
 using Trading, CmdUtil
 using OutputUtil, DrawStrat
 using StoreOrder
 
-export ana, an, sortar, sortar2, sa, ar, arv, arl, ret, comp
-export dr, drf, adr, adrf, dra, ret, retf
-export ctx, curStrat, curRet, probs, pvals, ivs
-
-function comp(i::Int)
-    retStart = curRet()
-    retAdd = combineTo(Ret, ar(i))
-    retBoth = combineTo(Ret, collect(Iterators.flatten((ar(i), curStrat()))))
-    comp(retStart, retAdd, retBoth)
-end
-
-comp(lmss::Vector{LegMeta}...) = comp(map(lmss) do lms
-    combineTo(Ret, lms, minimum(getExpiration.(lms)), C(lastPosRet[].center), getvr())
-end...)
-
-function comp(rets::Ret...)
-    for (ip, prob) in enumerate(probs())
-        pretyble([(;name=ir, calcMetrics(prob, ret)...) for (ir, ret) in enumerate(rets)])
-        # TODO: create Tables impl for tuple of namedtuples
-    end
-    return
-end
+export ana, an, sortar, sortar2, sa
+export ar, ar0, ara, arv, arl
+export ret, ret0, reta, comp
+export dr, dr0, dra, adr, adr0, adra
+export ctx, probs, pvals, ivs
 
 hereMetrics(pv, r) = Scoring.calcMetrics(pv, r)
 
@@ -44,31 +27,8 @@ hereMetrics(pv, r) = Scoring.calcMetrics(pv, r)
 # invert(p::Prob) = Prob(getCenter(p), invert(getVals(p)))
 # invert(v::Vector{Float64}) = normalize!(map(x -> x === 0.0 ? 1.0 : 0.0, v))
 
-function makeProbs(tex::Float64, targetDate::Date, sp::Currency)::Tuple
-    ivsd = ivTexToStdDev(calcNearIv(targetDate), tex)
-    # shift = ivsd/2
-    pnd = probsNormDist(sp, ivsd)# + .25 * numDays * .05))
-    # pndL = probsNormDist(sp, ivsd, -shift)# + .25 * numDays * .05))
-    # pndR = probsNormDist(sp, ivsd, shift)# + .25 * numDays * .05))
-    # probs = (pnd, pndL, pndR)
-    # phOrig = probHist(sp, numDays) # round(Int, 1.5 * (3 + numDays)))
-    # ph = Prob(getCenter(phOrig), smooth(getVals(phOrig)))
-    # probs = (ph,)
-    probs = (pnd,)
-    # pnd = probsNormDist(sp, calcIvsd(targetDate))
-    # pflat = probFlat(Float64(sp), pnd[1]/2)
-    # pflat = probRoof(Float64(sp), pnd[1]/2)
-    # pflat = probFlat(getCenter(pnd), pnd.vals[1])
-    # pshort = probMid(ph, binMin(), 1.0)
-    # plong = probMid(ph, 1., binMax())
-    # pmid = probMid(ph, .5*(1.0+binMin()), .5*(1.0+binMax()))
-    # ppos = isnothing(lastPosRet[]) ? nothing : retToProb(lastPosRet[])
-    # pposInv = isnothing(lastPosRet[]) ? nothing : invert(ppos)
-    # pposHyb = Prob(getCenter(ph), normalize!(getVals(ph) .+ (getVals(pposInv) .* 2)))
-    # probs = (ph,pnd)
-    Scoring.MetricBuf[] = Vector{NamedTuple}(undef, length(probs))
-    return probs
-end
+# TODO: remove after fixing calcs to not need it
+TexPerDay = 6.5 + .3 * (24 - 6.2)
 
 # cfilt
 isBfly(c) = getStrike(c[2]) == getStrike(c[3])
@@ -111,7 +71,7 @@ function an(exps::Date...; maxRun::Int=120, keep::Int=100, nthreads::Int=Threads
     global lastCtx[] = ctx
     sortar(byScore)
     if headless
-        println("Ran strats for ", exps[1])
+        println(Time(nowz()), ": Ran strats for ", exps[1])
     else
         sa()
         isempty(lastView[]) || (isempty(lastPosStrat[]) ? dr(1) : dra(1))
@@ -119,6 +79,55 @@ function an(exps::Date...; maxRun::Int=120, keep::Int=100, nthreads::Int=Threads
     end
     return length(lastView[])
 end
+
+function makeProbs(tex::Float64, targetDate::Date, sp::Currency)::Tuple
+    ivsd = ivTexToStdDev(calcNearIv(targetDate), tex)
+    # shift = ivsd/2
+    # pnd = probsNormDist(sp, ivsd)# + .25 * numDays * .05))
+    # pndL = probsNormDist(sp, ivsd, -shift)# + .25 * numDays * .05))
+    # pndR = probsNormDist(sp, ivsd, shift)# + .25 * numDays * .05))
+    # probs = (pnd, pndL, pndR)
+    # TODO: this numdays proxy calc is wrong. Completely change how we calc probHist, do it based on tex
+    phOrig = probHist(sp, round(Int, tex / TexPerDay))
+    pvals = getVals(phOrig)
+    ph = Prob(getCenter(phOrig), smooth(getVals(phOrig)))
+    pideal = Scoring.probIdeal(ph)
+
+    s = 0.0
+    i = 0
+    while (s < .5)
+        i += 1
+        s += pvals[i]
+    end
+    # mu = sp * Bins.x(i)
+
+    pndsh = probsNormDist(sp, ivsd, Bins.x(i) - 1.0)
+    # probs = (pideal, ph, pndsh)
+    probs = (pndsh + ph,)
+    # pflat = probFlat(Float64(sp), pnd[1]/2)
+    # pflat = probRoof(Float64(sp), pnd[1]/2)
+    # pflat = probFlat(getCenter(pnd), pnd.vals[1])
+    # pshort = probMid(ph, binMin(), 1.0)
+    # plong = probMid(ph, 1., binMax())
+    # pmid = probMid(ph, .5*(1.0+binMin()), .5*(1.0+binMax()))
+    # ppos = isnothing(lastPosRet[]) ? nothing : retToProb(lastPosRet[])
+    # pposInv = isnothing(lastPosRet[]) ? nothing : invert(ppos)
+    # pposHyb = Prob(getCenter(ph), normalize!(getVals(ph) .+ (getVals(pposInv) .* 2)))
+    # probs = (ph,pnd)
+    Scoring.MetricBuf[] = Vector{NamedTuple}(undef, length(probs))
+    return probs
+end
+
+comp(i::Int) = comp(ret0(), ret(i), reta(i))
+function comp(rets::Ret...)
+    for prob in probs()
+        pretyble([(;name=ir, calcMetrics(prob, ret)...) for (ir, ret) in enumerate(rets)])
+        # TODO: create Tables impl for tuple of namedtuples
+    end
+end
+comp(lmss::Vector{LegMeta}...) = comp(map(lmss) do lms
+    combineTo(Ret, lms, minimum(getExpiration.(lms)), C(lastPosRet[].center), getvr())
+end...)
 
 calcMaxRun(sprs2) = ( (len1, len2) = length.(sprs2) ; binomial(len1, 2) + binomial(len2, 2) + len1 * len2 )
 
@@ -170,23 +179,29 @@ function analysisResults(cnt::Int=20)::Vector{NamedTuple}
     return tups
 end
 
-ar(i::Int) = i == 0 ? lastPosStrat[] : lastView[][i]
+ar(i::Int) = lastView[][i]
+ar0() = lastPosStrat[]
+ara(i::Int) = withPosStrat(ar(i))
 arv(i::Int)= combineTo(Vals, i == 0 ? lastPosRet[] : lastView[][i])
 arl(i::Int)= collect(tos(LegMeta, ar(i)))
 
-ret(i::Int) = i == 0 ? lastPosRet[] : combineTo(Ret, withPosStrat(ar(i))) # combineRets(getRets(withPosStrat(ar(i))))
-retf(i::Int) = combineTo(Ret, ar(i))
+ret(i::Int) = combineTo(Ret, ar(i))
+ret0() = lastPosRet[]
+reta(i::Int) = combineTo(Ret, ara(i))
+
 dr(i::Int) = locDraw(ret(i), i)
-drf(i::Int) = locDraw(retf(i), string(i)*'f')
+dr0() = locDraw(ret0(), 0)
+dra(i::Int) = ( dr0() ; adr(i) ; adra(i) )
+
 adr(i::Int) = locDraw!(ret(i), i)
-adrf(i::Int) = locDraw!(retf(i), string(i)*'f')
-dra(i::Int) = ( dr(0) ; adrf(i) ; adr(i) )
+adr0() = locDraw!(ret0(), 0)
+adra(i::Int) = locDraw!(reta(i), string(i)*'a')
+
 locDraw(x, label) = ( drawRet(x, probs(), market().curp, string(label)) ; return )
 locDraw!(x, label) = ( drawRet!(x, string(label)) ; return )
 
 ctx() = lastCtx[]
-curStrat() = lastPosStrat[]
-curRet() = lastPosRet[]
+# curStrat() = lastPosStrat[]
 # curVals() = getVals(curRet())
 probs() = lastCtx[].probs
 pvals() = map(x->getVals(x), probs())
@@ -202,7 +217,7 @@ const lastPosRet = Ref{Union{Nothing,Ret}}(nothing)
 
 # TODO: move toTuple?
 using Shorthand, CalcUtil
-tupleWidths() = [0,0,0,0,0,0,48,30,10]
+tupleWidths() = [0,0,0,0,0,0,0,48,30,10]
 function toTuple(s::Union{Nothing,Strat}, lrs::Vector{LegRet})
     exps = unique!(sort!(collect(getExpiration.(s))))
     strikes = legsTosh(s, exps) # join(map(l -> "$(first(string(side(l))))$(s(strike(l), 1))$(first(string(style(l))))@$(searchsortedfirst(exps, expiration(l)))", legs(ar)), " / ")
@@ -212,7 +227,7 @@ function toTuple(s::Union{Nothing,Strat}, lrs::Vector{LegRet})
     score = byScore(lastCtx[], combineTo(Vals, s), combineTo(Vals, withPosStrat(s)), lastPosRet[])
     pnl = extrema(getVals(ret))
     netOpen=!isnothing(s) ? bap(tos(LegMeta, s)) : 0.0
-    return (;prob=met.prob, ev=met.ev, evr=met.evr, pnl, netOpen, legs=strikes, expir=exps, score)
+    return (;prob=met.prob, ev=met.ev, evr=met.evr, evrimp=lastCtx[].baseScore, pnl, netOpen, legs=strikes, expir=exps, score)
 end
 
 function metFor(lms::Vector{LegMeta})
