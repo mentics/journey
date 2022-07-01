@@ -20,7 +20,7 @@ function newFig(f, (xticks, yticks))
     display(fig)
     # TODO: can try more screens: display(GLMakie.Screen(), figure_or_scene).
     # from https://makie.juliaplots.org/v0.17.8/documentation/backends/glmakie/index.html
-    GLFW.SetWindowPos(GLMakie.gl_screens[1], 200, 80)
+    GLFW.SetWindowPos(GLMakie.gl_screens[1], 140, 80)
     # Sometimes it wasn't popping up on top, so this is to force it to do so
     GLFW.SetWindowAttrib(GLMakie.gl_screens[1], GLFW.FLOATING, 1)
     GLFW.SetWindowAttrib(GLMakie.gl_screens[1], GLFW.FLOATING, 0)

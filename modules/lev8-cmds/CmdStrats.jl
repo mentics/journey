@@ -83,7 +83,7 @@ end
 function makeProbs(tex::Float64, targetDate::Date, sp::Currency)::Tuple
     ivsd = ivTexToStdDev(calcNearIv(targetDate), tex)
     # shift = ivsd/2
-    # pnd = probsNormDist(sp, ivsd)# + .25 * numDays * .05))
+    pnd = probsNormDist(sp, ivsd)# + .25 * numDays * .05))
     # pndL = probsNormDist(sp, ivsd, -shift)# + .25 * numDays * .05))
     # pndR = probsNormDist(sp, ivsd, shift)# + .25 * numDays * .05))
     # probs = (pnd, pndL, pndR)
@@ -103,7 +103,8 @@ function makeProbs(tex::Float64, targetDate::Date, sp::Currency)::Tuple
 
     pndsh = probsNormDist(sp, ivsd, Bins.x(i) - 1.0)
     # probs = (pideal, ph, pndsh)
-    probs = (pndsh + ph,)
+    # probs = (pndsh + ph,)
+    probs = (pndsh,)
     # pflat = probFlat(Float64(sp), pnd[1]/2)
     # pflat = probRoof(Float64(sp), pnd[1]/2)
     # pflat = probFlat(getCenter(pnd), pnd.vals[1])
