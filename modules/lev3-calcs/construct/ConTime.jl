@@ -2,7 +2,7 @@ module ConTime
 using Dates
 using SH, Globals
 using LegMetaTypes
-using Expirations
+using Expirations, Snapshots
 using CmdStrats
 
 function run(exp::Date, numSnaps::Int)
@@ -16,6 +16,17 @@ function run(exp::Date, numSnaps::Int)
         end
     end
     return lmsPos
+end
+
+dateFilter(from, to) = tup -> (from < tup[2] < to)
+dateHourFilter(from, to, hour) = tup -> (from < tup[2] < to) && Hour(tup[2]).value == hour
+
+function runForSnaps(f, filt=identity)
+    snapTups = filter(filt, map(s -> (s, Snapshots.snapToTs(s)), Snapshots.allSnaps(false)))
+    for (name, ts) in snapTups
+        snap(name)
+        f(name, ts)
+    end
 end
 
 end

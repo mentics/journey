@@ -1,8 +1,8 @@
 module Globals
-import Dates:now,UTC
+import Dates:now,UTC,DateTime
 
 export config
-export snap, tenv, intest
+export snap, snapTs, tenv, intest
 export dev, devon, devoff
 export dirData
 export setvr, getvr
@@ -12,6 +12,7 @@ dev()::Bool = get(:devMode)
 devon()::Bool = set(:devMode, true)
 devoff()::Bool = ( set(:devoffLastRun, now(UTC)) ; set(:devMode, false) )
 snap()::Union{Nothing,String} = get(:snap)
+snapTs()::Union{Nothing,DateTime} = get(:snapTs)
 tenv()::Symbol = get(:tierEnv)
 intest()::Bool = get(:testing)
 
@@ -29,6 +30,7 @@ function __init__()
         :testing => false,
         :tierEnv => :paper,
         :snap => nothing,
+        :snapTs => nothing,
         :useCurp => false,
         :Strats => Dict{Symbol,Any}(
             :maxStrikeDist => 20,

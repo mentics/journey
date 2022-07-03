@@ -57,12 +57,26 @@ function update()::Nothing
 end
 function newVal()::Market
     tqs = tradierQuotes(("SPY", "VIX"))
+    tq = tqs[1]
+    tsMarket = unix2datetime(max(tq["bid_date"], tq["ask_date"])/1000)
+    # TODO: clean this up
+    if (!isnothing(snap()) && abs(snapTs() - tsMarket) > Minute(10))
+        println("Falling back because snap doesn't have quotes call")
+        tq = tradierQuote()
+        @assert tq["symbol"] == "SPY"
+        q = Quote(C(tryKey(tq, "bid", 0.0)), C(tryKey(tq, "ask", 0.0)))
+        tsMarket = unix2datetime(max(tq["bid_date"], tq["ask_date"])/1000)
+        startDay = nextTradingDay(toDateMarket(tsMarket))
+        vix = C(0.0)
+        m = C(0.5 * (q.bid + q.ask))
+        op = C(tryKey(tq, "open", m))
+        sp = urp() ? m : op
+        return Market(startDay, q, vix, m, sp, op, tsMarket, now(UTC))
+    end
     @assert tqs[1]["symbol"] == "SPY"
     @assert tqs[2]["symbol"] == "VIX"
-    tq = tqs[1]
     q = Quote(C(tryKey(tq, "bid", 0.0)), C(tryKey(tq, "ask", 0.0)))
     vix = C(tqs[2]["last"]) # TODO: make sure this is the right field to use
-    tsMarket = unix2datetime(max(tq["bid_date"], tq["ask_date"])/1000)
     startDay = nextTradingDay(toDateMarket(tsMarket))
     m = C(0.5 * (q.bid + q.ask))
     op = C(tryKey(tq, "open", m))

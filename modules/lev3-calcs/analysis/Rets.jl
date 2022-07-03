@@ -5,7 +5,7 @@ using DateUtil, LogUtil
 using BlacksPricing
 using Globals
 
-export makeRet, estAtPrice, combineRetVals!, combineRets, combineRetVals
+export makeRet, estAtPrice, combineRetVals!, combineRets, combineRetsC, combineRetVals
 
 # This is where we convert from Currency to Float64
 function makeRet(leg::Leg, m::OptionMeta, neto::Currency, targetDate::Date, sp::Currency, vtyRatio::Float64=Globals.get(:vtyRatio))::Ret
@@ -61,6 +61,17 @@ function combineRets(rets::Coll{Ret})::Ret
 end
 (tupadd((x11, x12)::Tuple{T1,T2}, (x21, x22)::Tuple{T1,T2})::Tuple{T1,T2}) where {T1,T2} = (x11 + x21, x12 + x22)
 # r1.vals + r2.vals, r1.numLegs + r2.numLegs
+function combineRetsC(rets::Coll{Ret}, cnew=sum(r -> r.center, rets) / length(rets))::Ret
+    # cnew = sum(r -> r.center, rets) / length(rets)
+    vals = Bins.with(0.0) # similar(getVals(rets[1]))
+    for (i, x) in Bins.xsi()
+        price = cnew * x
+        for ret in rets
+            vals[i] += valAtPrice(ret, C(price))
+        end
+    end
+    return Ret(vals, cnew, sum(r -> r.numLegs, rets))
+end
 
 #region Local
 function atExp(style::Style.T, strike::Float64, side::Side.T, qty::Float64, neto::Float64, sp::Float64)::Ret

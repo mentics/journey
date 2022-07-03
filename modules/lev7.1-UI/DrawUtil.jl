@@ -6,7 +6,7 @@ export draw, draw!, newFig, ticksCentered, updateLegend, closeWin
 
 closeWin() = GLMakie.destroy!(GLMakie.global_gl_screen())
 
-function newFig(f, (xticks, yticks))
+function newFig(f, (xticks, yticks), showLegend=true, newWin=false)
     fig = Figure(resolution = (1200, 1000))
     ax = Axis(fig[1,1])
     ax.xticks = xticks
@@ -15,9 +15,14 @@ function newFig(f, (xticks, yticks))
 
     f(fig, ax)
 
-    axislegend(ax)
+    Main.save[:ax] = ax
+    showLegend && axislegend(ax)
     DataInspector(fig)
-    display(fig)
+    if newWin
+        display(GLMakie.Screen(), ax)
+    else
+        display(fig)
+    end
     # TODO: can try more screens: display(GLMakie.Screen(), figure_or_scene).
     # from https://makie.juliaplots.org/v0.17.8/documentation/backends/glmakie/index.html
     GLFW.SetWindowPos(GLMakie.gl_screens[1], 140, 80)

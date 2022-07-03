@@ -66,7 +66,7 @@ function check()
     Info[].nextChange < now(UTC) && updateCalendar()
 end
 
-function updateCalendar(;from=(firstdayofmonth(today()) - Month(1)), to=(lastdayofmonth(today() + Month(3))))::Nothing
+function updateCalendar(;from=(firstdayofmonth(today()) - Year(1)), to=(lastdayofmonth(today() + Year(1))))::Nothing
     runSync(Lock) do
         @log debug "updateCalendar"
         isOpen, nextChange = today() != Date(2022,6,20) ? tradierClock() : (false, DateTime("2022-06-20T20:00:00"))

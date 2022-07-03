@@ -34,18 +34,32 @@ function runTests()
 
     @testset "combine!" begin
         buf = Vector{Float64}(undef, 10)
-        rets = map(v -> Ret(1.0, collect(v)), (10.0:19.0, 20.0:29.0, 30.0:39.0, 40.0:49.0))
-        extra = combineRets(map(v -> Ret(1.0, collect(v)), [100.0:109.0, 200.0:209.0]))
+        rets = map(v -> Ret(collect(v), 1.0, 4), (10.0:19.0, 20.0:29.0, 30.0:39.0, 40.0:49.0))
+        extra = combineRets(map(v -> Ret(collect(v), 1.0, 4), [100.0:109.0, 200.0:209.0]))
         expected = reduce((v1, v2) -> v1 + v2, map(x->x.vals, vcat(collect(rets), extra)))
         combineRetVals!(buf, rets, extra.vals)
         @test buf == expected
     end
 
     @testset "combine" begin
-        rets = map(v -> Ret(1.0, collect(v)), (10.0:19.0, 20.0:29.0, 30.0:39.0, 40.0:49.0))
+        rets = map(v -> Ret(collect(v), 1.0, 4), (10.0:19.0, 20.0:29.0, 30.0:39.0, 40.0:49.0))
         expected = reduce((v1, v2) -> v1 + v2, map(x->x.vals, vcat(collect(rets))))
         res = combineRetVals(rets)
         @test res == expected
+    end
+
+    @testset "combineRetsC" begin
+        ret1 = Ret(Bins.with(1.0), 99.0, 4)
+        spike = Bins.with(0.0)
+        spike[Bins.center()] = 2.0
+        ret2 = Ret(spike, 102.1, 2)
+        ret3 = Ret(Bins.with(x -> 10*(x - 1.0)), 105.8, 4)
+        res = combineRetsC((ret1, ret2, ret3))
+        Main.save[:rets] = [ret1, ret2, ret3, res]
+        @test res.numLegs == 10
+        @test res.center == 102.3
+        @test res.vals[Bins.center()] ≅ 1.0 + 0.0 - 0.3308128
+        # @test res == Ret([], , 10)
     end
 end
 

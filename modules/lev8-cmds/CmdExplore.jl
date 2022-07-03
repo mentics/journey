@@ -312,4 +312,93 @@ function theoQuote(ts, curp, oq::OptionQuote)::OptionQuote
     return OptionQuote(oq; quot=Quote(theoc, theoc))
 end
 
+#==== 7/2/2022 ====#
+
+function searchButterfly()
+    s2("c", "c")
+    # s2("p", "p")
+    # s2("p", "c")
+    # s2("c", "p")
+    # println(profMax)
+    # return candMax
+end
+
+function s2(s1, s2)
+    curp = market().curp
+    low = floor(curp) - 20.0
+    high = ceil(curp) + 19.0
+    # profMax = 0.028
+    profMax = -100.
+    candMax = ""
+    pass = []
+    for str1 in low:1.0:high
+        # println("Checking $(str1)")
+        cand = "s$(str1)$(s1)@1 / l$(str1+1.0)$(s1)@1 / l$(str1+1.0)$(s2)@1 / s$(str1+2.0)$(s2)@1"
+        ret = shRet(cand, 1)
+        prof = maximum(getVals(ret))
+        if prof > profMax
+            candMax = cand
+            profMax = prof
+        end
+        if prof > .028
+            push!(pass, cand)
+            println(prof, " ", cand)
+        end
+    end
+    lms = mapreduce(sh, vcat, pass)
+    drlms(lms)
+end
+
+using ConTime, Rets
+function test10()
+    snap(5,20,7,0)
+    dateTarget = expir(8)
+    filt = ConTime.dateHourFilter(Date(2022, 5, 19), dateTarget, 14)
+    # filt = ConTime.dateFilter(Date(2022, 5, 19), dateTarget)
+    lastCenter = C(0.0)
+    rets = Vector{Ret}()
+    tsPrev = DateTime(0)
+    lmsPos = Vector{LegMeta}()
+    ConTime.runForSnaps(filt) do name, ts
+        @assert ts > tsPrev
+        tsPrev = ts
+        Main.save[:dir] = -1
+        ret1 = nothing
+        ret2 = nothing
+        if ana(dateTarget; headless=true, lmsPos) > 0
+            ret1 = ret(1)
+            lms1 = arl(1)
+            println("-1 found")
+        else
+            println("-1 not found")
+        end
+        if !isnothing(ret1)
+            Main.save[:dir] = 1
+            if ana(dateTarget; headless=true, lmsPos) > 0
+                ret2 = ret(1)
+                lms2 = arl(1)
+                println("1 found ")
+            else
+                println("1 not found")
+            end
+
+            if !isnothing(ret1) && !isnothing(ret2)
+                push!(rets, ret1)
+                append!(lmsPos, lms1)
+                push!(rets, ret2)
+                append!(lmsPos, lms2)
+            end
+        end
+
+        lastCenter = market().curp
+        Main.save[:lastCenter] = lastCenter
+    end
+    Main.save[:rets] = rets
+    @assert lastCenter == rets[end].center
+    cr1 = combineRetsC(rets, lastCenter)
+    Main.save[:cret] = cr1
+    drawRet(cr1; label="c")
+    # drawRet!(ret1; label="1")
+end
+
 end

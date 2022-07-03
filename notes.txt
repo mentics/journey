@@ -224,3 +224,49 @@ insert into legord ("olid","oid","act","style","expiration","strike","side","qua
 	values (2001,1001,-1,-1,'2022-04-22',435.0,1,1.0,0.0,1000*cast(now() as int),1000*cast(now() as int))
 insert into legord ("olid","oid","act","style","expiration","strike","side","quantity","prilldir","tscreated","tsfilled")
 	values (2002,1001,-1,-1,'2022-04-22',436.0,-1,1.0,1.0,1000*cast(now() as int),1000*cast(now() as int))
+
+
+==== 2022.07.22 ====
+Short condor for 6/30 on 6/15 then long condor for 6/30 on 6/27
+
+=== same date, diff exps, so not realistic because price can move ===
+snap(5,20,8,0)
+dir = 1 ; ana(8)
+ret1 = ret(1)
+dir = -1 ; ana(2)
+ret2 = ret(1)
+cr1 = combineRets([ret1, ret2])
+drawRet(cr1; label="c")
+drawRet!(ret1; label="1")
+drawRet!(ret2; label="2")
+
+=== diff date, same exp 6/8 ===
+snap(5,20,7,0)
+dir = 1 ; ana(8)
+ret1 = ret(1)
+snap(6,1,7,0)
+dir = -1 ; ana(3)
+ret2 = ret(1)
+cr1 = combineRetsC([ret1, ret2])
+drawRet(cr1; label="c")
+drawRet!(ret1; label="1")
+drawRet!(ret2; label="2")
+
+
+
+
+
+
+NO: didn't work because it used same start price?
+snap(5,20,7,0)
+dateTarget = expir(8)
+dir = 1 ; ana(8)
+lms1 = arl(1)
+snap(6,1,7,0)
+@assert expir(3) == dateTarget
+dir = -1 ; ana(3)
+lms2 = arl(1)
+clms1 = combineTo(Ret, vcat(lms1, lms2), dateTarget, market().startPrice, 1.0)
+drawRet(cr1; label="c")
+drawRet!(ret1; label="1")
+drawRet!(ret2; label="2")

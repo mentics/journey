@@ -17,9 +17,9 @@ Base.getindex(r::Ret, i::Int) = r.vals[i]
 valFirst(r::Ret)::Float64 = r.vals[1]
 valLast(r::Ret)::Float64 = r.vals[end]
 
-valAtPrice(ret::Ret, x::Currency) = valAt(ret, x/getCenter(ret))
+valAtPrice(ret::Ret, x::Real) = valAt(ret, x/getCenter(ret))
 # TODO: unit tests for this
-function SH.valAt(ret::Ret, x::Float64)
+function SH.valAt(ret::Ret, x::Real)
     Bins.isLeft(x) && return valFirst(ret)
     Bins.isRight(x) && return valLast(ret)
 
@@ -31,7 +31,8 @@ function SH.valAt(ret::Ret, x::Float64)
     # TODO: special calc for between 1-2 and end-1 end
     left = ret[bl]
     right = ret[br]
-    ratio = (x - Bins.x(bl))/(br - bl)
+    ratio = (x - Bins.x(bl))/(Bins.x(br) - Bins.x(bl))
+    # @info "" left right ratio bl br
     return left + ratio * (right - left)
 end
 

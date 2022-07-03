@@ -25,7 +25,7 @@ function run()
     for i in 1:numSnaps
         i in Loaded && continue
         nam = snap(i)
-        resc, resp = process(snapTs(nam))
+        resc, resp = process(Snapshots.snapToTs(nam))
         append!(AllCalls, resc)
         append!(AllPuts, resp)
         push!(Loaded, i)

@@ -56,6 +56,7 @@ isLeft(x::Float64) = x <= XLEFT
 isRight(x::Float64) = x >= XRIGHT
 
 with(x::Float64)::Vector{Float64} = fill(x, VNUM)
+with(f::Function)::Vector{Float64} = map(f, xs())
 empty() = Vector{Float64}(undef, VNUM)
 isValidInd(i::Int)::Bool = 1 <= i <= VNUM
 
