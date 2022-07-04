@@ -6,8 +6,8 @@ using Rets, LegTypes, TradeTypes, LegTradeTypes
 # SH.bap(lm)::Currency = getBid(lm)
 # SH.bap(hasQuotes::Coll)::Currency = sum(getBid, hasQuotes)
 # RAT2 = .2
-SH.bap(hasQuote)::Currency = round(improve(getQuote(hasQuote), .1), RoundDown; digits=2)
-SH.bap(hasQuotes::Coll)::Currency = round(improve(sumQuotes(getQuote.(hasQuotes)), .1), RoundDown; digits=2)
+SH.bap(hasQuote)::Currency = round(improve(getQuote(hasQuote), .2), RoundDown; digits=2)
+SH.bap(hasQuotes::Coll)::Currency = round(improve(sumQuotes(getQuote.(hasQuotes)), .2), RoundDown; digits=2)
 
 # SH.to(::Type{LegMeta}, lg::Leg, qt::Quote, met::OptionMeta)::LegMeta = ( side = getSide(side) ; LegMeta(Leg(getOption(lg), getQuantity(lg), side), qt, met) )
 # SH.to(::Type{LegMeta}, lg::Leg, qt::OptionQuote)::LegMeta = ( side = getSide(side) ; LegMeta(Leg(getOption(lg), getQuantity(lg), side), qt, met) )
@@ -24,6 +24,8 @@ SH.to(::Type{LegRet}, lm::LegMeta, forDate::Date, sp::Currency, vtyRatio::Float6
 
 # SH.combineTo(::Type{Ret}, lms::AVec{LegMeta}, forDate::Date, sp::Currency, vtyRatio::Float64)::Ret = combineRets(tos(Ret, lms, forDate, sp, vtyRatio))
 SH.combineTo(::Type{Ret}, lms::Coll{LegMeta,4}, forDate::Date, sp::Currency, vtyRatio::Float64)::Ret = combineRets(tos(Ret, lms, forDate, sp, vtyRatio))
+
+SH.combineTo(::Type{Ret}, legs::Coll{Leg,4}, oqter, forDate::Date, sp::Currency, vtyRatio::Float64)::Ret = combineRets(tos(Ret, tos(LegMeta, legs, oqter), forDate, sp, vtyRatio))
 
 #region Trades
 # TODO: convert directly to these objects (or related) from db?

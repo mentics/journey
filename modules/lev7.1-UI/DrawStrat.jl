@@ -5,8 +5,8 @@ using SH, BaseTypes, StratTypes, Bins, RetTypes
 
 export drawRet, drawRet!
 
-drawRet(r::Ret; probs=nothing, cp=nothing, label="", newWin=false) = drawRet(r, probs, cp, label; newWin)
-function drawRet(r::Ret, probs=nothing, cp=nothing, label=""; newWin=false)
+# drawRet(r::Ret; probs=nothing, cp=nothing, label="", newWin=false) = drawRet(r, probs, cp, label; newWin)
+function drawRet(r::Ret; probs=nothing, cp=nothing, label="", newWin=false)
     newWin || closeWin()
     sp = r.center
     xs = sp .* Bins.xs()

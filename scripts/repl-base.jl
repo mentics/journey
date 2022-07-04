@@ -9,3 +9,6 @@ LogUtil.deleteAll()
 catch
   # ignore
 end
+
+save = Dict()
+save[:dir] = 1

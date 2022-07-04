@@ -270,3 +270,7 @@ clms1 = combineTo(Ret, vcat(lms1, lms2), dateTarget, market().startPrice, 1.0)
 drawRet(cr1; label="c")
 drawRet!(ret1; label="1")
 drawRet!(ret2; label="2")
+
+foreach((:maxStrikeDist, :maxPutHeight, :maxCallHeight)) do sym
+	config()[:Strats][sym] = 22
+end

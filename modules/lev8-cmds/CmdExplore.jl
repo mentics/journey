@@ -32,9 +32,9 @@ end
 shRet(str::AStr, exps, sp=market().startPrice) = combineTo(Ret, shlr(str, exps, sp))
 shVals(str::AStr, exps, sp=market().startPrice) = getVals(shRet(str, exps, sp))
 drsh(str::AStr, ex::Int=1) = drsh(str, expirs()[ex:ex+2]) # (sp = market().startPrice ; drawRet(shRet(str, expirs()[ex:ex+2], sp), nothing, sp, "sh") )
-drsh(str::AStr, exps) = (sp = market().startPrice ; drawRet(shRet(str, exps, sp), nothing, sp, "sh") )
+drsh(str::AStr, exps) = (sp = market().startPrice ; drawRet(shRet(str, exps, sp); cp=sp, label="sh") )
 drsh!(str::AStr, ex::Int=1) = drsh!(str, expirs()[ex:ex+2])
-drsh!(str::AStr, exps) = (sp = market().startPrice ; drawRet!(shRet(str, exps, sp), "sh+") )
+drsh!(str::AStr, exps) = (sp = market().startPrice ; drawRet!(shRet(str, exps, sp); label="sh+") )
 
 # TODO: need to move all probs calcs to util
 # using ProbHist
@@ -394,11 +394,68 @@ function test10()
         Main.save[:lastCenter] = lastCenter
     end
     Main.save[:rets] = rets
-    @assert lastCenter == rets[end].center
     cr1 = combineRetsC(rets, lastCenter)
     Main.save[:cret] = cr1
     drawRet(cr1; label="c")
     # drawRet!(ret1; label="1")
+    @info "Result" length(rets)
+end
+
+function retFor(legs)
+    Leg(Option(styl, expir[ex], parse(Currency, xs[2])), Float64(qty), sid)
+end
+
+using OptionTypes, LegTypes
+function findC(dateTarget, cp, width, sid::Side.T)
+    profExp = width / 2
+    below = floor(cp)
+    above = below + 1.0
+    # TODO: could skip some to save time
+    left = sid == Side.long ? below - 20 : below
+    right = sid == Side.long ? above + 20 : above
+    dir = Int(sid)
+    for _ in 1:20
+        println("Checking ", left, right)
+        try
+            legs = (
+                Leg(Option(Style.put, dateTarget, C(left - width)), 1.0, sid),
+                Leg(Option(Style.put, dateTarget, C(left)), 1.0, toOther(sid)),
+                Leg(Option(Style.call, dateTarget, C(right)), 1.0, toOther(sid)),
+                Leg(Option(Style.call, dateTarget, C(right + width)), 1.0, sid)
+            )
+            ret = combineTo(Ret, legs, optQuoter, dateTarget, cp, 1.0)
+            mn, mx = extrema(getVals(ret))
+            if profExp < mx < profExp + .5 && -profExp < mn < -profExp+.5
+                return ret
+            end
+        catch
+            # ignore can't quote errors
+        end
+        left = left + dir
+        right = right - dir
+    end
+    error("not found")
+end
+
+function test11()
+    snap(5,20,7,0)
+    dateTarget = expir(8)
+    filt = ConTime.dateHourFilter(Date(2022, 5, 19), dateTarget, 14)
+    # filt = ConTime.dateFilter(Date(2022, 5, 19), dateTarget)
+    rets = Vector{Ret}()
+    width = 4
+    ConTime.runForSnaps(filt) do name, ts
+        retLong = findC(dateTarget, market().curp, width, Side.long)
+        retShort = findC(dateTarget, market().curp, width, Side.short)
+        push!(rets, retLong)
+        push!(rets, retShort)
+    end
+    Main.save[:rets] = rets
+    cr1 = combineRetsC(rets, market().curp)
+    Main.save[:cret] = cr1
+    drawRet(cr1; label="c")
+    # drawRet!(ret1; label="1")
+    @info "Result" length(rets)
 end
 
 end

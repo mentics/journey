@@ -31,28 +31,33 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, 
 
     if isempty(bufCombi)
         # This means we're calcing base score from existing position, so only bufPos will be valid but it's also passed into bufBoth.
-        return -10000
+        # return -10000
         show && ( @info "pos scoring" metsBoth )
         return score(metsPos)
     end
 
-    metsBoth = tctx.metsBoth
-    for i in eachindex(ctx.probs)
-        metsBoth[i] = calcMetrics(ctx.probs[i], bufBoth, numLegs)
-    end
+    # metsBoth = tctx.metsBoth
+    # for i in eachindex(ctx.probs)
+    #     metsBoth[i] = calcMetrics(ctx.probs[i], bufBoth, numLegs)
+    # end
     # metsBoth[1].mn > MAX_LOSS || return countNo(:maxLossAbs)
-    MaxLoss = -16 + min(8., 8*texDays/20)
-    metsBoth[1].mn > MaxLoss || return countNo(:maxLossAbs)
+    # MaxLoss = -8 + min(4., 4*texDays/20)
+    # metsBoth[1].mn > MaxLoss || return countNo(:maxLossAbs)
 
     # xn = metsBoth[1].mx + metsBoth[1].mn
 
+    metb = calcMetrics(ctx.probs[1], bufBoth, numLegs)
+
     buf = bufCombi
-    met = metsCombi = calcMetrics(ctx.probs[1], bufCombi, 4)
+    met = calcMetrics(ctx.probs[1], bufCombi, 4)
 
     # met.mn > -3. || return countNo(:maxLossAbs)
 
     dir = Main.save[:dir]
     # texDays > 7 || (dir = 1)
+    2.0 < met.mx < 2.5 && -2.0 < met.mn < -1.5 || return countNo(:maxLossAbs)
+    (2.0 < buf[1] < 2.5) || (-2.0 < buf[1] < -1.5) || return countNo(:maxLossAbs)
+    (2.0 < buf[end] < 2.5) || (-2.0 < buf[end] < -1.5) || return countNo(:maxLossAbs)
 
     xnLongL = met.mx + buf[1]
     xnLongR = met.mx + buf[end]
@@ -74,8 +79,8 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, 
     # # req(bufCombi, Bins.nearest(1.0 - spread), Bins.nearest(1.0 + spread), 0.07) || return countNo(:special)
 
     # return xn
-    # return score([met])
-    return met.prob
+    return score([metb])
+    # return metb.prob
 
     isNew = isnothing(posRet)
 
