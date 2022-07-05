@@ -418,7 +418,7 @@ function findC(dateTarget, cp, width, sid::Side.T)
     left = sid == Side.long ? below - 20 : below
     right = sid == Side.long ? above + 20 : above
     dir = 2 * Int(sid)
-    for _ in 1:20
+    for _ in 1:10
         try
             legs = (
                 Leg(Option(Style.put, dateTarget, C(left - width)), 1.0, sid),
@@ -434,16 +434,14 @@ function findC(dateTarget, cp, width, sid::Side.T)
                 return ret
             end
         catch e
-            throw(e)
-            println(string(e))
-            right -= dir # Try to avoid odds
-            # @error "exc" e
-            # ignore can't quote errors
+            @error "Exception in findC" snap() dateTarget cp width sid e
+            return nothing
         end
         left = left + dir
         right = right - dir
     end
-    error("not found")
+    @warn "findC: Not found" snap() dateTarget cp width sid
+    return nothing
 end
 
 function test11()
@@ -456,7 +454,7 @@ function test11()
     ConTime.runForSnaps(filt) do name, ts
         retLong = findC(dateTarget, market().curp, width, Side.long)
         retShort = findC(dateTarget, market().curp, width, Side.short)
-        ret = combineRetsC([retLong, retShort], market().curp)
+        ret = combineRetsC(Vector{Ret}(filter(!isnothing ,[retLong, retShort])), market().curp)
         push!(rets, ret)
         # push!(rets, retLong)
         # push!(rets, retShort)

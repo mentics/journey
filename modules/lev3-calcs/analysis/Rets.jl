@@ -84,10 +84,10 @@ function atExp(style::Style.T, strike::Float64, side::Side.T, qty::Float64, neto
         @assert neto < 0.0
         vals = lineVals(sp, -qty, qty * (strike + neto), strike, 0.0, qty * neto)
     elseif side == Side.short && style == Style.call
-        @assert neto > 0.0
+        @assert neto > 0.0 "Unexpected neto ($(neto)) > 0 for short call"
         vals = lineVals(sp, 0.0, qty * neto, strike, -qty, qty * (strike + neto))
     else
-        @assert neto > 0.0
+        @assert neto > 0.0 "Unexpected neto ($(neto)) > 0 for short put"
         vals = lineVals(sp, qty, -qty * (strike - neto), strike, 0.0, qty * neto)
     end
     return Ret(vals, sp, 1)
