@@ -407,15 +407,18 @@ end
 
 using OptionTypes, LegTypes
 function findC(dateTarget, cp, width, sid::Side.T)
+    minProf = .12
     profExp = width / 2
     below = floor(cp)
-    above = below + 1.0
+    if below % 2 != 0
+        below -= 1.0
+    end
+    above = below + 2.0
     # TODO: could skip some to save time
     left = sid == Side.long ? below - 20 : below
     right = sid == Side.long ? above + 20 : above
-    dir = Int(sid)
+    dir = 2 * Int(sid)
     for _ in 1:20
-        println("Checking ", left, right)
         try
             legs = (
                 Leg(Option(Style.put, dateTarget, C(left - width)), 1.0, sid),
@@ -425,10 +428,16 @@ function findC(dateTarget, cp, width, sid::Side.T)
             )
             ret = combineTo(Ret, legs, optQuoter, dateTarget, cp, 1.0)
             mn, mx = extrema(getVals(ret))
-            if profExp < mx < profExp + .5 && -profExp < mn < -profExp+.5
+
+            # @info "Checking2" left right profExp mn mx
+            if profExp+minProf < mx < profExp + .5 && -profExp+minProf < mn < -profExp+.5
                 return ret
             end
-        catch
+        catch e
+            throw(e)
+            println(string(e))
+            right -= dir # Try to avoid odds
+            # @error "exc" e
             # ignore can't quote errors
         end
         left = left + dir
@@ -447,8 +456,10 @@ function test11()
     ConTime.runForSnaps(filt) do name, ts
         retLong = findC(dateTarget, market().curp, width, Side.long)
         retShort = findC(dateTarget, market().curp, width, Side.short)
-        push!(rets, retLong)
-        push!(rets, retShort)
+        ret = combineRetsC([retLong, retShort], market().curp)
+        push!(rets, ret)
+        # push!(rets, retLong)
+        # push!(rets, retShort)
     end
     Main.save[:rets] = rets
     cr1 = combineRetsC(rets, market().curp)

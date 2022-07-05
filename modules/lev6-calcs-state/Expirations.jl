@@ -33,7 +33,7 @@ using Globals, SnapUtil
 function newVal()::OffsetArray{Date}
     exps = tradierExpirations()
     num = isnothing(snap()) ? 20 : SnapUtil.countSnapExpirs()
-    println("num expirs: ", num)
+    # println("num expirs: ", num)
     if exps[1] == market().startDay
         println("exps[1] was market startday")
         return OffsetArray(exps[1:num+1], 0:num)
