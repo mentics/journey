@@ -36,16 +36,7 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, 
         return score(metsPos)
     end
 
-    # metsBoth = tctx.metsBoth
-    # for i in eachindex(ctx.probs)
-    #     metsBoth[i] = calcMetrics(ctx.probs[i], bufBoth, numLegs)
-    # end
-    # metsBoth[1].mn > MAX_LOSS || return countNo(:maxLossAbs)
-    # MaxLoss = -8 + min(4., 4*texDays/20)
-    # metsBoth[1].mn > MaxLoss || return countNo(:maxLossAbs)
-
-    # xn = metsBoth[1].mx + metsBoth[1].mn
-
+#======== construct test
     metb = calcMetrics(ctx.probs[1], bufBoth, numLegs)
 
     buf = bufCombi
@@ -81,6 +72,15 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, 
     # return xn
     return score([metb])
     # return metb.prob
+========#
+
+    metsBoth = tctx.metsBoth
+    for i in eachindex(ctx.probs)
+        metsBoth[i] = calcMetrics(ctx.probs[i], bufBoth, numLegs)
+    end
+    metsBoth[1].mn > MAX_LOSS || return countNo(:maxLossAbs)
+    # MaxLoss = -8 + min(4., 4*texDays/20)
+    # metsBoth[1].mn > MaxLoss || return countNo(:maxLossAbs)
 
     isNew = isnothing(posRet)
 

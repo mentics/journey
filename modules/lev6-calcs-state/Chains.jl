@@ -6,7 +6,7 @@ using TradierData, Caches
 using DataHelper, Markets, Calendars, Expirations
 
 export chains, ivs, calcNearIv
-export quoter, optQuoter
+export quoter, optQuoter, isQuotable
 
 function chains(; up=false)::CHAINS_TYPE
     cache!(CHAINS_TYPE, CHAINS, tooOld(PERIOD_UPDATE, isMarketOpen()); up) do
@@ -17,6 +17,11 @@ end
 
 quoter(x, act::Action.T=Action.open)::Quote = calcQuote(chainLookup, x, act)
 optQuoter(x, act::Action.T=Action.open)::OptionQuote = calcOptQuote(chainLookup, x, act)
+isQuotable(o::Option)::Bool = isQuotable(getStyle(o), getExpiration(o), getStrike(o))
+function isQuotable(style::Style.T, exp::Date, strike::Currency)::Bool
+    res = find(chains()[exp].chain) do x; getStyle(x) === style && getStrike(x) === strike end
+    return !isnothing(res) && getBid(res) > 0.0
+end
 
 ivs(exps=expirs(), chs=chains()) = [(exp, round(calcNearIv(exp, chs); digits=4)) for exp in exps]
 

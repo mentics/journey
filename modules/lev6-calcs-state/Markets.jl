@@ -61,7 +61,7 @@ function newVal()::Market
     tsMarket = unix2datetime(max(tq["bid_date"], tq["ask_date"])/1000)
     # TODO: clean this up
     if (!isnothing(snap()) && abs(snapTs() - tsMarket) > Minute(10))
-        println("Falling back because snap doesn't have quotes call")
+        # println("Falling back because snap doesn't have quotes call")
         tq = tradierQuote()
         @assert tq["symbol"] == "SPY"
         q = Quote(C(tryKey(tq, "bid", 0.0)), C(tryKey(tq, "ask", 0.0)))

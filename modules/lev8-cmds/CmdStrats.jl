@@ -83,15 +83,15 @@ end
 function makeProbs(tex::Float64, targetDate::Date, sp::Currency)::Tuple
     ivsd = ivTexToStdDev(calcNearIv(targetDate), tex)
     # shift = ivsd/2
-    pnd = probsNormDist(sp, ivsd)# + .25 * numDays * .05))
+    # pnd = probsNormDist(sp, ivsd)# + .25 * numDays * .05))
     # pndL = probsNormDist(sp, ivsd, -shift)# + .25 * numDays * .05))
     # pndR = probsNormDist(sp, ivsd, shift)# + .25 * numDays * .05))
     # probs = (pnd, pndL, pndR)
     # TODO: this numdays proxy calc is wrong. Completely change how we calc probHist, do it based on tex
     phOrig = probHist(sp, round(Int, tex / TexPerDay))
     pvals = getVals(phOrig)
-    ph = Prob(getCenter(phOrig), smooth(getVals(phOrig)))
-    pideal = Scoring.probIdeal(ph)
+    # ph = Prob(getCenter(phOrig), smooth(getVals(phOrig)))
+    # pideal = Scoring.probIdeal(ph)
 
     s = 0.0
     i = 0
@@ -104,9 +104,9 @@ function makeProbs(tex::Float64, targetDate::Date, sp::Currency)::Tuple
     pndsh = probsNormDist(sp, ivsd, Bins.x(i) - 1.0)
     # probs = (pideal, ph, pndsh)
     # probs = (pndsh + ph,)
-    # probs = (pndsh,)
-    pflat = probFlat(Float64(sp), 0.0) # pnd[1]/2)
-    probs = (pflat,)
+    probs = (pndsh,)
+    # pflat = probFlat(Float64(sp), 0.0) # pnd[1]/2)
+    # probs = (pflat,)
     # pflat = probRoof(Float64(sp), pnd[1]/2)
     # pflat = probFlat(getCenter(pnd), pnd.vals[1])
     # pshort = probMid(ph, binMin(), 1.0)

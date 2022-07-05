@@ -29,8 +29,7 @@ function drawRet(r::Ret; probs=nothing, cp=nothing, label="", newWin=false)
     end
 end
 
-drawRet!(r::Ret; label::AStr="") = drawRet!(r, label)
-function drawRet!(r::Ret, label::AStr="")
+function drawRet!(r::Ret; label::AStr="")
     sp = r.center
     xs = sp .* Bins.xs()
     vals = getVals(r)

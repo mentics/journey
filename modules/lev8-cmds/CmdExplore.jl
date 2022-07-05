@@ -401,12 +401,224 @@ function test10()
     @info "Result" length(rets)
 end
 
-function retFor(legs)
-    Leg(Option(styl, expir[ex], parse(Currency, xs[2])), Float64(qty), sid)
+# function retFor(legs)
+#     Leg(Option(styl, expir[ex], parse(Currency, xs[2])), Float64(qty), sid)
+# end
+
+using OptionTypes, LegTypes, CalcUtil, Scoring
+MAX_WIDTH = 2.0
+PROF_MIN = 0.2
+SCORE_MIN = 0.5
+# TODO: this is the same as looking for all the butterflies
+function test12()::String
+    maxDist = 40 # Float64(config()[:Strats][:maxStrikeDist])
+    snap(5,20,7,0)
+    exp = expir(8)
+    # filt = ConTime.dateHourFilter(Date(2022, 5, 19), exp, 14)
+    filt = ConTime.dateFilter(Date(2022, 5, 19), exp)
+    # baseSnap = snap()
+    # filt = t -> t[1] == baseSnap
+    rets = Vector{Ret}()
+    retAll = nothing
+    ConTime.runForSnaps(filt) do name, ts
+        cp = market().curp
+        prob = probFlat(Float64(cp), 0.0)
+        # scorer = ret -> calcMetrics(prob, ret).prob
+        strikeExtent = (floor(cp) - maxDist, ceil(cp) + maxDist)
+        retCand = nothing
+        scoreMax = SCORE_MIN
+        for inner in 2.0:maxDist
+            for width in 1.0:MAX_WIDTH
+                template = (0, width, width + inner, 2 * width + inner)
+                forEachTemplate(strikeExtent, exp, retAll, cp, template) do retC2, retLong, retShort, strikesLong, strikesShort
+                    met = calcMetrics(prob, retC2)
+                    score = met.prob
+                    if score > scoreMax
+                        # if !isnothing(retAll)
+                        #     retBoth = combineRetsC((retC2, retAll), cp)
+                        #     mnBoth, mxBoth = extrema(getVals(retBoth))
+                        #     # @info "Checking retAll" mnBoth -MAX_WIDTH
+                        #     mnBoth > -MAX_WIDTH || return
+                        # end
+                        # mps = findMinPrices(retC2)
+                        # if length(mps) != 2
+                        #     Main.save[:rets] = rets
+                        #     @warn "unexpected mps len" mps
+                        #     drawRet(retC2)
+                        # end
+                        # minPrice1, minPrice2 = mps
+                        # for ret in rets
+                        #     if valAtPrice(ret, minPrice1) < 0.0 || valAtPrice(ret, minPrice2) < 0.0
+                        #         return
+                        #     end
+                        # end
+
+                        for ret in rets
+                            retCheck = combineRetsC((retC2, ret), cp)
+                            mnCheck = minimum(getVals(retCheck))
+                            mnCheck > met.mn || return
+                            # @info "Checking" -MAX_WIDTH mnCheck
+                        end
+
+                        # Main.save[:retLong] = retLong
+                        # Main.save[:retShort] = retShort
+                        retCand = retC2
+                        scoreMax = score
+                    end
+                end
+            end
+        end
+
+        if !isnothing(retCand)
+            push!(rets, retCand)
+            isnothing(retAll) ? (retAll = retCand) : (retAll = combineRetsC((retAll, retCand), cp))
+        end
+    end
+    Main.save[:rets] = rets
+    Main.save[:retall] = retAll
+    !isnothing(retAll) || return "Nothing found"
+
+    drawRet(retAll; label="all")
+    drawRet!(rets[1]; label="1")
+    drawRet!(rets[end]; label="end")
+    return "$(length(rets)) found"
 end
 
-using OptionTypes, LegTypes
-function findC(dateTarget, cp, width, sid::Side.T)
+using Bins
+function findMinPrices(ret)
+    vals = getVals(ret)
+    res = Vector{Float64}()
+    mn = 0.0
+    maxI = 0
+    look = false
+    for i in 2:length(vals)
+        pv = vals[i-1]
+        v = vals[i]
+        if pv >= 0.0 && v < 0.0
+            look = true
+            mn = 0.0
+        elseif pv <= 0.0 && v > 0.0
+            look = false
+        end
+        if look && v < mn
+            mn = v
+            maxI = i
+        end
+        if look && v > mn + .1
+            push!(res, getCenter(ret) * Bins.xs()[maxI])
+            look = false
+        end
+    end
+    return res
+end
+
+function forEachTemplate(f, (strikeMin, strikeMax), exp, retAll, cp, t)
+    forEachShort((strikeMin, strikeMax), exp, retAll, cp, t) do retShort, strikesShort
+        forEachLong(exp, cp, strikesShort) do retLong, strikesLong
+            retC2 = combineRetsC((retLong, retShort), cp)
+            f(retC2, retLong, retShort, strikesLong, strikesShort)
+        end
+    end
+
+#     for left in strikeMin:(strikeMax - t[4])
+#         strikes = (x->x+left).(t)
+#         legs = condor(exp, Style.put, Style.call, strikes, Side.short)
+#         isnothing(findfirst(!isQuotable, getOption.(legs))) || continue
+
+#         retShort = combineTo(Ret, legs, optQuoter, exp, cp, 1.0)
+#         _, mxShort = extrema(getVals(retShort))
+#         profShort = (mxShort - mxExp)
+#         profShort >= PROF_MIN || continue
+
+#         resLong = findLongInner(PROF_MIN, exp, cp, strikes)
+#         !isnothing(resLong) || continue
+#         retLong, strikesLong = resLong
+
+#         retC2 = combineRetsC((retLong, retShort), cp)
+#         mnC2, mxC2 = extrema(getVals(retC2))
+#         profC2 = mxC2
+#         profC2 > profMax || continue
+
+#         if !isnothing(retAll)
+#             retBoth = combineRetsC((retC2, retAll), cp)
+#             mnBoth, mxBoth = extrema(getVals(retBoth))
+#             @info "Checking retAll" mnBoth -MAX_WIDTH
+#             mnBoth > -MAX_WIDTH || continue
+#         end
+
+#         profMax = profC2
+#         res = retC2
+#         # @info "Found retC2" prof profMax strikes strikesLong
+#     end
+#     return (res, profMax)
+end
+
+function forEachShort(f, (strikeMin, strikeMax), exp, retAll, cp, t)
+    mxExp = (t[2] - t[1]) / 2
+    for left in strikeMin:(strikeMax - t[4])
+        strikes = (x->x+left).(t)
+        legs = condor(exp, Style.put, Style.call, strikes, Side.short)
+        isnothing(findfirst(!isQuotable, getOption.(legs))) || continue
+
+        retShort = combineTo(Ret, legs, optQuoter, exp, cp, 1.0)
+        mn, mx = extrema(getVals(retShort))
+        ((mx - mxExp) >= PROF_MIN && (mn + mxExp) >= PROF_MIN) || continue
+
+        f(retShort, strikes)
+    end
+end
+
+function forEachLong(f, exp, cp, strikes)
+    width = strikes[2] - strikes[1]
+    mxExp = width / 2
+    addMax = floor(round((strikes[3] + strikes[2])/2; digits=1)) - width - strikes[1]
+    for add in 1.0:addMax
+        ss = (strikes[1]+add, strikes[1]+add+width, strikes[4]-add-width, strikes[4]-add)
+        legs = condor(exp, Style.put, Style.call, ss, Side.long)
+        isnothing(findfirst(!isQuotable, getOption.(legs))) || continue
+
+        retLong = combineTo(Ret, legs, optQuoter, exp, cp, 1.0)
+        mn, mx = extrema(getVals(retLong))
+        ((mx - mxExp) >= PROF_MIN && (mn + mxExp) >= PROF_MIN) || continue
+
+        f(retLong, ss)
+    end
+end
+
+# function findLongInner(profMin, exp, cp, strikes)
+#     width = strikes[2] - strikes[1]
+#     mxExp = width / 2
+#     addMax = floor(round((strikes[3] + strikes[2])/2; digits=1)) - width - strikes[1]
+#     for add in 1.0:addMax
+#         ss = (strikes[1]+add, strikes[1]+add+width, strikes[4]-add-width, strikes[4]-add)
+#         legs = condor(exp, Style.put, Style.call, ss, Side.long)
+#         isnothing(findfirst(!isQuotable, getOption.(legs))) || continue
+
+#         retLong = combineTo(Ret, legs, optQuoter, exp, cp, 1.0)
+#         mn, mx = extrema(getVals(retLong))
+#         # @info "Long check" ss (mx - mxExp)
+#         (mx - mxExp) > profMin || continue
+#         if ss[1] == 376.0 && ss[2] == 380.0
+#             @info "Found long" ss (mx-mxExp)
+#         end
+
+#         return (retLong, ss)
+#     end
+#     return nothing
+# end
+
+function condor(exp, s1, s2, strikes, sid)
+    legs = (
+        Leg(Option(s1, exp, strikes[1]), 1.0, sid),
+        Leg(Option(s1, exp, strikes[2]), 1.0, toOther(sid)),
+        Leg(Option(s2, exp, strikes[3]), 1.0, toOther(sid)),
+        Leg(Option(s2, exp, strikes[4]), 1.0, sid)
+    )
+    return legs
+end
+
+
+function findC(dateTarget, retCur, cp, width, sid::Side.T)
     minProf = .12
     profExp = width / 2
     below = floor(cp)
@@ -420,18 +632,24 @@ function findC(dateTarget, cp, width, sid::Side.T)
     dir = 2 * Int(sid)
     for _ in 1:10
         try
+            strikes = (C(left - width), C(left), C(right), C(right + width))
             legs = (
-                Leg(Option(Style.put, dateTarget, C(left - width)), 1.0, sid),
-                Leg(Option(Style.put, dateTarget, C(left)), 1.0, toOther(sid)),
-                Leg(Option(Style.call, dateTarget, C(right)), 1.0, toOther(sid)),
-                Leg(Option(Style.call, dateTarget, C(right + width)), 1.0, sid)
+                Leg(Option(Style.put, dateTarget, strikes[1]), 1.0, sid),
+                Leg(Option(Style.put, dateTarget, strikes[2]), 1.0, toOther(sid)),
+                Leg(Option(Style.call, dateTarget, strikes[3]), 1.0, toOther(sid)),
+                Leg(Option(Style.call, dateTarget, strikes[4]), 1.0, sid)
             )
             ret = combineTo(Ret, legs, optQuoter, dateTarget, cp, 1.0)
             mn, mx = extrema(getVals(ret))
 
             # @info "Checking2" left right profExp mn mx
             if profExp+minProf < mx < profExp + .5 && -profExp+minProf < mn < -profExp+.5
-                return ret
+                retBoth = combineRetsC((ret, retCur), cp)
+                curmn, curmx = extrema(getVals(retBoth))
+                if curmn > MAX_WIDTH
+                    println("Found $(sid) $(width) $(cp) $(strikes)")
+                    return ret
+                end
             end
         catch e
             @error "Exception in findC" snap() dateTarget cp width sid e
@@ -454,10 +672,10 @@ function test11()
     ConTime.runForSnaps(filt) do name, ts
         retLong = findC(dateTarget, market().curp, width, Side.long)
         retShort = findC(dateTarget, market().curp, width, Side.short)
-        ret = combineRetsC(Vector{Ret}(filter(!isnothing ,[retLong, retShort])), market().curp)
-        push!(rets, ret)
-        # push!(rets, retLong)
-        # push!(rets, retShort)
+        if !isnothing(retLong) && !isnothing(retShort)
+            ret = combineRetsC((retLong, retShort), market().curp)
+            push!(rets, ret)
+        end
     end
     Main.save[:rets] = rets
     cr1 = combineRetsC(rets, market().curp)
