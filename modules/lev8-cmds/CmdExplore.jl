@@ -31,10 +31,10 @@ function shlr(str::AStr, exps=expirs(), sp=market().startPrice)
 end
 shRet(str::AStr, exps, sp=market().startPrice) = combineTo(Ret, shlr(str, exps, sp))
 shVals(str::AStr, exps, sp=market().startPrice) = getVals(shRet(str, exps, sp))
-drsh(str::AStr, ex::Int=1) = drsh(str, expirs()[ex:ex+2]) # (sp = market().startPrice ; drawRet(shRet(str, expirs()[ex:ex+2], sp), nothing, sp, "sh") )
-drsh(str::AStr, exps) = (sp = market().startPrice ; drawRet(shRet(str, exps, sp); cp=sp, label="sh") )
-drsh!(str::AStr, ex::Int=1) = drsh!(str, expirs()[ex:ex+2])
-drsh!(str::AStr, exps) = (sp = market().startPrice ; drawRet!(shRet(str, exps, sp); label="sh+") )
+drsh(str::AStr, ex::Int=1; kws...) = drsh(str, expirs()[ex:ex+2]; kws...) # (sp = market().startPrice ; drawRet(shRet(str, expirs()[ex:ex+2], sp), nothing, sp, "sh") )
+drsh(str::AStr, exps; kws...) = (sp = market().startPrice ; drawRet(shRet(str, exps, sp); kws..., cp=sp, label="sh") )
+drsh!(str::AStr, ex::Int=1; kws...) = drsh!(str, expirs()[ex:ex+2])
+drsh!(str::AStr, exps; kws...) = (sp = market().startPrice ; drawRet!(shRet(str, exps, sp); label="sh+") )
 
 # TODO: need to move all probs calcs to util
 # using ProbHist

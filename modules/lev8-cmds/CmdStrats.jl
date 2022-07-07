@@ -80,6 +80,10 @@ function an(exps::Date...; maxRun::Int=120, keep::Int=100, nthreads::Int=Threads
     return length(lastView[])
 end
 
+export probsFor
+probFor(i::Int) = probsFor(i)[1]
+probsFor(i::Int) = probsFor(expir(i))
+probsFor(exp::Date) = makeProbs(calcTex(market().tsMarket, exp), exp, market().curp)
 function makeProbs(tex::Float64, targetDate::Date, sp::Currency)::Tuple
     ivsd = ivTexToStdDev(calcNearIv(targetDate), tex)
     # shift = ivsd/2
