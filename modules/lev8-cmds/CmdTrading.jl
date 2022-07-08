@@ -79,7 +79,7 @@ function drx(ex=0)
     for i in 2:length(tod)
         adrt(tod[i])
     end
-    drawRet!(toRet(tod, expir(ex)), "all")
+    drawRet!(toRet(tod, expir(ex)); label="all")
 end
 
 # drawRet(tradesToRets(todo(ex)))

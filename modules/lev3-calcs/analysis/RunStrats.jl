@@ -14,6 +14,7 @@ function makeCtx(calcScore, probs, tex::Float64; nthreads::Int=12, maxRun::Int=1
     maxRun < nthreads && error("maxRun should be more than nthreads", maxRun, nthreads)
     keep < nthreads && error("keep should be more than nthreads", keep, nthreads)
     thrMaxRun = div(maxRun, nthreads) + 1
+    Scoring.MetricBuf[] = Vector{NamedTuple}(undef, length(probs))
 
     if isnothing(posRet)
         return (;
@@ -27,7 +28,6 @@ function makeCtx(calcScore, probs, tex::Float64; nthreads::Int=12, maxRun::Int=1
         end
 
         posVals = getVals(posRet)
-        Scoring.MetricBuf[] = Vector{NamedTuple}(undef, length(probs))
         baseScore = calcScore((;probs, tex, metsPos), VECF_EMPTY, posVals, posRet)
         return (;
             calcScore, probs, maxRun, tex, posRet, metsPos, filt, baseScore,
