@@ -36,7 +36,7 @@ function submitLive(legs, primitDir, mktqt)
     return tid
 end
 
-function closeTrade(optQuoter, trade::Trade{<:Closeable}, primitDir::PriceT; pre=true, legsInd=nothing)::Union{Nothing,Dict{String,Any}}
+function closeTrade(optQuoter, trade::Trade{<:Closeable}, primitDir::PriceT; pre=true, legsInd=nothing, skipMin=false)::Union{Nothing,Dict{String,Any}}
     inLegs = getLegs(trade)
     inLegs = isnothing(legsInd) ? inLegs : inLegs[legsInd]
     veri = verifyPoss(inLegs)
@@ -56,7 +56,7 @@ function closeTrade(optQuoter, trade::Trade{<:Closeable}, primitDir::PriceT; pre
         closeTinyLegs!(useLegs, tid, optQuoter, shortCount, Side.long, exp; pre)
     end
 
-    if abs(primitDir) <= 0.01
+    if !skipMin && abs(primitDir) <= 0.01
         @warn "Resulting order has price <= 0.01 so not submitting. Suggest use closeLegMarket on remaining legs" filter(l->!isLegClosed(getId(l),pre), useLegs)
         return nothing
     else

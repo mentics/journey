@@ -421,53 +421,9 @@ function test12()::String
     rets = Vector{Ret}()
     retAll = nothing
     ConTime.runForSnaps(filt) do name, ts
-        cp = market().curp
         prob = probFlat(Float64(cp), 0.0)
         # scorer = ret -> calcMetrics(prob, ret).prob
-        strikeExtent = (floor(cp) - maxDist, ceil(cp) + maxDist)
-        retCand = nothing
-        scoreMax = SCORE_MIN
-        for inner in 2.0:maxDist
-            for width in 1.0:MAX_WIDTH
-                template = (0, width, width + inner, 2 * width + inner)
-                forEachTemplate(strikeExtent, exp, retAll, cp, template) do retC2, retLong, retShort, strikesLong, strikesShort
-                    met = calcMetrics(prob, retC2)
-                    score = met.prob
-                    if score > scoreMax
-                        # if !isnothing(retAll)
-                        #     retBoth = combineRetsC((retC2, retAll), cp)
-                        #     mnBoth, mxBoth = extrema(getVals(retBoth))
-                        #     # @info "Checking retAll" mnBoth -MAX_WIDTH
-                        #     mnBoth > -MAX_WIDTH || return
-                        # end
-                        # mps = findMinPrices(retC2)
-                        # if length(mps) != 2
-                        #     Main.save[:rets] = rets
-                        #     @warn "unexpected mps len" mps
-                        #     drawRet(retC2)
-                        # end
-                        # minPrice1, minPrice2 = mps
-                        # for ret in rets
-                        #     if valAtPrice(ret, minPrice1) < 0.0 || valAtPrice(ret, minPrice2) < 0.0
-                        #         return
-                        #     end
-                        # end
-
-                        for ret in rets
-                            retCheck = combineRetsC((retC2, ret), cp)
-                            mnCheck = minimum(getVals(retCheck))
-                            mnCheck > met.mn || return
-                            # @info "Checking" -MAX_WIDTH mnCheck
-                        end
-
-                        # Main.save[:retLong] = retLong
-                        # Main.save[:retShort] = retShort
-                        retCand = retC2
-                        scoreMax = score
-                    end
-                end
-            end
-        end
+        retCand = findCondor(maxDist, prob, retAll)
 
         if !isnothing(retCand)
             push!(rets, retCand)
@@ -482,6 +438,58 @@ function test12()::String
     drawRet!(rets[1]; label="1")
     drawRet!(rets[end]; label="end")
     return "$(length(rets)) found"
+end
+
+function findCondor(maxDist, retAll, exp)
+    cp = market().curp
+    tex = calcTex(market().tsMarket, exp)
+    prob = CmdStrats.makeProbs(tex, exp, cp)[1]
+
+    strikeExtent = (floor(cp) - maxDist, ceil(cp) + maxDist)
+    retCand = nothing
+    scoreMax = SCORE_MIN
+    for inner in 2.0:maxDist
+        for width in 1.0:MAX_WIDTH
+            template = (0, width, width + inner, 2 * width + inner)
+            forEachTemplate(strikeExtent, exp, retAll, cp, template) do retC2, retLong, retShort, strikesLong, strikesShort
+                met = calcMetrics(prob, retC2)
+                score = met.prob
+                if score > scoreMax
+                    # if !isnothing(retAll)
+                    #     retBoth = combineRetsC((retC2, retAll), cp)
+                    #     mnBoth, mxBoth = extrema(getVals(retBoth))
+                    #     # @info "Checking retAll" mnBoth -MAX_WIDTH
+                    #     mnBoth > -MAX_WIDTH || return
+                    # end
+                    # mps = findMinPrices(retC2)
+                    # if length(mps) != 2
+                    #     Main.save[:rets] = rets
+                    #     @warn "unexpected mps len" mps
+                    #     drawRet(retC2)
+                    # end
+                    # minPrice1, minPrice2 = mps
+                    # for ret in rets
+                    #     if valAtPrice(ret, minPrice1) < 0.0 || valAtPrice(ret, minPrice2) < 0.0
+                    #         return
+                    #     end
+                    # end
+
+                    # for ret in rets
+                    #     retCheck = combineRetsC((retC2, ret), cp)
+                    #     mnCheck = minimum(getVals(retCheck))
+                    #     mnCheck > met.mn || return
+                    #     # @info "Checking" -MAX_WIDTH mnCheck
+                    # end
+
+                    # Main.save[:retLong] = retLong
+                    # Main.save[:retShort] = retShort
+                    retCand = retC2
+                    scoreMax = score
+                end
+            end
+        end
+    end
+    return retCand
 end
 
 using Bins

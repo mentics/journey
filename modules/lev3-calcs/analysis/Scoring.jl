@@ -17,10 +17,11 @@ scoreRand(args...) = rand()
 sigbal(x::Float64)::Float64 = -1 + (2 / (1 + ℯ^-x))
 # sigmoid(x::Float64, half::Float64=0.0)::Float64 = 1 / (1 + ℯ^(-x+half))
 
-# TODO: would probably speed things up a little if we typed ctx and tctx
 const MetricBuf = Ref{Vector{NamedTuple}}()
+
 filtkeys() = [:ev, :ev1, :ev2, :noImpEvr, :noImpEvOr, :standsAlone, :cantAlone, :maxLoss, :maxLossAbs, :prob, :noImpProb, :noImpProb2, :noImpLoss,
               :probStandAlone, :sides, :sidesMaxLoss, :special, :special2, :noImpSum, :biasWrong]
+# TODO: would probably speed things up a little if we typed ctx and tctx
 calcScore1(ctx, bufCombi, bufBoth, posRet, show=false) = calcScore1(ctx, (; metsBoth=MetricBuf[]), bufCombi, bufBoth, posRet, show)
 function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, posRet::Union{Nothing,Ret}, show=false)::Float64
     texDays = ctx.tex / TexPerDay
@@ -35,6 +36,31 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, 
         show && ( @info "pos scoring" metsBoth )
         return score(metsPos)
     end
+
+    isNew = isnothing(posRet)
+
+    metb = calcMetrics(ctx.probs[1], bufBoth, numLegs)
+    metb.mn > MAX_LOSS || return countNo(:maxLossAbs)
+    metc = isNew ? metb : calcMetrics(ctx.probs[1], bufCombi, 4)
+    metc.evr > 0.0 || return countNo(:maxLossAbs)
+    metc.mn > -1.1 || return countNo(:maxLossAbs)
+    isNew || metb.evr > metsPos[1].evr || return countNo(:maxLossAbs)
+    isNew || metb.prob > metsPos[1].prob * .95 || return countNo(:maxLossAbs)
+
+    if texDays < 2.5
+        return metb.evr + metc.evr
+    end
+
+    #========= shape:begin ========#
+    metc.mn > -1.1 || return countNo(:maxLossAbs)
+    # bufCombi[1] > 0.0 && bufCombi[Bins.center()] > bufCombi[1] + .01 && bufCombi[end] < 0.0 || return countNo(:maxLossAbs)
+    # bufCombi[1] < 0.0 && bufCombi[Bins.center()] > 0.0 + .01 && bufCombi[end] < 0.0 || return countNo(:maxLossAbs)
+    # bufCombi[1] > 0.0 && bufCombi[Bins.center()] > 0.0 && bufCombi[end] > 0.0 || return countNo(:maxLossAbs)
+    bufCombi[1] > 0.02 || return countNo(:maxLossAbs)
+    metc.prob > 0.8  || return countNo(:maxLossAbs)
+    # req(bufCombi, Bins.nearest(.98), Bins.nearest(1.02), 0.08) || return countNo(:sides)
+    return metc.evr + metb.evr
+    #========= shape:end ========#
 
 #======== construct test
     metb = calcMetrics(ctx.probs[1], bufBoth, numLegs)
@@ -82,8 +108,6 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, 
     # MaxLoss = -8 + min(4., 4*texDays/20)
     # metsBoth[1].mn > MaxLoss || return countNo(:maxLossAbs)
 
-    isNew = isnothing(posRet)
-
     # (bufBoth[Bins.center() ÷ 2] > 0.0 && bufBoth[Bins.center()] > 0) || return countNo(:special)
 
     # metsBoth[1].evr > 0 || return countNo(:ev1)
@@ -102,6 +126,7 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, 
     # bufCombi[end] > 0.07 || return countNo(:sides)
 
     # bufBoth[1] > 0.0 || return countNo(:sides)
+    bufBoth[1] >= bufBoth[end]-.01 || return countNo(:sides)
     if isNew
         if texDays > 4
             bufBoth[1] > 0.0 && bufBoth[end] > 0.0 || return countNo(:sides)
@@ -109,6 +134,7 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, 
             (bufBoth[1] > 0.0 && bufBoth[end] > 0.0) || (bufBoth[1] >= bufBoth[end]) || return countNo(:sides)
             # req(bufBoth, Bins.nearest(.92), Bins.nearest(1.02), 0.0) || return countNo(:sides)
         end
+        metsBoth[1].mn > -2.1 || return countNo(:prob)
         metsBoth[1].prob >= .7 || return countNo(:prob)
         # req(bufBoth, Bins.nearest(.96), Bins.nearest(1.04), .1) || return countNo(:sides)
         # (bufBoth[1] >= .14 && bufBoth[end] >= .14) || return countNo(:sides)
@@ -118,9 +144,10 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, 
         # bufBoth[end] > 0.0 || return countNo(:sides)
         # return metb.profit - 2 * metb.loss
     else
-        if texDays > 3
-            (bufBoth[1] > 0.0 && bufBoth[end] > 0.0) || (bufBoth[1] >= (bufBoth[end]) - .2) || return countNo(:sides)
-        end
+        # if texDays > 3
+        #     (bufBoth[1] > 0.0 && bufBoth[end] > 0.0) || (bufBoth[1] >= (bufBoth[end]) - .2) || return countNo(:sides)
+        # end
+
         # metp = ctx.metsPos[1]
         # metsBoth[1].loss > 1.5 * metp.loss || return countNo(:special2)
         # metsBoth[1].evr >= metp.evr || return countNo(:noImpEvr)

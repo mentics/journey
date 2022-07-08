@@ -94,7 +94,8 @@ function makeProbs(tex::Float64, targetDate::Date, sp::Currency)::Tuple
     # TODO: this numdays proxy calc is wrong. Completely change how we calc probHist, do it based on tex
     phOrig = probHist(sp, round(Int, tex / TexPerDay))
     pvals = getVals(phOrig)
-    # ph = Prob(getCenter(phOrig), smooth(getVals(phOrig)))
+    ph = Prob(getCenter(phOrig), smooth(getVals(phOrig)))
+    return (ph,)
     # pideal = Scoring.probIdeal(ph)
 
     s = 0.0
@@ -108,7 +109,7 @@ function makeProbs(tex::Float64, targetDate::Date, sp::Currency)::Tuple
     pndsh = probsNormDist(sp, ivsd, Bins.x(i) - 1.0)
     # probs = (pideal, ph, pndsh)
     # probs = (pndsh + ph,)
-    probs = (pndsh,)
+    # probs = (pndsh,)
     # pflat = probFlat(Float64(sp), 0.0) # pnd[1]/2)
     # probs = (pflat,)
     # pflat = probRoof(Float64(sp), pnd[1]/2)
@@ -120,7 +121,6 @@ function makeProbs(tex::Float64, targetDate::Date, sp::Currency)::Tuple
     # pposInv = isnothing(lastPosRet[]) ? nothing : invert(ppos)
     # pposHyb = Prob(getCenter(ph), normalize!(getVals(ph) .+ (getVals(pposInv) .* 2)))
     # probs = (ph,pnd)
-    Scoring.MetricBuf[] = Vector{NamedTuple}(undef, length(probs))
     return probs
 end
 

@@ -9,8 +9,14 @@ export drawRet, drawRet!
 function drawRet(r::Ret; probs=nothing, cp=nothing, label="", newWin=false)
     newWin || closeWin()
     sp = r.center
-    xs = sp .* Bins.xs()
-    vals = getVals(r)
+    if hasproperty(Main, :save) && haskey(Main.save, :drawExtentHalf)
+        extentHalf = Main.save[:drawExtentHalf]
+        vals = getVals(r)[Bins.nearest(1.0-extentHalf):Bins.nearest(1.0+extentHalf)]
+    else
+        extentHalf = nothing
+        vals = getVals(r)
+    end
+    xs = sp .* Bins.xs(extentHalf)
 
     xrange = (xs[1] - 0.5 * sp * Bins.width(), xs[end] + 0.5 * sp * Bins.width())
     yMin, yMax = extrema(vals)
@@ -31,8 +37,14 @@ end
 
 function drawRet!(r::Ret; label::AStr="")
     sp = r.center
-    xs = sp .* Bins.xs()
-    vals = getVals(r)
+    if hasproperty(Main, :save) && haskey(Main.save, :drawExtentHalf)
+        extentHalf = Main.save[:drawExtentHalf]
+        vals = getVals(r)[Bins.nearest(1.0-extentHalf):Bins.nearest(1.0+extentHalf)]
+    else
+        extentHalf = nothing
+        vals = getVals(r)
+    end
+    xs = sp .* Bins.xs(extentHalf)
     p = lines!(xs, vals; label)
     display(p)
     updateLegend()

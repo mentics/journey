@@ -27,6 +27,7 @@ function makeCtx(calcScore, probs, tex::Float64; nthreads::Int=12, maxRun::Int=1
         end
 
         posVals = getVals(posRet)
+        Scoring.MetricBuf[] = Vector{NamedTuple}(undef, length(probs))
         baseScore = calcScore((;probs, tex, metsPos), VECF_EMPTY, posVals, posRet)
         return (;
             calcScore, probs, maxRun, tex, posRet, metsPos, filt, baseScore,
@@ -213,16 +214,26 @@ function procStrat((ctx, tctx), combi::Combi)::Bool
 end
 
 function isValidCombi(combi::Combi)
-    res = isConflict(combi[1], combi[3]) ||
-        isConflict(combi[1], combi[4]) ||
-        isConflict(combi[2], combi[3]) ||
-        isConflict(combi[2], combi[4])
+    for i in 1:3
+        for j in i:4
+            if isConflict(combi[i], combi[j])
+                return false
+            end
+        end
+    end
+    return true
+
+    # res = isConflict(combi[1], combi[3]) ||
+    #     isConflict(combi[1], combi[4]) ||
+    #     isConflict(combi[2], combi[3]) ||
+    #     isConflict(combi[2], combi[4])
+
     # TODO: consider counting how many there are and maybe fixing earlier
     # if res
     #     @error "invalid combi" getindex.(combi, 1)
     #     error("stop")
     # end
-    return !res
+    # return !res
 end
 
 const LK2 = ReentrantLock()
