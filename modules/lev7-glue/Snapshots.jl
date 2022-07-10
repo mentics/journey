@@ -53,7 +53,7 @@ function useSnap(nam::AbstractString)
         try
             Globals.set(:snap, nam)
             Globals.set(:snapTs, snapToTs(nam))
-            @info "Use Snap: Loading saved data" nam
+            # @info "Use Snap: Loading saved data" nam
             updateAll()
             ProbHist.probHists(;up=true)
         catch e

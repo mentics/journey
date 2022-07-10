@@ -40,12 +40,22 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, 
     isNew = isnothing(posRet)
 
     metb = calcMetrics(ctx.probs[1], bufBoth, numLegs)
-    metb.mn > MAX_LOSS || return countNo(:maxLossAbs)
     metc = isNew ? metb : calcMetrics(ctx.probs[1], bufCombi, 4)
-    metc.evr > 0.0 || return countNo(:maxLossAbs)
     metc.mn > -1.1 || return countNo(:maxLossAbs)
     isNew || metb.evr > metsPos[1].evr || return countNo(:maxLossAbs)
+
+    #==== begin: simple short ===#
+    bufCombi[1] > 0.04 && bufCombi[end] > 0.04 || return countNo(:maxLossAbs)
+    # metc.prob > .85 || return countNo(:maxLossAbs)
+    return metc.prob
+    #==== end: simple short ===#
+
+
+    metc.evr > 0.0 || return countNo(:maxLossAbs)
+    metb.mn > MAX_LOSS || return countNo(:maxLossAbs)
     isNew || metb.prob > metsPos[1].prob * .95 || return countNo(:maxLossAbs)
+
+
 
     if texDays < 2.5
         return metb.evr + metc.evr

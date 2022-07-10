@@ -12,8 +12,10 @@ SH.bap(hasQuotes::Coll)::Currency = round(improve(sumQuotes(getQuote.(hasQuotes)
 # SH.to(::Type{LegMeta}, lg::Leg, qt::Quote, met::OptionMeta)::LegMeta = ( side = getSide(side) ; LegMeta(Leg(getOption(lg), getQuantity(lg), side), qt, met) )
 # SH.to(::Type{LegMeta}, lg::Leg, qt::OptionQuote)::LegMeta = ( side = getSide(side) ; LegMeta(Leg(getOption(lg), getQuantity(lg), side), qt, met) )
 SH.to(::Type{LegMeta}, leg::Leg, oqter)::LegMeta = ( (oq, side) = (oqter(leg), getSide(leg)) ; LegMeta(Leg(getOption(leg), getQuantity(leg), side), getQuote(oq, side), getMeta(oq)) )
+SH.to(::Type{LegMeta}, oq, side) = LegMeta(Leg(getOption(oq), 1.0, side), getQuote(oq, side), getMeta(oq))
 
 SH.to(::Type{Ret}, lm::LegMeta, forDate::Date, sp::Currency, vtyRatio::Float64)::Ret = makeRet(getLeg(lm), getMeta(lm), bap(lm), forDate, sp, vtyRatio)
+SH.to(::Type{Ret}, lm::LegMeta, sp::Currency)::Ret = makeRet(getLeg(lm), getMeta(lm), bap(lm), getExpiration(lm), sp, 1.0)
 SH.to(::Type{Ret}, lg::Leg, forDate::Date, sp::Currency, vtyRatio::Float64) = to(Ret, to(LegMeta, lg), forDate, sp, vtyRatio)
 # SH.to(::Type{Ret}, lm::LegMeta, (forDate, sp, vtyRatio)::Tuple{Date,Currency,Float64})::Ret = makeRet(getLeg(lm), getMeta(lm), bap(lm), (forDate, sp, vtyRatio))
 # SH.to(::Type{Ret}, lg::Leg, (forDate, sp, vtyRatio)::Tuple{Date,Currency,Float64})::Ret = to(Ret, to(LegMeta, lg), (forDate, sp, vtyRatio))
@@ -24,6 +26,7 @@ SH.to(::Type{LegRet}, lm::LegMeta, forDate::Date, sp::Currency, vtyRatio::Float6
 
 # SH.combineTo(::Type{Ret}, lms::AVec{LegMeta}, forDate::Date, sp::Currency, vtyRatio::Float64)::Ret = combineRets(tos(Ret, lms, forDate, sp, vtyRatio))
 SH.combineTo(::Type{Ret}, lms::Coll{LegMeta,4}, forDate::Date, sp::Currency, vtyRatio::Float64)::Ret = combineRets(tos(Ret, lms, forDate, sp, vtyRatio))
+SH.combineTo(::Type{Ret}, lms::Coll{LegMeta,4}, sp::Currency)::Ret = combineRets(tos(Ret, lms, getExpiration(lms[1]), sp, 1.0))
 
 SH.combineTo(::Type{Ret}, legs::Coll{Leg,4}, oqter, forDate::Date, sp::Currency, vtyRatio::Float64)::Ret = combineRets(tos(Ret, tos(LegMeta, legs, oqter), forDate, sp, vtyRatio))
 

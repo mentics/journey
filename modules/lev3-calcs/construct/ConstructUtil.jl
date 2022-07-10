@@ -27,6 +27,4 @@ function makeButterfly(oqLeft::OptionQuote, oqMid::OptionQuote, oqRight::OptionQ
     return lms
 end
 
-SH.to(::Type{LegMeta}, oq, side) = LegMeta(Leg(getOption(oq), 1.0, side), getQuote(oq, side), getMeta(oq))
-
 end
