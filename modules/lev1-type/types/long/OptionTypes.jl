@@ -2,7 +2,7 @@ module OptionTypes
 using Dates
 using BaseTypes, SH, SmallTypes
 
-export Option, isNitm
+export Option
 
 struct Option
     style::Style.T
@@ -17,7 +17,7 @@ SH.getExpiration(o::Option) = o.expiration
 # SH.random(::Type{Option}) = Option(random(Style.T), rand((today()+Day(1)):Day(1):(today()+Day(10))), randomC())
 Base.show(io::IO, o::Option) = print(io, "Option($(o.style), $(o.expiration), $(o.strike))")
 # Usually called with config as Globals.get(:Strats)
-isNitm(o::Option, curp::Currency, config::Dict{Symbol,Any}) =
+SH.isValid(config::Dict{Symbol,Any}, curp::Currency, o::Option) =
         (o.style == Style.call && o.strike <= curp + config[:maxCallHeight]) ||
         (o.style == Style.put && o.strike >= curp - config[:maxPutHeight])
 

@@ -27,6 +27,12 @@ SH.getIv(oq::OptionQuote) = oq.meta.iv
 SH.isCall(oq::OptionQuote) = getStyle(oq.option) == Style.call
 SH.isPut(oq::OptionQuote) = getStyle(oq.option) == Style.put
 
+SH.isValid(configStrats::Dict{Symbol,Any}, curp::Currency) =
+    oq ->
+        isValid(configStrats, curp, getOption(oq)) &&
+        getBid(oq) > 0.0 &&
+        (abs(1.0 - curp / getStrike(oq)) <= .15)
+
 struct OptionChain
     chain::Vector{OptionQuote}
     ts::Int

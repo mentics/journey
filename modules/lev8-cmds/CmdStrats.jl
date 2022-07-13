@@ -106,7 +106,7 @@ function makeProbs(tex::Float64, targetDate::Date, sp::Currency)::Tuple
     end
     # mu = sp * Bins.x(i)
 
-    pndsh = probsNormDist(sp, ivsd, Bins.x(i) - 1.0)
+    pndsh = probsNormDist(sp, ivsd * 1.25, Bins.x(i) - 1.0)
     # probs = (pideal, ph, pndsh)
     # probs = (pndsh + ph,)
     probs = (pndsh, pnd, ph)

@@ -20,6 +20,7 @@ end
 #region Local
 # TODO: if use fewer bins, prob isn't adjusted, so it will be lower
 function calcMetrics1(pvals::AVec{Float64}, vals::AVec{Float64}, cap::Float64, adjust::Float64, binsi)
+    # @info "calcMetrics1" cap adjust
     profit = loss = prob = 0.0
     mn = Inf
     mx = -Inf

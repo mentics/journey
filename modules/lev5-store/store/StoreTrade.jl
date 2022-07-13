@@ -55,7 +55,7 @@ function findTrades(exp::Date, states::Type{<:Status}...)::Vector{Trade}
     loadTrade.(tids)
 end
 # TODO: make this work with local timezone to date properly
-findTradeEntered(d::Date)::Vector{Trade} = loadTrade.(selectCol("select tid from Trade where cast(cast(tsCreated//1000 as timestamp) as date)=?", d))
+findTradeEntered(d::Date)::Vector{Trade} = loadTrade.(selectCol("select tid from Trade where cast(tsCreated as date)=?", d))
 
 # TODO: needs timezone
 queryEntered(d::Date, states::Type{<:Status}...)::Vector{NamedTuple} =

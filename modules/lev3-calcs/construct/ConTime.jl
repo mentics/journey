@@ -18,8 +18,11 @@ function run(exp::Date, numSnaps::Int)
     return lmsPos
 end
 
-dateFilter(from, to) = tup -> (from < tup[2] < to)
-dateHourFilter(from, to, hour) = tup -> (from < tup[2] < to) && Hour(tup[2]).value == hour
+dateFilter(from, to) = tup -> (from < tup[2] < to) && !endswith(tup[1], "06-30")
+dateHourFilter(from, to, hour) =
+    tup -> (from < tup[2] < to) &&
+        Hour(tup[2]).value == hour &&
+        !endswith(tup[1], "06-30")
 
 function runForSnaps(f, filt=identity)
     snapTups = filter(filt, map(s -> (s, Snapshots.snapToTs(s)), Snapshots.allSnaps(false)))
