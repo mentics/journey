@@ -6,7 +6,7 @@ using SH, BaseTypes, StratTypes, Bins, RetTypes
 export drawRet, drawRet!
 
 # drawRet(r::Ret; probs=nothing, cp=nothing, label="", newWin=false) = drawRet(r, probs, cp, label; newWin)
-function drawRet(r::Ret; probs=nothing, cp=nothing, label="", newWin=false)
+function drawRet(r::Ret; probs=nothing, curp=nothing, label="", newWin=false)
     newWin || closeWin()
     sp = r.center
     if hasproperty(Main, :save) && haskey(Main.save, :drawExtentHalf)
@@ -29,7 +29,7 @@ function drawRet(r::Ret; probs=nothing, cp=nothing, label="", newWin=false)
         end
         hlines!(ax, 0.0).inspectable[] = false
         vlines!(ax, sp; label="sp").inspectable[] = false
-        isnothing(cp) || (vlines!(ax, cp; label="cp").inspectable[] = false)
+        isnothing(curp) || (vlines!(ax, curp; label="cp").inspectable[] = false)
         lines!(ax, xs, vals; label)
         # foreach(enumerate(probs)) do (i, prob); drawProb(ax, prob, i, (yMax - yMin)/10.0) end
     end

@@ -41,35 +41,33 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, 
 
     metb = calcMetrics(ctx.probs[1], bufBoth, numLegs)
     metc = isNew ? metb : calcMetrics(ctx.probs[1], bufCombi, 4)
-    metc.mn > -1.1 || return countNo(:maxLossAbs)
+    # metc.mn > -1.1 || return countNo(:maxLossAbs)
     isNew || metb.evr > metsPos[1].evr || return countNo(:maxLossAbs)
 
     #==== begin: simple short ===#
-    bufCombi[1] > 0.04 && bufCombi[end] > 0.04 || return countNo(:maxLossAbs)
-    # metc.prob > .85 || return countNo(:maxLossAbs)
-    return metc.prob
+    # bufCombi[1] > 0.04 && bufCombi[end] > 0.04 || return countNo(:maxLossAbs)
+    # # metc.prob > .85 || return countNo(:maxLossAbs)
+    # return metc.prob
     #==== end: simple short ===#
 
-
-    metc.evr > 0.0 || return countNo(:maxLossAbs)
+    # metc.evr > 0.0 || return countNo(:maxLossAbs)
     metb.mn > MAX_LOSS || return countNo(:maxLossAbs)
     isNew || metb.prob > metsPos[1].prob * .95 || return countNo(:maxLossAbs)
 
-
-
     if texDays < 2.5
-        return metb.evr + metc.evr
+        return metb.evr
+        # return metb.evr + metc.evr
     end
 
     #========= shape:begin ========#
-    metc.mn > -1.1 || return countNo(:maxLossAbs)
-    # bufCombi[1] > 0.0 && bufCombi[Bins.center()] > bufCombi[1] + .01 && bufCombi[end] < 0.0 || return countNo(:maxLossAbs)
-    # bufCombi[1] < 0.0 && bufCombi[Bins.center()] > 0.0 + .01 && bufCombi[end] < 0.0 || return countNo(:maxLossAbs)
-    # bufCombi[1] > 0.0 && bufCombi[Bins.center()] > 0.0 && bufCombi[end] > 0.0 || return countNo(:maxLossAbs)
-    bufCombi[1] > 0.02 || return countNo(:maxLossAbs)
-    metc.prob > 0.8  || return countNo(:maxLossAbs)
-    # req(bufCombi, Bins.nearest(.98), Bins.nearest(1.02), 0.08) || return countNo(:sides)
-    return metc.evr + metb.evr
+    # metc.mn > -1.1 || return countNo(:maxLossAbs)
+    # # bufCombi[1] > 0.0 && bufCombi[Bins.center()] > bufCombi[1] + .01 && bufCombi[end] < 0.0 || return countNo(:maxLossAbs)
+    # # bufCombi[1] < 0.0 && bufCombi[Bins.center()] > 0.0 + .01 && bufCombi[end] < 0.0 || return countNo(:maxLossAbs)
+    # # bufCombi[1] > 0.0 && bufCombi[Bins.center()] > 0.0 && bufCombi[end] > 0.0 || return countNo(:maxLossAbs)
+    # bufCombi[1] > 0.02 || return countNo(:maxLossAbs)
+    # metc.prob > 0.8  || return countNo(:maxLossAbs)
+    # # req(bufCombi, Bins.nearest(.98), Bins.nearest(1.02), 0.08) || return countNo(:sides)
+    # return metc.evr + metb.evr
     #========= shape:end ========#
 
 #======== construct test
@@ -136,7 +134,7 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, 
     # bufCombi[end] > 0.07 || return countNo(:sides)
 
     # bufBoth[1] > 0.0 || return countNo(:sides)
-    bufBoth[1] >= bufBoth[end]-.01 || return countNo(:sides)
+    # bufBoth[1] >= bufBoth[end]-.01 || return countNo(:sides)
     if isNew
         if texDays > 4
             bufBoth[1] > 0.0 && bufBoth[end] > 0.0 || return countNo(:sides)

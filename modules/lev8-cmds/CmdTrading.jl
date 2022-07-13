@@ -69,7 +69,7 @@ export drt, adrt
 # adrt(i::Int, ex=1) = drawRet!(toRet([tradesFor(ex)[i]], ex), "t$(i)")
 drt(tid::Int) = ( trade = cacheTrades[tid] ; drawRet(toRet([trade], getTargetDate(trade)), probs(), market().curp, "t$(tid)") )
 adrt(tid::Int) = ( trade = cacheTrades[tid] ; drawRet!(toRet([trade], getTargetDate(trade)), "t$(tid)") )
-drt(trade::Trade) = drawRet(toRet([trade], getTargetDate(trade)); probs=probs(), cp=market().curp, label="t$(getId(trade))")
+drt(trade::Trade) = drawRet(toRet([trade], getTargetDate(trade)); probs=probs(), curp=market().curp, label="t$(getId(trade))")
 adrt(trade::Trade) = drawRet!(toRet([trade], getTargetDate(trade)); label="t$(getId(trade))")
 
 function drx(ex=0)

@@ -7,7 +7,35 @@ using Snapshots, Markets, Expirations, Chains, ConTime
 using CmdStrats # TODO: probsFor somewhere elese
 using DrawStrat
 
-export testOne
+export testOne, din
+
+using CmdUtil, CmdExplore, DrawStrat
+function din(i::Int)
+    exp = expir(i)
+    prob = probsFor(exp)[1]
+    curp = market().curp
+    lmsPos = findLmsPos(exp)
+    lmss, rets, mets = CmdFind.findBestAll(exp, lmsPos; prob, curp);
+    if !isempty(lmss)
+        display(drawRet(rets[end]; probs=[prob], curp, label="all"))
+        if !isempty(lmsPos)
+            retPos = combineTo(Ret, lmsPos, curp)
+            metPos = calcMetrics(prob, retPos, Bins.binds())
+            println("0: ", metPos)
+            drawRet!(retPos; label="0")
+        end
+        for i in 1:length(lmss)
+            ret = combineTo(Ret, lmss[i], market().curp)
+            println("$(i): ", mets[i])
+            drawRet!(ret; label=string(i))
+        end
+        # println(mets[end])
+    else
+        println("Not found.")
+    end
+    return (; lmss, rets, mets, prob, curp)
+end
+
 
 #========== Begin: Test One ===========#
 
@@ -21,7 +49,6 @@ function testOne()
     exp = expir(8)
     # filt = ConTime.dateHourFilter(Date(2022, month, day-1), exp, 14)
     filt = ConTime.dateFilter(Date(2022, month, day-1), exp)
-    rets = Vector{Ret}()
     lmsPos = Vector{LegMeta}()
     Main.save[:exp] = exp
     Main.save[:rets] = rets
@@ -29,7 +56,7 @@ function testOne()
 
     ConTime.runForSnaps(filt) do name, ts
         println(name)
-        findBestAll(exp, lmsPos, rets)
+        findBestAll(exp, lmsPos)
     end
     prob = probsFor(exp)[1]
     cret = combineTo(Ret, lmsPos, market().curp)
@@ -41,14 +68,15 @@ function testOne()
     return (lmsPos, rets, cret, met)
 end
 
-# exp = expir(14) ; lms, rets, mets = CmdFind.findBestAll(exp, findLmsPos(exp));
-function findBestAll(exp, lmsPos::Vector{LegMeta}=LegMeta[], rets::Vector{Ret}=Ret[], mets=[])
-    prob = probsFor(exp)[1]
-    curp = market().curp
+function findBestAll(exp::Date, lmsPos::Vector{LegMeta}=LegMeta[];
+        prob=probsFor(exp)[1], curp=market().curp)
+    lmss = Vector{Vector{LegMeta}}()
+    rets::Vector{Ret}=Ret[]
+    mets=[]
+    lmsRun = copy(lmsPos)
     oqs = filter(isValid(Globals.get(:Strats), curp), chains()[exp].chain)
-    # TODO: loop through as long as evr strictly increases
     while true
-        res, (scoreFrom, scoreTo) = findBest(curp, prob, oqs, lmsPos)
+        res, (scoreFrom, scoreTo) = findBest(curp, prob, oqs, lmsRun)
         if !isnothing(res)
             (lms, met, ret) = res
             # if met.evr < evr
@@ -57,15 +85,16 @@ function findBestAll(exp, lmsPos::Vector{LegMeta}=LegMeta[], rets::Vector{Ret}=R
             #     evr = met.evr
             # end
             report(curp, lms, met, scoreFrom, scoreTo)
-            append!(lmsPos, lms)
+            push!(lmss, lms)
             push!(rets, ret)
             push!(mets, met)
+            append!(lmsRun, lms)
             # @info "met" getStyle.(lms) getSide.(lms) met.mn met.mx met.evr met.prob
         else
             break
         end
     end
-    return (lmsPos, rets, mets)
+    return (lmss, rets, mets)
 end
 
 function findBest(sp, prob, oqs, lmsPos::Vector{LegMeta})
@@ -138,8 +167,13 @@ end
 
 function score(metFrom, metTo)
     metTo.mn > -3.1 || return -Inf
-    isnothing(metFrom) || metTo.prob >= .95 * metFrom.prob || return -Inf
-    return score(metTo)
+    scoreTo = score(metTo)
+    if !isnothing(metFrom)
+        metTo.prob >= .95 * metFrom.prob || return -Inf
+        scoreFrom = score(metFrom)
+        (scoreTo - scoreFrom) / abs(scoreFrom) > .02 || return -Inf
+    end
+    return scoreTo
 end
 score(met) = met.evr
 

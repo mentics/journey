@@ -87,30 +87,32 @@ probsFor(exp::Date) = makeProbs(calcTex(market().tsMarket, exp), exp, market().c
 function makeProbs(tex::Float64, targetDate::Date, sp::Currency)::Tuple
     ivsd = ivTexToStdDev(calcNearIv(targetDate), tex)
     # shift = ivsd/2
-    pnd = probsNormDist(sp, ivsd)# + .25 * numDays * .05))
+    pnd = probsNormDist(sp, 1.16 * ivsd)# + .25 * numDays * .05))
     # pndL = probsNormDist(sp, ivsd, -shift)# + .25 * numDays * .05))
     # pndR = probsNormDist(sp, ivsd, shift)# + .25 * numDays * .05))
     # probs = (pnd, pndL, pndR)
     # TODO: this numdays proxy calc is wrong. Completely change how we calc probHist, do it based on tex
-    phOrig = probHist(sp, round(Int, tex / TexPerDay))
-    pvals = getVals(phOrig)
-    ph = Prob(getCenter(phOrig), smooth(getVals(phOrig)))
+    # phOrig = probHist(sp, round(Int, tex / TexPerDay))
+    # pvals = getVals(phOrig)
+    # ph = Prob(getCenter(phOrig), smooth(getVals(phOrig)))
     # return (ph,)
     # pideal = Scoring.probIdeal(ph)
 
-    s = 0.0
-    i = 0
-    while (s < .5)
-        i += 1
-        s += pvals[i]
-    end
-    # mu = sp * Bins.x(i)
+    # s = 0.0
+    # i = 0
+    # while (s < .5)
+    #     i += 1
+    #     s += pvals[i]
+    # end
+    # # mu = sp * Bins.x(i)
 
-    pndsh = probsNormDist(sp, ivsd * 1.25, Bins.x(i) - 1.0)
+    # pndsh = probsNormDist(sp, ivsd, Bins.x(i) - 1.0)
     # probs = (pideal, ph, pndsh)
     # probs = (pndsh + ph,)
-    probs = (pndsh, pnd, ph)
-    # pflat = probFlat(Float64(sp), 0.0) # pnd[1]/2)
+    # probs = (pndsh, pnd, ph)
+    pflat = probFlat(Float64(sp), 0.0) # pnd[1]/2)
+    # probs = (pnd + pflat,)
+    probs = (pnd,)
     # probs = (pflat,)
     # pflat = probRoof(Float64(sp), pnd[1]/2)
     # pflat = probFlat(getCenter(pnd), pnd.vals[1])
@@ -203,7 +205,7 @@ adr(i::Int) = locDraw!(ret(i), i)
 adr0() = locDraw!(ret0(), 0)
 adra(i::Int) = locDraw!(reta(i), string(i)*'a')
 
-locDraw(x, label) = ( drawRet(x; probs=probs(), cp=market().curp, label=string(label)) ; return )
+locDraw(x, label) = ( drawRet(x; probs=probs(), curp=market().curp, label=string(label)) ; return )
 locDraw!(x, label) = ( drawRet!(x; label=string(label)) ; return )
 
 ctx() = lastCtx[]
