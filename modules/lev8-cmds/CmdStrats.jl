@@ -81,13 +81,13 @@ function an(exps::Date...; maxRun::Int=120, keep::Int=100, nthreads::Int=Threads
 end
 
 export probsFor
-probFor(i::Int) = probsFor(i)[1]
-probsFor(i::Int) = probsFor(expir(i))
-probsFor(exp::Date) = makeProbs(calcTex(market().tsMarket, exp), exp, market().curp)
-function makeProbs(tex::Float64, targetDate::Date, sp::Currency)::Tuple
+probFor(i::Int; kws...) = probsFor(i; kws...)[1]
+probsFor(i::Int; kws...) = probsFor(expir(i); kws...)
+probsFor(exp::Date; kws...) = makeProbs(calcTex(market().tsMarket, exp), exp; kws...)
+function makeProbs(tex::Float64, targetDate::Date; curp::Currency=market().curp)::Tuple
     ivsd = ivTexToStdDev(calcNearIv(targetDate), tex)
     # shift = ivsd/2
-    pnd = probsNormDist(sp, 1.16 * ivsd)# + .25 * numDays * .05))
+    pnd = probsNormDist(curp, 1.16 * ivsd)# + .25 * numDays * .05))
     # pndL = probsNormDist(sp, ivsd, -shift)# + .25 * numDays * .05))
     # pndR = probsNormDist(sp, ivsd, shift)# + .25 * numDays * .05))
     # probs = (pnd, pndL, pndR)
@@ -110,7 +110,7 @@ function makeProbs(tex::Float64, targetDate::Date, sp::Currency)::Tuple
     # probs = (pideal, ph, pndsh)
     # probs = (pndsh + ph,)
     # probs = (pndsh, pnd, ph)
-    pflat = probFlat(Float64(sp), 0.0) # pnd[1]/2)
+    pflat = probFlat(Float64(curp), 0.0) # pnd[1]/2)
     # probs = (pnd + pflat,)
     probs = (pnd,)
     # probs = (pflat,)

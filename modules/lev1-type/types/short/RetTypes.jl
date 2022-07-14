@@ -13,6 +13,7 @@ SH.getCenter(r::Ret) = r.center
 SH.getVals(r::Ret) = r.vals
 # SH.valAt(r::Ret, i::Int) = r.vals[i]
 Base.getindex(r::Ret, i::Int) = r.vals[i]
+Base.lastindex(r::Ret) = lastindex(r.vals)
 # SH.getValMid(r::Ret) = r.vals[binsMid()]
 valFirst(r::Ret)::Float64 = r.vals[1]
 valLast(r::Ret)::Float64 = r.vals[end]

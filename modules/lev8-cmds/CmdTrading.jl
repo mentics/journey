@@ -156,7 +156,7 @@ using BaseTypes, QuoteTypes, OutputUtil
 function priceUse(qt, orig=nothing; ratio=nothing, at=nothing)
     if isnothing(at)
         # pr1 = improve(qt, ratio)
-        pr1 = improve(orig, ratio)
+        pr1 = improve(isnothing(orig) ? qt : orig, ratio)
     else
         pr1 = at
     end

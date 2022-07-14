@@ -70,7 +70,7 @@ function ppFormat(v, _, _)
 end
 
 pretyble(tbl; kws...) = pretyble(stdout, tbl; kws...)
-spretyble(tbl; kws...) = (io = IOBuffer() ; pretyble(io, tbl; kws...) ; return String(take!(io)) )
+spretyble(tbl; kws...)::String = (io = IOBuffer() ; pretyble(io, tbl; kws...) ; return String(take!(io)) )
 function pretyble(io, tbl; header=nothing, rowcol=false, widths=0, kws...)
     if isempty(tbl)
         println("No data")
