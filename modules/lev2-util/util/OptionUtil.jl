@@ -4,7 +4,7 @@ using SH, BaseTypes, SmallTypes, ChainTypes, QuoteTypes
 # export getMid
 export calcNetLong, calcNetShort
 export calcNetLongPerWidth, calcNetShortPerWidth
-export calcExtrin
+export calcExtrin, calcExtrins
 export calcNetLongExtrin, calcNetShortExtrin
 
 calcWidth(oq1, oq2) = abs(getStrike(oq2) - getStrike(oq1))
@@ -41,5 +41,19 @@ function calcExtrin(oq::OptionQuote, curp::Real)::Tuple{Currency,Currency,Curren
     #     return s < curp ? (bid, ask, max(0., (bid + ask)/2)) : (bid - dist, ask - dist, max(0., (bid - dist + ask - dist))/2)
     # end
 end
+
+function calcExtrins(oq::OptionQuote, curp::Real)::Tuple{Currency,Currency,Currency}
+    bid = getBid(oq)
+    ask = getAsk(oq)
+    imp = bap(oq)
+    dist = abs(curp - getStrike(oq))
+    if extrinSub(getStyle(oq), getStrike(oq), curp)
+        return (bid - dist, ask - dist, imp - dist)
+    else
+        return (bid, ask, imp)
+    end
+end
+
+extrinSub(style::Style.T, strike::Real, curp::Real)::Bool = xor(Style.call == style, strike >= curp)
 
 end

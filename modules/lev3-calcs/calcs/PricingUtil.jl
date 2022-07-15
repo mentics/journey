@@ -1,12 +1,56 @@
 module PricingUtil
 using Dates, Intervals
 using SH, BaseTypes, SmallTypes, OptionTypes, QuoteTypes, ChainTypes, OptionMetaTypes
-using DateUtil, FileUtil, OutputUtil, OptionUtil
+using DateUtil, FileUtil, OutputUtil, OptionUtil, SnapUtil
 using Calendars, Snapshots, TradierData
 
 export logistic, otherFunc
 export readSpreads, readPricing, filterTs, getTicker, runData, setup
 export calcTex
+
+exp = Date(2022, 6, 10)
+strike = C(395)
+fall() = filter(AllCalls) do nt
+    oq = nt.oq
+    return getExpiration(oq) == exp && getStrike(oq) == strike
+end
+const PTS = Vector{NTuple{2,Float64}}
+newCont() = (PTS(), PTS(), PTS())
+fmap() = reduce(fall(); init=newCont()) do acc, nt
+    (;ts, curp, oq) = nt
+    tex = calcTex(ts, getExpiration(oq))
+    pts = collect(((tex, x) for x in calcExtrins(oq, curp)))
+    for i in 1:3
+        push!(acc[i], pts[i])
+    end
+    return acc
+end
+using DrawUtil
+function fshow()
+    bids, asks, baps = fmap()
+    display(draw(bids))
+    draw!(asks)
+    draw!(baps)
+end
+
+function showBand(dist = 5.0)
+    pts3 = newCont()
+    for nt in AllCalls
+        (;ts, curp, oq) = nt
+        strike = getStrike(oq)
+        getExpiration(oq) == exp && dist - 0.5 < strike - curp < dist + 0.5|| continue
+        tex = calcTex(ts, getExpiration(oq))
+        extrin3 = calcExtrins(oq, curp)
+        for i in 1:3
+            push!(pts3[i], (tex, extrin3[i]))
+        end
+    end
+    bids, asks, baps = pts3
+    draw!(bids)
+    draw!(asks)
+    draw!(baps)
+    return pts3
+end
 
 # logistic(x, x0, mx, k) = mx / (1.0 + ℯ^(-k * (x - x0)))
 # logisticF(x0, mx, k) = x -> mx / (1.0 + ℯ^(-k * (x - x0)))
@@ -74,7 +118,7 @@ function readSpreads()::Nothing
 end
 
 function readPricing()::Nothing
-    Calendars.ensureCal(Snapshots.earliestSnap(), today() + Month(3))
+    Calendars.ensureCal(SnapUtil.earliestSnap(), today() + Month(6))
     basePath = "C:/data/tmp/pricing"
     empty!(AllCalls)
     empty!(AllPuts)

@@ -103,6 +103,11 @@ function __init__()
     # )
 end
 
+function SH.draw()
+    closeWin()
+    lines([(0.0, 0.0)])
+end
+
 function SH.draw(f::Function, xs)
     closeWin()
     lines(xs, f.(xs))

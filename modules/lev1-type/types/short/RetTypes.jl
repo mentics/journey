@@ -8,7 +8,9 @@ struct Ret
     center::Float64
     numLegs::Int
 end
-Ret() = Ret(Bins.with(1.0), 1.0, 4)
+# const RET_ZERO = Ret(Bins.with(0.0), 1.0, 0)
+# Ret() = Ret(Bins.with(1.0), 1.0, 4)
+Ret(center::Real) = Ret(Bins.with(0.0), center, 0)
 SH.getCenter(r::Ret) = r.center
 SH.getVals(r::Ret) = r.vals
 # SH.valAt(r::Ret, i::Int) = r.vals[i]

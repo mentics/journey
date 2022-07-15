@@ -1,6 +1,6 @@
 module Snapshots
 using Dates
-using Globals, DateUtil, FileUtil, TradierConfig, LogUtil
+using Globals, DateUtil, FileUtil, TradierConfig, LogUtil, SnapUtil
 using Calendars, Sched
 using Positions, Chains, Expirations, Markets, ProbHist
 
@@ -14,9 +14,7 @@ snop() = stopSnap()
 snave() = saveSnap()
 
 #region Local
-const SNAP_DATEFORMAT = dateformat"yyyy-mm-dd.HH-MM"
-
-snapToTs(nam::AbstractString) = fromLocal(nam, Snapshots.SNAP_DATEFORMAT)
+snapToTs(nam::AbstractString) = fromLocal(nam, SnapUtil.SNAP_DATEFORMAT)
 
 const toRecord = [
     ()->market(; up=true),
@@ -88,11 +86,11 @@ function updateAll()
     return
 end
 
-newName() = formatLocal(now(UTC), SNAP_DATEFORMAT)
+newName() = formatLocal(now(UTC), SnapUtil.SNAP_DATEFORMAT)
 
 # const REGEX_NAME = r"(\d\d\d\d-\d\d-\d\d\.\d\d-\d\d)"
 allSnaps(desc=true) = sort(readdir(TradierConfig.SnavePath; join=false, sort=false); rev=desc)
-findByIndex(num::Int)::String = allSnaps[num]
+findByIndex(num::Int)::String = allSnaps()[num]
 function findByParts(nums::Int...)
     files = sort(readdir(TradierConfig.SnavePath; join=false, sort=false); rev=false)
     p = vcat(fill("", 5-length(nums)), map(n -> n == 0 ? "" : string(n), nums)...)

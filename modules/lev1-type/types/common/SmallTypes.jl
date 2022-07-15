@@ -3,6 +3,7 @@ using EnumX
 using SH
 
 export Style, Side, Action
+export Styles, Sides
 export checkDirOrder, checkDirTrade
 
 @enumx Style call=1 put=-1
@@ -13,11 +14,21 @@ SH.to(::Type{Style.T}, s::AbstractString) = s in ("c", "C", "call") ? Style.call
 SH.isCall(s::Style.T) = s == Style.call
 SH.isPut(s::Style.T) = s == Style.put
 
+struct Styles{T}
+    call::T
+    put::T
+end
+
 @enumx Side long=1 short=-1
 SH.toOther(x::Side.T) = x === Side.long ? Side.short : Side.long
 SH.toCode(s::Side.T) = s === Side.long ? 'l' : 's'
 SH.to(::Type{Side.T}, s::AbstractString) = s in ("l", "L", "long") ? Side.long : (s in ("s", "S", "short") ? Side.short : error("Invalid Side code ", s))
 # SH.random(::Type{Side.T}) = rand((Side.call, Side.put))
+
+struct Sides{T}
+    long::T
+    short::T
+end
 
 @enumx Action open=1 close=-1
 SH.toOther(x::Action.T) = x === Action.open ? Action.close : Action.open

@@ -1,5 +1,5 @@
 module LegTypes
-using SH, SmallTypes, OptionTypes
+using SH, BaseTypes, SmallTypes, OptionTypes
 
 export Leg, isConflict, switchSide
 
@@ -25,7 +25,12 @@ SH.getQuantityDir(l::Leg) = Int(getSide(l)) * l.quantity
 # SH.addQuantity(leg::Leg, addend::Real) = Leg(leg.option, leg.quantity + addend, leg.side)
 
 isConflict(l1, l2) = getOption(l1) == getOption(l2) && getSide(l1) != getSide(l2)
-isConflict(legs::Vector{Leg}) = (opt::Option, side::Side.T) -> !isnothing(findfirst(leg -> isConflict(leg, opt, side), legs))
-isConflict(leg::Leg, opt::Option, side::Side.T) = opt == getOption(leg) && side != getSide(leg)
+# isConflict(legs::Coll, leg) = !isnothing(findfirst(check -> isConflict(leg, check), legs))
+
+isConflict(leg, opt::Option, side::Side.T) = side != getSide(leg) && opt == getOption(leg)
+isConflict(leg, opt, side::Side.T) = side != getSide(leg) && getOption(opt) == getOption(leg)
+isConflict(legs::Coll) = (opt::Option, side::Side.T) -> !isnothing(findfirst(leg -> isConflict(leg, opt, side), legs))
+# isConflict(legs::Coll, opt, side::Side.T) = !isnothing(findfirst(leg -> isConflict(leg, opt, side), legs))
+isConflict(legs::Coll, side::Side.T) = opt -> !isnothing(findfirst(leg -> isConflict(leg, opt, side), legs))
 
 end

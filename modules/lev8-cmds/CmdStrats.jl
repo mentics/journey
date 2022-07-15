@@ -47,16 +47,16 @@ function an(exps::Date...; maxRun::Int=120, keep::Int=100, nthreads::Int=Threads
     @assert issorted(exps)
     targetDate = first(exps)
     lastExp[] = targetDate
-    sp = market().startPrice
+    sp, curp = marketPrices()
     global lastPosStrat[] = noPos ? Vector{LegRet}() :
-            (isnothing(lmsPos) ? calcPosStrat(targetDate, sp, Globals.get(:vtyRatio), lmsAdd) :
-                    tos(LegRet, lmsPos, targetDate, sp, Globals.get(:vtyRatio)))
+            (isnothing(lmsPos) ? calcPosStrat(targetDate, curp, Globals.get(:vtyRatio), lmsAdd) :
+                    tos(LegRet, lmsPos, targetDate, curp, Globals.get(:vtyRatio)))
     global lastPosRet[] = (noPos || isempty(lastPosStrat[])) ? nothing : combineTo(Ret, lastPosStrat[])
 
     tex = calcTex(market().tsMarket, targetDate)
-    probs = getProbs(tex, targetDate, sp)
+    probs = getProbs(tex, targetDate; curp)
     legs = vcat(getLeg.(positions()), getLeg.(lastPosStrat[]), getLeg.(queryLegOrders(today())))
-    allSpreads2 = allSpreads(chains(), isConflict(legs), marketPrices(), exps)
+    allSpreads2 = allSpreads(chains(), isConflict(legs), (sp, curp), exps)
     !isnothing(sprFilt) && (allSpreads2 = map(v->filter(sprFilt, v), allSpreads2))
     global lastSpreads2[] = allSpreads2
     maxRun > 0 || (maxRun = calcMaxRun(allSpreads2))
@@ -64,7 +64,7 @@ function an(exps::Date...; maxRun::Int=120, keep::Int=100, nthreads::Int=Threads
 
     ctx = makeCtx(coal(scorer, calcScore1), probs, tex; maxRun, keep, posRet=lastPosRet[], nthreads, filt)
 
-    @log info "RunStrats running" maxRun keep nthreads exps sum(length, allSpreads2) sp tex
+    @log info "RunStrats running" maxRun keep nthreads exps sum(length, allSpreads2) curp tex
     strats = runStrats(allSpreads2, ctx)
     showCountsScore()
     global lastRes[] = strats
@@ -87,7 +87,7 @@ probsFor(exp::Date; kws...) = makeProbs(calcTex(market().tsMarket, exp), exp; kw
 function makeProbs(tex::Float64, targetDate::Date; curp::Currency=market().curp)::Tuple
     ivsd = ivTexToStdDev(calcNearIv(targetDate), tex)
     # shift = ivsd/2
-    pnd = probsNormDist(curp, 1.16 * ivsd)# + .25 * numDays * .05))
+    pnd = probsNormDist(curp, 1. * ivsd)# + .25 * numDays * .05))
     # pndL = probsNormDist(sp, ivsd, -shift)# + .25 * numDays * .05))
     # pndR = probsNormDist(sp, ivsd, shift)# + .25 * numDays * .05))
     # probs = (pnd, pndL, pndR)

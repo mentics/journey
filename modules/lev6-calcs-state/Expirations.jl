@@ -31,15 +31,19 @@ end
 # TODO: clean this up
 using Globals, SnapUtil
 function newVal()::OffsetArray{Date}
-    exps = tradierExpirations()
-    num = isnothing(snap()) ? 20 : SnapUtil.countSnapExpirs()
+    exps = isnothing(snap()) ? tradierExpirations() : SnapUtil.snapExpirs()
+    # num = isnothing(snap()) ? 20 : SnapUtil.countSnapExpirs()
     # println("num expirs: ", num)
-    if exps[1] == market().startDay
-        # println("exps[1] was market startday")
-        return OffsetArray(exps[1:num+1], 0:num)
-    else
-        return OffsetArray(vcat(exps[1], exps[1:num]), 0:num)
-    end
+    exps[1] == market().startDay || insert!(exps, 1, exps[1])
+    num = min(21, length(exps))
+    return OffsetArray(exps[1:num], 0:num-1)
+
+    # if exps[1] == market().startDay
+    #     # println("exps[1] was market startday")
+    #     return OffsetArray(exps, 0:min(21, length(exps)-1))
+    # else
+    #     return OffsetArray(vcat(exps[1], exps), 0:min(21, length(exps)))
+    # end
 end
 #endregion
 

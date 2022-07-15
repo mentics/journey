@@ -1,7 +1,7 @@
 module Theo
 using Dates
 using SH, BaseTypes, SmallTypes, ChainTypes
-using Globals, OptionUtil
+using Globals, OptionUtil, SnapUtil
 using Calendars, Chains, Markets
 using Snapshots
 
@@ -20,11 +20,12 @@ function reset()
 end
 
 function run()
-    Calendars.ensureCal(Snapshots.earliestSnap(), today() + Month(3))
-    numSnaps = Snapshots.countSnaps()
+    Calendars.ensureCal(SnapUtil.earliestSnap(), today() + Month(3))
+    numSnaps = SnapUtil.countSnaps()
     for i in 1:numSnaps
         i in Loaded && continue
         nam = snap(i)
+        println("proc snap: ", nam)
         resc, resp = process(Snapshots.snapToTs(nam))
         append!(AllCalls, resc)
         append!(AllPuts, resp)
@@ -127,18 +128,17 @@ function process(ts::Dates.AbstractDateTime)::Tuple{Vector{NamedTuple},Vector{Na
     return (calls, puts)
 end
 
-# TODO: check that we have data within a few minutes of expiration because snave sched should be giving us that now
 function procExpr(ts::DateTime, curp::Currency, absTex::Period, oqs::Vector{OptionQuote}, res::Vector{NamedTuple})
     for i in 1:(length(oqs)-1)
         oq1, oq2 = oqs[i], oqs[i+1]
         s1, s2 = getStrike(oq1), getStrike(oq2)
         strikeDiff = abs(s1 - s2)
-        netLo = netLong(oq1, oq2) / strikeDiff
-        netSho = netShort(oq1, oq2) / strikeDiff
+        netLo = calcNetLong(oq1, oq2) / strikeDiff
+        netSho = calcNetShort(oq1, oq2) / strikeDiff
         strikeDist = getStrike(oq1) - curp
         mid = (s1 + s2)/2
         push!(res, (;
-            ts, curp, oq1, oq2, absTex, strikeDist, insic=getExtrinsic(oq1, curp), mid, netLo, netSho, strikeDiff
+            ts, curp, oq1, oq2, absTex, strikeDist, insic=calcExtrin(oq1, curp), mid, netLo, netSho, strikeDiff
         ))
     end
 end

@@ -1,12 +1,28 @@
 module Chains
 using Dates
 using CollUtil, DictUtil, DateUtil, CalcUtil, LogUtil, VectorCalcUtil
-using Globals, BaseTypes, SH, SmallTypes, ChainTypes, QuoteTypes, OptionTypes, OptionMetaTypes
+using Globals, BaseTypes, SH, SmallTypes, ChainTypes, QuoteTypes, OptionTypes, OptionMetaTypes, LegTypes
 using TradierData, Caches
 using DataHelper, Markets, Calendars, Expirations
 
-export chains, ivs, calcNearIv
+export chains, getOqs, ivs, calcNearIv
 export quoter, optQuoter, isQuotable
+
+const Oqss = Styles{Sides{Vector{OptionQuote}}}
+
+function getOqs(exp::Date, legsCheck, curp::Currency)::Oqss
+    fconl = !isConflict(legsCheck, Side.long)
+    fcons = !isConflict(legsCheck, Side.short)
+    fcans = canShort(Globals.get(:Strats), curp)
+    oqsValid = filter(isValid(curp), chains()[exp].chain)
+    oqsLong = filter(fconl, oqsValid)
+    oqsCallLong = filter(SH.isCall, oqsLong)
+    oqsPutLong = filter(isPut, oqsLong)
+    oqsShort = filter(x -> fcons(x) && fcans(x), oqsValid)
+    oqsCallShort = filter(SH.isCall, oqsShort)
+    oqsPutShort = filter(isPut, oqsShort)
+    return Styles(Sides(oqsCallLong, oqsCallShort), Sides(oqsPutLong, oqsPutShort))
+end
 
 function chains(; up=false)::CHAINS_TYPE
     cache!(CHAINS_TYPE, CHAINS, tooOld(PERIOD_UPDATE, isMarketOpen()); up) do
@@ -89,7 +105,7 @@ function procChain(exp::Date, cp::Currency, data::Vector{Dict{String,Any}})::Opt
         # # if abs(1.0 - strike / cp) > 0.1
         #     continue
         # end
-        style = isCall(raw) ? Style.call : Style.put
+        style = occursin("Call", raw["description"]) ? Style.call : Style.put
         if isnothing(raw["bid"]) || isnothing(raw["ask"])
             if !isnothing(snap()) || isMarketOpen()
                 @log debug "nothing bid found" exp strike style
@@ -109,7 +125,6 @@ function procChain(exp::Date, cp::Currency, data::Vector{Dict{String,Any}})::Opt
     return OptionChain(res, nowMs())
 end
 
-isCall(chainItem) = occursin("Call", chainItem["description"])
 toOptionMeta(::Nothing) = OptionMeta(0.0)
 function toOptionMeta(greeks::Dict{String,T}) where T
     val = tryKeys(greeks, 0.0, "mid_iv", "ask_iv", "bid_iv")

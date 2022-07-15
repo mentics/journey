@@ -1,6 +1,6 @@
 module HistData
 using Dates, DelimitedFiles
-using Globals, FileUtil, DateUtil
+using Globals, BaseTypes, FileUtil, DateUtil
 using Caches, TradierData
 
 export dataDaily, dataDay

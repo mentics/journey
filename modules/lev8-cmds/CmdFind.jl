@@ -1,14 +1,14 @@
 module CmdFind
 using Dates
 using SH, Globals, Bins, DateUtil, OutputUtil, DictUtil
-using SmallTypes, LegTypes, LegMetaTypes, RetTypes, StatusTypes
+using SmallTypes, LegTypes, LegMetaTypes, RetTypes, StatusTypes, OptionTypes
 using CalcUtil, Shorthand, Emails
 using Snapshots, Markets, Expirations, Chains, ConTime, Calendars, StoreTrade
 using CmdStrats # TODO: probsFor somewhere elese
 using DrawStrat
 
 export testOne, din, scandin
-export lmsFor, dinDraw
+export ofor, lmsFor, lmssd, dinDraw
 
 using CmdUtil, CmdExplore, DrawStrat
 
@@ -17,13 +17,13 @@ function makeCtx(i::Int)
     curp = market().curp
     probs = probsFor(exp; curp)
     lmsPos = findLmsPos(exp)
-    retPos = isempty(lmsPos) ? nothing : combineTo(Ret, lmsPos, curp)
-    metPos = isnothing(retPos) ? nothing : calcMetrics(probs[1], retPos, Bins.binds())
-    scorePos = isnothing(retPos) ? -Inf : score(retPos, metPos)
+    retPos = combineTo(Ret, lmsPos, curp)
+    metPos = calcMetrics(probs[1], retPos, Bins.binds())
+    scorePos = score(retPos, metPos)
     return (; exp, probs, curp, lmsPos, retPos, metPos, scorePos)
 end
 function makeCtx(ctx, lmsRun, retRun, metRun)
-    scoreRun = isnothing(retRun) ? -Inf : score(retRun, metRun)
+    scoreRun = score(retRun, metRun)
     return (; ctx.exp, ctx.probs, ctx.curp, lmsPos=lmsRun, retPos=retRun, metPos=metRun, scorePos=scoreRun)
 end
 
@@ -38,16 +38,18 @@ function din(i::Int)
     return (; lmss, rets, mets, ctx)
 end
 
-lmsFor(i::Int) = vcat(Main.save[:track][expir(i)].lmss...)
+ofor(i::Int) = Main.save[:track][expir(i)]
+lmsFor(i::Int) = vcat(ofor(i).lmss...)
+lmssd(lmss) = drlms(vcat(lmss...))
 
 dinDraw(i::Int) = dinDraw(Main.save[:track][expir(i)])
 dinDraw(all::NamedTuple) = dinDraw(all.ctx, all.lmss, all.rets, all.mets)
 function dinDraw(ctx, lmss, rets, mets)
     display(drawRet(rets[end]; ctx.probs, ctx.curp, label="all"))
-    if !isnothing(ctx.metPos)
+    # if !isnothing(ctx.metPos)
         println("0: ", ctx.metPos)
         drawRet!(ctx.retPos; label="0")
-    end
+    # end
     for i in 1:length(mets)
         # ret = combineTo(Ret, lmss[i], market().curp)
         println("$(i): ", mets[i])
@@ -55,30 +57,41 @@ function dinDraw(ctx, lmss, rets, mets)
     end
 end
 
+# (default(::Type{T})::T) where T = T()
+default(::Type{Int64})::Int64 = 0
+default(::Type{Float64})::Float64 = 0.0
+function useKey(d::Dict{K,V}, key::K, finit=default)::V where {K,V}
+    haskey(d, key) || (d[key] = finit(V))
+    return d[key]
+end
+
+# TODO: instead of hardcoded minevr, use distance from fromevr because it changes when price changes
 function scandin()
-    track = Dict{Date,Any}()
+    ImpMin = 0.02
+    track = useKey(Main.save, :track, Dict{Date,Any})
+    minEvrs = useKey(Main.save, :MinEvrs, Dict{Int,Float64})
     while true
-        minEvrs = hasproperty(Main, :MinEvrs) ? Main.MinEvrs : Dict{Int,Float64}()
         check = exsToScan()
-        Main.save[:track] = track
         for i in check
             ctx = makeCtx(i)
             println("[$(nowz())] ======== Searching for $(i) : $(ctx.exp) ========")
             lmss, rets, mets = CmdFind.findBestAll(ctx);
             if !isempty(lmss)
                 # metsShow = isnothing(ctx.metPos) ? mets : vcat(ctx.metPos, mets)
-                minEvr = tryKey(minEvrs, i)
-                fromEvr = isnothing(ctx.metPos) ? -Inf : ctx.metPos.evr
+                fromEvr = ctx.metPos.evr
+                minEvr = max(tryKey(minEvrs, i, 0.0), fromEvr + ImpMin)
                 toEvr = mets[end].evr
-                impEvr = toEvr - fromEvr
-                if (isnothing(minEvr) ? impEvr > .02 : toEvr > minEvr)
+                if (toEvr > minEvr)
                     track[ctx.exp] = (;ctx, lmss, mets, rets)
-                    prety = spretyble(isnothing(ctx.metPos) ? mets : vcat(ctx.metPos, mets))
+                    minEvrs[i] = toEvr
+                    prety = spretyble(vcat(ctx.metPos, mets))
                     println("Cumulative:")
                     println(prety)
                     sendEmail("***REMOVED***", "Found din scan entry for $(i) $(ctx.exp)", prety)
                 else
+                    # haskey(track, ctx.exp) || (track[ctx.exp] = (;ctx, lmss, mets, rets))
                     println("Evr too low ", (;fromEvr, toEvr, minEvr))
+                    minEvrs[i] = minEvr - 0.01 * (minEvr - toEvr)
                 end
             else
                 # delete!(track, ctx.exp)
@@ -102,38 +115,39 @@ end
 # TODO: if it's beyond left or right, set ret * prob = 0 beacuse prob is = 0
 # I used Bins.binds() but need to check if that's doing it
 # TODO: also check if selling a position not opened today could increase evr, but that gets tricky...
-function testOne()
-    month = 5
-    day = 20
-    snap(month,day,7,0)
-    exp = expir(8)
-    # filt = ConTime.dateHourFilter(Date(2022, month, day-1), exp, 14)
-    filt = ConTime.dateFilter(Date(2022, month, day-1), exp)
-    lmsPos = Vector{LegMeta}()
-    Main.save[:exp] = exp
-    Main.save[:rets] = rets
-    Main.save[:lmsPos] = lmsPos
+# function testOne()
+#     month = 5
+#     day = 20
+#     snap(month,day,7,0)
+#     exp = expir(8)
+#     # filt = ConTime.dateHourFilter(Date(2022, month, day-1), exp, 14)
+#     filt = ConTime.dateFilter(Date(2022, month, day-1), exp)
+#     lmsPos = Vector{LegMeta}()
+#     Main.save[:exp] = exp
+#     Main.save[:rets] = rets
+#     Main.save[:lmsPos] = lmsPos
 
-    ConTime.runForSnaps(filt) do name, ts
-        println(name)
-        findBestAll(exp, lmsPos)
-    end
-    prob = probsFor(exp)[1]
-    cret = combineTo(Ret, lmsPos, market().curp)
-    Main.save[:cret] = cret
-    met = calcMetrics(prob, cret, Bins.binds())
-    Main.save[:met] = met
-    drawRet(cret; label="c", probs=[prob])
-    @info "Result" length(rets) met
-    return (lmsPos, rets, cret, met)
-end
+#     ConTime.runForSnaps(filt) do name, ts
+#         println(name)
+#         findBestAll(exp, lmsPos)
+#     end
+#     prob = probsFor(exp)[1]
+#     cret = combineTo(Ret, lmsPos, market().curp)
+#     Main.save[:cret] = cret
+#     met = calcMetrics(prob, cret, Bins.binds())
+#     Main.save[:met] = met
+#     drawRet(cret; label="c", probs=[prob])
+#     @info "Result" length(rets) met
+#     return (lmsPos, rets, cret, met)
+# end
 
 function findBestAll(ctx)
     lmss = Vector{Vector{LegMeta}}()
     rets::Vector{Ret} = Ret[]
     mets = Vector{NamedTuple}()
     lmsRun = copy(ctx.lmsPos)
-    oqs = filter(isValid(Globals.get(:Strats), ctx.curp), chains()[ctx.exp].chain)
+
+    oqs = getOqs(ctx.exp, ctx.lmsPos, ctx.curp)
     while true
         scoreTo, res = findBest(ctx, oqs)
         if !isnothing(res)
@@ -158,49 +172,54 @@ function findBestAll(ctx)
 end
 
 function findBest(ctx, oqs)
-    incCallShort, incPutShort = countType(ctx.lmsPos)
-
     res = (ctx.scorePos, nothing)
     res = findBestSpread(ctx, oqs, res)
-    for oq in oqs
-        incShort = getStyle(oq) == Style.call ? incCallShort : incPutShort
+    for oq in oqs.call.long
         lm = to(LegMeta, oq, Side.long)
         res = lyze(ctx, [lm], res)
-        if incShort
+    end
+
+    for oq in oqs.put.long
+        lm = to(LegMeta, oq, Side.long)
+        res = lyze(ctx, [lm], res)
+    end
+
+    incCallShort, incPutShort = countType(ctx.lmsPos)
+    if incCallShort
+        for oq in oqs.call.short
             lm = to(LegMeta, oq, Side.short)
             res = lyze(ctx, [lm], res)
         end
     end
+
+    if incPutShort
+        for oq in oqs.put.short
+            lm = to(LegMeta, oq, Side.short)
+            res = lyze(ctx, [lm], res)
+        end
+    end
+
     return res # (res[2], (scorePos, res[1]))
 end
 
 function findBestSpread(ctx, oqs, res)
-    calls = filter(isCall, oqs)
-    puts = filter(isPut, oqs)
-    res = findBestSpreadS(ctx, calls, res)
-    res = findBestSpreadS(ctx, puts, res)
+    res = findBestSpreadS(ctx, oqs.call, res)
+    res = findBestSpreadS(ctx, oqs.put, res)
     return res # scoreMaxC > scoreMaxP ? (resC, scoreMaxC) : (resP, scoreMaxP)
 end
 
 function findBestSpreadS(ctx, oqs, res)
-    len = length(oqs)
-    for i in 1:len
-        for j in (i+1):len
-            lms1 = [to(LegMeta, oqs[i], Side.short), to(LegMeta, oqs[j], Side.long)]
-            lms2 = [to(LegMeta, oqs[i], Side.long), to(LegMeta, oqs[j], Side.short)]
-            res = lyze(ctx, lms1, res)
-            res = lyze(ctx, lms2, res)
-        end
+    for oq1 in oqs.long, oq2 in oqs.short
+        oq1 != oq2 || continue
+        lms1 = [to(LegMeta, oq1, Side.long), to(LegMeta, oq2, Side.short)]
+        # lms2 = [to(LegMeta, oqs[i], Side.long), to(LegMeta, oqs[j], Side.short)]
+        res = lyze(ctx, lms1, res)
+        # res = lyze(ctx, lms2, res)
     end
     return res
 end
 
 function lyze(ctx, lms::Vector{LegMeta}, res)
-    for lm in lms
-        for lmp in ctx.lmsPos
-            !isConflict(lm, lmp) || (return res)
-        end
-    end
     # TODO: we could calc the filter directly without creating ret and met
     retOne = combineTo(Ret, lms, ctx.curp)
     metOne = calcMetrics(ctx.probs[1], retOne, Bins.binds())
