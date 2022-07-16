@@ -18,6 +18,7 @@ const DAILY = :daily
 
 dataDaily(;up=false)::DailyType = cache!(() -> updateDaily(), DailyType, DAILY, Hour(4); up)
 dataDaily(d::Date)::DailyType = (daily = dataDaily() ; daily[findfirst(r->r.date <= d, daily):end])
+dataDaily(from::Date, to::Date)::DailyType = filter(r -> from <= r.date <= to, dataDaily())
 
 priceOpen(d::Date)::Currency = dataDay(d).open
 dataDay(d::Date)::DailyRowType = (daily = dataDaily() ; daily[findfirst(r->r.date == d, daily)])

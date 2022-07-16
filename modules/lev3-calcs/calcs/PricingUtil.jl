@@ -6,51 +6,10 @@ using Calendars, Snapshots, TradierData
 
 export logistic, otherFunc
 export readSpreads, readPricing, filterTs, getTicker, runData, setup
-export calcTex
 
-exp = Date(2022, 6, 10)
-strike = C(395)
-fall() = filter(AllCalls) do nt
-    oq = nt.oq
-    return getExpiration(oq) == exp && getStrike(oq) == strike
-end
-const PTS = Vector{NTuple{2,Float64}}
-newCont() = (PTS(), PTS(), PTS())
-fmap() = reduce(fall(); init=newCont()) do acc, nt
-    (;ts, curp, oq) = nt
-    tex = calcTex(ts, getExpiration(oq))
-    pts = collect(((tex, x) for x in calcExtrins(oq, curp)))
-    for i in 1:3
-        push!(acc[i], pts[i])
-    end
-    return acc
-end
-using DrawUtil
-function fshow()
-    bids, asks, baps = fmap()
-    display(draw(bids))
-    draw!(asks)
-    draw!(baps)
-end
+export procCalls
 
-function showBand(dist = 5.0)
-    pts3 = newCont()
-    for nt in AllCalls
-        (;ts, curp, oq) = nt
-        strike = getStrike(oq)
-        getExpiration(oq) == exp && dist - 0.5 < strike - curp < dist + 0.5|| continue
-        tex = calcTex(ts, getExpiration(oq))
-        extrin3 = calcExtrins(oq, curp)
-        for i in 1:3
-            push!(pts3[i], (tex, extrin3[i]))
-        end
-    end
-    bids, asks, baps = pts3
-    draw!(bids)
-    draw!(asks)
-    draw!(baps)
-    return pts3
-end
+procCalls(f) = foreach(f, AllCalls)
 
 # logistic(x, x0, mx, k) = mx / (1.0 + ℯ^(-k * (x - x0)))
 # logisticF(x0, mx, k) = x -> mx / (1.0 + ℯ^(-k * (x - x0)))
@@ -203,6 +162,17 @@ function loadTicker(sym::String)::Nothing
     global Tickers[sym] = Dict([Date(d["date"]) => d for d in data])
     return
 end
+
+using Statistics
+using DictUtil, HistData
+export calcVty2, resetVty2
+const VTY_CACHE = Dict{Date,Float64}()
+# TODO: maybe include a target interval: further out targets might better match further past historical data
+calcVty2(date::Date)::Float64 = useKey(VTY_CACHE, date) do
+    dailys = dataDaily(date - Day(30), date)
+    return std(Iterators.flatten((r.open, r.high, r.low, r.close) for r in dailys))
+end
+resetVty() = empty!(VTY_CACHE)
 #endregion
 
 end

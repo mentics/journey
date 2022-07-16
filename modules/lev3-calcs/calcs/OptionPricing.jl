@@ -6,12 +6,12 @@ using DateUtil, FileUtil, OptionUtil, PricingUtil
 using Calendars, Snapshots
 
 #region Header
-AllCalls = NamedTuple[]
-AllPuts = NamedTuple[]
-CallsItm = nothing
-CallsItmXs = nothing
-CallsItmExtrins = nothing
-BbCallsItm = nothing
+# AllCalls = NamedTuple[]
+# AllPuts = NamedTuple[]
+# CallsItm = nothing
+# CallsItmXs = nothing
+# CallsItmExtrins = nothing
+# BbCallsItm = nothing
 
 const RunRange = Ref{UnitRange{Int64}}(1:1000)
 const PandaInit = Ref{Vector{Float64}}(Vector{Float64}())
@@ -21,7 +21,83 @@ const PandaInit = Ref{Vector{Float64}}(Vector{Float64}())
 other(x, a, b, c) = a / (b * (x - c))
 
 # eg: abs(getStrike(r.oq) - r.curp) > 100 && getExtrinsic(r.oq, C(r.curp))[3] > 2
-findCalls(pred) = filter(pred, AllCalls)
+#endregion
+
+#region exploring
+function run1(; exp=Date(2022, 6, 10), dist=1.0)
+    global xs = Vector{NamedTuple}()
+    global ys = Vector{Float64}()
+    global actual = Vector{Tuple{Float64,Float64}}()
+    # texes = Vector{Float64}()
+    procCalls() do nt
+        (;curp, oq) = nt
+        strike = getStrike(oq)
+        getExpiration(oq) == exp && dist - 0.5 < strike - curp < dist + 0.5 || return
+        datum = makeData1(nt)
+        extrin3 = calcExtrins(oq, curp)
+        y = extrin3[3] / curp
+        push!(ys, y) # 3 = imp
+        push!(xs, datum)
+        push!(actual, (datum.tex, y))
+        # push!(texes, datum.tex)
+    end
+    # numParams = length(model1(xs[1], zeros(100)))
+    numParams = 48
+
+    SearchRange = fill((0.0, 1.0), numParams)
+    !isempty(PandaInit[]) || (PandaInit[] = [(x[1] + x[2])/2 for x in SearchRange])
+
+    funcToOpt = modelOptim1(xs, ys)
+    global BbCallsItm = bboptimize(funcToOpt, PandaInit[]; SearchRange, MaxTime=10)#, NThreads=(Threads.nthreads()-1))
+    PandaInit[] = best_candidate(BbCallsItm)
+    drawResult()
+end
+function drawResult()
+    display(draw(actual))
+    fit = [(x.tex, model1(x, PandaInit[])) for x in xs]
+    draw!(fit)
+    return
+end
+
+function makeData1(nt::NamedTuple)
+    (;ts, curp, oq, spyOpen, spyClosePrev) = nt
+    tex = calcTex(ts, getExpiration(oq))
+    strike = getStrike(oq)
+    strikeRat =  strike / curp - 1.0
+    vty = calcVty2(Date(ts))
+    curpRat = curp / spyOpen - 1.0
+    openCloseRat = spyOpen / spyClosePrev - 1.0
+    return (;tex, strikeRat, vty, curpRat, openCloseRat)
+end
+
+function modelOptim1(xs::Vector{NamedTuple}, ys::Vector{Float64})
+    function(p)
+        s = 0.0
+        for i in 1:length(xs)
+            s += (model1(xs[i], p) - ys[i])^2
+        end
+        return s
+    end
+end
+
+function model1(x::NamedTuple, p::Vector{Float64})
+    off = 1
+    texs = varia(x.tex)
+    vtys = varia(x.vty)
+    strikeRats = varia(x.strikeRat)
+    xs = vcat(texs, vtys, strikeRats)
+    n = length(xs)
+    x1 = linsum(xs, p, off)
+    off += n
+    x2 = linsum(xs, p, off)
+    off += n
+    x3 = linsum(xs, p, off)
+    off += n
+    x4 = linsum(xs, p, off)
+    res = other(x1, x2, x3, x4)
+    # println(off+n)
+    return res < 0.0 ? 100000*res : res
+end
 #endregion
 
 #region Results
@@ -103,7 +179,7 @@ sqrt0(x) = sqrt(x + 1.0) - 1.0
 log0(x) = log(x + 1.0)
 # varia(x, p, off) = (p[off] * x, p[off+1] * sqrt0(x), p[off+2] * log0(x), p[off+3] * x^2)
 # variaSum(x, p, off) = sum(varia(x, p, off))
-varia(x) = (x, sqrt0(x), log0(x), x^2)
+varia(x) = [x, sqrt0(x), log0(x), x^2]
 # variaSum(x, p, off) = sum(varia(x, p, off))
 combsMult(x1, x2) = map(Iterators.product(1:4, 1:4)) do (i1, i2)
     x1[i1] * x2[i2]

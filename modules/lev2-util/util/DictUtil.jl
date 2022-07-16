@@ -2,7 +2,7 @@ module DictUtil
 using JSON3
 using BaseUtil, CollUtil
 
-export validKV, tryKey, tryKeys, getLastDict
+export validKV, tryKey, tryKeys, useKey, getLastDict
 export toDict
 export parseJson, jsonToDict
 export walkKeys
@@ -10,8 +10,13 @@ export walkKeys
 # validKV(d::Dict, k) = haskey(d, k) && (v = d[k] ; isSomething(v))
 
 (tryKey(d::Dict{K,T}, key::K)::Union{Nothing,T}) where {K,T} = haskey(d, key) && (dk = d[key]; !isnothing(dk)) ? dk : nothing
-(tryKey(d::Dict{K,T2}, key::K, els::T)::T) where {K,T2,T<:T2} = haskey(d, key) && (dk = d[key]; !isnothing(dk)) ? dk : els
+(tryKey(d::Dict{K,V}, key::K, els::V2)::V2) where {K,V,V2<:V} = haskey(d, key) && (dk = d[key]; !isnothing(dk)) ? dk : els
 tryKeys(d::Dict{<:Any,<:Any}, els, keys...) = (val = find(!isnothing, map(k->tryKey(d,k), keys)); return isnothing(val) ? els : val)
+# function (useKey(finit::Function, d::Dict{K,V}, key::K)::V2) where {K,V,V2<:V}
+function useKey(finit, d, key)
+        haskey(d, key) || (d[key] = finit())
+    return d[key]
+end
 
 function getLastDict(d::Dict, keys...)
     cur = d

@@ -58,12 +58,8 @@ function dinDraw(ctx, lmss, rets, mets)
 end
 
 # (default(::Type{T})::T) where T = T()
-default(::Type{Int64})::Int64 = 0
-default(::Type{Float64})::Float64 = 0.0
-function useKey(d::Dict{K,V}, key::K, finit=default)::V where {K,V}
-    haskey(d, key) || (d[key] = finit(V))
-    return d[key]
-end
+# default(::Type{Int64})::Int64 = 0
+# default(::Type{Float64})::Float64 = 0.0
 
 # TODO: instead of hardcoded minevr, use distance from fromevr because it changes when price changes
 function scandin()
