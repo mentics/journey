@@ -1,8 +1,8 @@
 module OptionPricing
 using Dates, BlackBoxOptim
-using GLMakie
+# using GLMakie
 using SH, BaseTypes, SmallTypes, ChainTypes, OptionTypes, QuoteTypes, OptionMetaTypes
-using DateUtil, FileUtil, OptionUtil, PricingUtil
+using DateUtil, FileUtil, OptionUtil, PricingUtil, DrawUtil
 using Calendars, Snapshots
 
 #region Header
@@ -18,19 +18,88 @@ const PandaInit = Ref{Vector{Float64}}(Vector{Float64}())
 
 # logistic(x, x0, mx, k) = mx / (1.0 + ℯ^(-k * (x - x0)))
 # logisticF(x0, mx, k) = x -> mx / (1.0 + ℯ^(-k * (x - x0)))
-other(x, a, b, c) = a / (b * (x - c))
+fit1(x, a, b, c) = a / (b * (x - c))
+
+using Distributions
+function fit2(t, pos, vty, rfr)
+    t = abs(t)
+    t < 1.0 || (t = 1.0 + log(abs(t)))
+    abs(rfr) < 1.0 || (rfr = sign(rfr) + sign(rfr) * log(abs(rfr)))
+    rfrate = rfr
+    rt = sqrt(abs(t))
+    d1 = (log(abs(pos)) + (rfrate + vty^2 / 2.0) * t) / (vty * rt)
+    d2 = d1 - vty * rt
+    r = cdf(BlacksPricing.NORM, d1) - exp(-rfrate * t) * pos * cdf(BlacksPricing.NORM, d2)
+    if isnan(r)
+        @error t pos vty rfr rt d1 d2 cdf(BlacksPricing.NORM, d1) (-rfrate * t) exp(-rfrate * t) cdf(BlacksPricing.NORM, d2)
+        error("stop")
+    end
+    return r
+end
 
 # eg: abs(getStrike(r.oq) - r.curp) > 100 && getExtrinsic(r.oq, C(r.curp))[3] > 2
 #endregion
 
 #region exploring
-function run1(; exp=Date(2022, 6, 10), dist=1.0)
+function run1()
+    prepDataAll()
+    Method = :adaptive_de_rand_1_bin_radiuslimited
+    # https://github.com/robertfeldt/BlackBoxOptim.jl/blob/master/examples/benchmarking/latest_toplist.csv
+    # :xnes: got stuck around .004
+    # :adaptive_de_rand_1_bin : slowly continued down
+    # :generating_set_search: ?
+    # :separable_nes: stuck around .0032
+    # :adaptive_de_rand_1_bin_radiuslimited: Doc said this is "go-to"... keeps going down
+    SearchRange = vcat(fill((0.0, 1.0), 3), fill((-100.0, 100.0), numParams()-3))
+    (!isempty(PandaInit[]) && length(PandaInit[]) == numParams()) || (PandaInit[] = [(x[1] + x[2])/2 for x in SearchRange])
+
+    funcToOpt = modelOptim1(Store)
+    global BbCallsItm = bboptimize(funcToOpt, PandaInit[]; SearchRange, MaxTime=10000000, Method)
+    #, NThreads=(Threads.nthreads()-1))
+    PandaInit[] = best_candidate(BbCallsItm)
+    drawResult(specs[1])
+end
+
+Store = Dict()
+function makeSpecs(numSpecs::Int)::Vector
+    allexps = unique!(map(x -> getExpiration(x.oq), PricingUtil.AllCalls))
+    exps = filter(x -> Date(2022, 5, 1) <= x <= Date(2022, 6, 10), allexps)
+    dists = 1.0:1.0:20.0
+    data = vec([(;exp, dist) for exp in exps, dist in dists])
+    num = min(length(data), numSpecs)
+    specs = sample(data, num; replace=false)
+    return specs
+end
+
+function prepDataAll(numSpecs=20)
+    specs = makeSpecs(numSpecs)
+    empty!(Store)
+    # prevSpec = nothing
+    for spec in specs
+        # l1 = length(Store)
+        Store[spec] = prepData(spec)
+        # l2 = length(Store)
+        # if l1 == l2
+        #     @info "specs" l1 l2 spec prevSpec
+        # end
+        # prevSpec = spec
+    end
+end
+
+function prepData(spec)
+    (;exp, dist) = spec
+    global orig = Vector{NamedTuple}()
     global xs = Vector{NamedTuple}()
     global ys = Vector{Float64}()
     global actual = Vector{Tuple{Float64,Float64}}()
+    global actualTime = Vector{Tuple{DateTime,Float64}}()
     # texes = Vector{Float64}()
+    push!(ys, 0.0)
+    push!(xs, DATA1_ZERO)
+    push!(actual, (0.0, 0.0))
+    push!(actualTime, (getMarketClose(exp), 0.0))
     procCalls() do nt
-        (;curp, oq) = nt
+        (;ts, curp, oq) = nt
         strike = getStrike(oq)
         getExpiration(oq) == exp && dist - 0.5 < strike - curp < dist + 0.5 || return
         datum = makeData1(nt)
@@ -38,24 +107,43 @@ function run1(; exp=Date(2022, 6, 10), dist=1.0)
         y = extrin3[3] / curp
         push!(ys, y) # 3 = imp
         push!(xs, datum)
-        push!(actual, (datum.tex, y))
+        push!(actual, (datum.tex, extrin3[3]))
+        push!(actualTime, (ts, extrin3[3]))
+        push!(orig, merge(nt, (;tex=datum.tex)))
         # push!(texes, datum.tex)
     end
-    # numParams = length(model1(xs[1], zeros(100)))
-    numParams = 48
-
-    SearchRange = fill((0.0, 1.0), numParams)
-    !isempty(PandaInit[]) || (PandaInit[] = [(x[1] + x[2])/2 for x in SearchRange])
-
-    funcToOpt = modelOptim1(xs, ys)
-    global BbCallsItm = bboptimize(funcToOpt, PandaInit[]; SearchRange, MaxTime=10)#, NThreads=(Threads.nthreads()-1))
-    PandaInit[] = best_candidate(BbCallsItm)
-    drawResult()
+    # model1(xs[1], zeros(100))
+    # println(length(xs), length(actual), length(ys))
+    return (; orig, xs, ys, actual, actualTime)
 end
-function drawResult()
-    display(draw(actual))
-    fit = [(x.tex, model1(x, PandaInit[])) for x in xs]
-    draw!(fit)
+
+import BlacksPricing
+function drawResult(spec)
+    info = Store[spec]
+    display(drawDots(info.actual; color=:white))
+    modeled = [(x.tex, model1(x, PandaInit[]) * x.curp) for x in info.xs]
+    # global blacks = map(orig) do o
+    #     (; tex, curp, oq) = o
+    #     # TODO: try not cheating
+    #     vty = getIv(oq)
+    #     y = BlacksPricing.priceOption(getStyle(oq), Float64(getStrike(oq)), .575 * OptionUtil.texToYear(tex), vty, curp)
+    #     # y = BlacksPricing.priceOption(getStyle(oq), Float64(getStrike(oq)), OptionUtil.texToYear(tex), vty, curp)
+    #     return (tex, y)
+    # end
+    # # draw!(blacks)
+    drawDots!(modeled; color=:green)
+    err = [abs(modeled[i][2] - info.actual[i][2]) for i in eachindex(modeled)]
+    perm = sortperm(err; rev=true)
+    sm = modeled[perm]
+    sa = info.actual[perm]
+
+    # mx = maximum(abs(modeled[i][2] - info.actual[i][2]) for i in eachindex(modeled))
+    println(abs(sm[1][2] - sa[1][2]))
+    # @assert mx == abs(sm[1][2] - sa[1][2])
+    return sm[1:10]
+end
+function drawActualTime()
+    display(draw(map(tup -> (datetime2unix(tup[1]), tup[2]), actualTime)))
     return
 end
 
@@ -64,13 +152,20 @@ function makeData1(nt::NamedTuple)
     tex = calcTex(ts, getExpiration(oq))
     strike = getStrike(oq)
     strikeRat =  strike / curp - 1.0
-    vty = calcVty2(Date(ts))
+    vty1 = PricingUtil.calcVty2(Date(ts))
+    vty2 = PricingUtil.calcVty3(Date(ts))
+    vty3 = PricingUtil.calcVtyNeg(Date(ts))
     curpRat = curp / spyOpen - 1.0
     openCloseRat = spyOpen / spyClosePrev - 1.0
-    return (;tex, strikeRat, vty, curpRat, openCloseRat)
+    return (;tex, strikeRat, vty1, vty2, vty3, curpRat, openCloseRat, curp)
 end
+DATA1_ZERO = (;tex=0.0, strikeRat=0.01, vty1=0.01, vty2=0.01, vty3=0.01, curpRat=0.01, openCloseRat=0.01, curp=1.0)
 
-function modelOptim1(xs::Vector{NamedTuple}, ys::Vector{Float64})
+# function modelOptim1(xs::Vector{NamedTuple}, ys::Vector{Float64})
+function modelOptim1(dict)
+    # data = collect(values(d))
+    xs = vcat(map(x -> x.xs, values(dict))...)
+    ys = vcat(map(x -> x.ys, values(dict))...)
     function(p)
         s = 0.0
         for i in 1:length(xs)
@@ -80,12 +175,16 @@ function modelOptim1(xs::Vector{NamedTuple}, ys::Vector{Float64})
     end
 end
 
+numParams() = 3 + 2 * (4 * 5 * 4)
 function model1(x::NamedTuple, p::Vector{Float64})
     off = 1
     texs = varia(x.tex)
-    vtys = varia(x.vty)
+    vtys = varia(linsum((x.vty1, x.vty2, x.vty3), p, off))
+    off += 3
     strikeRats = varia(x.strikeRat)
-    xs = vcat(texs, vtys, strikeRats)
+    curpRats = varia(x.curpRat)
+    openCloseRats = varia(x.openCloseRat)
+    xs = vcat(texs, vtys, strikeRats, curpRats, openCloseRats)
     n = length(xs)
     x1 = linsum(xs, p, off)
     off += n
@@ -94,9 +193,73 @@ function model1(x::NamedTuple, p::Vector{Float64})
     x3 = linsum(xs, p, off)
     off += n
     x4 = linsum(xs, p, off)
-    res = other(x1, x2, x3, x4)
-    # println(off+n)
+    off += n
+    res1 = fit1(x1, x2, x3, x4)
+
+    x1 = linsum(xs, p, off)
+    off += n
+    x2 = linsum(xs, p, off)
+    off += n
+    x3 = linsum(xs, p, off)
+    off += n
+    x4 = linsum(xs, p, off)
+    off += n
+    res2 = fit2(x1, x2, x3, x4)
+
+    res = res1 + res2
+    # println("numParams: ", off+2)
     return res < 0.0 ? 100000*res : res
+end
+
+using EnergyStatistics
+function checkCorr()
+    xs = vcat(map(x -> x.xs, values(Store))...)[2:end]
+    ys = vcat(map(x -> x.ys, values(Store))...)[2:end]
+    dcorys = EnergyStatistics.dcenter!(EnergyStatistics.DistanceMatrix(ys))
+    valsRand = rand(length(ys))
+    valsConst = rand(length(ys))
+    dcorand = EnergyStatistics.dcenter!(EnergyStatistics.DistanceMatrix(valsRand))
+    dcoronst = EnergyStatistics.dcenter!(EnergyStatistics.DistanceMatrix(valsConst))
+    global corrs = Dict()
+    for var in keys(xs[1])
+        plain = map(x -> x[var], xs)
+        v = variaLabeled(plain)
+        for term in keys(v)
+            vals = v[term]
+            dcorxs = EnergyStatistics.dcenter!(EnergyStatistics.DistanceMatrix(vals))
+
+            dc = dcor(dcorys, dcorxs)
+            dcRand = dcor(dcorand, dcorxs)
+            dcConst = dcor(dcoronst, dcorxs)
+
+            key = (var, term)
+            r = (; key, vals, dc, dcRand, dcConst)
+            # label = string(var, '-', label)
+            println(key, ": ", r.dc, ' ', r.dcRand, ' ', r.dcConst)
+            corrs[key] = r
+        end
+    end
+
+    global corrMults = Dict()
+    for nt1 in values(corrs)
+        for nt2 in values(corrs)
+            nt1.key != nt2.key || continue
+            vals = nt1.vals .* nt2.vals
+            dcorxs = EnergyStatistics.dcenter!(EnergyStatistics.DistanceMatrix(vals))
+
+            dc = dcor(dcorys, dcorxs)
+            dcRand = dcor(dcorand, dcorxs)
+            dcConst = dcor(dcoronst, dcorxs)
+
+            key = (nt1.key, nt2.key)
+            r = (; key, vals, dc, dcRand, dcConst)
+            println(key, ": ", r.dc, ' ', r.dcRand, ' ', r.dcConst)
+            corrMults[key] = r
+        end
+    end
+
+    res = sort(collect(Iterators.flatten((values(corrs), values(corrMults)))); rev=true, by=x -> x.dc / ((x.dcRand + x.dcConst)/2))
+    return res
 end
 #endregion
 
@@ -180,6 +343,7 @@ log0(x) = log(x + 1.0)
 # varia(x, p, off) = (p[off] * x, p[off+1] * sqrt0(x), p[off+2] * log0(x), p[off+3] * x^2)
 # variaSum(x, p, off) = sum(varia(x, p, off))
 varia(x) = [x, sqrt0(x), log0(x), x^2]
+variaLabeled(v::Vector) = (; plain=v, sqrt=sqrt0.(v), log=log0.(v), squared=(^).(v, 2))
 # variaSum(x, p, off) = sum(varia(x, p, off))
 combsMult(x1, x2) = map(Iterators.product(1:4, 1:4)) do (i1, i2)
     x1[i1] * x2[i2]
@@ -234,7 +398,7 @@ function model(x, p)::Float64
     off += n
     x4 = linsum(all, p, off)
     off += n
-    res = other(x1, x2, x3, x4)
+    res = fit1(x1, x2, x3, x4)
     # @info "res" off res
 
     # x1 = tex1 + tex2 + tex3

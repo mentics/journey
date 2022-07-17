@@ -6,6 +6,8 @@ export calcNetLong, calcNetShort
 export calcNetLongPerWidth, calcNetShortPerWidth
 export calcExtrin, calcExtrins
 export calcNetLongExtrin, calcNetShortExtrin
+export ivTexToStdDev, texToYear
+
 
 calcWidth(oq1, oq2) = abs(getStrike(oq2) - getStrike(oq1))
 calcNetLong(oq1::OptionQuote, oq2::OptionQuote) = -max(0.01, getAsk(oq1)) + max(0., getBid(oq2))
@@ -61,5 +63,14 @@ function calcExtrins(oq::OptionQuote, curp::Real)::Tuple{Currency,Currency,Curre
 end
 
 extrinSub(style::Style.T, strike::Real, curp::Real)::Bool = xor(Style.call == style, strike >= curp)
+
+# ivToStdDev(iv::Float64, timeToExpY::Float64) = iv / sqrt(1.0/timeToExpY)
+# ivTexToStdDevOld(iv::Float64, tex::Float64) = iv / sqrt(1.0/(tex/24/365))
+ivTexToStdDev(iv::Float64, tex::Float64) = iv * sqrt(tex/texPerYear())
+texPerYear() = 6.5 * 252 + .3 * (8760 - 6.5 * 252)
+texToYear(tex) = tex / texPerYear()
+# 9:30 am - 4 pm = 6.5 hours / day
+# 252 days per year
+# 8760 hours per year
 
 end

@@ -16,6 +16,7 @@ const pathDaily = dirData("hist", "daily", "spy", "spy-daily.csv")
 
 const DAILY = :daily
 
+# In descending date order
 dataDaily(;up=false)::DailyType = cache!(() -> updateDaily(), DailyType, DAILY, Hour(4); up)
 dataDaily(d::Date)::DailyType = (daily = dataDaily() ; daily[findfirst(r->r.date <= d, daily):end])
 dataDaily(from::Date, to::Date)::DailyType = filter(r -> from <= r.date <= to, dataDaily())

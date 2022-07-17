@@ -167,12 +167,61 @@ using Statistics
 using DictUtil, HistData
 export calcVty2, resetVty2
 const VTY_CACHE = Dict{Date,Float64}()
+const VTY_CACHE3 = Dict{Date,Float64}()
+const VTY_CACHE_NEG = Dict{Date,Float64}()
 # TODO: maybe include a target interval: further out targets might better match further past historical data
 calcVty2(date::Date)::Float64 = useKey(VTY_CACHE, date) do
-    dailys = dataDaily(date - Day(30), date)
-    return std(Iterators.flatten((r.open, r.high, r.low, r.close) for r in dailys))
+    dailys = dataDaily(date - Day(60), date - Day(1))[1:20] # subtract a day to avoid future info
+    return std(Iterators.flatten((r.high, r.low) for r in dailys))
 end
-resetVty() = empty!(VTY_CACHE)
+function resetVty()
+    empty!(VTY_CACHE)
+    empty!(VTY_CACHE3)
+    empty!(VTY_CACHE_NEG)
+end
+
+Decay = .2
+# TODO: could precalculate all more efficiently and just populate cache once
+calcVty3(date::Date)::Float64 = useKey(VTY_CACHE, date) do
+    dailys = dataDaily(date - Day(60), date - Day(1))[1:20] # subtract a day to avoid future info
+    rets = dailyReturnsJump(dailys)
+    ema2 = rets[end]^2
+    for i in (length(rets)-1):-1:1
+        # TODO: I could calc this param by using maxing dist correlation
+        ema2 = (1.0 - Decay) * ema2 + Decay * rets[i]^2 # arbitrary .06 from http://faculty.baruch.cuny.edu/smanzan/FINMETRICS/_book/volatility-models.html
+    end
+    return sqrt(ema2)
+end
+
+calcVtyNeg(date::Date)::Float64 = useKey(VTY_CACHE, date) do
+    dailys = dataDaily(date - Day(60), date - Day(1))[1:20] # subtract a day to avoid future info
+    println("Using days: ", map(x->x.date, dailys))
+    # rets = filter(x -> x < 0.0, dailyReturns(dailys))
+    rets = replace!(x -> x <= 0 ? x : 0.0, dailyReturns(dailys))
+    length(rets) > 0 || return 0.0
+    ema2 = rets[end]^2
+    for i in (length(rets)-1):-1:1
+        ema2 = (1.0 - Decay) * ema2 + Decay * rets[i]^2 # arbitrary .06 from http://faculty.baruch.cuny.edu/smanzan/FINMETRICS/_book/volatility-models.html
+    end
+    return sqrt(ema2)
+end
+
+function dailyReturns(dailys)
+    len = length(dailys) - 1
+    res = Vector{Float64}(undef, len)
+    for i in 1:len
+        res[i] = dailys[i].close / dailys[i+1].close - 1.0
+    end
+    return res
+end
+function dailyReturnsJump(dailys)
+    len = length(dailys) - 1
+    res = Vector{Float64}(undef, len-1)
+    for i in 1:len-1
+        res[i] = dailys[1].close / dailys[i+1].close - 1.0
+    end
+    return res
+end
 #endregion
 
 end

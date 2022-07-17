@@ -2,7 +2,6 @@ module CalcUtil
 using SH, BaseTypes, Bins, ProbTypes, RetTypes
 
 export calcMetrics #, calcKelly, calcKelly!
-export ivTexToStdDev
 
 calcMetrics(prob::Prob, ret::Ret, bins=Bins.inds()) = ( @assert getCenter(prob) == getCenter(ret) ; calcMetrics(prob, getVals(ret), ret.numLegs, bins) )
 function calcMetrics(prob::Prob, vals::AVec{Float64}, numLegs::Int, binsi=Bins.inds())
@@ -132,9 +131,6 @@ function calcKelly!(pv, rets)
     isnan(kel) && return NaN
     return kel
 end
-
-# ivToStdDev(iv::Float64, timeToExpY::Float64) = iv / sqrt(1.0/timeToExpY)
-ivTexToStdDev(iv::Float64, tex::Float64) = iv / sqrt(1.0/(tex/24/365))
 
 # function smooth!(v::Vector{Float64}, k::Float64=1.0)
 #     # Skip first and last

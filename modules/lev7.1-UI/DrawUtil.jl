@@ -3,6 +3,7 @@ using GLMakie, GLFW
 using SH, Bins
 
 export draw, draw!, newFig, ticksCentered, updateLegend, closeWin
+export drawDots, drawDots!
 
 closeWin() = GLMakie.destroy!(GLMakie.global_gl_screen())
 
@@ -105,26 +106,46 @@ end
 
 function SH.draw()
     closeWin()
-    lines([(0.0, 0.0)])
+    fig = lines([(0.0, 0.0)])
+    DataInspector(fig.figure)
+    return fig
 end
 
 function SH.draw(f::Function, xs)
     closeWin()
-    lines(xs, f.(xs))
+    fig = lines(xs, f.(xs))
+    DataInspector(fig.figure)
+    return fig
 end
 
 function SH.draw(xs, ys)
     closeWin()
-    lines(xs, ys)
+    fig = lines(xs, ys)
+    DataInspector(fig.figure)
+    return fig
 end
 
 function SH.draw(vals)
     closeWin()
-    lines(vals)
+    fig = lines(vals)
+    DataInspector(fig.figure)
+    return fig
 end
 
 function SH.draw!(vals)
     lines!(vals)
+end
+
+function drawDots(vals; kws...)
+    closeWin()
+    fig = scatter(vals; kws...)
+    DataInspector(fig.figure)
+    return fig
+end
+
+function drawDots!(vals; kws...)
+    fig = scatter!(vals; kws...)
+    return fig
 end
 #endregion
 
