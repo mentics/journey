@@ -62,10 +62,11 @@ end
 # default(::Type{Float64})::Float64 = 0.0
 
 # TODO: instead of hardcoded minevr, use distance from fromevr because it changes when price changes
+# TODO: do a single loop through setting MinEvr initially
 function scandin()
     ImpMin = 0.02
-    track = useKey(Main.save, :track, Dict{Date,Any})
-    minEvrs = useKey(Main.save, :MinEvrs, Dict{Int,Float64})
+    track = useKey(Dict{Date,Any}, Main.save, :track)
+    minEvrs = useKey(Dict{Int,Float64}, Main.save, :MinEvrs)
     while true
         check = exsToScan()
         for i in check
@@ -137,14 +138,15 @@ end
 #     return (lmsPos, rets, cret, met)
 # end
 
-function findBestAll(ctx)
+function findBestAll(ctx)::Tuple
     lmss = Vector{Vector{LegMeta}}()
     rets::Vector{Ret} = Ret[]
     mets = Vector{NamedTuple}()
     lmsRun = copy(ctx.lmsPos)
 
     oqs = getOqs(ctx.exp, ctx.lmsPos, ctx.curp)
-    while true
+    for _ in 1:4
+    # while true
         scoreTo, res = findBest(ctx, oqs)
         if !isnothing(res)
             (lms, retRun, metRun) = res
@@ -167,7 +169,7 @@ function findBestAll(ctx)
     return (lmss, rets, mets)
 end
 
-function findBest(ctx, oqs)
+function findBest(ctx, oqs)::Tuple
     res = (ctx.scorePos, nothing)
     res = findBestSpread(ctx, oqs, res)
     for oq in oqs.call.long
@@ -215,13 +217,13 @@ function findBestSpreadS(ctx, oqs, res)
     return res
 end
 
-function lyze(ctx, lms::Vector{LegMeta}, res)
+function lyze(ctx, lms::Vector{LegMeta}, res)::Tuple
     # TODO: we could calc the filter directly without creating ret and met
     retOne = combineTo(Ret, lms, ctx.curp)
     metOne = calcMetrics(ctx.probs[1], retOne, Bins.binds())
     # Bad data, you generally can't really get a 100% prob position. arbitrage exists, but don't count on getting lucky.
-    metOne.prob < 1.0 || return -Inf
-    metOne.loss < 0.0 || return -Inf
+    metOne.prob < 1.0 || return res
+    metOne.loss < 0.0 || return res
 
     lmsBoth = vcat(lms, ctx.lmsPos)
     ret = combineTo(Ret, lmsBoth, ctx.curp)
