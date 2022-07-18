@@ -212,54 +212,108 @@ function model1(x::NamedTuple, p::Vector{Float64})
 end
 
 using EnergyStatistics
+using VectorCalcUtil
 function checkCorr()
-    xs = vcat(map(x -> x.xs, values(Store))...)[2:end]
-    ys = vcat(map(x -> x.ys, values(Store))...)[2:end]
-    dcorys = EnergyStatistics.dcenter!(EnergyStatistics.DistanceMatrix(ys))
-    valsRand = rand(length(ys))
-    valsConst = rand(length(ys))
-    dcorand = EnergyStatistics.dcenter!(EnergyStatistics.DistanceMatrix(valsRand))
-    dcoronst = EnergyStatistics.dcenter!(EnergyStatistics.DistanceMatrix(valsConst))
-    global corrs = Dict()
-    for var in keys(xs[1])
-        plain = map(x -> x[var], xs)
-        v = variaLabeled(plain)
-        for term in keys(v)
-            vals = v[term]
-            dcorxs = EnergyStatistics.dcenter!(EnergyStatistics.DistanceMatrix(vals))
+    fn! = normalize1I!
+    global ysOrig = vcat(map(x -> x.ys, values(Store))...)[2:end]
+    display(draw(ysOrig))
+    global fitXs = zeros(length(ysOrig))
+    global xs = vcat(map(x -> x.xs, values(Store))...)[2:end]
+    global ys = vcat(map(x -> x.ys, values(Store))...)[2:end]
+    global useKeys = []
+    global transformsY = []
+    global transformsX = []
+    energyYs = sum(abs, ys)
+    cnt = 1
+    while true
+        push!(transformsY, fn!(ys))
+        # dcorys = EnergyStatistics.dcenter!(EnergyStatistics.DistanceMatrix(ys))
+        valsRand = rand(length(ys))
+        valsConst = rand(length(ys))
+        # dcorand = EnergyStatistics.dcenter!(EnergyStatistics.DistanceMatrix(valsRand))
+        # dcoronst = EnergyStatistics.dcenter!(EnergyStatistics.DistanceMatrix(valsConst))
+        global corrs = Dict()
+        for var in keys(xs[1])
+            var != :curp || continue
+            plain = map(x -> x[var], xs)
+            v = variaLabeled(plain)
+            for term in keys(v)
+                vals = v[term]
+                # dcorxs = EnergyStatistics.dcenter!(EnergyStatistics.DistanceMatrix(vals))
+                # dc = dcor(dcorys, dcorxs)
+                # dcRand = dcor(dcorand, dcorxs)
+                # dcConst = dcor(dcoronst, dcorxs)
+                dc = cor(ys, vals)
+                dcRand = cor(valsRand, vals)
+                dcConst = cor(valsConst, vals)
 
-            dc = dcor(dcorys, dcorxs)
-            dcRand = dcor(dcorand, dcorxs)
-            dcConst = dcor(dcoronst, dcorxs)
-
-            key = (var, term)
-            r = (; key, vals, dc, dcRand, dcConst)
-            # label = string(var, '-', label)
-            println(key, ": ", r.dc, ' ', r.dcRand, ' ', r.dcConst)
-            corrs[key] = r
+                key = (var, term)
+                r = (; key, vals, dc, dcRand, dcConst)
+                # label = string(var, '-', label)
+                # println(key, ": ", r.dc, ' ', r.dcRand, ' ', r.dcConst)
+                corrs[key] = r
+            end
         end
-    end
 
-    global corrMults = Dict()
-    for nt1 in values(corrs)
-        for nt2 in values(corrs)
-            nt1.key != nt2.key || continue
-            vals = nt1.vals .* nt2.vals
-            dcorxs = EnergyStatistics.dcenter!(EnergyStatistics.DistanceMatrix(vals))
+        global corrMults = Dict()
+        for nt1 in values(corrs)
+            for nt2 in values(corrs)
+                nt1.key != nt2.key || continue
+                vals = nt1.vals .* nt2.vals
+                # dcorxs = EnergyStatistics.dcenter!(EnergyStatistics.DistanceMatrix(vals))
+                # dc = dcor(dcorys, dcorxs)
+                # dcRand = dcor(dcorand, dcorxs)
+                # dcConst = dcor(dcoronst, dcorxs)
+                dc = cor(ys, vals)
+                dcRand = cor(valsRand, vals)
+                dcConst = cor(valsConst, vals)
 
-            dc = dcor(dcorys, dcorxs)
-            dcRand = dcor(dcorand, dcorxs)
-            dcConst = dcor(dcoronst, dcorxs)
-
-            key = (nt1.key, nt2.key)
-            r = (; key, vals, dc, dcRand, dcConst)
-            println(key, ": ", r.dc, ' ', r.dcRand, ' ', r.dcConst)
-            corrMults[key] = r
+                key = (nt1.key, nt2.key)
+                r = (; key, vals, dc, dcRand, dcConst)
+                # println(key, ": ", r.dc, ' ', r.dcRand, ' ', r.dcConst)
+                corrMults[key] = r
+            end
         end
-    end
+        global corrAll = collect(Iterators.flatten((values(corrs), values(corrMults))))
+        # maxDc, i = findmax(x -> x.dc / ((x.dcRand + x.dcConst)/2), corrAll)
+        maxDc, i = findmax(x -> abs(x.dc), corrAll)
+        useCorr = corrAll[i]
+        push!(useKeys, useCorr.key)
 
-    res = sort(collect(Iterators.flatten((values(corrs), values(corrMults)))); rev=true, by=x -> x.dc / ((x.dcRand + x.dcConst)/2))
-    return res
+        # energyVals = sum(abs, useCorr.vals)
+        # energyYs = sum(abs, ys)
+        # tf = sign(useCorr.dc) * energyYs / energyVals
+        # @assert sum(abs, vals) ≈ energyYs "$(sum(abs, vals)) ≈ $(energyYs)"
+        vals = sign(useCorr.dc) * useCorr.vals
+        push!(transformsX, (fn!(vals)..., useCorr.dc))
+
+        display(draw(ys))
+        draw!(vals)
+        global ys .-= vals
+        draw!(ys)
+        mn, mx = extrema(ys)
+        height = mx - mn
+        @info "Found" sum(abs, ys) i mn mx height useCorr.dc corrAll[i].key # transformsY[end][2:end] transformsX[end][2:end]
+
+        tfInv!(vals, transformsY[end][2:end])
+        fitXs .+= vals
+        err1 = sum(x -> x^2, ys)
+        err2 = sum(x -> x^2, fitXs .- ysOrig)
+        println("## Err: ", err1, ' ', err2)
+
+        (cnt < 10 && maxDc > .1) || break
+        # height > 0.01 &&
+        cnt += 1
+    end
+    # draw!(fitXs)
+    # res = sort(collect(Iterators.flatten((values(corrs), values(corrMults)))); rev=true, by=x -> x.dc / ((x.dcRand + x.dcConst)/2))
+    # return res
+end
+function tf!(vals, tf)
+    replace!(x -> x * tf[2] + tf[1], vals)
+end
+function tfInv!(vals::Vector{Float64}, tf::Tuple)
+    replace!(x -> x / tf[2] - tf[1], vals)
 end
 #endregion
 

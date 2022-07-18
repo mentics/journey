@@ -276,3 +276,17 @@ drawRet!(ret2; label="2")
 foreach((:maxStrikeDist, :maxPutHeight, :maxCallHeight)) do sym
 	config()[:Strats][sym] = 22
 end
+
+################### corr adding #################
+ys = [1,2,3]
+xs1 = [2,4,7]
+xs2 = [0,0,1]
+v1 .- (v2 .* sign(cor(v1, v2)) .* (sum(abs, v1) / sum(abs, v2)))
+
+oys = [1.,2.,3.]
+oxs1 = [-5.,-6.,-7.]
+ys = normalize1(oys)
+xs1 = normalize1(oxs1 * sign(cor(ys, xs1)))
+ys .- (xs1 .* sign(cor(ys, xs1)) .* (sum(abs, ys) / sum(abs, xs1)))
+
+## end: corr adding ##

@@ -55,7 +55,7 @@ function calcExtrins(oq::OptionQuote, curp::Real)::Tuple{Currency,Currency,Curre
         res = (bid, ask, imp)
     end
     foreach(res) do x
-        if x < 0.0
+        if isnan(x) || x < 0.0
             @error "calcExtrins: unexpected < 0.0" x res
         end
     end
