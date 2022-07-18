@@ -81,6 +81,7 @@ function an(exps::Date...; maxRun::Int=120, keep::Int=100, nthreads::Int=Threads
 end
 
 export probsFor
+using OptionUtil
 probFor(i::Int; kws...) = probsFor(i; kws...)[1]
 probsFor(i::Int; kws...) = probsFor(expir(i); kws...)
 probsFor(exp::Date; kws...) = makeProbs(calcTex(market().tsMarket, exp), exp; kws...)

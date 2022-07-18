@@ -7,8 +7,8 @@ export normalize, normalize!, normalizeI, normalizeI!, normalize1, normalize1I!
 avg(vs) = sum(vs) / length(vs)
 
 # NOTE: these assume elements > 0
-(normalize!(v::T)::T) where T = vs ./= sum(vs)
-(normalize(v::T)::T) where T = vs ./ sum(vs)
+(normalize!(v::T)::T) where T = v ./= sum(v)
+(normalize(v::T)::T) where T = v ./ sum(v)
 
 normalizeI!(v::T) where T = (s = sum(v) ; v ./= s ; return (v, 1/s))
 normalizeI(v::T) where T = (v2 = copy(v) ; return normalize!(v2))

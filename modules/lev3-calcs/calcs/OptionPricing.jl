@@ -6,6 +6,8 @@ using DateUtil, FileUtil, OptionUtil, PricingUtil, DrawUtil
 using Calendars, Snapshots
 
 #region Header
+locDraw = drawDots
+locDraw! = drawDots!
 # AllCalls = NamedTuple[]
 # AllPuts = NamedTuple[]
 # CallsItm = nothing
@@ -72,6 +74,7 @@ function makeSpecs(numSpecs::Int)::Vector
 end
 
 function prepDataAll(numSpecs=20)
+    !isempty(PricingUtil.AllCalls) || readPricing()
     specs = makeSpecs(numSpecs)
     empty!(Store)
     # prevSpec = nothing
@@ -130,7 +133,7 @@ function drawResult(spec)
     #     # y = BlacksPricing.priceOption(getStyle(oq), Float64(getStrike(oq)), OptionUtil.texToYear(tex), vty, curp)
     #     return (tex, y)
     # end
-    # # draw!(blacks)
+    # # locDraw!(blacks)
     drawDots!(modeled; color=:green)
     err = [abs(modeled[i][2] - info.actual[i][2]) for i in eachindex(modeled)]
     perm = sortperm(err; rev=true)
@@ -143,7 +146,7 @@ function drawResult(spec)
     return sm[1:10]
 end
 function drawActualTime()
-    display(draw(map(tup -> (datetime2unix(tup[1]), tup[2]), actualTime)))
+    display(locDraw(map(tup -> (datetime2unix(tup[1]), tup[2]), actualTime)))
     return
 end
 
@@ -211,22 +214,44 @@ function model1(x::NamedTuple, p::Vector{Float64})
     return res < 0.0 ? 100000*res : res
 end
 
+# function diffPos(x1, x2)
+#     dx = x1 - x2
+#     dx != 0.0 || return 0.0
+#     res = dx > 0.0 ? dx : 10000 + abs(dx)
+#     isfinite(res) || error("not finite ", res, ' ', x1, ' ', x2)
+#     return res
+# end
+
+diffFit(x1, x2) = (x1 - x2)^2
+# diffFit(x1, x2) = (abs(x2) > abs(x1) ? 100.0 : 1.0) * (x1 - x2)^2
+
+fitness(f, xs::Vector{Vector{Float64}}, ys::Vector{Float64}) =
+    (p::Vector{Float64}) -> sum(diffFit(ys[i], f(xs, p, i)) for i in eachindex(ys))
+
+modelLinSum(x::Vector{Vector{Float64}}, p, i::Int)::Float64 = sum([x[term][i] * p[term] for term in eachindex(p)])
+runModel(f, xs::Vector{Vector{Float64}}, p) = [f(xs, p, i) for i in eachindex(xs[1])]
+
 using EnergyStatistics
 using VectorCalcUtil
 function checkCorr()
-    fn! = normalize1I!
-    global ysOrig = vcat(map(x -> x.ys, values(Store))...)[2:end]
-    display(draw(ysOrig))
+    # !isempty(Store) || prepDataAll()
+    # fn! = normalize1I!
+    global ysOrig = vcat(map(x -> x.ys[2:end], values(Store))...)
+    # display(locDraw(ysOrig; color=:white))
     global fitXs = zeros(length(ysOrig))
-    global xs = vcat(map(x -> x.xs, values(Store))...)[2:end]
-    global ys = vcat(map(x -> x.ys, values(Store))...)[2:end]
+    global xs = vcat(map(x -> x.xs[2:end], values(Store))...)
+    global ys = copy(ysOrig) # vcat(map(x -> x.ys[2:end], values(Store))...)
     global useKeys = []
     global transformsY = []
     global transformsX = []
-    energyYs = sum(abs, ys)
+
+    global keyVals = Vector{Vector{Float64}}()
+    global locPanda = Vector{Float64}()
+    global locSearch = Vector{NTuple{2,Float64}}()
+
     cnt = 1
     while true
-        push!(transformsY, fn!(ys))
+        # push!(transformsY, fn!(ys))
         # dcorys = EnergyStatistics.dcenter!(EnergyStatistics.DistanceMatrix(ys))
         valsRand = rand(length(ys))
         valsConst = rand(length(ys))
@@ -279,21 +304,50 @@ function checkCorr()
         maxDc, i = findmax(x -> abs(x.dc), corrAll)
         useCorr = corrAll[i]
         push!(useKeys, useCorr.key)
+        push!(keyVals, useCorr.vals)
+        paramEst = clamp(-100.0, sign(useCorr.dc) * sum(abs, ys) / sum(abs, useCorr.vals), 100.0)
+        push!(locPanda, paramEst)
+        # push!(locSearch, (min(100.0*sign(useCorr.dc), 0.0), max(100.0*sign(useCorr.dc), 0.0)))
+        # push!(locSearch, (min(100.0*sign(useCorr.dc), 0.0), max(100.0*sign(useCorr.dc), 0.0)))
+        push!(locSearch, (-100.0, 100.0))
+        global bbopt = bboptimize(fitness(modelLinSum, keyVals, ysOrig), locPanda; SearchRange=locSearch, MaxTime=2) # , Method)
+        println(locPanda)
+        println(best_candidate(bbopt))
+        copy!(locPanda, best_candidate(bbopt))
+        # off = .5 * abs(locPanda[end])
+        # locSearch[end] = (locPanda[end] - off, locPanda[end] + off)
+
+        score = fitness(modelLinSum, keyVals, ys)(locPanda)
+
+        @info "Term $(length(keyVals))" useCorr.key i useCorr.dc score
+
+        global guess = runModel(modelLinSum, keyVals, locPanda)
+        ys = ysOrig .- guess
+
+        (cnt < 20) || break
+        # height > 0.01 &&
+        cnt += 1
+        continue
 
         # energyVals = sum(abs, useCorr.vals)
         # energyYs = sum(abs, ys)
         # tf = sign(useCorr.dc) * energyYs / energyVals
         # @assert sum(abs, vals) ≈ energyYs "$(sum(abs, vals)) ≈ $(energyYs)"
         vals = sign(useCorr.dc) * useCorr.vals
-        push!(transformsX, (fn!(vals)..., useCorr.dc))
+        temp = fn!(vals)
+        k = minimum([vals[i] < 0.00001 ? 1.0 : ys[i] / vals[i] for i in eachindex(vals)])
+        # vals .*= k
+        # tfvals = (temp[1], sign(useCorr.dc), temp[2:end], k)
+        # push!(transformsX, tfvals)
 
-        display(draw(ys))
-        draw!(vals)
+        # @info "should be 1" sum(ys) sum(vals)
+        display(locDraw(ys; color=:white))
+        locDraw!(vals)
         global ys .-= vals
-        draw!(ys)
+        locDraw!(ys)
         mn, mx = extrema(ys)
         height = mx - mn
-        @info "Found" sum(abs, ys) i mn mx height useCorr.dc corrAll[i].key # transformsY[end][2:end] transformsX[end][2:end]
+        @info "Found" k sum(abs, ys) i mn mx height useCorr.dc corrAll[i].key # transformsY[end][2:end] transformsX[end][2:end]
 
         tfInv!(vals, transformsY[end][2:end])
         fitXs .+= vals
@@ -301,13 +355,17 @@ function checkCorr()
         err2 = sum(x -> x^2, fitXs .- ysOrig)
         println("## Err: ", err1, ' ', err2)
 
-        (cnt < 10 && maxDc > .1) || break
+        (cnt < 1 && maxDc > .1) || break
         # height > 0.01 &&
         cnt += 1
     end
-    # draw!(fitXs)
+    # locDraw!(fitXs)
     # res = sort(collect(Iterators.flatten((values(corrs), values(corrMults)))); rev=true, by=x -> x.dc / ((x.dcRand + x.dcConst)/2))
     # return res
+    display(locDraw(ysOrig; color=:white))
+    global guess = runModel(modelLinSum, keyVals, locPanda)
+    locDraw!(guess; color=:yellow)
+    return
 end
 function tf!(vals, tf)
     replace!(x -> x * tf[2] + tf[1], vals)
@@ -376,6 +434,7 @@ function run(;range=1:1000)
 end
 
 #region Calc
+# TODO: replace with fitness(...)
 function modelOptim(data, prices)
     function(p)
         return sum((model(data[i], p) - prices[i])^2 for i in eachindex(data))

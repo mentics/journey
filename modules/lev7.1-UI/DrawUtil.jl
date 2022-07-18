@@ -111,23 +111,23 @@ function SH.draw()
     return fig
 end
 
-function SH.draw(f::Function, xs)
+function SH.draw(f::Function, xs; kws...)
     closeWin()
-    fig = lines(xs, f.(xs))
+    fig = lines(xs, f.(xs); kws...)
     DataInspector(fig.figure)
     return fig
 end
 
-function SH.draw(xs, ys)
+function SH.draw(xs, ys; kws...)
     closeWin()
-    fig = lines(xs, ys)
+    fig = lines(xs, ys; kws...)
     DataInspector(fig.figure)
     return fig
 end
 
-function SH.draw(vals)
+function SH.draw(vals; kws...)
     closeWin()
-    fig = lines(vals)
+    fig = lines(vals; kws...)
     DataInspector(fig.figure)
     return fig
 end
