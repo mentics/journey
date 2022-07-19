@@ -16,7 +16,7 @@ function makeCtx(i::Int)
     exp = expir(i)
     curp = market().curp
     probs = probsFor(exp; curp)
-    lmsPos = findLmsPos(exp)
+    lmsPos = xlms(exp)
     retPos = combineTo(Ret, lmsPos, curp)
     metPos = calcMetrics(probs[1], retPos, Bins.binds())
     scorePos = score(retPos, metPos)
@@ -29,13 +29,15 @@ end
 
 function din(i::Int)
     ctx = makeCtx(i)
-    lmss, rets, mets = CmdFind.findBestAll(ctx);
-    if !isempty(lmss)
-        dinDraw(ctx, lmss, rets, mets)
+    resAll = CmdFind.findBestAll(ctx);
+    # score, lmss, retRuns, metRuns, ret1s, met1s = allRes
+    if !isempty(resAll.lmss)
+        dinDraw(ctx, resAll)
     else
         println("Not found.")
     end
-    return (; lmss, rets, mets, ctx)
+    # return (; score, lmss, retRuns, metRuns, ret1s, met1s)
+    return (;ctx, resAll...)
 end
 
 ofor(i::Int) = Main.save[:track][expir(i)]
@@ -43,18 +45,16 @@ lmsFor(i::Int) = vcat(ofor(i).lmss...)
 lmssd(lmss) = drlms(vcat(lmss...))
 
 dinDraw(i::Int) = dinDraw(Main.save[:track][expir(i)])
-dinDraw(all::NamedTuple) = dinDraw(all.ctx, all.lmss, all.rets, all.mets)
-function dinDraw(ctx, lmss, rets, mets)
-    display(drawRet(rets[end]; ctx.probs, ctx.curp, label="all"))
-    # if !isnothing(ctx.metPos)
-        println("0: ", ctx.metPos)
-        drawRet!(ctx.retPos; label="0")
-    # end
-    for i in 1:length(mets)
-        # ret = combineTo(Ret, lmss[i], market().curp)
-        println("$(i): ", mets[i])
-        drawRet!(rets[i]; label=string(i))
+# dinDraw(all::NamedTuple) = dinDraw(all.ctx, all.lmss, all.rets, all.mets)
+function dinDraw(ctx, resAll)
+    (;ret1s, met1s, retRuns, metRuns) = resAll
+    pretyble(vcat(ctx.metPos, met1s, metRuns[end]))
+    pretyble(vcat(ctx.metPos, metRuns))
+    display(drawRet(ctx.retPos; ctx.probs, ctx.curp, label="from"))
+    for i in 1:length(ret1s)
+        drawRet!(ret1s[i]; label=string(i))
     end
+    drawRet!(retRuns[end]; label="to")
 end
 
 # (default(::Type{T})::T) where T = T()
@@ -64,39 +64,48 @@ end
 # TODO: instead of hardcoded minevr, use distance from fromevr because it changes when price changes
 # TODO: do a single loop through setting MinEvr initially
 function scandin()
-    ImpMin = 0.02
     track = useKey(Dict{Date,Any}, Main.save, :track)
-    minEvrs = useKey(Dict{Int,Float64}, Main.save, :MinEvrs)
+    minScores = useKey(Dict{Int,Float64}, Main.save, :MinScores)
+
+    # prepopulate min scores
+    if isempty(minScores)
+        for i in 1:12
+            runCheck(i, track, minScores, false)
+        end
+    end
+
     while true
         check = exsToScan()
         for i in check
-            ctx = makeCtx(i)
-            println("[$(nowz())] ======== Searching for $(i) : $(ctx.exp) ========")
-            lmss, rets, mets = CmdFind.findBestAll(ctx);
-            if !isempty(lmss)
-                # metsShow = isnothing(ctx.metPos) ? mets : vcat(ctx.metPos, mets)
-                fromEvr = ctx.metPos.evr
-                minEvr = max(tryKey(minEvrs, i, 0.0), fromEvr + ImpMin)
-                toEvr = mets[end].evr
-                if (toEvr > minEvr)
-                    track[ctx.exp] = (;ctx, lmss, mets, rets)
-                    minEvrs[i] = toEvr
-                    prety = spretyble(vcat(ctx.metPos, mets))
-                    println("Cumulative:")
-                    println(prety)
-                    sendEmail("***REMOVED***", "Found din scan entry for $(i) $(ctx.exp)", prety)
-                else
-                    # haskey(track, ctx.exp) || (track[ctx.exp] = (;ctx, lmss, mets, rets))
-                    println("Evr too low ", (;fromEvr, toEvr, minEvr))
-                    minEvrs[i] = minEvr - 0.01 * (minEvr - toEvr)
-                end
-            else
-                # delete!(track, ctx.exp)
-            end
-
+            runCheck(i, track, minScores)
             sleep(2.0)
         end
         sleep(8.0)
+    end
+end
+function runCheck(i, track, minScores, notify=true)
+    ImpMin = 0.01
+    ctx = makeCtx(i)
+    println("[$(nowz())] ======== Searching for $(i) : $(ctx.exp) ========")
+    (; scoreTo, lmss, retRuns, metRuns, ret1s, met1s) = CmdFind.findBestAll(ctx);
+    if !isempty(lmss)
+        # metsShow = isnothing(ctx.metPos) ? mets : vcat(ctx.metPos, mets)
+        scoreFrom = ctx.scorePos
+        scoreMin = max(tryKey(minScores, i, -Inf), scoreFrom + ImpMin)
+        if (scoreTo > scoreMin)
+            track[ctx.exp] = (;ctx, lmss, retRuns, metRuns, met1s, ret1s)
+            minScores[i] = scoreTo
+            prety = spretyble(vcat(ctx.metPos, met1s, metRuns[end]))
+            println("Cumulative:")
+            println(prety)
+            notify && sendEmail("***REMOVED***", "Found din scan entry for $(i) $(ctx.exp)", prety)
+        else
+            # haskey(track, ctx.exp) || (track[ctx.exp] = (;ctx, lmss, mets, rets))
+            println("Evr too low ", (;scoreFrom, scoreTo, scoreMin))
+            minScores[i] = max(scoreTo, scoreMin - 0.1 * (scoreMin - scoreTo))
+        end
+    else
+        # delete!(track, ctx.exp)
     end
 end
 
@@ -138,27 +147,32 @@ end
 #     return (lmsPos, rets, cret, met)
 # end
 
-function findBestAll(ctx)::Tuple
+function findBestAll(ctx)::NamedTuple
     lmss = Vector{Vector{LegMeta}}()
-    rets::Vector{Ret} = Ret[]
-    mets = Vector{NamedTuple}()
+    retRuns = Vector{Ret}()
+    metRuns = Vector{NamedTuple}()
+    ret1s = Vector{Ret}()
+    met1s = Vector{NamedTuple}()
     lmsRun = copy(ctx.lmsPos)
 
     oqs = getOqs(ctx.exp, ctx.lmsPos, ctx.curp)
-    for _ in 1:4
-    # while true
+    scoreTo = ctx.scorePos
+    while true
         scoreTo, res = findBest(ctx, oqs)
         if !isnothing(res)
-            (lms, retRun, metRun) = res
+            (lms, retRun, metRun, ret1, met1) = res
             # if met.evr < evr
             #     break
             # else
             #     evr = met.evr
             # end
+            length(lms) + sum(length, lmss; init=0) <= 4 || break
             report(ctx.curp, lms, metRun, ctx.scorePos, scoreTo)
             push!(lmss, lms)
-            push!(rets, retRun)
-            push!(mets, metRun)
+            push!(retRuns, retRun)
+            push!(metRuns, metRun)
+            push!(ret1s, ret1)
+            push!(met1s, met1)
             append!(lmsRun, lms)
             # @info "met" getStyle.(lms) getSide.(lms) met.mn met.mx met.evr met.prob
             ctx = makeCtx(ctx, lmsRun, retRun, metRun)
@@ -166,7 +180,7 @@ function findBestAll(ctx)::Tuple
             break
         end
     end
-    return (lmss, rets, mets)
+    return (; scoreTo, lmss, retRuns, metRuns, ret1s, met1s)
 end
 
 function findBest(ctx, oqs)::Tuple
@@ -197,7 +211,7 @@ function findBest(ctx, oqs)::Tuple
         end
     end
 
-    return res # (res[2], (scorePos, res[1]))
+    return res
 end
 
 function findBestSpread(ctx, oqs, res)
@@ -219,18 +233,18 @@ end
 
 function lyze(ctx, lms::Vector{LegMeta}, res)::Tuple
     # TODO: we could calc the filter directly without creating ret and met
-    retOne = combineTo(Ret, lms, ctx.curp)
-    metOne = calcMetrics(ctx.probs[1], retOne, Bins.binds())
+    ret1 = combineTo(Ret, lms, ctx.curp)
+    met1 = calcMetrics(ctx.probs[1], ret1, Bins.binds())
     # Bad data, you generally can't really get a 100% prob position. arbitrage exists, but don't count on getting lucky.
-    metOne.prob < 1.0 || return res
-    metOne.loss < 0.0 || return res
+    met1.prob < 1.0 || return res
+    met1.loss < 0.0 || return res
 
     lmsBoth = vcat(lms, ctx.lmsPos)
     ret = combineTo(Ret, lmsBoth, ctx.curp)
     met = calcMetrics(ctx.probs[1], ret, Bins.binds())
-    s = score(ctx.retPos, ctx.metPos, ret, met)
+    s = score(ctx.retPos, ctx.metPos, ret, met, ret1, met1)
     # println("$(s) > $(res[1])")
-    return s > res[1] ? (s, (lms, ret, met)) : res
+    return s > res[1] ? (s, (lms, ret, met, ret1, met1)) : res
 end
 
 SH.isLong(v) = getSide(v) == Side.long
@@ -265,21 +279,27 @@ end
 
 str1(lm, exps) = string(tosh(lm, exps), ' ', bap(lm))
 
-function score(retFrom, metFrom, retTo, metTo)
-    metTo.mn > -3.1 || return -Inf
+function score(retFrom, metFrom, retTo, metTo, ret1, met1)
+    # met1.evr >= 0.0 || return -Inf
+    metTo.mn > -3.5 || return -Inf
     scoreTo = score(retTo, metTo)
     if !isnothing(metFrom)
-        metTo.prob >= .95 * metFrom.prob || return -Inf
-        scoreFrom = score(retFrom, metFrom)
-        (scoreTo - scoreFrom) / abs(scoreFrom) > .02 || return -Inf
+        # metTo.prob >= .95 * metFrom.prob || return -Inf
+        # metTo.prob > metFrom.prob || return -Inf
+        # scoreFrom = score(retFrom, metFrom)
+        # (scoreTo - scoreFrom) / abs(scoreFrom) > .02 || return -Inf
     end
-    adj = adjust(scoreTo, retTo)
-    if adj != scoreTo
-        println("adjusted ", scoreTo, " to ", adj)
-    end
-    return adj
+    return scoreTo
 end
-adjust(score, ret) = score # ret[2] > ret[end-1] ? score : (score < 0.0 ? 2 * score : 0.5 * score)
-score(ret, met) = adjust(met.evr, ret)
+function score(ret, met)
+    score = exp(met.evr) * met.prob
+    return score
+    # adjust(score, ret) = score # ret[2] > ret[end-1] ? score : (score < 0.0 ? 2 * score : 0.5 * score)
+    # adj = adjust(score, ret)
+    # if adj != score
+    #     println("adjusted ", score, " to ", adj)
+    # end
+    # return adj
+end
 
 end

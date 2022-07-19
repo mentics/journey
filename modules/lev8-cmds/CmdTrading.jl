@@ -62,8 +62,9 @@ end
 
 using RetTypes, Between, DrawStrat
 toRet(trades, exp)::Ret = combineTo(Ret, trades, exp, market().startPrice, Globals.get(:vtyRatio)) # TODO: choose diff start price?
+toLms(trades, exp)::Ret = combineTo(LegMeta, trades, exp, market().startPrice, Globals.get(:vtyRatio)) # TODO: choose diff start price?
 # TODO: change so matches todo and expirs and all: 0 for today, 1 for non-today next exp, and default is 0
-drpos(exp=expir(0)) = drawRet(toRet(tradesToClose(exp), exp), probs(), market().curp, "pos")
+drpos(exp=expir(0)) = drawRet(toRet(tradesToClose(exp), exp); probs=probs(), curp=market().curp, label="pos")
 export drt, adrt
 # drt(i::Int, ex=1) = drawRet(toRet([tradesFor(ex)[i]], ex), probs(), market().curp, "t$(i)")
 # adrt(i::Int, ex=1) = drawRet!(toRet([tradesFor(ex)[i]], ex), "t$(i)")
@@ -92,12 +93,12 @@ tot() = findTradeEntered(today())
 # TODO: use this to examine once I have iv data for specific legs
 # getMeta.(getLegs(todo()[3]))
 # I could look up the ivs in the old db
-using LegTypes, OptionMetaTypes, ChainTypes, Rets
-lmToRet(lm::LegMeta, om::OptionMeta, forDate::Date, sp::Currency, vtyRatio::Float64)::Ret = makeRet(getLeg(lm), om, bap(lm), forDate, sp, vtyRatio)
-tradesToRet(trades::AVec{<:Trade}, forDate::Date, sp::Currency, vtyRatio::Float64)::Ret =
-    combineRets([lmToRet(lm, getMeta(optQuoter(lm)), forDate, sp, vtyRatio) for lm in collect(mapFlattenTo(getLegs, LegMeta, trades))])
-toRet2(trades, ex)::Ret = tradesToRet(trades, expir(ex), market().startPrice, 1.0) # TODO: choose diff start price?
-drpos2(ex=1) = drawRet!(toRet2(todo(ex), ex), "pos2")#, probs(), market().curp, "pos2")
+# using LegTypes, OptionMetaTypes, ChainTypes, Rets
+# lmToRet(lm::LegMeta, om::OptionMeta, forDate::Date, sp::Currency, vtyRatio::Float64)::Ret = makeRet(getLeg(lm), om, bap(lm), forDate, sp, vtyRatio)
+# tradesToRet(trades::AVec{<:Trade}, forDate::Date, sp::Currency, vtyRatio::Float64)::Ret =
+#     combineRets([lmToRet(lm, getMeta(optQuoter(lm)), forDate, sp, vtyRatio) for lm in collect(mapFlattenTo(getLegs, LegMeta, trades))])
+# toRet2(trades, ex)::Ret = tradesToRet(trades, expir(ex), market().startPrice, 1.0) # TODO: choose diff start price?
+# drpos2(ex=1) = drawRet!(toRet2(todo(ex), ex), "pos2")#, probs(), market().curp, "pos2")
 #endregion
 
 ct(trad::Trade{<:Closeable}; kws...) = closePos(trad; kws..., pre=true)

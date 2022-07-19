@@ -11,13 +11,16 @@ function calcMetrics(prob::Prob, vals::AVec{Float64}, numLegs::Int, binsi=Bins.i
         v = vals[i]
         v > 0.0 && (profit += pvals[i] * v)
     end
-    mm = calcMetrics1(pvals, vals, 0.5 + profit, 0.005 * numLegs, binsi)
-    # @info "cap" (2 * profit) (0.02 * numLegs) mm
-    return mm
+    global cap = 0.5 + log(1.0 + profit)
+    adjust = 0.005 * numLegs
+    # @info "cap" cap adjust
+    mm = calcMetrics1(pvals, vals, cap, adjust, binsi)
+    return (;mm..., numLegs)
 end
 
 #region Local
 # TODO: if use fewer bins, prob isn't adjusted, so it will be lower
+MINP = 0.01 * Bins.binPercent()
 function calcMetrics1(pvals::AVec{Float64}, vals::AVec{Float64}, cap::Float64, adjust::Float64, binsi)
     # @info "calcMetrics1" cap adjust
     profit = loss = prob = 0.0
@@ -25,8 +28,14 @@ function calcMetrics1(pvals::AVec{Float64}, vals::AVec{Float64}, cap::Float64, a
     mx = -Inf
     # @info "check" cap adjust
     # for (p, v) in Iterators.zip(pvals, vals)
+    totalP = 0.0
     for i in binsi
         p = pvals[i]
+        if p < MINP
+            # println("Skipping ", p, ' ', MINP)
+            continue
+        end
+        totalP += p
         v = vals[i]
         vadj = min(cap, v - adjust)
         ad = p * vadj
@@ -35,9 +44,10 @@ function calcMetrics1(pvals::AVec{Float64}, vals::AVec{Float64}, cap::Float64, a
         v < mn && (mn = v)
         v > mx && (mx = v)
     end
+    # @info "cm" totalP cap adjust
     ev = profit + loss
     evr = calcEvr(profit, loss)
-    return (; profit, loss, ev, evr, prob, mn, mx)
+    return (; profit, loss, ev, evr, prob=prob / totalP, mn, mx)
 end
 
 # not sure where that number comes from but needed to normalize

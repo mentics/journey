@@ -247,21 +247,32 @@ using Combinatorics
 function calcCorrMults(f, ntxs, ys)
     res = Dict()
     foreach(combinations(keys(ntxs), 2)) do (k1, k2)
-        res[(k1,k2)] = cor(f.(ntxs[k1] .* ntxs[k2]), ys)
+        vals = f.(ntxs[k1] .* ntxs[k2])
+        c = cor(vals, ys)
+        if !isfinite(c)
+            global checkVals = vals
+            @info "infinite c" c
+            return
+        end
+        res[(k1,k2)] = c
     end
     return res
 end
 
 # findFuncCorr(op.fitB, 4, op.valsAll, op.ys)
-function findFuncCorr(func, pcnt, locValsAll, ys)
+function findFuncCorr(func, pcnt, valsAll, ys)
     use = []
     for pind in 1:pcnt
         locCorrAll = Dict()
+        locValsAll = Dict()
         # TODO: reuse vector faster?
         f = x -> func(ntuple(i -> i == pind ? x : 1.0, pcnt)...)
-        foreach(((k, v),) -> locCorrAll[k] = cor(map(f, v), ys), locValsAll)
+
+        foreach(((k, v),) -> locValsAll[k] = map(f, v), valsAll)
+        foreach(((k, v),) -> locCorrAll[k] = cor(v, ys), locValsAll)
+
         maxCor, maxKey = findmax(c -> abs(c), locCorrAll)
-        push!(use, (;key=maxKey, corr=maxCor,))
+        push!(use, (;key=maxKey, corr=maxCor, vals=locValsAll[maxKey]))
     end
     return use
 end
@@ -269,12 +280,12 @@ end
 using EnergyStatistics
 using VectorCalcUtil
 function checkCorr()
-    global ysOrig = vcat(map(x -> x.ys, values(Store))...)
-    # display(locDraw(ysOrig; color=:white))
-    # global fitXs = zeros(length(ysOrig))
-    global ys = copy(ysOrig) # vcat(map(x -> x.ys[2:end], values(Store))...)
+    global ys = vcat(map(x -> x.ys, values(Store))...)
     global ysCorand = cor(rand(length(ys)), ys)
     global ysCoronst = cor(fill(1.0, length(ys)), ys)
+    # display(locDraw(ys; color=:white))
+    # global fitXs = zeros(length(ys))
+    global ysWork = copy(ys) # vcat(map(x -> x.ys[2:end], values(Store))...)
     xsnt = vcat(map(x -> x.xs, values(Store))...)
     global ntxs = ntvFromVnt(xsnt)
 
@@ -290,34 +301,34 @@ function checkCorr()
 
     cnt = 1
     while true
-        foreach(((k, v),) -> corrAll[k] = k in useKeys ? 0.0 : cor(v, ys), valsAll)
+        foreach(((k, v),) -> corrAll[k] = k in useKeys ? 0.0 : cor(v, ysWork), valsAll)
         maxCor, maxKey = findmax(c -> abs(c), corrAll)
         vals = valsAll[maxKey]
         push!(useKeys, maxKey)
         push!(keyVals, vals)
 
-        paramEst = clamp(-100.0, sign(maxCor) * sum(abs, ys) / sum(abs, vals), 100.0)
+        paramEst = clamp(-100.0, sign(maxCor) * sum(abs, ysWork) / sum(abs, vals), 100.0)
         push!(locPanda, paramEst)
         # push!(locSearch, (min(100.0*sign(useCorr.dc), 0.0), max(100.0*sign(useCorr.dc), 0.0)))
         # push!(locSearch, (min(100.0*sign(useCorr.dc), 0.0), max(100.0*sign(useCorr.dc), 0.0)))
         push!(locSearch, (-100.0, 100.0))
 
-        global bbopt = bboptimize(fitness(modelLinSum, keyVals, ysOrig), locPanda; SearchRange=locSearch, MaxTime=2) # , Method)
+        global bbopt = bboptimize(fitness(modelLinSum, keyVals, ys), locPanda; SearchRange=locSearch, MaxTime=2) # , Method)
 
         copy!(locPanda, best_candidate(bbopt))
         # off = .5 * abs(locPanda[end])
         # locSearch[end] = (locPanda[end] - off, locPanda[end] + off)
 
-        score = fitness(modelLinSum, keyVals, ysOrig)(locPanda)
+        score = fitness(modelLinSum, keyVals, ys)(locPanda)
         @info "Term $(length(keyVals))" maxKey maxCor score
         global guess = runModel(modelLinSum, keyVals, locPanda)
-        ys = ysOrig .- guess
+        ysWork = ys .- guess
 
         (cnt < 8) || break
         cnt += 1
     end
 
-    display(locDraw(ysOrig; color=:white))
+    display(locDraw(ys; color=:white))
     global guess = runModel(modelLinSum, keyVals, locPanda)
     locDraw!(guess; color=:yellow)
     return

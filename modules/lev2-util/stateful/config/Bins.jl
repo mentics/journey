@@ -44,6 +44,8 @@ halfRight() = center():VNUM
 halfLeft() = 1:center()
 shiftis(off::Int) = off < 0 ? (1:(VNUM + 2*off)) : (2*off):VNUM
 
+binPercent() = 1.0 / VNUM
+
 # Averaging values further out causes problems when combining rets, so I removed that. Can widen bins if need more span.
 valLeft(f, ctx) = f(ctx, XLEFT)
 valRight(f, ctx) = f(ctx, XRIGHT)
