@@ -2,7 +2,7 @@ module OptionPricing
 using Dates, BlackBoxOptim
 # using GLMakie
 using SH, BaseTypes, SmallTypes, ChainTypes, OptionTypes, QuoteTypes, OptionMetaTypes
-using DateUtil, FileUtil, OptionUtil, PricingUtil, DrawUtil
+using DateUtil, FileUtil, OptionUtil, PricingUtil, DrawUtil, CollUtil
 using Calendars, Snapshots
 
 #region Header
@@ -21,19 +21,19 @@ const PandaInit = Ref{Vector{Float64}}(Vector{Float64}())
 # logistic(x, x0, mx, k) = mx / (1.0 + ℯ^(-k * (x - x0)))
 # logisticF(x0, mx, k) = x -> mx / (1.0 + ℯ^(-k * (x - x0)))
 fit1(x, a, b, c) = a / (b * (x - c))
+fit2(a, b) = a / b
 
 using Distributions
-function fit2(t, pos, vty, rfr)
+function fitB(t, pos, vty, rfr)
     t = abs(t)
     t < 1.0 || (t = 1.0 + log(abs(t)))
     abs(rfr) < 1.0 || (rfr = sign(rfr) + sign(rfr) * log(abs(rfr)))
-    rfrate = rfr
     rt = sqrt(abs(t))
-    d1 = (log(abs(pos)) + (rfrate + vty^2 / 2.0) * t) / (vty * rt)
+    d1 = (log(abs(pos)) + (rfr + vty^2 / 2.0) * t) / (vty * rt)
     d2 = d1 - vty * rt
-    r = cdf(BlacksPricing.NORM, d1) - exp(-rfrate * t) * pos * cdf(BlacksPricing.NORM, d2)
-    if isnan(r)
-        @error t pos vty rfr rt d1 d2 cdf(BlacksPricing.NORM, d1) (-rfrate * t) exp(-rfrate * t) cdf(BlacksPricing.NORM, d2)
+    r = cdf(BlacksPricing.NORM, d1) - exp(-rfr * t) * pos * cdf(BlacksPricing.NORM, d2)
+    if !isfinite(r)
+        @error t pos vty rfr rt d1 d2 cdf(BlacksPricing.NORM, d1) (-rfr * t) exp(-rfr * t) cdf(BlacksPricing.NORM, d2)
         error("stop")
     end
     return r
@@ -93,14 +93,15 @@ function prepData(spec)
     (;exp, dist) = spec
     global orig = Vector{NamedTuple}()
     global xs = Vector{NamedTuple}()
+    global curps = Vector{Float64}()
     global ys = Vector{Float64}()
     global actual = Vector{Tuple{Float64,Float64}}()
     global actualTime = Vector{Tuple{DateTime,Float64}}()
-    # texes = Vector{Float64}()
-    push!(ys, 0.0)
-    push!(xs, DATA1_ZERO)
-    push!(actual, (0.0, 0.0))
-    push!(actualTime, (getMarketClose(exp), 0.0))
+    # push!(ys, 0.0)
+    # push!(xs, DATA1_ZERO)
+    # push!(curps, 1.0)
+    # push!(actual, (0.0, 0.0))
+    # push!(actualTime, (getMarketClose(exp), 0.0))
     procCalls() do nt
         (;ts, curp, oq) = nt
         strike = getStrike(oq)
@@ -110,14 +111,16 @@ function prepData(spec)
         y = extrin3[3] / curp
         push!(ys, y) # 3 = imp
         push!(xs, datum)
+        push!(curps, nt.curp)
         push!(actual, (datum.tex, extrin3[3]))
         push!(actualTime, (ts, extrin3[3]))
         push!(orig, merge(nt, (;tex=datum.tex)))
         # push!(texes, datum.tex)
     end
+
     # model1(xs[1], zeros(100))
     # println(length(xs), length(actual), length(ys))
-    return (; orig, xs, ys, actual, actualTime)
+    return (; orig, xs, ntxs, ys, actual, actualTime)
 end
 
 import BlacksPricing
@@ -160,9 +163,9 @@ function makeData1(nt::NamedTuple)
     vty3 = PricingUtil.calcVtyNeg(Date(ts))
     curpRat = curp / spyOpen - 1.0
     openCloseRat = spyOpen / spyClosePrev - 1.0
-    return (;tex, strikeRat, vty1, vty2, vty3, curpRat, openCloseRat, curp)
+    return (;tex, strikeRat, vty1, vty2, vty3, curpRat, openCloseRat)
 end
-DATA1_ZERO = (;tex=0.0, strikeRat=0.01, vty1=0.01, vty2=0.01, vty3=0.01, curpRat=0.01, openCloseRat=0.01, curp=1.0)
+DATA1_ZERO = (;tex=0.0, strikeRat=0.01, vty1=0.01, vty2=0.01, vty3=0.01, curpRat=0.01, openCloseRat=0.01)
 
 # function modelOptim1(xs::Vector{NamedTuple}, ys::Vector{Float64})
 function modelOptim1(dict)
@@ -231,137 +234,89 @@ fitness(f, xs::Vector{Vector{Float64}}, ys::Vector{Float64}) =
 modelLinSum(x::Vector{Vector{Float64}}, p, i::Int)::Float64 = sum([x[term][i] * p[term] for term in eachindex(p)])
 runModel(f, xs::Vector{Vector{Float64}}, p) = [f(xs, p, i) for i in eachindex(xs[1])]
 
+testFitB(pind) = x -> fitB(ntuple(i -> i == pind ? x : 1.0, 4)...)
+#  ( zs = fill(1.0, 4) ; zs[pind] = x ; fit1(zs...) )
+
+function calcCorr(f, ntxs, ys)
+    ks = keys(ntxs)
+    vals = map(k -> cor(f.(ntxs[k]), ys), ks)
+    return NamedTuple{ks}(vals)
+end
+
+using Combinatorics
+function calcCorrMults(f, ntxs, ys)
+    res = Dict()
+    foreach(combinations(keys(ntxs), 2)) do (k1, k2)
+        res[(k1,k2)] = cor(f.(ntxs[k1] .* ntxs[k2]), ys)
+    end
+    return res
+end
+
+# findFuncCorr(op.fitB, 4, op.valsAll, op.ys)
+function findFuncCorr(func, pcnt, locValsAll, ys)
+    use = []
+    for pind in 1:pcnt
+        locCorrAll = Dict()
+        # TODO: reuse vector faster?
+        f = x -> func(ntuple(i -> i == pind ? x : 1.0, pcnt)...)
+        foreach(((k, v),) -> locCorrAll[k] = cor(map(f, v), ys), locValsAll)
+        maxCor, maxKey = findmax(c -> abs(c), locCorrAll)
+        push!(use, (;key=maxKey, corr=maxCor,))
+    end
+    return use
+end
+
 using EnergyStatistics
 using VectorCalcUtil
 function checkCorr()
-    # !isempty(Store) || prepDataAll()
-    # fn! = normalize1I!
-    global ysOrig = vcat(map(x -> x.ys[2:end], values(Store))...)
+    global ysOrig = vcat(map(x -> x.ys, values(Store))...)
     # display(locDraw(ysOrig; color=:white))
-    global fitXs = zeros(length(ysOrig))
-    global xs = vcat(map(x -> x.xs[2:end], values(Store))...)
+    # global fitXs = zeros(length(ysOrig))
     global ys = copy(ysOrig) # vcat(map(x -> x.ys[2:end], values(Store))...)
-    global useKeys = []
-    global transformsY = []
-    global transformsX = []
+    global ysCorand = cor(rand(length(ys)), ys)
+    global ysCoronst = cor(fill(1.0, length(ys)), ys)
+    xsnt = vcat(map(x -> x.xs, values(Store))...)
+    global ntxs = ntvFromVnt(xsnt)
 
+    global useKeys = []
     global keyVals = Vector{Vector{Float64}}()
     global locPanda = Vector{Float64}()
     global locSearch = Vector{NTuple{2,Float64}}()
+    global valsAll = Dict()
+    global corrAll = Dict()
+
+    foreach(k -> valsAll[k] = ntxs[k], keys(ntxs))
+    foreach(((k1, k2),) -> valsAll[(k1, k2)] = ntxs[k1] .* ntxs[k2], combinations(keys(ntxs), 2))
 
     cnt = 1
     while true
-        # push!(transformsY, fn!(ys))
-        # dcorys = EnergyStatistics.dcenter!(EnergyStatistics.DistanceMatrix(ys))
-        valsRand = rand(length(ys))
-        valsConst = rand(length(ys))
-        # dcorand = EnergyStatistics.dcenter!(EnergyStatistics.DistanceMatrix(valsRand))
-        # dcoronst = EnergyStatistics.dcenter!(EnergyStatistics.DistanceMatrix(valsConst))
-        global corrs = Dict()
-        for var in keys(xs[1])
-            var != :curp || continue
-            plain = map(x -> x[var], xs)
-            v = variaLabeled(plain)
-            for term in keys(v)
-                vals = v[term]
-                # dcorxs = EnergyStatistics.dcenter!(EnergyStatistics.DistanceMatrix(vals))
-                # dc = dcor(dcorys, dcorxs)
-                # dcRand = dcor(dcorand, dcorxs)
-                # dcConst = dcor(dcoronst, dcorxs)
-                dc = cor(ys, vals)
-                dcRand = cor(valsRand, vals)
-                dcConst = cor(valsConst, vals)
+        foreach(((k, v),) -> corrAll[k] = k in useKeys ? 0.0 : cor(v, ys), valsAll)
+        maxCor, maxKey = findmax(c -> abs(c), corrAll)
+        vals = valsAll[maxKey]
+        push!(useKeys, maxKey)
+        push!(keyVals, vals)
 
-                key = (var, term)
-                r = (; key, vals, dc, dcRand, dcConst)
-                # label = string(var, '-', label)
-                # println(key, ": ", r.dc, ' ', r.dcRand, ' ', r.dcConst)
-                corrs[key] = r
-            end
-        end
-
-        global corrMults = Dict()
-        for nt1 in values(corrs)
-            for nt2 in values(corrs)
-                nt1.key != nt2.key || continue
-                vals = nt1.vals .* nt2.vals
-                # dcorxs = EnergyStatistics.dcenter!(EnergyStatistics.DistanceMatrix(vals))
-                # dc = dcor(dcorys, dcorxs)
-                # dcRand = dcor(dcorand, dcorxs)
-                # dcConst = dcor(dcoronst, dcorxs)
-                dc = cor(ys, vals)
-                dcRand = cor(valsRand, vals)
-                dcConst = cor(valsConst, vals)
-
-                key = (nt1.key, nt2.key)
-                r = (; key, vals, dc, dcRand, dcConst)
-                # println(key, ": ", r.dc, ' ', r.dcRand, ' ', r.dcConst)
-                corrMults[key] = r
-            end
-        end
-        global corrAll = collect(Iterators.flatten((values(corrs), values(corrMults))))
-        # maxDc, i = findmax(x -> x.dc / ((x.dcRand + x.dcConst)/2), corrAll)
-        maxDc, i = findmax(x -> abs(x.dc), corrAll)
-        useCorr = corrAll[i]
-        push!(useKeys, useCorr.key)
-        push!(keyVals, useCorr.vals)
-        paramEst = clamp(-100.0, sign(useCorr.dc) * sum(abs, ys) / sum(abs, useCorr.vals), 100.0)
+        paramEst = clamp(-100.0, sign(maxCor) * sum(abs, ys) / sum(abs, vals), 100.0)
         push!(locPanda, paramEst)
         # push!(locSearch, (min(100.0*sign(useCorr.dc), 0.0), max(100.0*sign(useCorr.dc), 0.0)))
         # push!(locSearch, (min(100.0*sign(useCorr.dc), 0.0), max(100.0*sign(useCorr.dc), 0.0)))
         push!(locSearch, (-100.0, 100.0))
+
         global bbopt = bboptimize(fitness(modelLinSum, keyVals, ysOrig), locPanda; SearchRange=locSearch, MaxTime=2) # , Method)
-        println(locPanda)
-        println(best_candidate(bbopt))
+
         copy!(locPanda, best_candidate(bbopt))
         # off = .5 * abs(locPanda[end])
         # locSearch[end] = (locPanda[end] - off, locPanda[end] + off)
 
-        score = fitness(modelLinSum, keyVals, ys)(locPanda)
-
-        @info "Term $(length(keyVals))" useCorr.key i useCorr.dc score
-
+        score = fitness(modelLinSum, keyVals, ysOrig)(locPanda)
+        @info "Term $(length(keyVals))" maxKey maxCor score
         global guess = runModel(modelLinSum, keyVals, locPanda)
         ys = ysOrig .- guess
 
-        (cnt < 20) || break
-        # height > 0.01 &&
-        cnt += 1
-        continue
-
-        # energyVals = sum(abs, useCorr.vals)
-        # energyYs = sum(abs, ys)
-        # tf = sign(useCorr.dc) * energyYs / energyVals
-        # @assert sum(abs, vals) ≈ energyYs "$(sum(abs, vals)) ≈ $(energyYs)"
-        vals = sign(useCorr.dc) * useCorr.vals
-        temp = fn!(vals)
-        k = minimum([vals[i] < 0.00001 ? 1.0 : ys[i] / vals[i] for i in eachindex(vals)])
-        # vals .*= k
-        # tfvals = (temp[1], sign(useCorr.dc), temp[2:end], k)
-        # push!(transformsX, tfvals)
-
-        # @info "should be 1" sum(ys) sum(vals)
-        display(locDraw(ys; color=:white))
-        locDraw!(vals)
-        global ys .-= vals
-        locDraw!(ys)
-        mn, mx = extrema(ys)
-        height = mx - mn
-        @info "Found" k sum(abs, ys) i mn mx height useCorr.dc corrAll[i].key # transformsY[end][2:end] transformsX[end][2:end]
-
-        tfInv!(vals, transformsY[end][2:end])
-        fitXs .+= vals
-        err1 = sum(x -> x^2, ys)
-        err2 = sum(x -> x^2, fitXs .- ysOrig)
-        println("## Err: ", err1, ' ', err2)
-
-        (cnt < 1 && maxDc > .1) || break
-        # height > 0.01 &&
+        (cnt < 8) || break
         cnt += 1
     end
-    # locDraw!(fitXs)
-    # res = sort(collect(Iterators.flatten((values(corrs), values(corrMults)))); rev=true, by=x -> x.dc / ((x.dcRand + x.dcConst)/2))
-    # return res
+
     display(locDraw(ysOrig; color=:white))
     global guess = runModel(modelLinSum, keyVals, locPanda)
     locDraw!(guess; color=:yellow)

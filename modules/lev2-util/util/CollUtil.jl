@@ -51,4 +51,20 @@ function prinsert!(v, newVal)::Bool
     return true
 end
 
+export simNt, ntvFromNt, ntvFromVnt
+simNt(f::Union{Function,Type}, nt::NamedTuple)::NamedTuple = ( ks = keys(nt) ; NamedTuple{ks}(map(_->f(), ks)) )
+# simNt(val, nt::NamedTuple)::NamedTuple = ( ks = keys(nt) ; NamedTuple{ks}(fill(val, length(ks))) )
+ntvFromNt(nt::NamedTuple, elt=Float64)::NamedTuple = simNt(Vector{elt}, nt)
+function ntvFromVnt(vnt::Vector{NamedTuple})::NamedTuple
+    # TODO: could optimize with size hint
+    ntv = ntvFromNt(vnt[1])
+    ks = keys(vnt[1])
+    for nt in vnt
+        for k in ks
+            push!(ntv[k], nt[k])
+        end
+    end
+    return ntv
+end
+
 end
