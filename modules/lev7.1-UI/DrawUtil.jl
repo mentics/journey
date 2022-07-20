@@ -34,11 +34,10 @@ function newFig(f, (xticks, yticks), showLegend=true, newWin=false)
 end
 
 function ticksCentered(sp, (xMin, xMax), (yMin, yMax))
-    ytickWidth = rndUp((yMax - yMin)/10, .5)
-    yMin = rndDown(yMin, ytickWidth)
-    yMax = rndUp(yMax, ytickWidth)
+    ytickWidth = rndUp((yMax - yMin + .0001)/10, .5)
+    yMin = rndDown(yMin - .0001, ytickWidth)
+    yMax = rndUp(yMax + .0001, ytickWidth)
     maxY = max(abs(yMin), abs(yMax))
-    # @info "ticksCentered" -maxY ytickWidth maxY
     yticks = -maxY:ytickWidth:maxY
     numTicks = 9
     ticksPerSide = div(numTicks, 2)
@@ -78,8 +77,9 @@ function drawProb(ax, prob, colorIndex, scale)
 
     colors = (GLMakie.RGBA(0.5, 0.5, 1.0, 0.5), GLMakie.RGBA(0.0, 0.5, 0.5, 0.5), GLMakie.RGBA(0.5, 0.5, 0.5, 0.5))
     p = barplot!(ax, getCenter(prob) .* xs, scale * 100.0 .* vals; color=colors[colorIndex], gap=0.0, inspectable=false)
+    Main.save[:p] = p
     p.inspectable[] = false
-    display(p)
+    # display(p)
     return p
 end
 

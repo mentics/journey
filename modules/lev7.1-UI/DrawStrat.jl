@@ -24,7 +24,7 @@ function drawRet(r::Ret; probs=nothing, curp=nothing, label="", newWin=false)
         # TODO: draw on fig arg
         if !isnothing(probs)
             for (i, prob) in enumerate(probs)
-                drawProb(ax, prob, i, (yMax - yMin)/10.0)
+                drawProb(ax, prob, i, 1.0)#(yMax - yMin)/2)
             end
         end
         hlines!(ax, 0.0).inspectable[] = false
@@ -46,7 +46,6 @@ function drawRet!(r::Ret; label::AStr="")
     end
     xs = sp .* Bins.xs(extentHalf)
     p = lines!(xs, vals; label)
-    display(p)
     updateLegend()
     return p
 end

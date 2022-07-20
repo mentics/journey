@@ -46,15 +46,17 @@ lmssd(lmss) = drlms(vcat(lmss...))
 
 dinDraw(i::Int) = dinDraw(Main.save[:track][expir(i)])
 # dinDraw(all::NamedTuple) = dinDraw(all.ctx, all.lmss, all.rets, all.mets)
+addScore(met) = merge(met, (;score=score(nothing, met)))
 function dinDraw(ctx, resAll)
     (;ret1s, met1s, retRuns, metRuns) = resAll
-    pretyble(vcat(ctx.metPos, met1s, metRuns[end]))
-    pretyble(vcat(ctx.metPos, metRuns))
-    display(drawRet(ctx.retPos; ctx.probs, ctx.curp, label="from"))
+    pretyble(map(addScore, vcat(ctx.metPos, met1s, metRuns[end])))
+    pretyble(map(addScore,vcat(ctx.metPos, metRuns)))
+    drawRet(ctx.retPos; ctx.probs, ctx.curp, label="from")
     for i in 1:length(ret1s)
         drawRet!(ret1s[i]; label=string(i))
     end
     drawRet!(retRuns[end]; label="to")
+    return
 end
 
 # (default(::Type{T})::T) where T = T()
@@ -102,7 +104,7 @@ function runCheck(i, track, minScores, notify=true)
         else
             # haskey(track, ctx.exp) || (track[ctx.exp] = (;ctx, lmss, mets, rets))
             println("Evr too low ", (;scoreFrom, scoreTo, scoreMin))
-            minScores[i] = max(scoreTo, scoreMin - 0.1 * (scoreMin - scoreTo))
+            minScores[i] = max(scoreTo, scoreMin - 0.02 * (scoreMin - scoreTo))
         end
     else
         # delete!(track, ctx.exp)
@@ -281,7 +283,7 @@ str1(lm, exps) = string(tosh(lm, exps), ' ', bap(lm))
 
 function score(retFrom, metFrom, retTo, metTo, ret1, met1)
     # met1.evr >= 0.0 || return -Inf
-    metTo.mn > -3.5 || return -Inf
+    metTo.mn > -3.1 || return -Inf
     scoreTo = score(retTo, metTo)
     if !isnothing(metFrom)
         # metTo.prob >= .95 * metFrom.prob || return -Inf
@@ -292,7 +294,8 @@ function score(retFrom, metFrom, retTo, metTo, ret1, met1)
     return scoreTo
 end
 function score(ret, met)
-    score = exp(met.evr) * met.prob
+    # score = exp(met.evr) * met.prob
+    score = met.evr
     return score
     # adjust(score, ret) = score # ret[2] > ret[end-1] ? score : (score < 0.0 ? 2 * score : 0.5 * score)
     # adj = adjust(score, ret)
