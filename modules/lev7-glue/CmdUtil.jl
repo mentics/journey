@@ -14,7 +14,7 @@ export calcPosStrat
 using SH, BaseTypes, RetTypes, LegMetaTypes, StratTypes
 using StoreTrade
 function calcPosStrat(forDate::Date, sp::Currency, vtyRatio::Float64, extra::Union{Nothing,Vector{LegMeta}}=nothing)::Vector{LegRet}
-    lms = findLmsPos(forDate)
+    lms = xlms(forDate)
     if !isempty(lms)
         isnothing(extra) || append!(lms, extra)
         sort!(lms; by=getStrike)

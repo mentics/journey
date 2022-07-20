@@ -3,7 +3,10 @@ using SH, BaseTypes, Bins, ProbTypes, RetTypes
 
 export calcMetrics #, calcKelly, calcKelly!
 
-calcMetrics(prob::Prob, ret::Ret, bins=Bins.inds()) = ( @assert getCenter(prob) == getCenter(ret) ; calcMetrics(prob, getVals(ret), ret.numLegs, bins) )
+function calcMetrics(prob::Prob, ret::Ret, bins=Bins.inds())
+    @assert getCenter(prob) == getCenter(ret) "calcMetrics(): Centers don't match $(getCenter(prob)) $(getCenter(ret))"
+    calcMetrics(prob, getVals(ret), ret.numLegs, bins)
+end
 function calcMetrics(prob::Prob, vals::AVec{Float64}, numLegs::Int, binsi=Bins.inds())
     pvals = getVals(prob)
     profit = 0.0

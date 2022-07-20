@@ -83,8 +83,8 @@ function getVals!() end
 function valAt() end
 # function getValMid() end
 function getCenter() end
-function draw() end
-function draw!() end
+function draw(::Nothing) end
+function draw!(::Nothing) end
 
 # these are for prill's * quantity
 function getNetOpen() end

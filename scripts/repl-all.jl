@@ -6,6 +6,7 @@ using DateUtil, Scoring
 using StoreUtil, Store
 using Snapshots, Calendars, Markets, Expirations, Chains
 using CmdStrats, CmdCheck, CmdTrading, CmdExplore, CmdSched
+using ProcOrder
 using SchedLive, Sched
 isrtd() = !intest() && !dev() && isMarketOpen() && tenv() == :prod && isnothing(snap()) && urp() && Sched.ison()
 devon()
@@ -18,7 +19,7 @@ useDbProd()
 display(todo())
 dbChecks()
 devoff()
-urpon()
+procOrders()
 SchedLive.add()
 Sched.start()
 println("Ready to trade: ", isrtd())

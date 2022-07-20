@@ -14,8 +14,6 @@ export ret, ret0, reta, comp
 export dr, dr0, dra, adr, adr0, adra
 export ctx, probs, pvals, ivs
 
-hereMetrics(pv, r) = Scoring.calcMetrics(pv, r)
-
 # draw(CmdStrats.lastCtx[].probs.ppos.vals)
 # draw(CmdStrats.lastCtx[].probs.pposInv.vals)
 # draw(getVals(CmdStrats.lastPosRet[]))
@@ -232,7 +230,7 @@ function toTuple(s::Union{Nothing,Strat}, lrs::Vector{LegRet})
     strikes = legsTosh(s, exps) # join(map(l -> "$(first(string(side(l))))$(s(strike(l), 1))$(first(string(style(l))))@$(searchsortedfirst(exps, expiration(l)))", legs(ar)), " / ")
     length(lrs) > length(s) && (strikes *= " + cur")
     ret = combineTo(Ret, lrs)
-    met = hereMetrics(probs()[1], ret)
+    met = calcMetrics(probs()[1], ret)
     score = byScore(lastCtx[], combineTo(Vals, s), combineTo(Vals, withPosStrat(s)), lastPosRet[])
     pnl = extrema(getVals(ret))
     netOpen=!isnothing(s) ? bap(tos(LegMeta, s)) : 0.0
@@ -241,7 +239,7 @@ end
 
 function metFor(lms::Vector{LegMeta})
     ret = combineTo(Ret, lms, minimum(getExpiration.(lms)), C(lastPosRet[].center), getvr())
-    hereMetrics(probs()[1], ret)
+    calcMetrics(probs()[1], ret)
 end
 #endregion
 
