@@ -4,6 +4,7 @@ using BaseTypes
 export VARIA_LEN
 export sqrt0, log0, varia
 export indCombos
+export sigmoid, keepPos
 
 sqrt0(x::Float64)::Float64 = sqrt(x + 1.0) - 1.0
 # sqrt0(v::Vector{Float64})::Vector{Float64} = sqrt0.(v)
@@ -26,5 +27,13 @@ VARIA_LEN = length(varia(1.0))
 using Combinatorics
 # products(xs) = [(xs[i1]*xs[i2], i1, i2) for (i1, i2) in combinations(1:length(xs), 2)]
 indCombos(len, num) = combinations(1:len, num)
+
+function sigmoid(mn, mx, half)
+    k = -log2(3) / half
+    diff = mx - mn
+    return x -> mn + diff / (1 + 2^(k * x))
+end
+
+keepPos(x) = x < 1.0 ? 2^x/2 : x
 
 end

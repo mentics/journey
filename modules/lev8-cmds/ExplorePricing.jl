@@ -1,7 +1,7 @@
 module ExplorePricing
 using Dates, BlackBoxOptim, EnergyStatistics, Combinatorics
 using SH, BaseTypes, SmallTypes, ChainTypes, OptionTypes, QuoteTypes, OptionMetaTypes
-using DateUtil, FileUtil, OptionUtil, PricingUtil, DrawUtil, CollUtil, VectorCalcUtil
+using DateUtil, FileUtil, OptionUtil, PricingUtil, DrawUtil, CollUtil, VectorCalcUtil, MathUtil
 using Calendars
 
 locDraw = drawDots
@@ -11,25 +11,36 @@ locDraw! = drawDots!
 # a function and a number of parameters
 # it then loops through and finds which best correlate in each param slot
 
-NumParams = 10
+# vcat(fill(fill(1.0, length(ys)), NumParams-2), fill(fill(0.0, length(ys)), 2))
+DEF_XS = vcat(DEF_FIT1, DEF_FIT2, 0.0, 0.0, 0.0)
+V1 = map(x -> fill(x, length(ys)), DEF_XS)
+NumParams = length(V1)
+function setConst()
+    global DEF_XS = vcat(DEF_FIT1, DEF_FIT2, 0.0, 0.0, 0.0)
+    global V1 = map(x -> fill(x, length(ys)), DEF_XS)
+    global NumParams = length(V1)
+end
+setConst()
 
+# modelFunc(xs) =
+#     fit2(xs[1], xs[2], xs[3], xs[4]) + fit1(xs[5], xs[6]) + fit1(xs[7], xs[8]) + xs[9] + xs[10]
 modelFunc(xs) =
-    fit2(xs[1], xs[2], xs[3], xs[4]) + fit1(xs[5], xs[6]) + fit1(xs[7], xs[8]) + xs[9] + xs[10]
+    fit2(xs[1], xs[2], xs[3], xs[4], xs[5]) + fit1(xs[6], xs[7]) + xs[9] + xs[10]
 
 modelAll(xss::Vector{Vector{Float64}}, p::Vector{Float64}) = modelAll(xss .* p)
 modelAll(xss::Vector{Vector{Float64}}) =
     [modelFunc([xss[c][i] for c in eachindex(xss)]) for i in eachindex(xss[1])]
 
-function modelInd(ind::Int, xs::Vector{Float64}, def::Vector{Float64})::Vector{Float64}
-    xss = fill(def, NumParams)
+function modelInd(ind::Int, xs::Vector{Float64}, def::Vector{Vector{Float64}})::Vector{Float64}
+    xss = copy(def)
     xss[ind] = xs
     return modelAll(xss)
 end
 
-fitnessInd(f, ind::Int, xs::Vector{Float64}, ys::Vector{Float64}, def::Vector{Float64}) =
-    (p::Vector{Float64}) -> sum( f(ind, xs .* p, def) .- ys .^2 )
-fitness(f, xss::Vector{Float64}, ys::Vector{Float64}) =
-    (p::Vector{Float64}) -> sum( f(xss, p) .- ys .^2 )
+fitnessInd(f, ind::Int, xs::Vector{Float64}, ys::Vector{Float64}, def::Vector{Vector{Float64}}) =
+    (p::Vector{Float64}) -> sum( (f(ind, xs .* p, def) .- ys) .^2 )
+fitness(f, xss::Vector{Vector{Float64}}, ys::Vector{Float64}) =
+    (p::Vector{Float64}) -> sum( (f(xss, p) .- ys) .^2 )
 
 function checkCorr()
     global ys = vcat(map(x -> x.ys, values(Store))...)
@@ -42,7 +53,6 @@ function checkCorr()
     global useKeys = []
     global keyVals = Vector{Vector{Float64}}()
     global locPanda = Vector{Float64}()
-    global locSearch = Vector{NTuple{2,Float64}}()
     global corrAll = Dict()
 
     global valsAll = Dict()
@@ -50,8 +60,6 @@ function checkCorr()
     foreach(((k1, k2),) -> valsAll[(k1, k2)] = ntxs[k1] .* ntxs[k2], combinations(keys(ntxs), 2))
     foreach(((k1, k2, k3),) -> valsAll[(k1, k2, k3)] = ntxs[k1] .* ntxs[k2] .* ntxs[k3], combinations(keys(ntxs), 3))
     # TODO: add varia
-
-    V1 = fill(1.0, length(ys))
 
     for i in 1:NumParams
         foreach(((k, v),) -> corrAll[k] = k in useKeys ? 0.0 : cor(modelInd(i, v, V1), ysWork), valsAll)
@@ -66,15 +74,15 @@ function checkCorr()
         append!(locPanda, best_candidate(bboptInner))
 
         # score = fitness(modelLinSum, keyVals, ys)(locPanda)
-        global guess = modelInd(i, keyVals, V1)
+        global guess = modelInd(i, vals, V1)
         ysWork = ys .- guess
     end
 
     global bbopt = bboptimize(fitness(modelAll, keyVals, ys), locPanda; SearchRange=fill((-100.0, 100.0), NumParams), MaxTime=10) # , Method)
-    copy!(locPanda, best_candidate(bboptInner))
+    copy!(locPanda, best_candidate(bbopt))
 
     display(locDraw(ys; color=:white))
-    global guess = runModel(modelLinSum, keyVals, locPanda)
+    global guess = modelAll(keyVals, locPanda)
     locDraw!(guess; color=:yellow)
     return
 end
@@ -255,31 +263,35 @@ end
 #endregion
 
 #region Model
+DEF_FIT1 = [1.0, 1.0]
 fit1(a, b) = a / b
 
 using Distributions
 const NORM = Normal()
-function fit2(t, pos, vty, rfr)
-    t = abs(t)
-    t < 1.0 || (t = 1.0 + log(abs(t)))
-    abs(rfr) < 1.0 || (rfr = sign(rfr) + sign(rfr) * log(abs(rfr)))
-    rt = sqrt(abs(t))
-    d1 = (log(abs(pos)) + (rfr + vty^2 / 2.0) * t) / (vty * rt)
+DEF_FIT2 = [1.0, 1.0, 0.2, 1.0, 1.0]
+function fit2(t, strikeRat, vty, under, strike)
+    t = keepPos(t)
+    strikeRat = sigmoid(.5, 1.5, 10.0)(strikeRat)
+    vty = keepPos(vty)
+    under = keepPos(under)
+    strike = keepPos(strike)
+    rt = sqrt(t)
+    d1 = (log(strikeRat) + (vty * vty / 2.0) * t) / (vty * rt)
     d2 = d1 - vty * rt
-    r = cdf(NORM, d1) - exp(-rfr * t) * pos * cdf(NORM, d2)
+    r = under * cdf(NORM, d1) - strike * cdf(NORM, d2)
     if !isfinite(r)
-        @error t pos vty rfr rt d1 d2 cdf(NORM, d1) (-rfr * t) exp(-rfr * t) cdf(NORM, d2)
+        @error "Invalid value in fit2" t strikeRat vty rt d1 d2 cdf(NORM, d1) cdf(NORM, d2)
         error("stop")
     end
     return r
 end
 
-modelLinSum(x::Vector{Vector{Float64}}, p, i::Int)::Float64 = sum([x[term][i] * p[term] for term in eachindex(p)])
-runModel(f, xs::Vector{Vector{Float64}}, p) = [f(xs, p, i) for i in eachindex(xs[1])]
-diffFit(x1, x2) = (x1 - x2)^2
-# diffFit(x1, x2) = (abs(x2) > abs(x1) ? 100.0 : 1.0) * (x1 - x2)^2
-fitness(f, xs::Vector{Vector{Float64}}, ys::Vector{Float64}) =
-    (p::Vector{Float64}) -> sum(diffFit(ys[i], f(xs, p, i)) for i in eachindex(ys))
+# modelLinSum(x::Vector{Vector{Float64}}, p, i::Int)::Float64 = sum([x[term][i] * p[term] for term in eachindex(p)])
+# runModel(f, xs::Vector{Vector{Float64}}, p) = [f(xs, p, i) for i in eachindex(xs[1])]
+# diffFit(x1, x2) = (x1 - x2)^2
+# # diffFit(x1, x2) = (abs(x2) > abs(x1) ? 100.0 : 1.0) * (x1 - x2)^2
+# fitness(f, xs::Vector{Vector{Float64}}, ys::Vector{Float64}) =
+#     (p::Vector{Float64}) -> sum(diffFit(ys[i], f(xs, p, i)) for i in eachindex(ys))
 #endregion
 
 end
