@@ -4,7 +4,7 @@ using BaseTypes
 export VARIA_LEN
 export sqrt0, log0, varia
 export indCombos
-export sigmoid, keepPos
+export sigmoid, keepPos, checkRange
 
 sqrt0(x::Float64)::Float64 = sqrt(x + 1.0) - 1.0
 # sqrt0(v::Vector{Float64})::Vector{Float64} = sqrt0.(v)
@@ -33,7 +33,16 @@ function sigmoid(mn, mx, half)
     diff = mx - mn
     return x -> mn + diff / (1 + 2^(k * x))
 end
+function sigmoid(mn, mx, half, xoff)
+    k = -log2(3) / half
+    diff = mx - mn
+    return x -> mn + diff / (1 + 2^(k * (x - xoff)))
+end
 
 keepPos(x) = x < 1.0 ? 2^x/2 : x
+
+checkRange(mn, mx, itr::NamedTuple) = for (k,x) in pairs(itr)
+    mn <= x <= mx || error("Value out of bounds for key $(k): $(mn) <= $(x) <= $(mx)")
+end
 
 end

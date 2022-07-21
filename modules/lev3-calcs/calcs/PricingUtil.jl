@@ -165,43 +165,55 @@ end
 
 using Statistics
 using DictUtil, HistData
-export calcVty2, resetVty2
-const VTY_CACHE = Dict{Date,Float64}()
-const VTY_CACHE3 = Dict{Date,Float64}()
+const VTY_CACHE1 = Dict{Date,Float64}()
+const VTY_CACHE2 = Dict{Date,Float64}()
 const VTY_CACHE_NEG = Dict{Date,Float64}()
+
+# TODO: add today data as another EMA point but discounted
+calcVty(date::Date, curp::Real, p)::Float64 =
+    (p[1] * calcVty1(date) + p[2] * calcVty2(date) + p[3] * calcVtyNeg(date) + p[4] * thisDay(date, curp)) / 4.0 / sqrt(texToYear(11.75))
+
+function thisDay(date::Date, curp::Real)
+    prevday = dataDay(bdaysBefore(date, 1))
+    day = dataDay(date)
+    return abs(day.open / prevday.close + curp / prevday.close - 2.0) / 2.0
+end
+
 # TODO: maybe include a target interval: further out targets might better match further past historical data
-calcVty2(date::Date)::Float64 = useKey(VTY_CACHE, date) do
+calcVty1(date::Date)::Float64 = useKey(VTY_CACHE1, date) do
     dailys = dataDaily(date - Day(60), date - Day(1))[1:20] # subtract a day to avoid future info
-    return std(Iterators.flatten((r.high, r.low) for r in dailys))
+    μ = mean(map(r -> r.close, dailys))
+    return std(Iterators.flatten((r.high, r.low) for r in dailys) ./ μ)
 end
 function resetVty()
-    empty!(VTY_CACHE)
-    empty!(VTY_CACHE3)
+    empty!(VTY_CACHE1)
+    empty!(VTY_CACHE2)
     empty!(VTY_CACHE_NEG)
 end
 
+# Was arbitrary .06 from http://faculty.baruch.cuny.edu/smanzan/FINMETRICS/_book/volatility-models.html
 Decay = .2
 # TODO: could precalculate all more efficiently and just populate cache once
-calcVty3(date::Date)::Float64 = useKey(VTY_CACHE, date) do
+calcVty2(date::Date)::Float64 = useKey(VTY_CACHE2, date) do
     dailys = dataDaily(date - Day(60), date - Day(1))[1:20] # subtract a day to avoid future info
     rets = dailyReturnsJump(dailys)
     ema2 = rets[end]^2
     for i in (length(rets)-1):-1:1
         # TODO: I could calc this param by using maxing dist correlation
-        ema2 = (1.0 - Decay) * ema2 + Decay * rets[i]^2 # arbitrary .06 from http://faculty.baruch.cuny.edu/smanzan/FINMETRICS/_book/volatility-models.html
+        ema2 = (1.0 - Decay) * ema2 + Decay * rets[i]^2
     end
     return sqrt(ema2)
 end
 
-calcVtyNeg(date::Date)::Float64 = useKey(VTY_CACHE, date) do
+calcVtyNeg(date::Date)::Float64 = useKey(VTY_CACHE_NEG, date) do
     dailys = dataDaily(date - Day(60), date - Day(1))[1:20] # subtract a day to avoid future info
-    println("Using days: ", map(x->x.date, dailys))
+    # println("Using days: ", map(x->x.date, dailys))
     # rets = filter(x -> x < 0.0, dailyReturns(dailys))
     rets = replace!(x -> x <= 0 ? x : 0.0, dailyReturns(dailys))
     length(rets) > 0 || return 0.0
     ema2 = rets[end]^2
     for i in (length(rets)-1):-1:1
-        ema2 = (1.0 - Decay) * ema2 + Decay * rets[i]^2 # arbitrary .06 from http://faculty.baruch.cuny.edu/smanzan/FINMETRICS/_book/volatility-models.html
+        ema2 = (1.0 - Decay) * ema2 + Decay * rets[i]^2
     end
     return sqrt(ema2)
 end

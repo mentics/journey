@@ -55,7 +55,7 @@ export priceOption #, priceOptionF
 # TODO: benchmark using local var and direct Normal() call
 # priceOption(opt::Option, underlying::Real, vty::Real, fromExp::Date)::Float64 = priceOption(opt, timeToExpir(expiration(opt), fromExp), underlying, vty)
 # priceOption(opt::Option, underlying::Real, vty::Real, toExp::Int)::Float64 = priceOption(style(opt), strike(opt), toExp, underlying, vty)
-function priceOption(style::Style.T, strike::Float64, toExpYear::Float64, vty::Float64, under::Float64)::Float64
+function priceOption(style::Style.T, strike::Real, toExpYear::Float64, vty::Float64, under::Float64)::Float64
     # TODO: it returns NaN if underlying == strike when toExpY = 0
     # @info "priceOption" styl strik toExpY under vty
     rfrate = 0.0
