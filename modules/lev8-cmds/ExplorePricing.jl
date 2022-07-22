@@ -289,19 +289,19 @@ function blackPricing(ts::DateTime, curp::Float64, opt, p::Vector{Float64})
     return price
 end
 
-function testDiff2(oq, x)
+function diffPrice(oq, x)
     b = getBid(oq)
     a = getAsk(oq)
     return x < b ? (x - b) :
         x > a ? (x - a) : 0.0
 end
 
-function testDiff(oq, x)
+function testDiff2(oq, x)
     getBid(oq) >= 0.0 || error("invalid bid")
     return x - Float64((getBid(oq) + getAsk(oq)) / 2)
 end
 
-testDiffs(data, p) = (testDiff(nt.oq, blackPricing(nt..., p))^2 for nt in data)
+testDiffs(data, p) = (diffPrice(nt.oq, blackPricing(nt..., p))^2 for nt in data)
 
 testFit(data) = p -> sum(testDiffs(data, p))
 #     return function(p)
@@ -317,7 +317,7 @@ function showHighestError(data, p)
         date = toDateMarket(nt.ts)
         c = blackPricing(nt..., p)
         vty = PricingUtil.calcVty(date, nt.curp, p[2:5])
-        (; score=testDiff(nt.oq, c), calc=c, vty, nt)
+        (; score=diffPrice(nt.oq, c), calc=c, vty, nt)
     end
     sort!(res; rev=true, by=nt -> nt.score)
     return res[1:10]
@@ -345,5 +345,50 @@ function test()
     copy!(testPanda, best_candidate(testBbopt))
     @info "test result" maximum(testDiffs(TestData, testPanda)) testPanda
 end
+
+#region Optimize Calc Tex
+TexNumParams = 6
+function texOpt()
+    !isempty(TestData) || testPrep()
+    global texSearchRange = fill((0.0, 1.0), TexNumParams)
+    global texPanda = fill(0.5, TexNumParams)
+    global texBbopt = bboptimize(texFit(TestData), texPanda; SearchRange=texSearchRange, MaxTime=10)
+    copy!(texPanda, best_candidate(texBbopt))
+    @info "tex result" maximum(texDiffs(TestData, texPanda)) texPanda
+end
+
+texCalc(datum, p)::Float64 = findTexy(datum.ts, getExpiration(datum.oq), p)
+
+texCheck(nt, c::Float64) = black(nt.oq, nt.curp, c)
+texDiffs(data, p) = (diffPrice(datum.oq, texCheck(datum, texCalc(datum, p)))^2 for datum in data)
+texFit(data) = p -> sum(texDiffs(data, p))
+
+black(oq::OptionQuote, curp::Real, texy::Float64) = BlacksPricing.priceOption(getStyle(oq), getStrike(oq), texy, getIv(oq), curp)
+
+function findTexy(ts, exp, p)::Float64
+    dur = paramDur(calcDurToExpr(ts, exp), p)
+    dury = paramDur(DurPerYear, p)
+    return dur / dury
+end
+
+DurPerYear = Calendars.calcDurPerYear()
+paramDur(dur, p)::Float64 =
+        p[1] * dur.closed.value +
+        p[2] * dur.pre.value +
+        p[3] * dur.open.value +
+        p[4] * dur.post.value +
+        p[5] * dur.weekend.value +
+        p[6] * dur.holiday.value
+
+function texErrMax(data=TestData, p=texPanda)
+    res = map(data) do nt
+        texy = texCalc(nt, p)
+        c = texCheck(nt, texy)
+        (; score=diffPrice(nt.oq, c), calc=c, texy, nt)
+    end
+    sort!(res; rev=true, by=nt -> nt.score)
+    return res[1:10]
+end
+#endregion
 
 end

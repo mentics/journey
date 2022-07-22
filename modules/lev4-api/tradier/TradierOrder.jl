@@ -44,11 +44,21 @@ end
 function toPayloadOpen(tid::Int, inLegs, primitDir::PriceT; pre=true)
     legs = deepcopy(collect(inLegs)) # TODO: messy
     mergeLegs!(legs)
+    length(legs) > 1 || return toPayloadOpenSingle(tid, legs[1], primitDir; pre, isMkt=false)
     legsStr = join([legToPayload(i-1, tier.optToOcc(getOption(leg)), Action.open, getSide(leg), getQuantity(leg)) for (i, leg) in enumerate(legs)], '&')
     payload = "tag=op$(tid)&class=multileg&symbol=$(getDefaultSymbol())&type=$(tier.orderType(primitDir))&duration=day&price=$(abs(primitDir))&$(legsStr)"
     if pre
         payload *= "&preview=true"
     end
+    return payload
+end
+
+function toPayloadOpenSingle(tid::Int, leg, primitDir::PriceT; pre=true, isMkt=false)
+    ordType = isMkt ? "market" : "limit"
+    tierSide = tier.toTierSide(Action.open, getSide(leg))
+    # TODO: remove primitDir if market?
+    payload = "tag=op$(tid)&class=option&symbol=$(getDefaultSymbol())&option_symbol=$(tier.optToOcc(getOption(leg)))&side=$(tierSide)&quantity=$(getQuantity(leg))&type=$(ordType)&duration=day&price=$(abs(primitDir))$(pre ? "&preview=true" : "")"
+    # occursin("preview", payload) || error("only preview right now")
     return payload
 end
 

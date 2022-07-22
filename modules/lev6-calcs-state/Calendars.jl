@@ -90,6 +90,14 @@ function ensureCal(dt::Date...)::Nothing
     return
 end
 
+function calcDurPerYear()
+    dur = marketDur(Date(2022,1,1))
+    for day in Date(2022,1,2):Day(1):Date(2022,12,31)
+        dur += marketDur(day)
+    end
+    return dur
+end
+
 marketDur(d::Date)::MarketDur = Info[].markDur[d]
 #endregion
 
