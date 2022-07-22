@@ -295,10 +295,21 @@ function diffPrice(oq, x)
     return x < b ? (x - b) :
         x > a ? (x - a) : 0.0
 end
+function diffPriceP(oq, x)
+    b = getBid(oq)
+    a = getAsk(oq)
+    return x < b ? ((2 * x / (x + b)) - 1.0) :
+        x > a ? ((2 * x / (x + a)) - 1.0) : 0.0
+end
 
-function testDiff2(oq, x)
+function diffPrice2(oq, x)
     getBid(oq) >= 0.0 || error("invalid bid")
     return x - Float64((getBid(oq) + getAsk(oq)) / 2)
+end
+function diffPrice2P(oq, x)
+    getBid(oq) >= 0.0 || error("invalid bid")
+    y = Float64((getBid(oq) + getAsk(oq)) / 2)
+    return (2 * x / (x + y)) - 1.0
 end
 
 testDiffs(data, p) = (diffPrice(nt.oq, blackPricing(nt..., p))^2 for nt in data)
@@ -329,12 +340,13 @@ function testPrep(num=1000)
     global TestDataAll = Vector{NamedTuple}()
     procCalls() do nt
         # (;ts, curp, oq) = nt
+        Date(nt.ts) == Date(2022, 5, 9) || return
         Date(2022, 5, 1) <= getExpiration(nt.oq) <= Date(2022, 6, 10) || return
         abs(nt.curp - getStrike(nt.oq)) < 11.0 || return
         push!(TestDataAll, (;nt.ts, nt.curp, nt.oq))
     end
     # println(length(TestData))
-    global TestData = sample(TestDataAll, num; replace=false)
+    global TestData = length(TestDataAll) < num ? TestDataAll : sample(TestDataAll, num; replace=false)
 end
 
 function test()
@@ -348,10 +360,11 @@ end
 
 #region Optimize Calc Tex
 TexNumParams = 6
+TexPriceDiff = diffPrice2
 function texOpt()
     !isempty(TestData) || testPrep()
-    global texSearchRange = fill((0.0, 1.0), TexNumParams)
-    global texPanda = fill(0.5, TexNumParams)
+    global texSearchRange = fill((0.0, 2.0), TexNumParams)
+    global texPanda = fill(1.0, TexNumParams)
     global texBbopt = bboptimize(texFit(TestData), texPanda; SearchRange=texSearchRange, MaxTime=10)
     copy!(texPanda, best_candidate(texBbopt))
     @info "tex result" maximum(texDiffs(TestData, texPanda)) texPanda
@@ -360,19 +373,26 @@ end
 texCalc(datum, p)::Float64 = findTexy(datum.ts, getExpiration(datum.oq), p)
 
 texCheck(nt, c::Float64) = black(nt.oq, nt.curp, c)
-texDiffs(data, p) = (diffPrice(datum.oq, texCheck(datum, texCalc(datum, p)))^2 for datum in data)
+texDiffs(data, p) = (TexPriceDiff(datum.oq, texCheck(datum, texCalc(datum, p)))^2 for datum in data)
 texFit(data) = p -> sum(texDiffs(data, p))
 
 black(oq::OptionQuote, curp::Real, texy::Float64) = BlacksPricing.priceOption(getStyle(oq), getStrike(oq), texy, getIv(oq), curp)
 
 function findTexy(ts, exp, p)::Float64
-    dur = paramDur(calcDurToExpr(ts, exp), p)
-    dury = paramDur(DurPerYear, p)
+    dur = paramDurAll(calcDurToExpr(ts, exp), p)
+    dury = paramDurAll(DurPerYear, p)
     return dur / dury
 end
 
 DurPerYear = Calendars.calcDurPerYear()
 paramDur(dur, p)::Float64 =
+        p[1] * dur.closed.value +
+        p[2] * dur.pre.value +
+        dur.open.value +
+        p[3] * dur.post.value +
+        p[4] * dur.weekend.value +
+        p[5] * dur.holiday.value
+paramDurAll(dur, p)::Float64 =
         p[1] * dur.closed.value +
         p[2] * dur.pre.value +
         p[3] * dur.open.value +
@@ -384,7 +404,7 @@ function texErrMax(data=TestData, p=texPanda)
     res = map(data) do nt
         texy = texCalc(nt, p)
         c = texCheck(nt, texy)
-        (; score=diffPrice(nt.oq, c), calc=c, texy, nt)
+        (; score=TexPriceDiff(nt.oq, c), calc=c, texy, nt)
     end
     sort!(res; rev=true, by=nt -> nt.score)
     return res[1:10]

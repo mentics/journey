@@ -24,7 +24,7 @@ function makeCtx(calcScore, probs, tex::Float64; nthreads::Int=12, maxRun::Int=1
     else
         metsPos = NamedTuple[]
         for prob in probs
-            push!(metsPos, calcMetrics(prob, posRet))
+            push!(metsPos, calcMetrics(prob, posRet, Bins.binds()))
         end
 
         posVals = getVals(posRet)

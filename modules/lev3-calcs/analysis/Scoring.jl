@@ -32,14 +32,17 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, 
 
     if isempty(bufCombi)
         # This means we're calcing base score from existing position, so only bufPos will be valid but it's also passed into bufBoth.
-        # return -10000
+        return -10000
         show && ( @info "pos scoring" metsBoth )
         return score(metsPos)
     end
 
     isNew = isnothing(posRet)
 
-    metb = calcMetrics(ctx.probs[1], bufBoth, numLegs)
+    metb = calcMetrics(ctx.probs[1], bufBoth, numLegs, Bins.binds())
+    metb.mn > MAX_LOSS || return countNo(:maxLossAbs)
+    return metb.evr
+
     metc = isNew ? metb : calcMetrics(ctx.probs[1], bufCombi, 4)
     # metc.mn > -1.1 || return countNo(:maxLossAbs)
     isNew || metb.evr > metsPos[1].evr || return countNo(:maxLossAbs)
@@ -51,7 +54,6 @@ function calcScore1(ctx, tctx, bufCombi::AVec{Float64}, bufBoth::AVec{Float64}, 
     #==== end: simple short ===#
 
     # metc.evr > 0.0 || return countNo(:maxLossAbs)
-    metb.mn > MAX_LOSS || return countNo(:maxLossAbs)
     isNew || metb.prob > metsPos[1].prob * .95 || return countNo(:maxLossAbs)
 
     if texDays < 2.5

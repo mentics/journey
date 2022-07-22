@@ -58,7 +58,7 @@ export priceOption #, priceOptionF
 function priceOption(style::Style.T, strike::Real, toExpYear::Float64, vty::Float64, under::Float64)::Float64
     # TODO: it returns NaN if underlying == strike when toExpY = 0
     # @info "priceOption" styl strik toExpY under vty
-    rfrate = 0.0
+    rfrate = 0.0092
     # div = dividend rate
     # FinancialToolbox had -d in here I think, but I'm not using that
     # d1 = (log(pri / strik) + (rfrate - div + O.σ * O.σ / 2) * O.t) / (O.σ * √O.t)

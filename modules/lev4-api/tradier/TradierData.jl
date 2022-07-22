@@ -6,8 +6,11 @@ using TradierConfig, TradierBase
 
 export tradierQuote, tradierQuotes, tradierOptionChain, tradierHistQuotes, tradierExpirations, tradierCalendar, tradierClock
 
-tradierQuote(sym::AStr=getDefaultSymbol())::TradierResp =
-    tradierGet("/markets/quotes?symbols=$(sym)&greeks=false", Call(nameof(var"#self#")))["quotes"]["quote"]
+function tradierQuote(sym::AStr=getDefaultSymbol())::TradierResp
+    raw = tradierGet("/markets/quotes?symbols=$(sym)&greeks=false", Call(nameof(var"#self#")))
+    haskey(raw["quotes"], "quote") || error(raw)
+    return raw["quotes"]["quote"]
+end
 
 tradierQuotes(syms::String...)::Vector{TradierResp} = tradierQuotes(syms)
 tradierQuotes(syms::Coll{String})::Vector{TradierResp} =
