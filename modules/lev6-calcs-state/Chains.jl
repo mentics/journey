@@ -1,20 +1,23 @@
 module Chains
 using Dates
 using CollUtil, DictUtil, DateUtil, CalcUtil, LogUtil, VectorCalcUtil
-using Globals, BaseTypes, SH, SmallTypes, ChainTypes, QuoteTypes, OptionTypes, OptionMetaTypes, LegTypes
+using Globals, BaseTypes, SH, SmallTypes, ChainTypes, QuoteTypes, OptionTypes, OptionMetaTypes, LegTypes, LegMetaTypes
 using TradierData, Caches
 using DataHelper, Markets, Calendars, Expirations
 
 export chains, getOqs, ivs, calcNearIv
 export quoter, optQuoter, isQuotable
+export Oqss
 
 const Oqss = Styles{Sides{Vector{OptionQuote}}}
+const CHAINS_TYPE = Dict{Date,OptionChain}
 
-function getOqs(exp::Date, legsCheck, curp::Currency)::Oqss
+# exp::Date ; chains()[exp].chain
+function getOqss(oqs, curp::Currency, legsCheck=LegMeta[])::Oqss
     fconl = !isConflict(legsCheck, Side.long)
     fcons = !isConflict(legsCheck, Side.short)
     fcans = canShort(Globals.get(:Strats), curp)
-    oqsValid = filter(isValid(curp), chains()[exp].chain)
+    oqsValid = filter(isValid(curp), oqs)
     oqsLong = filter(fconl, oqsValid)
     oqsCallLong = filter(SH.isCall, oqsLong)
     oqsPutLong = filter(isPut, oqsLong)
@@ -22,6 +25,36 @@ function getOqs(exp::Date, legsCheck, curp::Currency)::Oqss
     oqsCallShort = filter(SH.isCall, oqsShort)
     oqsPutShort = filter(isPut, oqsShort)
     return Styles(Sides(oqsCallLong, oqsCallShort), Sides(oqsPutLong, oqsPutShort))
+end
+
+function findOqs(oqs, curp::Currency, dists)
+    res = Vector{OptionQuote}(undef, length(dists))
+    diffs = fill(Inf, length(dists)) # Vector{Currency}(Inf, length(dists))
+    for oq in oqs
+        dist = getStrike(oq) - curp
+        for i in eachindex(diffs)
+            diff = abs(dists[i] - dist)
+            if diff < diffs[i]
+                diffs[i] = diff
+                res[i] = oq
+            end
+        end
+    end
+    return res
+end
+
+using ThreadUtil
+const lock = ReentrantLock()
+const CHAINS_SNAP = Dict{String,CHAINS_TYPE}()
+chainSnap(snapName::String, revert=true) = useKey(CHAINS_SNAP, snapName) do
+    runSync(lock) do
+        back = snap()
+        !isnothing(back) || error("Don't chainsSnap when not snapped")
+        snap(snapName)
+        res = chains()
+        !revert || snap(back)
+        return res
+    end
 end
 
 function chains(; up=false)::CHAINS_TYPE
@@ -43,7 +76,6 @@ ivs(exps=expirs(), chs=chains()) = [(exp, round(calcNearIv(exp, chs); digits=4))
 
 #region Local
 const CHAINS = :chains
-const CHAINS_TYPE = Dict{Date,OptionChain}
 const PERIOD_UPDATE = Second(31)
 
 whenUpdate(from::DateTime, isMktOpen::Bool, nextMktChange::DateTime) = whenMarket(from, isMktOpen, nextMktChange, PERIOD_UPDATE)
@@ -90,7 +122,7 @@ function loadChains(expirations::AVec{Date}, cp::Currency)::CHAINS_TYPE
             else
                 # TODO: log it
                 println("Exception loading chain $(exp) in $(expirations)")
-                println(e)
+                showerror(stdout, e, catch_backtrace())
             end
         end
     end

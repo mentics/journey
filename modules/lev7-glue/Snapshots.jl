@@ -10,6 +10,8 @@ export snave, snop
 Globals.snap(num::Int) = snap(findByIndex(num))
 Globals.snap(num1::Int, num2::Int, num::Int...) = snap(findByParts(num1, num2, num...))
 Globals.snap(nam::AbstractString) = useSnap(nam)
+Globals.snap(date::Date, i::Int) = snap(SnapUtil.snapName(date, i))
+Globals.snap(dt::DateTime) = snap(SnapUtil.snapName(dt))
 snop() = stopSnap()
 snave() = saveSnap()
 

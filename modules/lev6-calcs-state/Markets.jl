@@ -25,6 +25,20 @@ function urp(b::Bool)::Nothing
 end
 urp() = Globals.get(USE_CURP)
 
+using ThreadUtil
+const lock = ReentrantLock()
+const MARKETS_SNAP = Dict{String,Market}()
+marketSnap(snapName::String, revert=true) = useKey(MARKETS_SNAP, snapName) do
+    runSync(lock) do
+        back = snap()
+        !isnothing(back) || error("Don't chainsSnap when not snapped")
+        snap(snapName)
+        res = market()
+        !revert || snap(back)
+        return res
+    end
+end
+
 function market(; up=false)::Market
     cache!(MARKET_TYPE, MARKET, tooOld(PERIOD_UPDATE, isMarketOpen()); up) do
         up || @log error "Market not up to date"

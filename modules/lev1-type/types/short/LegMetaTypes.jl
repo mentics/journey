@@ -1,5 +1,5 @@
 module LegMetaTypes
-using SH, BaseTypes, SmallTypes, QuoteTypes, LegTypes, OptionMetaTypes
+using SH, BaseTypes, SmallTypes, QuoteTypes, LegTypes, OptionMetaTypes, ChainTypes
 
 export LegMeta
 
@@ -21,6 +21,7 @@ struct LegMeta
         new(leg, newQuote, meta)
     end
 end
+LegMeta(oq::OptionQuote, qty::Float64, side::Side.T) = LegMeta(Leg(getOption(oq), qty, side), getQuote(oq, side), getMeta(oq))
 LegMeta(;leg=Leg(), quot=Quote(), meta=OptionMeta()) = LegMeta(leg, quot, meta)
 SH.getLeg(lm::LegMeta) = lm.leg
 SH.getQuote(lm::LegMeta) = lm.quot

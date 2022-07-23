@@ -157,10 +157,10 @@ function findBestAll(ctx)::NamedTuple
     met1s = Vector{NamedTuple}()
     lmsRun = copy(ctx.lmsPos)
 
-    oqs = getOqs(ctx.exp, ctx.lmsPos, ctx.curp)
+    oqss = getOqss(ctx.exp, ctx.curp, ctx.lmsPos)
     scoreTo = ctx.scorePos
     while true
-        scoreTo, res = findBest(ctx, oqs)
+        scoreTo, res = findBest(ctx, oqss)
         if !isnothing(res)
             (lms, retRun, metRun, ret1, met1) = res
             # if met.evr < evr

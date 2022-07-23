@@ -31,7 +31,7 @@ end
 # TODO: clean this up
 using Globals, SnapUtil
 function newVal()::OffsetArray{Date}
-    exps = isnothing(snap()) ? tradierExpirations() : SnapUtil.snapExpirs()
+    exps = isnothing(snap()) ? tradierExpirations() : SnapUtil.snapExpirs(snap())
     # num = isnothing(snap()) ? 20 : SnapUtil.countSnapExpirs()
     # println("num expirs: ", num)
     exps[1] == market().startDay || insert!(exps, 1, exps[1])
