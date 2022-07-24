@@ -5,7 +5,9 @@ using SH, Bins
 export draw, draw!, newFig, ticksCentered, updateLegend, closeWin
 export drawDots, drawDots!
 
-closeWin() = GLMakie.destroy!(GLMakie.global_gl_screen())
+closeWin() = GLMakie.closeall()
+# GLMakie.destroy!(GLMakie.current_figure().scene.current_screens[1])
+# GLMakie.destroy!(GLMakie.global_gl_screen())
 
 function newFig(f, (xticks, yticks), showLegend=true, newWin=false)
     fig = Figure(resolution = (1200, 1000))
@@ -26,10 +28,13 @@ function newFig(f, (xticks, yticks), showLegend=true, newWin=false)
     end
     # TODO: can try more screens: display(GLMakie.Screen(), figure_or_scene).
     # from https://makie.juliaplots.org/v0.17.8/documentation/backends/glmakie/index.html
-    GLFW.SetWindowPos(GLMakie.gl_screens[1], 140, 80)
+    # and https://discourse.julialang.org/t/multiple-makie-display-windows/26295/22
+    glscr = GLMakie.GLFW_WINDOWS[1]
+    # resize!(glscr, )
+    GLFW.SetWindowPos(glscr, 140, 80)
     # Sometimes it wasn't popping up on top, so this is to force it to do so
-    GLFW.SetWindowAttrib(GLMakie.gl_screens[1], GLFW.FLOATING, 1)
-    GLFW.SetWindowAttrib(GLMakie.gl_screens[1], GLFW.FLOATING, 0)
+    GLFW.SetWindowAttrib(glscr, GLFW.FLOATING, 1)
+    GLFW.SetWindowAttrib(glscr, GLFW.FLOATING, 0)
     return ax
 end
 

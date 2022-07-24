@@ -27,9 +27,9 @@ function drawRet(r::Ret; probs=nothing, curp=nothing, label="", newWin=false)
                 drawProb(ax, prob, i, 1.0)#(yMax - yMin)/2)
             end
         end
-        hlines!(ax, 0.0).inspectable[] = false
-        vlines!(ax, sp; label="sp").inspectable[] = false
-        isnothing(curp) || (vlines!(ax, curp; label="cp").inspectable[] = false)
+        hlines!(ax, 0.0; inspectable=false)
+        vlines!(ax, sp; label="sp", inspectable=false)
+        isnothing(curp) || (vlines!(ax, curp; label="cp", inspectable=false))
         lines!(ax, xs, vals; label)
         # foreach(enumerate(probs)) do (i, prob); drawProb(ax, prob, i, (yMax - yMin)/10.0) end
     end

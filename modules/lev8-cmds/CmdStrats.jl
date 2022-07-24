@@ -36,7 +36,7 @@ ana(exps::Date...; kws...) = an(exps...; kws..., maxRun=0)
 an(exs::Int...; kws...) = an(getindex.(Ref(expirs()), exs)...; kws...)
 function an(exps::Date...; maxRun::Int=120, keep::Int=100, nthreads::Int=Threads.nthreads(),
             noPos::Bool=false, lmsAdd::Union{Nothing,Vector{LegMeta}}=nothing, lmsPos::Union{Nothing,Vector{LegMeta}}=nothing,
-            getProbs=makeProbs, scorer=nothing, headless=false,
+            getProbs=nothing, scorer=nothing, headless=false,
             sprFilt=nothing, filt=nothing)::Int
     Globals.set(:anRunLast, now(UTC))
     @assert issorted(exps)
@@ -49,7 +49,7 @@ function an(exps::Date...; maxRun::Int=120, keep::Int=100, nthreads::Int=Threads
     global lastPosRet[] = (noPos || isempty(lastPosStrat[])) ? nothing : combineTo(Ret, lastPosStrat[])
 
     tex = calcTex(market().tsMarket, targetDate)
-    probs = getProbs(tex, targetDate; curp)
+    probs = CmdUtil.makeProbs(tex, targetDate; curp)
     legs = vcat(getLeg.(positions()), getLeg.(lastPosStrat[]), getLeg.(queryLegOrders(today())))
     allSpreads2 = allSpreads(chains(), isConflict(legs), (sp, curp), exps)
     !isnothing(sprFilt) && (allSpreads2 = map(v->filter(sprFilt, v), allSpreads2))
