@@ -16,6 +16,7 @@ tradierQuotes(syms::String...)::Vector{TradierResp} = tradierQuotes(syms)
 tradierQuotes(syms::Coll{String})::Vector{TradierResp} =
     tradierGet("/markets/quotes?symbols=$(join(syms, ','))&greeks=false", Call(nameof(var"#self#")))["quotes"]["quote"]
 
+import Globals
 tradierOptionChain(exp::Date, sym::String=getDefaultSymbol())::TradierRespVec = begin
         raw = tradierGet("/markets/options/chains?symbol=$(sym)&expiration=$(Dates.format(exp, TRADIER_DATE_FORMAT))&greeks=true", Call(nameof(var"#self#"), exp))
         if isnothing(raw)
@@ -23,7 +24,7 @@ tradierOptionChain(exp::Date, sym::String=getDefaultSymbol())::TradierRespVec = 
             error("stop")
         end
         if isnothing(raw["options"])
-            println("nothing2: ", exp)
+            println("Could not load open chain with snap $(Globals.snap()) for exp: ", exp)
             error("stop")
         end
         # if !haskey(raw, "options")

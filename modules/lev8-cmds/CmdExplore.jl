@@ -88,24 +88,32 @@ const lock = ReentrantLock()
 const stop = Ref(false)
 abort() = stop[] = true
 
-# spairs = sort(ps; rev=true, by=pair -> ( typeof(pair.second) == String || !haskey(pair.second, :evr) ? (println(dump(pair)) ; -100.0) : pair.second.evr ));
-
 function searchDates()
     global PairSearch = Dict()
     global stop[] = false
 
     exps = reverse!(filter(x -> x < today(), SnapUtil.snapExpirs()))
-    twith(ThreadPools.StaticPool(2, 1)) do pool
-        for exp in exps[1:1]
+    twith(ThreadPools.StaticPool(2, 20)) do pool
+        for exp in exps[1:20]
             dates = reverse!(filter(x -> x < exp, SnapUtil.snapDates()))
-            @tthreads pool for backNear in 2:6
-                println("Running $(backNear) on thread $(Threads.threadid())")
-                for backFar in (backNear+1):12
-                    searchPairCondors(exp, dates[backNear], dates[backFar])
+            for backNear in 2:10
+                try
+                    @tthreads pool for backFar in (backNear+1):20
+                        println("Running $(exp) $(backNear) $(backFar) on thread $(Threads.threadid())")
+                        searchPairCondors(exp, dates[backNear], dates[backFar])
+                    end
+                catch e
+                    abort()
+                    rethrow(e)
                 end
             end
         end
     end
+
+    global spairs = collect(PairSearch)
+    # sort!(spairs; rev=true, by=pair -> ( typeof(pair.second) == String || !haskey(pair.second, :prob) ? (println(dump(pair)) ; -100.0) : pair.second.prob ));
+    sort!(spairs; rev=true, by=pair -> pair.second.evr * pair.second.prob);
+    return spairs
 end
 
 function searchPairCondors(exp, dateNear, dateFar)
@@ -113,77 +121,112 @@ function searchPairCondors(exp, dateNear, dateFar)
     snNear = SnapUtil.snapName(dateNear, 2)
     snFar = SnapUtil.snapName(dateFar, 2)
 
-    evrMax = -Inf
-    configMax = nothing
-    cnt = 1
-    for midShort in 8:18
-        for midLong in 4:(midShort-4)
-            for wShort in 1:4
+    # evrMax = -Inf
+    # configMax = nothing
+    # cnt = 1
+    for midShort in 6:24
+        for midLong in 2:(midShort-2)
+            for wShort in 1:12
                 # w2 = w1
                 for wLong in 1:min(4, midShort-midLong-1)
                     !stop[] || error("stop")
-                    args = (exp, snNear, snFar, midLong, wLong, midShort, wShort)
-                    met = pairCondor(args...)
-                    runSync(lock) do
-                        PairSearch[args] = met
+                    args = (exp, snNear, snFar, midShort, wShort, midLong, wLong)
+                    met, lms = pairCondor(args...)
+                    if met.evr > 0.0 && met.prob > 0.7
+                        runSync(lock) do
+                            PairSearch[args] = met
+                        end
                     end
-                    if met.evr > evrMax
-                        evrMax = met.evr
-                        configMax = args
-                        # @info "Found" mxMax evrMax configMax
-                    end
-                    cnt % 1000 != 0 || println(cnt)
-                    cnt += 1
+                    # if met.evr > evrMax
+                    #     evrMax = met.evr
+                    #     configMax = args
+                    #     # @info "Found" mxMax evrMax configMax
+                    # end
+                    # cnt % 1000 != 0 || println(cnt)
+                    # cnt += 1
                 end
             end
         end
     end
-    return (evrMax, configMax)
+    # return (evrMax, configMax)
 end
 
-function pairCondor(exp::Date, sn1::String, sn2::String, mid1::Int, w1::Int, mid2::Int, w2::Int, show=false)
-    curp1 = Markets.marketSnap(sn1).curp
-    oqss1 = Chains.getOqss(Chains.chainSnap(sn1, false)[exp].chain, curp1)
-    oqss2 = Chains.getOqss(Chains.chainSnap(sn2, false)[exp].chain, curp1)
-    lms1 = CmdUtil.findCondor(oqss1, curp1, Side.long, mid1, w1)
-    lms2 = CmdUtil.findCondor(oqss2, curp1, Side.short, mid2, w2)
-    lms = vcat(lms1, lms2)
+function pairCondor(exp::Date, snNear::String, snFar::String, midFar::Int, wFar::Int, midNear::Int, wNear::Int, show=false)
+    curpNear = Markets.marketSnap(snNear).curp
+    curpFar = Markets.marketSnap(snFar).curp
+    oqssNear = Chains.getOqss(Chains.chainSnap(snNear, false)[exp].chain, curpNear; noLimit=true)
+    oqssFar = Chains.getOqss(Chains.chainSnap(snFar, false)[exp].chain, curpFar; noLimit=true)
+    lmsNear = CmdUtil.findCondor(oqssNear, curpFar, Side.long, midNear, wNear)
+    lmsFar = CmdUtil.findCondor(oqssFar, curpFar, Side.short, midFar, wFar)
+    lms = vcat(lmsFar, lmsNear)
     if show
-        drlms(lms1; label="d1");
-        drlms!(lms2; label="d2");
+        drlms(lmsFar; label="far");
+        drlms!(lmsNear; label="near");
         drlms!(lms; label="both");
     end
-    curp2 = Markets.marketSnap(sn2).curp
-    return calcMetrics(curp2, lms)
-    # return lms
+    met = calcMetrics(snNear, exp, curpNear, lms)
+    # global oqssNear1 = oqssNear
+    # global oqssFar1 = oqssFar
+    # @info "pairCondor" curpNear curpFar midFar wFar midNear wNear
+    return met, lms
 end
 
 function checkPair(pair)
-    (exp, snNear, snFar, midLong, wLong, midShort, wShort) = pair[1]
-    # (exp, snNear, snFar, mid1, mid2, w1, w2) = pair[1]
-    met = pair[2]
-    snap(snNear)
-    curp1 = market().curp
-    oqss1 = Chains.getOqss(chains()[exp].chain, curp1)
-    lms1 = CmdUtil.findCondor(oqss1, curp1, Side.long, midLong, wLong)
+    (exp, snNear, snFar, midFar, wFar, midNear, wNear) = pair[1]
+    # met = pair[2]
+
     snap(snFar)
-    curp2 = market().curp
-    oqss2 = Chains.getOqss(chains()[exp].chain, curp1)
-    lms2 = CmdUtil.findCondor(oqss2, curp1, Side.short, midShort, wShort)
-    snap(exp, 2)
-    drlms(lms1; label="d1");
-    drlms!(lms2; label="d2");
-    drlms!(vcat(lms1, lms2); label="both");
-    println(met)
-    return (lms1, lms2)
+    curpFar = market().curp
+    oqssFar = Chains.getOqss(chains()[exp].chain, curpFar; noLimit=true)
+    lmsFar = CmdUtil.findCondor(oqssFar, curpFar, Side.short, midFar, wFar)
+
+    snap(snNear)
+    curpNear = market().curp
+    oqssNear = Chains.getOqss(chains()[exp].chain, curpNear; noLimit=true)
+    lmsNear = CmdUtil.findCondor(oqssNear, curpFar, Side.long, midNear, wNear)
+
+    # snap(exp, 2)
+    lms = vcat(lmsFar, lmsNear)
+    drlms(lmsFar; label="far");
+    drlms!(lmsNear; label="near");
+    drlms!(lms; label="both");
+    met = calcMetrics(snNear, exp, curpNear, lms)
+    # @info "checkPair" curpNear curpFar midFar wFar midNear wNear
+    # global oqssNear2 = oqssNear
+    # global oqssFar2 = oqssFar
+    return (met, lms)
 end
 
 using CalcUtil, Bins
-function CalcUtil.calcMetrics(curp::Currency, lms; bins=Bins.inds())
-    targetDate = minimum(getExpiration, lms)
-    prob = probsFor(targetDate; curp)[1]
-    ret = combineTo(Ret, lms, targetDate, curp)
+function CalcUtil.calcMetrics(snapName::String, exp::Date, curp::Currency, lms; bins=Bins.inds())
+    # targetDate = minimum(getExpiration, lms)
+    prob = probsFor(snapName, exp, curp)[1]
+    ret = combineTo(Ret, lms, exp, curp)
     return calcMetrics(prob, ret, bins)
+end
+
+import Snapshots
+using DictUtil
+function report()
+    global rep = Dict()
+    for pair in spairs[1:100]
+        (exp, snNear, snFar, midFar, wFar, midNear, wNear) = pair[1]
+        tsNear = Snapshots.snapToTs(snNear)
+        tsFar = Snapshots.snapToTs(snFar)
+        daysFar = bdays(Date(tsFar), exp)
+        daysNear = bdays(Date(tsNear), exp)
+        incDictKey(rep, :daysFar, daysFar)
+        incDictKey(rep, :daysNear, daysNear)
+        incDictKey(rep, :midFar, midFar)
+        incDictKey(rep, :wFar, wFar)
+        incDictKey(rep, :midNear, midNear)
+        incDictKey(rep, :wNear, wNear)
+    end
+    for k in keys(rep)
+        v = sort!(collect(rep[k]); rev=true, by=x -> x.second)
+        println("$(k) => $(v)")
+    end
+    return rep
 end
 
 end

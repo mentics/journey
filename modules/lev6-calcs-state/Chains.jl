@@ -12,11 +12,13 @@ export Oqss
 const Oqss = Styles{Sides{Vector{OptionQuote}}}
 const CHAINS_TYPE = Dict{Date,OptionChain}
 
+ftrue(_) = true
+
 # exp::Date ; chains()[exp].chain
-function getOqss(oqs, curp::Currency, legsCheck=LegMeta[])::Oqss
+function getOqss(oqs, curp::Currency, legsCheck=LegMeta[]; noLimit=false)::Oqss
     fconl = !isConflict(legsCheck, Side.long)
     fcons = !isConflict(legsCheck, Side.short)
-    fcans = canShort(Globals.get(:Strats), curp)
+    fcans = noLimit ? ftrue : canShort(Globals.get(:Strats), curp)
     oqsValid = filter(isValid(curp), oqs)
     oqsLong = filter(fconl, oqsValid)
     oqsCallLong = filter(SH.isCall, oqsLong)
@@ -46,7 +48,7 @@ end
 using ThreadUtil
 const lock = ReentrantLock()
 const CHAINS_SNAP = Dict{String,CHAINS_TYPE}()
-chainSnap(snapName::String, revert=true) = useKey(CHAINS_SNAP, snapName) do
+chainSnap(snapName::String, revert=true)::CHAINS_TYPE = useKey(CHAINS_SNAP, snapName) do
     runSync(lock) do
         back = snap()
         !isnothing(back) || error("Don't chainsSnap when not snapped")
@@ -117,13 +119,14 @@ function loadChains(expirations::AVec{Date}, cp::Currency)::CHAINS_TYPE
             tradChain = tradierOptionChain(exp)
             chains[exp] = procChain(exp, cp, tradChain)
         catch e
-            if isnothing(snap())
-                rethrow(e)
-            else
-                # TODO: log it
-                println("Exception loading chain $(exp) in $(expirations)")
-                showerror(stdout, e, catch_backtrace())
-            end
+            rethrow(e)
+            # if isnothing(snap())
+            #     rethrow(e)
+            # else
+            #     # TODO: log it
+            #     println("Exception loading chain $(exp) in $(expirations)")
+            #     showerror(stdout, e, catch_backtrace())
+            # end
         end
     end
     return chains

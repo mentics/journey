@@ -25,6 +25,8 @@ export nextLocalTime, nextMarketPeriod
 # export isAfterLocal
 export isweekend # reexport from BusinessDays
 
+const LOCALZONE = localzone()
+
 #region Basic
 const SECOND_ZERO = Second(0)
 const SECOND_DAY = Second(Day(1))
@@ -43,24 +45,24 @@ timeIn(timeFrom::Time, mn::Time)::Second = SECOND_DAY - round(max(mn, timeFrom).
 fromMarketTZ(d::Date, t::Time)::DateTime = DateTime(ZonedDateTime(DateTime(d, t), DateUtil.MARKET_TZ), UTC)
 # toDateMarket(dt::DateTime)::Date = Date(astimezone(ZonedDateTime(dt, tz"UTC"), MARKET_TZ))
 toDateMarket(ts::DateTime)::Date = Date(ZonedDateTime(ts, MARKET_TZ; from_utc=true))
-# toDateLocal(ts::DateTime)::Date = Date(ZonedDateTime(ts, localzone(); from_utc=true))
+# toDateLocal(ts::DateTime)::Date = Date(ZonedDateTime(ts, LOCALZONE; from_utc=true))
 toTimeMarket(ts::DateTime)::Time = Time(ZonedDateTime(ts, MARKET_TZ; from_utc=true))
 #endregion
 
 #region Parsing
-fromLocal(str::AbstractString, df::DateFormat) = DateTime(ZonedDateTime(DateTime(str, df), localzone()), UTC)
-formatLocal(dt::DateTime, format::DateFormat)::String = Dates.format(astimezone(ZonedDateTime(dt, tz"UTC"), localzone()), format)
+fromLocal(str::AbstractString, df::DateFormat) = DateTime(ZonedDateTime(DateTime(str, df), LOCALZONE), UTC)
+formatLocal(dt::DateTime, format::DateFormat)::String = Dates.format(astimezone(ZonedDateTime(dt, tz"UTC"), LOCALZONE), format)
 #endregion
 
 #region Formatting
 strShort(d::Date)::String = Dates.format(d, DF_SHORT)
 strShort(d1::Date, d2::Date)::String = strShort(d1) * '/' * strShort(d2) # "$(Dates.format(d1, DATEFORMAT_SHORT))/$(Dates.format(d2, DATEFORMAT_SHORT))"
-strShort(ts::DateTime)::String = Dates.format(ZonedDateTime(ts, localzone(); from_utc=true), DTF_SHORT)
+strShort(ts::DateTime)::String = Dates.format(ZonedDateTime(ts, LOCALZONE; from_utc=true), DTF_SHORT)
 #endregion
 
 #region Finding
-# isAfterLocal(tim::Time) = now(localzone()) > todayat(tim, localzone()) # ZonedDateTime(DateTime(today(), Time(14, 0)), localzone(); from_utc=false)
-nextLocalTime(from::DateTime, tim::Time) = ( dt = DateTime(todayat(tim, localzone()), UTC) ; return from < dt ? dt : dt + Day(1) )
+# isAfterLocal(tim::Time) = now(LOCALZONE) > todayat(tim, LOCALZONE) # ZonedDateTime(DateTime(today(), Time(14, 0)), LOCALZONE; from_utc=false)
+nextLocalTime(from::DateTime, tim::Time) = ( dt = DateTime(todayat(tim, LOCALZONE), UTC) ; return from < dt ? dt : dt + Day(1) )
 function nextMarketPeriod(from::DateTime, isMktOpen::Bool, tsMktChange::DateTime, period::Period, before::Period, after::Period)
     @assert Dates.value(after) > 0
     @assert from <= tsMktChange
@@ -92,7 +94,7 @@ const MARKET_TZ = tz"America/New_York"
 
 # function numDays() end
 
-toDate(z::ZonedDateTime)::Date = Date(astimezone(z, localzone()))
+toDate(z::ZonedDateTime)::Date = Date(astimezone(z, LOCALZONE))
 
 isBusDay(d::Date) = isbday(:USNYSE, d)
 
@@ -105,9 +107,9 @@ bdaysBefore(d::Date, n::Int)::Date = advancebdays(:USNYSE, lastTradingDay(d), -n
 # NOTE: crossing daylight savings time changes will make this off by an hour, but we don't do much in the middle of the night on a weekend.
 # const ZEROT = Time(0,0,0)
 # const OFFSET_MC = ZonedDateTime(today(), tz"Z") - ZonedDateTime(DateTime(dt, Time(16,0,0)), MARKET_TZ)
-# const CLOSE_OFFSET_MS = (ZonedDateTime(DateTime(today(), Time(16,0,0)), MARKET_TZ) - ZonedDateTime(today(), localzone())).value
-# const OPEN_OFFSET_MS = (ZonedDateTime(DateTime(today(), Time(9,30,0)), MARKET_TZ) - ZonedDateTime(today(), localzone())).value
-# const LOCAL_OFFSET_MS = -1000 * Dates.value(ZonedDateTime(today(), localzone()).zone.offset)
+# const CLOSE_OFFSET_MS = (ZonedDateTime(DateTime(today(), Time(16,0,0)), MARKET_TZ) - ZonedDateTime(today(), LOCALZONE)).value
+# const OPEN_OFFSET_MS = (ZonedDateTime(DateTime(today(), Time(9,30,0)), MARKET_TZ) - ZonedDateTime(today(), LOCALZONE)).value
+# const LOCAL_OFFSET_MS = -1000 * Dates.value(ZonedDateTime(today(), LOCALZONE).zone.offset)
 # msMarketClose(dt::Date)::Int = 1000 * datetime2unix(DateTime(dt)) + CLOSE_OFFSET_MS + LOCAL_OFFSET_MS
 # marketClose(dt::Date)::ZonedDateTime = ZonedDateTime(DateTime(dt, Time(16,0,0)), MARKET_TZ)
 # msMarketOpen(dt::Date)::Int = 1000 * datetime2unix(DateTime(dt)) + OPEN_OFFSET_MS + LOCAL_OFFSET_MS
@@ -118,12 +120,12 @@ bdaysBefore(d::Date, n::Int)::Date = advancebdays(:USNYSE, lastTradingDay(d), -n
 
 # monthOfQuarter(d::Date) =  month(d) - (quarterofyear(d)-1)*3
 
-# tims(ms::Int)::ZonedDateTime = astimezone(ZonedDateTime(Dates.unix2datetime(ms/1000.0), tz"UTC"), localzone())
-# tims(ms::Int)::ZonedDateTime = astimezone(TimeZones.unix2zdt(ms/1000), localzone())
+# tims(ms::Int)::ZonedDateTime = astimezone(ZonedDateTime(Dates.unix2datetime(ms/1000.0), tz"UTC"), LOCALZONE)
+# tims(ms::Int)::ZonedDateTime = astimezone(TimeZones.unix2zdt(ms/1000), LOCALZONE)
 toms(zdt::ZonedDateTime)::Int = Int(TimeZones.zdt2unix(zdt)*1000)
 toms(dt::DateTime)::Int = Int(datetime2unix(dt)*1000)
 msToDate(ms::Int)::Date = Date(tims(ms))
-dateToMs(d::Date)::Int = toms(ZonedDateTime(d, localzone()))
+dateToMs(d::Date)::Int = toms(ZonedDateTime(d, LOCALZONE))
 
 # timeToExpir(dt::DateTime, expTo::Date)::Float64 = (msMarketClose(expTo) - Int(datetime2unix(dt)*1000)) / (365*24*60*60*1000)
 # timeToExpir(msFrom::Int, expTo::Date)::Float64 = (msMarketClose(expTo) - msFrom) / (365*24*60*60*1000)
@@ -136,6 +138,6 @@ timeToExpir(from::DateTime, to::DateTime)::Float64 = Millisecond(to - from).valu
 # timeToExpir(expFrom::Date, expTo::Date)::Float64 = bdays(expFrom, expTo) / 365.0
 
 nowMs() = round(Int, time()*1000)
-nowz() = now(localzone())
+nowz() = now(LOCALZONE)
 
 end

@@ -64,4 +64,17 @@ function jsonPretty(o)
     return String(take!(buf))
 end
 
+export incKey
+function incKey(d::Dict, k)
+    curval = useKey(d, k, 0)
+    d[k] = curval + 1
+end
+
+export incDictKey
+function incDictKey(d::Dict, k1, k2)
+    d2 = useKey(Dict, d, k1)
+    curval = useKey(d2, k2, 0)
+    d2[k2] = curval + 1
+end
+
 end

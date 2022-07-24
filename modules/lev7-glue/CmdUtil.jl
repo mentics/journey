@@ -48,6 +48,21 @@ using Markets, Calendars, ProbHist
 probFor(i::Int; kws...) = probsFor(i; kws...)[1]
 probsFor(i::Int; kws...) = probsFor(expir(i); kws...)
 probsFor(exp::Date; kws...) = makeProbs(calcTex(market().tsMarket, exp), exp; kws...)
+
+using DictUtil
+import Snapshots
+const PROBS_SNAP2 = Dict{Tuple{String, Date, Currency},Tuple{Prob,Prob}}()
+probsFor(snapName::String, to::Date, curp::Real) = useKey(PROBS_SNAP2, (snapName, to, curp)) do
+    chains = Chains.chainSnap(snapName)
+    tex = calcTex(Snapshots.snapToTs(snapName), to)
+    ivsd = ivTexToStdDev(calcNearIv(to, chains), tex)
+    pnd = probsNormDist(curp, ivsd)
+    # TODO: this numdays proxy calc is wrong. Completely change how we calc probHist, do it based on tex
+    phOrig = probHist(curp, round(Int, tex / TexPerDay))
+    ph = Prob(getCenter(phOrig), smooth(getVals(phOrig)))
+    return (ph, pnd)
+end
+
 function makeProbs(tex::Float64, targetDate::Date; curp::Currency=market().curp)::Tuple
     ivsd = ivTexToStdDev(calcNearIv(targetDate), tex)
     # shift = ivsd/2
