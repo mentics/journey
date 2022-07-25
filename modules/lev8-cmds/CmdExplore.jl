@@ -154,8 +154,20 @@ end
 function pairCondor(exp::Date, snNear::String, snFar::String, midFar::Int, wFar::Int, midNear::Int, wNear::Int, show=false)
     curpNear = Markets.marketSnap(snNear).curp
     curpFar = Markets.marketSnap(snFar).curp
-    oqssNear = Chains.getOqss(Chains.chainSnap(snNear, false)[exp].chain, curpNear; noLimit=true)
-    oqssFar = Chains.getOqss(Chains.chainSnap(snFar, false)[exp].chain, curpFar; noLimit=true)
+    oqssNear = nothing
+    oqssFar = nothing
+    try
+        oqssNear = Chains.getOqss(Chains.chainSnap(snNear, false)[exp].chain, curpNear; noLimit=true)
+    catch e
+        @error "Chain not found near" exp snNear
+        rethrow(e)
+    end
+    try
+        oqssFar = Chains.getOqss(Chains.chainSnap(snFar, false)[exp].chain, curpFar; noLimit=true)
+    catch e
+        @error "Chain not found far" exp snFar
+        rethrow(e)
+    end
     lmsNear = CmdUtil.findCondor(oqssNear, curpFar, Side.long, midNear, wNear)
     lmsFar = CmdUtil.findCondor(oqssFar, curpFar, Side.short, midFar, wFar)
     lms = vcat(lmsFar, lmsNear)
