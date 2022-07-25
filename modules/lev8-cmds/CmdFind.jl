@@ -250,10 +250,6 @@ function lyze(ctx, lms::Vector{LegMeta}, res)::Tuple
     return s > res[1] ? (s, (lms, ret, met, ret1, met1)) : res
 end
 
-SH.isLong(v) = getSide(v) == Side.long
-SH.isShort(v) = getSide(v) == Side.short
-SH.isCall(v) = getStyle(v) == Style.call
-SH.isPut(v) = getStyle(v) == Style.put
 function countType(lms::Vector)
     res = [0, 0, 0, 0]
     for lm in lms

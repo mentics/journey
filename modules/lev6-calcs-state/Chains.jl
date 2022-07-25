@@ -15,17 +15,27 @@ const CHAINS_TYPE = Dict{Date,OptionChain}
 ftrue(_) = true
 
 # exp::Date ; chains()[exp].chain
-function getOqss(oqs::Vector{OptionQuote}, curp::Currency, legsCheck=LegMeta[]; noLimit=false)::Oqss
+function getOqss(oqs::Vector{OptionQuote}, curp::Currency, legsCheck=LegMeta[])::Oqss
     fconl = !isConflict(legsCheck, Side.long)
     fcons = !isConflict(legsCheck, Side.short)
-    fcans = noLimit ? ftrue : canShort(Globals.get(:Strats), curp)
-    oqsValid = filter(isValid(curp), oqs)
-    oqsLong = filter(fconl, oqsValid)
-    oqsCallLong = filter(SH.isCall, oqsLong)
-    oqsPutLong = filter(isPut, oqsLong)
-    oqsShort = filter(x -> fcons(x) && fcans(x), oqsValid)
-    oqsCallShort = filter(SH.isCall, oqsShort)
-    oqsPutShort = filter(isPut, oqsShort)
+    fcans = canShort(Globals.get(:Strats), curp)
+    oqs = Iterators.filter(oqs) do oq
+        (isShort(oq) || fconl(oq)) &&
+        (isLong(oq) || fcons(oq)) &&
+        (isShort(oq) && fcans(oq))
+    end
+    return getOqss(oqs)
+end
+function getOqss(oqs)::Oqss
+    oqsValid = Iterators.filter(isValid, oqs)
+
+    oqsLong = oqsValid # Iterators.filter(isLong, oqsValid)
+    oqsShort = oqsValid # Iterators.filter(isShort, oqsValid)
+
+    oqsCallLong = collect(Iterators.filter(isCall, oqsLong))
+    oqsPutLong = collect(Iterators.filter(isPut, oqsLong))
+    oqsCallShort = collect(Iterators.filter(isCall, oqsShort))
+    oqsPutShort = collect(Iterators.filter(isPut, oqsShort))
     return Styles(Sides(oqsCallLong, oqsCallShort), Sides(oqsPutLong, oqsPutShort))
 end
 
@@ -45,6 +55,16 @@ function findOqs(oqs, curp::Currency, dists; maxDiff=1.0)
     isnothing(findfirst(x -> x > maxDiff, diffs)) || return nothing
     return res
 end
+
+const OQSS_SNAP2 = Dict{String,Oqss}()
+oqssSnap(snapName::String, exp::Date)::Oqss = (key = string(snapName, '-', exp) ; useKey(OQSS_SNAP2, key) do
+    runSync(lock) do
+        chains = chainSnap(snapName, false)
+        res = getOqss(chains[exp].chain)
+        println("Cached oqss for ", key)
+        return res
+    end
+end)
 
 using ThreadUtil
 const lock = ReentrantLock()

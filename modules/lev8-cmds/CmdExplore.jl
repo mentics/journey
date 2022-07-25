@@ -114,26 +114,24 @@ function searchDates()
     end
     println("length backs ", length(backs))
     # backs = [(2, 15)]
-    # backs = backs[1:10]
+    # backs = backs[1:4]
 
     exps = reverse!(filter(x -> x < today(), SnapUtil.snapExpirs()))
     twith(ThreadPools.QueuePool(2, 10)) do pool
-        for exp in exps[1:1]
+        for exp in exps
             @tthreads pool for (backNear, backFar) in backs
-            # for backNear in 2 # 1:10
+            # for (backNear, backFar) in backs
                 try
-                    # for backFar in 15 # (backNear+1):20
-                        near = bdaysBefore(exp, backNear)
-                        far = bdaysBefore(exp, backFar)
-                        nearOk = near >= MinDate && near in snaps
-                        farOk = far >= MinDate && far in snaps
-                        if nearOk && farOk
-                            println("Running $(exp) $(backNear) $(backFar) on thread $(Threads.threadid())")
-                            searchPairCondors(exp, near, far)
-                        else
-                            println("Skipping due to missing date $(near):$(nearOk) $(far):$(farOk)")
-                        end
-                    # end
+                    near = bdaysBefore(exp, backNear)
+                    far = bdaysBefore(exp, backFar)
+                    nearOk = near >= MinDate && near in snaps
+                    farOk = far >= MinDate && far in snaps
+                    if nearOk && farOk
+                        println("Running $(exp) $(backNear) $(backFar) on thread $(Threads.threadid())")
+                        searchPairCondors(exp, near, far)
+                    else
+                        println("Skipping due to missing date $(near):$(nearOk) $(far):$(farOk)")
+                    end
                 catch e
                     abort()
                     rethrow(e)
@@ -159,10 +157,10 @@ function searchPairCondors(exp, dateNear, dateFar)
 
     # cnt = 1
     for midShort in 6:22
-        for midLong in max(2, midShort-8):(midShort-2)
-            for wShort in 1:12
-                mid = midShort-midLong-1
-                for wLong in 1:min(4, )
+        for wShort in 1:12
+            maxTotLong = midShort + wShort - 1
+            for midLong in max(1, maxTotLong-4):maxTotLong
+                for wLong in 1:(maxTotLong-midLong)
                     !stop[] || error("stop")
                     args = (exp, snNear, snFar, midShort, wShort, midLong, wLong)
                     res = pairCondor(args...)
@@ -181,6 +179,7 @@ function searchPairCondors(exp, dateNear, dateFar)
             end
         end
     end
+    # println("per run ", cnt)
     # return (evrMax, configMax)
 end
 
@@ -189,8 +188,11 @@ function pairCondor(exp::Date, snNear::String, snFar::String, midFar::Int, wFar:
     curpFar = Markets.marketSnap(snFar).curp
     oqssNear = nothing
     oqssFar = nothing
-    oqssNear = Chains.getOqss(Chains.chainSnap(snNear, false)[exp].chain, curpNear; noLimit=true)
-    oqssFar = Chains.getOqss(Chains.chainSnap(snFar, false)[exp].chain, curpFar; noLimit=true)
+    Chains.oqssSnap(snNear, exp)
+    oqssNear = Chains.oqssSnap(snNear, exp)
+    # Chains.getOqss(Chains.chainSnap(snNear, false)[exp].chain, curpNear, true)
+    oqssFar = Chains.oqssSnap(snFar, exp)
+    # Chains.getOqss(Chains.chainSnap(snFar, false)[exp].chain, curpFar, true)
     lmsNear = CmdUtil.findCondor(oqssNear, curpFar, Side.long, midNear, wNear)
     !isnothing(lmsNear) || return nothing
     lmsFar = CmdUtil.findCondor(oqssFar, curpFar, Side.short, midFar, wFar)
@@ -229,12 +231,12 @@ end
 function checkArgs(exp, snNear, snFar, midFar, wFar, midNear, wNear; show=false)
     snap(snFar)
     curpFar = market().curp
-    oqssFar = Chains.getOqss(chains()[exp].chain, curpFar; noLimit=true)
+    oqssFar = Chains.getOqss(chains()[exp].chain)
     lmsFar = CmdUtil.findCondor(oqssFar, curpFar, Side.short, midFar, wFar)
 
     snap(snNear)
     curpNear = market().curp
-    oqssNear = Chains.getOqss(chains()[exp].chain, curpNear; noLimit=true)
+    oqssNear = Chains.getOqss(chains()[exp].chain)
     lmsNear = CmdUtil.findCondor(oqssNear, curpFar, Side.long, midNear, wNear)
 
     # snap(exp, 2)
@@ -358,13 +360,13 @@ end
 
 exp4days(days, from=today()) = ( date = bdaysAfter(from, days) ; date in expirs() || println("Not an expir") ; date )
 
-function tradeNear(args)
-    oqssNear = Chains.getOqss(Chains.chainSnap(snNear, false)[exp].chain, curpNear; noLimit=true)
-    oqssFar = Chains.getOqss(Chains.chainSnap(snFar, false)[exp].chain, curpFar; noLimit=true)
-    lmsNear = CmdUtil.findCondor(oqssNear, curpFar, Side.long, midNear, wNear)
-    lmsFar = CmdUtil.findCondor(oqssFar, curpFar, Side.short, midFar, wFar)
+# function tradeNear(args)
+#     oqssNear = Chains.getOqss(Chains.chainSnap(snNear, false)[exp].chain, curpNear, true)
+#     oqssFar = Chains.getOqss(Chains.chainSnap(snFar, false)[exp].chain, curpFar, true)
+#     lmsNear = CmdUtil.findCondor(oqssNear, curpFar, Side.long, midNear, wNear)
+#     lmsFar = CmdUtil.findCondor(oqssFar, curpFar, Side.short, midFar, wFar)
 
-end
+# end
 
 # TODO: single call to recalculate best args
 # TODO: Every other day won't match bdaysAfter, so check performance of +1 or -1 near and far
