@@ -24,13 +24,11 @@ SH.getStrike(oq::OptionQuote) = getStrike(oq.option)
 SH.getBid(oq::OptionQuote) = getBid(oq.quot)
 SH.getAsk(oq::OptionQuote) = getAsk(oq.quot)
 SH.getIv(oq::OptionQuote) = oq.meta.iv
-SH.isCall(oq::OptionQuote) = getStyle(oq.option) == Style.call
-SH.isPut(oq::OptionQuote) = getStyle(oq.option) == Style.put
 
-# SH.isValid(curp::Currency) =
-#     oq ->
-#         getBid(oq) > 0.0 &&
-#         (abs(1.0 - curp / getStrike(oq)) <= .15)
+SH.isValid(curp::Currency) =
+    oq ->
+        getBid(oq) > 0.0 &&
+        (abs(1.0 - curp / getStrike(oq)) <= .15)
 SH.isValid(oq::OptionQuote) = getBid(oq) > 0.0
 
 struct OptionChain

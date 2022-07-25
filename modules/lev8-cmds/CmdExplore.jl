@@ -186,8 +186,6 @@ end
 function pairCondor(exp::Date, snNear::String, snFar::String, midFar::Int, wFar::Int, midNear::Int, wNear::Int; show=false)
     curpNear = Markets.marketSnap(snNear).curp
     curpFar = Markets.marketSnap(snFar).curp
-    oqssNear = nothing
-    oqssFar = nothing
     Chains.oqssSnap(snNear, exp)
     oqssNear = Chains.oqssSnap(snNear, exp)
     # Chains.getOqss(Chains.chainSnap(snNear, false)[exp].chain, curpNear, true)
@@ -286,18 +284,6 @@ function reportOld()
     return repold
 end
 
-function report()
-    global rep = Dict()
-    for pair in spairs
-        (exp, snNear, snFar, midFar, wFar, midNear, wNear) = pair[1]
-        # pair[2].evr > 0.1 || continue
-        daysNear = bdays(Date(Snapshots.snapToTs(snNear)), exp)
-        daysFar = bdays(Date(Snapshots.snapToTs(snFar)), exp)
-        incKey(rep, (daysNear, daysFar, midFar, wFar, midNear, wNear))
-    end
-    return rep
-end
-
 function bestForEachExp()
     exps = reverse!(filter(x -> x < today(), SnapUtil.snapExpirs()))
     for exp in exps[1:20]
@@ -305,24 +291,13 @@ function bestForEachExp()
     end
 end
 
-function checkExps()
-    argss = map(x -> x[1], collect(filter(x -> x[2] >= 12, rep)))
-    exps = reverse!(filter(x -> x < today(), SnapUtil.snapExpirs()))
-    res = Dict()
-    for args in argss
-        for exp in exps[1:20]
-            met, lms = pairCondor(args2args(exp, args)...)
-            if met.evr > 0.0
-                incKey(res, args)
-                # println(find(x -> x[1][1] == exp, spairs))
-            end
-        end
-    end
-    return res
-end
-
 tosn(exp::Date, daysBack::Int) = SnapUtil.snapName(bdaysBefore(exp, daysBack), 2)
-args2args(exp::Date, args::Tuple) = (exp, tosn(exp, args[1]), tosn(exp, args[2]), args[3:end]...)
+function args2args(exp::Date, args::Tuple)
+    sn1 = tosn(exp, args[1])
+    sn2 = tosn(exp, args[2])
+    !isnothing(sn1) && !isnothing(sn2) || return nothing
+    return (exp, sn1, sn2, args[3:end]...)
+end
 
 best(sym::Symbol) = argmax(rep[sym])
 best() = (;daysNear=best(:daysNear), daysFar=best(:daysFar), midFar=best(:midFar), wFar=best(:wFar), midNear=best(:midNear), wNear = best(:wNear))
@@ -359,6 +334,44 @@ function validate(daysNear, daysFar, midFar, wFar, midNear, wNear)
 end
 
 exp4days(days, from=today()) = ( date = bdaysAfter(from, days) ; date in expirs() || println("Not an expir") ; date )
+
+
+function report()
+    track = Dict()
+    for pair in spairs
+        (exp, snNear, snFar, midFar, wFar, midNear, wNear) = pair[1]
+        # pair[2].evr > 0.1 || continue
+        daysNear = bdays(Date(Snapshots.snapToTs(snNear)), exp)
+        daysFar = bdays(Date(Snapshots.snapToTs(snFar)), exp)
+        incKey(track, (daysNear, daysFar, midFar, wFar, midNear, wNear))
+    end
+    global rep = sort!(collect(track); rev=true, by=x -> x[2])
+    return rep
+end
+
+function checkExps()
+    argss = map(x -> x[1], collect(filter(x -> x[2] >= 12, rep)))
+    exps = reverse!(filter(x -> x < today(), SnapUtil.snapExpirs()))
+    res = Dict()
+    missedAags = 0
+    missedConds = 0
+    for args in argss
+        for exp in exps
+            aags = args2args(exp, args)
+            !isnothing(aags) || ( missedAags += 1 ; continue )
+            cond = pairCondor(aags...)
+            !isnothing(cond) || ( missedConds += 1 ; continue )
+            ret, met, lms = cond
+            if met.evr > 0.0
+                incKey(res, args)
+                # println(find(x -> x[1][1] == exp, spairs))
+            end
+        end
+    end
+    @info "Missed" missedAags missedConds
+    return res
+end
+
 
 # function tradeNear(args)
 #     oqssNear = Chains.getOqss(Chains.chainSnap(snNear, false)[exp].chain, curpNear, true)

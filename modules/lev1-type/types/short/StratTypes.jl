@@ -33,10 +33,10 @@ isVert((lr1, lr2)) = getExpiration(lr1) == getExpiration(lr2)
 isSideSame((lr1, lr2)) = getSide(lr1) == getSide(lr2)
 isStyleDiff((lr1, lr2)) = getStyle(lr1) != getStyle(lr2)
 
-SH.isCall(spr::Spread) = getStyle(spr[1]) == Style.call && getStyle(spr[2]) == Style.call
-SH.isPut(spr::Spread) = getStyle(spr[1]) == Style.put && getStyle(spr[1]) == Style.put
-SH.isCall(c::Combi) = isnothing(findfirst(isPut, map(getStyle, c)))
-SH.isPut(c::Combi) = isnothing(findfirst(isCall, map(getStyle, c)))
-SH.isLong(c::Combi) = getSide(c[1]) == Side.long && getSide(c[4]) == Side.long
-SH.isShort(c::Combi) = getSide(c[1]) == Side.short && getSide(c[4]) == Side.short
+SH.getStyle(spr::Spread) = ( s1 = getStyle(spr[1]) ; s2 = getStyle(spr[2])  ; s1 == s2 ? (return s1) : error("Spread styles don't match ", spr) )
+SH.getSide(spr::Combi) = ( s1 = getSide(spr[1]) ; s2 = getSide(spr[4]) ; s1 == s2 ? (return s1) : error("Spread sides don't match ", spr) )
+# SmallTypes.isCall(c::Combi) = isnothing(findfirst(isPut, map(getStyle, c)))
+# SmallTypes.isPut(c::Combi) = isnothing(findfirst(isCall, map(getStyle, c)))
+# SmallTypes.isLong(c::Combi) = getSide(c[1]) == Side.long && getSide(c[4]) == Side.long
+# SmallTypes.isShort(c::Combi) = getSide(c[1]) == Side.short && getSide(c[4]) == Side.short
 end

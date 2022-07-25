@@ -22,7 +22,14 @@ function inTransaction(f)
 end
 
 selectCol(sql::AStr, args...) = [r[1] for r in runSql(sql, args...)]
-select(sql::AStr, args...)::Vector{<:NamedTuple} = rowtable(runSql(sql, args...))
+select(sql::AStr, args...)::Vector{<:NamedTuple} = begin
+    res = runSql(sql, args...)
+    for r in res
+        # println("row: ", r)
+    end
+    # @info "select" res
+    rowtable(res)
+end
 # # selectRow(sql, args) = (res = rowtable(runSql(sql, args)) ; length(res) > 1 ? error("Unexpected rows > 1") : res[1])
 
 useDbTest(;init=false) = (closeDb() ; connectDb(DB_TEST; init))

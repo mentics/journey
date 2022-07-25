@@ -9,7 +9,6 @@ export getIv
 export getOption, getLeg, getMeta, getQuote
 export calcQuote, calcOptQuote
 export getQuantityDir, addQuantity
-export isCall, isPut, isLong, isShort
 
 export getVals, getVals!, valAt, getCenter, draw, draw!
 
@@ -51,11 +50,6 @@ function calcOptQuote() end
 function getQuantityDir() end
 
 function addQuantity() end
-
-isLong(o) = getSide(o) == Side.long
-isShort(o) = getSide(o) == Side.short
-isCall(o) = getStyle(o) == Style.call
-isPut(o) = getStyle(o) == Style.put
 
 # for Order
 export getId, getSymbol, getClass, getOrderType, getStatus, getPrimitDir, getPrillDir, tsCreated, tsFilled, tsClosed

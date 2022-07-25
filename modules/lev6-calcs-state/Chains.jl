@@ -14,17 +14,18 @@ const CHAINS_TYPE = Dict{Date,OptionChain}
 
 ftrue(_) = true
 
-# exp::Date ; chains()[exp].chain
-function getOqss(oqs::Vector{OptionQuote}, curp::Currency, legsCheck=LegMeta[])::Oqss
+function getOqss(oqs::Vector{OptionQuote}, curp::Currency, legsCheck=LegMeta[], noLimit=false)::Oqss
     fconl = !isConflict(legsCheck, Side.long)
     fcons = !isConflict(legsCheck, Side.short)
-    fcans = canShort(Globals.get(:Strats), curp)
-    oqs = Iterators.filter(oqs) do oq
-        (isShort(oq) || fconl(oq)) &&
-        (isLong(oq) || fcons(oq)) &&
-        (isShort(oq) && fcans(oq))
-    end
-    return getOqss(oqs)
+    fcans = noLimit ? ftrue : canShort(Globals.get(:Strats), curp)
+    oqsValid = filter(isValid(curp), oqs)
+    oqsLong = filter(fconl, oqsValid)
+    oqsCallLong = filter(SmallTypes.isCall, oqsLong)
+    oqsPutLong = filter(SmallTypes.isPut, oqsLong)
+    oqsShort = filter(x -> fcons(x) && fcans(x), oqsValid)
+    oqsCallShort = filter(SmallTypes.isCall, oqsShort)
+    oqsPutShort = filter(SmallTypes.isPut, oqsShort)
+    return Styles(Sides(oqsCallLong, oqsCallShort), Sides(oqsPutLong, oqsPutShort))
 end
 function getOqss(oqs)::Oqss
     oqsValid = Iterators.filter(isValid, oqs)
@@ -32,10 +33,10 @@ function getOqss(oqs)::Oqss
     oqsLong = oqsValid # Iterators.filter(isLong, oqsValid)
     oqsShort = oqsValid # Iterators.filter(isShort, oqsValid)
 
-    oqsCallLong = collect(Iterators.filter(isCall, oqsLong))
-    oqsPutLong = collect(Iterators.filter(isPut, oqsLong))
-    oqsCallShort = collect(Iterators.filter(isCall, oqsShort))
-    oqsPutShort = collect(Iterators.filter(isPut, oqsShort))
+    oqsCallLong = collect(Iterators.filter(SmallTypes.isCall, oqsLong))
+    oqsPutLong = collect(Iterators.filter(SmallTypes.isPut, oqsLong))
+    oqsCallShort = collect(Iterators.filter(SmallTypes.isCall, oqsShort))
+    oqsPutShort = collect(Iterators.filter(SmallTypes.isPut, oqsShort))
     return Styles(Sides(oqsCallLong, oqsCallShort), Sides(oqsPutLong, oqsPutShort))
 end
 

@@ -11,9 +11,6 @@ SH.toCode(s::Style.T) = s === Style.call ? 'c' : 'p'
 SH.to(::Type{Style.T}, s::AbstractString) = s in ("c", "C", "call") ? Style.call : (s in ("p", "P", "put") ? Style.put : error("Invalid Style code ", s))
 # SH.random(::Type{Style.T}) = rand((Style.call, Style.put))
 
-SH.isCall(s::Style.T) = s == Style.call
-SH.isPut(s::Style.T) = s == Style.put
-
 struct Styles{T}
     call::T
     put::T
@@ -38,5 +35,15 @@ SH.to(::Type{Action.T}, s::AbstractString) = s in ("o", "O", "open") ? Action.op
 
 checkDirOrder(side::Side.T, n::Number)::Bool = iszero(n) || Int(side) * n < 0
 checkDirTrade(action::Action.T, side::Side.T, n::Number)::Bool = iszero(n) || xor(signbit(Int(action) * Int(side)), signbit(n))
+
+export isCall, isPut, isLong, isShort
+isCall(s::Style.T) = s == Style.call
+isCall(o) = getStyle(o) == Style.call
+
+isPut(s::Style.T) = s == Style.put
+isPut(o) = getStyle(o) == Style.put
+
+isLong(o) = getSide(o) == Side.long
+isShort(o) = getSide(o) == Side.short
 
 end
