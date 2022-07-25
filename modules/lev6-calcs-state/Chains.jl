@@ -15,7 +15,7 @@ const CHAINS_TYPE = Dict{Date,OptionChain}
 ftrue(_) = true
 
 # exp::Date ; chains()[exp].chain
-function getOqss(oqs, curp::Currency, legsCheck=LegMeta[]; noLimit=false)::Oqss
+function getOqss(oqs::Vector{OptionQuote}, curp::Currency, legsCheck=LegMeta[]; noLimit=false)::Oqss
     fconl = !isConflict(legsCheck, Side.long)
     fcons = !isConflict(legsCheck, Side.short)
     fcans = noLimit ? ftrue : canShort(Globals.get(:Strats), curp)
@@ -29,7 +29,7 @@ function getOqss(oqs, curp::Currency, legsCheck=LegMeta[]; noLimit=false)::Oqss
     return Styles(Sides(oqsCallLong, oqsCallShort), Sides(oqsPutLong, oqsPutShort))
 end
 
-function findOqs(oqs, curp::Currency, dists)
+function findOqs(oqs, curp::Currency, dists; maxDiff=1.0)
     res = Vector{OptionQuote}(undef, length(dists))
     diffs = fill(Inf, length(dists)) # Vector{Currency}(Inf, length(dists))
     for oq in oqs
@@ -42,6 +42,7 @@ function findOqs(oqs, curp::Currency, dists)
             end
         end
     end
+    isnothing(findfirst(x -> x > maxDiff, diffs)) || return nothing
     return res
 end
 
@@ -55,6 +56,7 @@ chainSnap(snapName::String, revert=true)::CHAINS_TYPE = useKey(CHAINS_SNAP, snap
         snap(snapName)
         res = chains()
         !revert || snap(back)
+        println("Cached chains for ", snapName)
         return res
     end
 end

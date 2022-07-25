@@ -65,13 +65,14 @@ end
 
 # TODO: instead of hardcoded minevr, use distance from fromevr because it changes when price changes
 # TODO: do a single loop through setting MinEvr initially
+NumExps = 11
 function scandin()
     track = useKey(Dict{Date,Any}, Main.save, :track)
     minScores = useKey(Dict{Int,Float64}, Main.save, :MinScores)
 
     # prepopulate min scores
     if isempty(minScores)
-        for i in 1:12
+        for i in 1:NumExps
             runCheck(i, track, minScores, false)
         end
     end
@@ -115,7 +116,7 @@ function exsToScan()
     newActive = queryEntered(today(), Starting)
     exAvoid = map(row -> searchsortedfirst(expirs(), row.targetdate), newActive)
     nextMarketChange() - now(UTC) < Hour(4) && push!(exAvoid, 1)
-    return setdiff(1:12, exAvoid)
+    return setdiff(1:NumExps, exAvoid)
 end
 
 #========== Begin: Test One ===========#
@@ -157,7 +158,7 @@ function findBestAll(ctx)::NamedTuple
     met1s = Vector{NamedTuple}()
     lmsRun = copy(ctx.lmsPos)
 
-    oqss = getOqss(ctx.exp, ctx.curp, ctx.lmsPos)
+    oqss = Chains.getOqss(chains()[ctx.exp].chain, ctx.curp, ctx.lmsPos)
     scoreTo = ctx.scorePos
     while true
         scoreTo, res = findBest(ctx, oqss)

@@ -37,7 +37,17 @@ function snapExpirs()::Vector{Date}
 end
 
 snapName(dt::DateTime)::String = Dates.format(dt, SNAP_DATEFORMAT)
-snapName(date::Date, i::Int)::String = snapName(filter(x -> Date(x) == date, SnapUtil.snapDateTimes())[i])
+function snapName(date::Date, i::Int)::Union{Nothing,String}
+    dts = filter(x -> Date(x) == date, SnapUtil.snapDateTimes())
+    length(dts) >= i || return nothing
+    return snapName(dts[i])
+end
+
+function lastSnap(date::Date)::Union{Nothing,String}
+    dts = filter(x -> Date(x) == date, SnapUtil.snapDateTimes())
+    !isempty(dts) || return nothing
+    return snapName(dts[end])
+end
 
 const SNAP_DATEFORMAT = dateformat"yyyy-mm-dd.HH-MM"
 

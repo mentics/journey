@@ -6,7 +6,7 @@ using Dates, BusinessDays, TimeZones, Intervals
 # export toDate, msMarketOpen, marketClose, msMarketClose, isNowAfterMarketClose, monthOfQuarter, lastTradingDay,
 # export bdays, bdaysBefore, isbday
 # export nowMs, tims, toms, msToDate,
-export isBusDay, bdays, bdaysBefore, nextTradingDay, lastTradingDay
+export isBusDay, bdays, bdaysBefore, bdaysAfter, nextTradingDay, lastTradingDay
 export nowz, nowMs, tims, toms, dateToMs, msToDate
 export timeToExpir
 export strShort
@@ -103,6 +103,7 @@ bdays(d1::Date, d2::Date)::Int = bdayscount(:USNYSE, d1, d2)
 lastTradingDay(d::Date)::Date = tobday(:USNYSE, d; forward=false)
 nextTradingDay(d::Date)::Date = tobday(:USNYSE, d; forward=true)
 bdaysBefore(d::Date, n::Int)::Date = advancebdays(:USNYSE, lastTradingDay(d), -n)
+bdaysAfter(d::Date, n::Int)::Date = advancebdays(:USNYSE, lastTradingDay(d), n)
 
 # NOTE: crossing daylight savings time changes will make this off by an hour, but we don't do much in the middle of the night on a weekend.
 # const ZEROT = Time(0,0,0)

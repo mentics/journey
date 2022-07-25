@@ -16,6 +16,7 @@ function (loadJson(path::AStr, typ::Type{T}=Dict)::T) where T
 end
 
 writeJson(path, d::Dict) = open(path, "w") do io; JSON3.pretty(io, d; allow_inf=true) end
+writeJson(path, o) = open(path, "w") do io; JSON3.pretty(io, o; allow_inf=true) end
 #endregion
 
 

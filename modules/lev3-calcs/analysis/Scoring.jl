@@ -295,15 +295,6 @@ function probMid(p::Prob, from::Float64=.97, to::Float64=1.03)
     return Prob(getCenter(p), vals)
 end
 
-probFlat(p::Prob)::Prob = ( vals = getVals(p) ; probFlat(getCenter(p), (vals[1] + vals[end])/2) )
-function probFlat(center::Float64, ends::Float64)::Prob
-    vals = Bins.with((1.0 - 2*ends) / Bins.NUM) # this is implemented hacky anyway and probably get removed, so... ok to call const here
-    vals[1] = ends
-    vals[end] = ends
-    # normalize!(vals)
-    return Prob(center, vals)
-end
-
 # PidealThreshUp = 0.01
 # PidealThreshDown = 0.01
 # PidealMidMult = 2.0

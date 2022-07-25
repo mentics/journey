@@ -35,6 +35,7 @@ marketSnap(snapName::String, revert=true) = useKey(MARKETS_SNAP, snapName) do
         snap(snapName)
         res = market()
         !revert || snap(back)
+        println("Cached market for ", snapName)
         return res
     end
 end

@@ -105,6 +105,16 @@ function makeProbs(tex::Float64, targetDate::Date; curp::Currency=market().curp)
     return probs
 end
 
+using Bins
+probFlat(p::Prob)::Prob = ( vals = getVals(p) ; probFlat(getCenter(p), (vals[1] + vals[end])/2) )
+function probFlat(center::Real, ends::Float64)::Prob
+    vals = Bins.with((1.0 - 2*ends) / Bins.NUM) # this is implemented hacky anyway and probably get removed, so... ok to call const here
+    vals[1] = ends
+    vals[end] = ends
+    # normalize!(vals)
+    return Prob(center, vals)
+end
+
 using Chains, SmallTypes, LegMetaTypes
 # oqss = getOqs(exp, [], curp)
 function findCondor(oqss::Oqss, curp::Currency, side::Side.T, mid, w)
@@ -115,8 +125,15 @@ function findCondor(oqss::Oqss, curp::Currency, side::Side.T, mid, w)
         distsShort = [-mid-w, mid+w]
         distsLong = [-mid, mid]
     end
-    longs = map(oq -> LegMeta(oq, 1.0, Side.long), Chains.findOqs(oqss.call.long, curp::Currency, distsLong))
-    shorts = map(oq -> LegMeta(oq, 1.0, Side.short), Chains.findOqs(oqss.call.short, curp::Currency, distsShort))
+
+    oqssLong = Chains.findOqs(oqss.call.long, curp::Currency, distsLong)
+    !isnothing(oqssLong) || return nothing
+    longs = map(oq -> LegMeta(oq, 1.0, Side.long), oqssLong)
+
+    oqssShort = Chains.findOqs(oqss.call.short, curp::Currency, distsShort)
+    !isnothing(oqssShort) || return nothing
+    shorts = map(oq -> LegMeta(oq, 1.0, Side.short), oqssShort)
+
     return sort!(vcat(shorts, longs); by=getStrike)
 end
 

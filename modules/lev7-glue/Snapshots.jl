@@ -61,7 +61,7 @@ function useSnap(nam::AbstractString)
             rethrow(e)
         end
     else
-        println("Use Snap: Already using that snap ", nam)
+        # println("Use Snap: Already using that snap ", nam)
     end
     return snap()
 end
