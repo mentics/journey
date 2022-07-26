@@ -91,14 +91,15 @@ abort() = stop[] = true
 function preloadSnapCache()
     empty!(Chains.CHAINS_SNAP)
     empty!(Markets.MARKETS_SNAP)
-    names = filter(!isnothing, map(x -> SnapUtil.snapName(x, 2), SnapUtil.snapDates()))
-    names = filter(!isnothing, map(x -> SnapUtil.lastSnap(x), SnapUtil.snapDates()))
-    for name in names
+    names1 = Iterators.filter(!isnothing, map(x -> SnapUtil.snapName(x, 2), SnapUtil.snapDates()))
+    names2 = Iterators.filter(!isnothing, map(x -> SnapUtil.lastSnap(x), SnapUtil.snapDates()))
+    for name in Iterators.flatten((names1, names2))
         Chains.chainSnap(name, false)
         Markets.marketSnap(name, false)
     end
 end
 
+using FileUtil
 function searchDates()
     if length(Chains.CHAINS_SNAP) < 100
         println("Warning chains snap doesn't appear to be preloaded. Need to do that because of multithreading.")
@@ -144,8 +145,18 @@ function searchDates()
     # sort!(spairs; rev=true, by=pair -> ( typeof(pair.second) == String || !haskey(pair.second, :prob) ? (println(dump(pair)) ; -100.0) : pair.second.prob ));
     # sort!(spairs; rev=true, by=pair -> pair.second.evr * pair.second.prob);
     sort!(spairs; rev=true, by=pair -> pair.second.evr);
+    writeJson("../spairs.json", spairs)
     return spairs
 end
+#==
+using Globals
+devon()
+snap(1)
+using CmdExplore
+xx = CmdExplore
+xx.preloadSnapCache()
+xx.searchDates()
+ ==#
 
 function searchPairCondors(exp, dateNear, dateFar)
     snNear = SnapUtil.snapName(dateNear, 2)
@@ -214,7 +225,6 @@ function calcMetLast(exp, lms)
     return calcMetrics(name, exp, curp, lms)
 end
 
-checkPair(pair) = checkArgs(pair[1]...; show=false)
 function comparePair(pair)
     ret1, met1, lms1 = pairCondor(pair[1]...)
     ret2, met2, lms2 = checkArgs(pair[1]...)
@@ -226,6 +236,7 @@ function comparePair(pair)
     end
 end
 
+checkPair(pair) = checkArgs(pair[1]...; show=false)
 function checkArgs(exp, snNear, snFar, midFar, wFar, midNear, wNear; show=false)
     snap(snFar)
     curpFar = market().curp
@@ -261,28 +272,6 @@ end
 
 import Snapshots
 using DictUtil
-function reportOld()
-    global repold = Dict()
-    for pair in spairs
-        (exp, snNear, snFar, midFar, wFar, midNear, wNear) = pair[1]
-        pair[2].evr > 0.1 || continue
-        tsNear = Snapshots.snapToTs(snNear)
-        tsFar = Snapshots.snapToTs(snFar)
-        daysFar = bdays(Date(tsFar), exp)
-        daysNear = bdays(Date(tsNear), exp)
-        incDictKey(repold, :daysFar, daysFar)
-        incDictKey(repold, :daysNear, daysNear)
-        incDictKey(repold, :midFar, midFar)
-        incDictKey(repold, :wFar, wFar)
-        incDictKey(repold, :midNear, midNear)
-        incDictKey(repold, :wNear, wNear)
-    end
-    for k in keys(repold)
-        v = sort!(collect(repold[k]); rev=true, by=x -> x.second)
-        println("$(k) => $(v)")
-    end
-    return repold
-end
 
 function bestForEachExp()
     exps = reverse!(filter(x -> x < today(), SnapUtil.snapExpirs()))
@@ -321,7 +310,7 @@ function validate(daysNear, daysFar, midFar, wFar, midNear, wNear)
             try
                 snNear = SnapUtil.snapName(near, 2)
                 snFar = SnapUtil.snapName(far, 2)
-                met, lms = pairCondor(exp, snNear, snFar, midFar, wFar, midNear, wNear)
+                ret, met, lms = pairCondor(exp, snNear, snFar, midFar, wFar, midNear, wNear)
                 args = (exp, snNear, snFar, midFar, wFar, midNear, wNear)
                 push!(res, (;exp, evr=met.evr, prob=met.prob, args))
             catch e
@@ -355,12 +344,14 @@ function checkExps()
     res = Dict()
     missedAags = 0
     missedConds = 0
+    total = 0
     for args in argss
         for exp in exps
             aags = args2args(exp, args)
             !isnothing(aags) || ( missedAags += 1 ; continue )
             cond = pairCondor(aags...)
             !isnothing(cond) || ( missedConds += 1 ; continue )
+            total += 1
             ret, met, lms = cond
             if met.evr > 0.0
                 incKey(res, args)
@@ -368,7 +359,7 @@ function checkExps()
             end
         end
     end
-    @info "Missed" missedAags missedConds
+    @info "Missed" missedAags missedConds total length(exps)
     return res
 end
 
@@ -387,5 +378,37 @@ end
 #  (15, 2, 6, 6, 3, 2)
 #  (20, 2, 13, 4, 9, 3)
 #  (15, 2, 6, 6, 3, 1)
+
+function bb(expr = expir(20))
+    curp = market().curp
+    pflat = CmdUtil.probFlat(curp, 0.0)
+    oqss = Chains.getOqss(chains()[expr].chain);
+    res = []
+    for off in -20:20
+        for mid in 2:10
+            for w in 2:10
+                lms = CmdUtil.findCondor(oqss, curp+off, Side.short, mid, w; maxDiff=5)
+                ret = combineTo(Ret, lms, market().curp)
+                met = calcMetrics(pflat, ret)
+                annual = 365 / (expr - today()).value
+                rate = annual * met.mx / (-met.mn)
+                if met.mx > .2 && met.prob > .8 && rate > .2
+                    push!(res, (;args=(off, mid, w), lms, ret, met, rate))
+                end
+            end
+        end
+    end
+    sort!(res; rev=true, by=x -> x.met.prob * x.rate)
+    # res2 = filter(x -> x[4].mx >= .2, res)
+    return res
+end
+
+function bball()
+    res = Dict()
+    for ex in 20:30
+        res[ex] = bb(expir(ex))
+    end
+    return sort!(collect(res); by=x -> x[1])
+end
 
 end

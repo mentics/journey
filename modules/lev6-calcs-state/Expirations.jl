@@ -35,8 +35,10 @@ function newVal()::OffsetArray{Date}
     # num = isnothing(snap()) ? 20 : SnapUtil.countSnapExpirs()
     # println("num expirs: ", num)
     exps[1] == market().startDay || insert!(exps, 1, exps[1])
-    num = min(21, length(exps))
-    return OffsetArray(exps[1:num], 0:num-1)
+    return OffsetArray(exps, 0:length(exps)-1)
+
+    # num = min(21, length(exps))
+    # return OffsetArray(exps[1:num], 0:num-1)
 
     # if exps[1] == market().startDay
     #     # println("exps[1] was market startday")

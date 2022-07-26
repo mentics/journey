@@ -27,8 +27,9 @@ SH.getIv(oq::OptionQuote) = oq.meta.iv
 
 SH.isValid(curp::Currency) =
     oq ->
-        getBid(oq) > 0.0 &&
-        (abs(1.0 - curp / getStrike(oq)) <= .15)
+        getBid(oq) > 0.0
+        # &&
+        # (abs(1.0 - curp / getStrike(oq)) <= .15)
 SH.isValid(oq::OptionQuote) = getBid(oq) > 0.0
 
 struct OptionChain

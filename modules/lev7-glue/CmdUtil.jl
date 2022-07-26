@@ -67,14 +67,15 @@ function makeProbs(tex::Float64, targetDate::Date; curp::Currency=market().curp)
     ivsd = ivTexToStdDev(calcNearIv(targetDate), tex)
     # shift = ivsd/2
     pnd = probsNormDist(curp, ivsd)
+    return (pnd,)
     # pndL = probsNormDist(sp, ivsd, -shift)# + .25 * numDays * .05))
     # pndR = probsNormDist(sp, ivsd, shift)# + .25 * numDays * .05))
     # probs = (pnd, pndL, pndR)
     # TODO: this numdays proxy calc is wrong. Completely change how we calc probHist, do it based on tex
-    phOrig = probHist(curp, round(Int, tex / TexPerDay))
+    # phOrig = probHist(curp, round(Int, tex / TexPerDay))
     # pvals = getVals(phOrig)
-    ph = Prob(getCenter(phOrig), smooth(getVals(phOrig)))
-    return (ph, pnd)
+    # ph = Prob(getCenter(phOrig), smooth(getVals(phOrig)))
+    # return (ph, pnd)
     # pideal = Scoring.probIdeal(ph)
 
     # s = 0.0
@@ -117,7 +118,7 @@ end
 
 using Chains, SmallTypes, LegMetaTypes
 # oqss = getOqs(exp, [], curp)
-function findCondor(oqss::Oqss, curp::Currency, side::Side.T, mid, w)
+function findCondor(oqss::Oqss, curp::Currency, side::Side.T, mid, w; maxDiff=1.0)
     if side == Side.long
         distsLong = [-mid-w, mid+w]
         distsShort = [-mid, mid]
@@ -126,11 +127,11 @@ function findCondor(oqss::Oqss, curp::Currency, side::Side.T, mid, w)
         distsLong = [-mid, mid]
     end
 
-    oqssLong = Chains.findOqs(oqss.call.long, curp::Currency, distsLong)
+    oqssLong = Chains.findOqs(oqss.call.long, curp::Currency, distsLong; maxDiff)
     !isnothing(oqssLong) || return nothing
     longs = map(oq -> LegMeta(oq, 1.0, Side.long), oqssLong)
 
-    oqssShort = Chains.findOqs(oqss.call.short, curp::Currency, distsShort)
+    oqssShort = Chains.findOqs(oqss.call.short, curp::Currency, distsShort; maxDiff)
     !isnothing(oqssShort) || return nothing
     shorts = map(oq -> LegMeta(oq, 1.0, Side.short), oqssShort)
 

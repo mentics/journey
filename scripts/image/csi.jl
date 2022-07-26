@@ -68,7 +68,16 @@ open(precompFiltered, "w") do out
 end
 
 using PackageCompiler
-PackageCompiler.create_sysimage(usings; sysimage_path="C:/data/tmp/new/sysimage-journey.dll", precompile_statements_file=precompFiltered)
+fn = "sysimage-journey.dll"
+NewImagePath = "C:/data/tmp/new/$(fn)"
+BackupImageDir = "C:/data/tmp/backup"
+UseImagePath = "C:/data/tmp/$(fn)"
+PackageCompiler.create_sysimage(usings; sysimage_path=NewImagePath, precompile_statements_file=precompFiltered)
+
+using Filesystem
+temp = mktempdir(BackupImageDir; prefix="img", cleanup=false)
+!isfile(UseImagePath) || mv(UseImagePath, joinpath(temp, fn))
+mv(NewImagePath, UseImagePath)
 
 # Run repl with --sysimage=C:/data/tmp/sysimage-journey.dll and verify sysimage running in repl with:
 # unsafe_string(Base.JLOptions().image_file)
