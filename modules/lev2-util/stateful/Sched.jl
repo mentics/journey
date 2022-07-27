@@ -109,7 +109,7 @@ function run()::Nothing
                     sort!(Jobs; by=getTimeNext)
                     # nextMax = round(nowRun + maxSleep(), maxSleep(), RoundDown)
                     # return isempty(Jobs) ? nextMax : min(nextMax, first(Jobs).timeNext)
-                    return isempty(Jobs) ? Day(1) : first(Jobs).timeNext
+                    return isempty(Jobs) ? nowRun + Day(1) : first(Jobs).timeNext
                 end
             end
             nn = now(UTC)

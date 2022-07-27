@@ -6,7 +6,7 @@ using Trading, Quoting
 using Calendars, Markets, Expirations, Chains, StoreTrade
 using CmdStrats
 
-export so, sor, todo, ct, ctr, drpos, tot, drx
+export so, sor, solr, todo, ct, ctr, drpos, tot, drx
 export cleg, clegr
 
 #region NewTrades
@@ -15,6 +15,7 @@ sor(i::Int, at::Real; kws...) = so(i; kws..., pre=false, at=PriceT(at))
 sor(r::Strat, at::Real; kws...) = so(r; kws..., pre=false, at=PriceT(at))
 so(i::Int; kws...) = so(tos(LegMeta, ar(i)); kws...)
 so(r::Coll{LegRet,4}; kws...) = so(tos(LegMeta, r); kws...)
+solr(lms::Coll{LegMeta,4}, at::Real) = so(lms; at, pre=false)
 function so(lms::Coll{LegMeta,4}; ratio=nothing, at=nothing, pre=true, skipConfirm=false)::Int
     canTrade(pre)
     Globals.set(:soRunLast, now(UTC))
@@ -161,7 +162,8 @@ function priceUse(qt, orig=nothing; ratio=nothing, at=nothing)
     else
         pr1 = at
     end
-    ratioActual = (pr1 - getBid(qt)) / (getAsk(qt) - getBid(qt))
+    spr = getAsk(qt) - getBid(qt)
+    ratioActual = spr == 0.0 ? 0.0 : (pr1 - getBid(qt)) / spr
     pr = round(PriceT, pr1)
     orig = isnothing(orig) ? "" : "(was: $(SEC(string(orig))))"
     @info "Using: $(PRI(string(pr))) = $(ratioActual) * $(qt) $(orig)"

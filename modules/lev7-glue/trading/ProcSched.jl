@@ -32,6 +32,11 @@ function procExpired()
     for h in histExpired
         hopt = h["option"]
         opt = tier.occToOpt(hopt["description"])
+        if isnothing(opt)
+            @log warn "procExpired invalid hist: might be ignorable?" h
+            println("procExpired invalid hist: might be ignorable?")
+            continue
+        end
         qtyExpDir = hopt["quantity"]
         if getExpiration(opt) < Date("2022-03-23")
             continue # ignore previous to when we started storing data

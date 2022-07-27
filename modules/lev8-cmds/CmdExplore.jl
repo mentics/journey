@@ -13,6 +13,7 @@ drlms!(lms; kws...) = drawRet!(combineTo(Ret, lms, minimum(getExpiration.(lms)),
 
 export findShortsToClose
 # TODO: move this to scheduled
+using Positions
 function findShortsToClose()
     filter(positions(;age=Second(0))) do p
         oq = optQuoter(getLeg(p), Action.close)
@@ -152,7 +153,7 @@ end
 using Globals
 devon()
 snap(1)
-using CmdExplore
+# using CmdExplore
 xx = CmdExplore
 xx.preloadSnapCache()
 xx.searchDates()
@@ -379,21 +380,32 @@ end
 #  (20, 2, 13, 4, 9, 3)
 #  (15, 2, 6, 6, 3, 1)
 
+const lockBb = ReentrantLock()
 function bb(expr = expir(20))
+    MinProfit = .1
+    MinProb = .9
+    MinRate = .6
+
     curp = market().curp
+    prob = CmdUtil.probsFor(expr)[1]
     pflat = CmdUtil.probFlat(curp, 0.0)
+
     oqss = Chains.getOqss(chains()[expr].chain);
     res = []
-    for off in -20:20
-        for mid in 2:10
-            for w in 2:10
+    Threads.@threads for off in -24:32
+        for mid in 1:14
+            for w in 1:(18-mid)
                 lms = CmdUtil.findCondor(oqss, curp+off, Side.short, mid, w; maxDiff=5)
                 ret = combineTo(Ret, lms, market().curp)
-                met = calcMetrics(pflat, ret)
+                met = calcMetrics(prob, ret)
+                profit = calcProfit(ret)
                 annual = 365 / (expr - today()).value
-                rate = annual * met.mx / (-met.mn)
-                if met.mx > .2 && met.prob > .8 && rate > .2
-                    push!(res, (;args=(off, mid, w), lms, ret, met, rate))
+                rate = annual * profit / (-met.mn)
+                isOther = met.prob > MinProb && rate > MinRate
+                if profit >= MinProfit && isOther
+                    runSync(lockBb) do
+                        push!(res, (;args=(off, mid, w), lms, ret, met, rate))
+                    end
                 end
             end
         end
@@ -403,12 +415,28 @@ function bb(expr = expir(20))
     return res
 end
 
+using Calendars
 function bball()
+    Calendars.ensureCal(today(), expir(30))
     res = Dict()
-    for ex in 20:30
+    for ex in 10:20 # 20 is deliberate, it's about where the monthlies end TODO: look up exactly when they do
         res[ex] = bb(expir(ex))
     end
-    return sort!(collect(res); by=x -> x[1])
+    global bbres = sort!(filter(x -> x[2] != [], collect(res)); by=x -> x[1])
+    bbrep()
+    return bbres
 end
+
+function bbrep()
+    pretyble(map(x -> (;i=x[1], exp=expir(x[1]), rate=x[2][1].rate, prob=x[2][1].met.prob, profit=calcProfit(x[2][1].ret), spread=calcWidth(x[2][1].lms), args=x[2][1].args), bbres))
+end
+
+# calcProfit(ret) = (ret[1] + ret[end]) / 2 - .02
+calcProfit(ret) = min(ret[1], ret[end]) / 2 - .02
+calcWidth(lms::Vector{LegMeta}) = ( (mn, mx) = extrema(getStrike, lms) ; return mx - mn )
+
+# TODO: add query to get all Filled trades not entered today so we can check annualized rate if close
+# TODO: maybe add filter to avoid options that have low vol/interest
+# TODO: try puts and both puts/calls
 
 end

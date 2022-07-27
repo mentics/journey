@@ -65,6 +65,7 @@ end
 
 function makeProbs(tex::Float64, targetDate::Date; curp::Currency=market().curp)::Tuple
     ivsd = ivTexToStdDev(calcNearIv(targetDate), tex)
+    # @info "makeProbs" tex targetDate curp ivsd
     # shift = ivsd/2
     pnd = probsNormDist(curp, ivsd)
     return (pnd,)
@@ -120,11 +121,11 @@ using Chains, SmallTypes, LegMetaTypes
 # oqss = getOqs(exp, [], curp)
 function findCondor(oqss::Oqss, curp::Currency, side::Side.T, mid, w; maxDiff=1.0)
     if side == Side.long
-        distsLong = [-mid-w, mid+w]
-        distsShort = [-mid, mid]
+        distsLong = [-mid-w, mid+w] ./ 2
+        distsShort = [-mid, mid] ./ 2
     else
-        distsShort = [-mid-w, mid+w]
-        distsLong = [-mid, mid]
+        distsShort = [-mid-w, mid+w] ./ 2
+        distsLong = [-mid, mid] ./ 2
     end
 
     oqssLong = Chains.findOqs(oqss.call.long, curp::Currency, distsLong; maxDiff)

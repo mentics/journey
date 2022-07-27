@@ -291,3 +291,22 @@ ys .- (xs1 .* sign(cor(ys, xs1)) .* (sum(abs, ys) / sum(abs, xs1)))
 
 ## end: corr adding ##
 
+For libpq issue with 0E-24, could override this method:
+
+# Convert a string to a decimal, e.g. "0.01" -> Decimal(0, 1, -2)
+parameters(x::AbstractString) = (abs(parse(BigInt, x)), 0)
+function origBaseParse(::Type{Decimal}, str::AbstractString)
+    if 'e' in str
+        return parse(Decimal, Decimals.scinote(str))
+    end
+    c, q = Decimals.parameters(('.' in str) ? split(str, '.') : str)
+    normalize(Decimal((str[1] == '-') ? 1 : 0, c, q))
+end
+
+function Base.parse(::Type{Decimal}, str::AbstractString)
+	origBaseParse(Decimal, str)
+end
+
+function LibPQ.pqparse(::Type{Decimal}, str::AbstractString)
+	parse(Decimal, lowercase(str))
+end

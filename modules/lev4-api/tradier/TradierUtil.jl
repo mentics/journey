@@ -24,8 +24,12 @@ function optToOcc(info::Option)::String
     return "$(underlying)$(dt)$(uppercase(toCode(info.style)))$(strikeStr)"
 end
 
-function occToOpt(occ::AStr)::Option
+function occToOpt(occ::AStr)::Union{Nothing,Option}
     m = match(OCC_REGEX, occ)
+    if isnothing(m) || length(m) < 4
+        @error "occToOpt couldn't parse" occ m OCC_REGEX
+        return nothing
+    end
     expir = Date(m[2], OCC_DATE_FORMAT) + Dates.Year(2000)
     return Option(to(Style.T, m[3]), expir, parse(Currency, m[4])/1000)
 end
