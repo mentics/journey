@@ -396,7 +396,7 @@ function bb(expr = expir(20))
         for mid in 1:14
             for w in 1:(18-mid)
                 lms = CmdUtil.findCondor(oqss, curp+off, Side.short, mid, w; maxDiff=5)
-                ret = combineTo(Ret, lms, market().curp)
+                ret = combineTo(Ret, lms, curp)
                 met = calcMetrics(prob, ret)
                 profit = calcProfit(ret)
                 annual = 365 / (expr - today()).value
