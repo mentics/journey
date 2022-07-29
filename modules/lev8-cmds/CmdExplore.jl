@@ -381,10 +381,11 @@ end
 #  (15, 2, 6, 6, 3, 1)
 
 const lockBb = ReentrantLock()
-function bb(expr = expir(20))
+function bb(ex)
+    expr = expir(ex)
     MinProfit = .1
     MinProb = .9
-    MinRate = .6
+    MinRate = .4
 
     curp = market().curp
     prob = CmdUtil.probsFor(expr)[1]
@@ -421,7 +422,7 @@ function bball()
     Calendars.ensureCal(today(), expir(30))
     res = Dict()
     for ex in 10:20 # 20 is deliberate, it's about where the monthlies end TODO: look up exactly when they do
-        res[ex] = bb(expir(ex))
+        res[ex] = bb(ex)
     end
     global bbres = sort!(filter(x -> x[2] != [], collect(res)); by=x -> x[1])
     bbrep()
@@ -429,8 +430,27 @@ function bball()
 end
 
 function bbrep()
-    pretyble(map(x -> (;i=x[1], exp=expir(x[1]), rate=x[2][1].rate, prob=x[2][1].met.prob, profit=calcProfit(x[2][1].ret), spread=calcWidth(x[2][1].lms), args=x[2][1].args), bbres))
+    pretyble(map(rep, bbres))
+    # pretyble(map(repboth, bbres))
 end
+
+function rep(o)
+    x = o[2][1]
+    ex = o[1]
+    retBoth = combineTo(Ret, lmsb(ex), C(x.prob.center))
+    metBoth = calcMetrics(x.prob, retBoth)
+    # (;ex, exp=expir(ex), , profit=calcProfit(retBoth)) # , spread=calcWidth(lms), args=o.args)
+    return (;ex, exp=expir(ex), rate=x.rate, prob=x.met.prob, probBoth=metBoth.prob, evr=x.met.evr, evrBoth=metBoth.evr, profit=calcProfit(x.ret), spread=calcWidth(x.lms), args=x.args)
+end
+
+# TODO: del
+# function repboth(o)
+#     x = o[2][1]
+#     ex = o[1]
+#     retBoth = combineTo(Ret, lmsb(ex), C(x.prob.center))
+#     metBoth = calcMetrics(x.prob, retBoth)
+#     (;ex, exp=expir(ex), prob=metBoth.prob, profit=calcProfit(retBoth)) # , spread=calcWidth(lms), args=o.args)
+# end
 
 # calcProfit(ret) = (ret[1] + ret[end]) / 2 - .02
 calcProfit(ret) = min(ret[1], ret[end]) / 2 - .02
