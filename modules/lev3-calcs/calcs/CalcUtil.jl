@@ -25,6 +25,7 @@ end
 # TODO: if use fewer bins, prob isn't adjusted, so it will be lower
 MINP = 0.01 * Bins.binPercent()
 function calcMetrics1(pvals::AVec{Float64}, vals::AVec{Float64}, cap::Float64, adjust::Float64, binsi)
+    @assert isfinite(cap) && isfinite(adjust) "invalid cap $(cap) or adjust $(adjust)"
     # @info "calcMetrics1" cap adjust
     profit = loss = prob = 0.0
     mn = Inf
@@ -57,8 +58,8 @@ end
 # adjprofit(ind, profit) = profit * ((201 - abs(ind - 201 - 1))/116.79617818664343)
 
 function calcEvr(profit::Float64, loss::Float64)::Float64
-    @assert profit >= 0.0
-    @assert loss <= 0.0
+    @assert profit >= 0.0 "calcEvr profit wasn't >= 0.0 $(profit)"
+    @assert loss <= 0.0 "calcEvr loss wasn't <= 0.0 $(loss)"
     # tot = profit - loss
     # tot > 0.0 || return NaN
     p = profit #/tot

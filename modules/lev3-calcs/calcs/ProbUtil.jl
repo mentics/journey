@@ -8,6 +8,7 @@ function probsNormDist(center::Real, stdDev::Float64, shift::Float64=0.0)::Prob
     d = NormDist(1.0, stdDev)
     vals = Bins.empty()
     vals[1] = cdf(d, Bins.XLEFT - shift)
+    @assert isfinite(vals[1]) "Invalid val $(vals[1]) center=$(center) stdDev=$(stdDev) shift=$(shift) XLEFT=$(Bins.XLEFT)"
     for (i, x) in Bins.midsi()
         vals[i] = Bins.width() * pdf(d, x - shift)
     end

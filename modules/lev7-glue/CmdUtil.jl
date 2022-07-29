@@ -64,11 +64,13 @@ probsFor(snapName::String, to::Date, curp::Real) = useKey(PROBS_SNAP2, (snapName
 end
 
 function makeProbs(tex::Float64, targetDate::Date; curp::Currency=market().curp)::Tuple
-    ivsd = ivTexToStdDev(calcNearIv(targetDate), tex)
+    nearIv = calcNearIv(targetDate, curp)
+    ivsd = ivTexToStdDev(nearIv, tex)
+    @assert isfinite(ivsd) "Invalid ivsd $(ivsd) $(nearIv) $(tex) $(targetDate) $(curp)"
     # @info "makeProbs" tex targetDate curp ivsd
     # shift = ivsd/2
     pnd = probsNormDist(curp, ivsd)
-    return (pnd,)
+    probs = (pnd,)
     # pndL = probsNormDist(sp, ivsd, -shift)# + .25 * numDays * .05))
     # pndR = probsNormDist(sp, ivsd, shift)# + .25 * numDays * .05))
     # probs = (pnd, pndL, pndR)
@@ -104,6 +106,13 @@ function makeProbs(tex::Float64, targetDate::Date; curp::Currency=market().curp)
     # pposInv = isnothing(lastPosRet[]) ? nothing : invert(ppos)
     # pposHyb = Prob(getCenter(ph), normalize!(getVals(ph) .+ (getVals(pposInv) .* 2)))
     # probs = (ph,pnd)
+    for probInd in eachindex(probs)
+        prob = probs[probInd]
+        pvals = getVals(prob)
+        for i in eachindex(pvals)
+            @assert isfinite(pvals[i]) "Prob $(probInd) had a bad data $(i)"
+        end
+    end
     return probs
 end
 

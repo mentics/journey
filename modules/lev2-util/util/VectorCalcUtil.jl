@@ -4,7 +4,7 @@ using BaseTypes
 export avg, smooth, smooth!, fitIn01, fitIn01!
 export normalize, normalize!, normalizeI, normalizeI!, normalize1, normalize1I!
 
-avg(vs) = sum(vs) / length(vs)
+avg(vs) = ( @assert length(vs) > 0 ; sum(vs) / length(vs) )
 
 # NOTE: these assume elements > 0
 (normalize!(v::T)::T) where T = v ./= sum(v)

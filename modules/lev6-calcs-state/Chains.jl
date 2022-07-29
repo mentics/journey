@@ -97,7 +97,7 @@ function isQuotable(style::Style.T, exp::Date, strike::Currency)::Bool
     return !isnothing(res) && getBid(res) > 0.0
 end
 
-ivs(exps=expirs(), chs=chains()) = [(exp, round(calcNearIv(exp, chs); digits=4)) for exp in exps]
+ivs(exps::AVec{Date}=expirs(), curp::Real=market().curp, chs::CHAINS_TYPE=chains()) = [(exp, round(calcNearIv(exp, curp, chs); digits=4)) for exp in exps]
 
 #region Local
 const CHAINS = :chains
@@ -113,19 +113,24 @@ function update()::Nothing
     return
 end
 function newVal()::CHAINS_TYPE
-    chs = loadChains(expirs(), market().curp)
-    updateIvs(chs)
+    curp = market().curp
+    chs = loadChains(expirs(), curp)
+    updateIvs(curp, chs)
     return chs
 end
-function updateIvs(chs)::Nothing
+function updateIvs(curp, chs)::Nothing
     @log debug "updateIvs"
-    Globals.set(:vtyAvg, Dict(r[1] => r[2] for r in ivs(expirs(), chs))) # TODO: need to lock global? or just hope because it updates so seldom
+    Globals.set(:vtyAvg, Dict(r[1] => r[2] for r in ivs(expirs(), curp, chs))) # TODO: need to lock global? or just hope because it updates so seldom
     return
 end
 
 # TODO: what's the right way to aggregate?
 # TODO: change, or add, to the calc for VIX
-calcNearIv(dt::Date, chs=chains())::Float64 = avg(filter(x -> x != 0.0, getIv.(getMeta.(nearOqs(market().curp, dt, chs)))))
+function calcNearIv(dt::Date, curp::Real, chs::CHAINS_TYPE=chains())::Float64
+    ivs = filter(x -> x != 0.0, getIv.(getMeta.(nearOqs(curp, dt, chs))))
+    @assert length(ivs) > 0 "No ivs in calcNearIv($(dt), $(length(chs))) curp=$(curp)"
+    avg(ivs)
+end
 nearOqs(curp::Currency, d::Date, chs, dist::Int=20)::Vector{OptionQuote} = nearOqs(curp, chs[d].chain, dist)
 nearOqs(curp::Currency, oqs, dist::Int=20)::Vector{OptionQuote} = filter(x -> abs(getStrike(x) - curp) <= dist, oqs)
 
