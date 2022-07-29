@@ -388,7 +388,7 @@ function bb(expr = expir(20))
 
     curp = market().curp
     prob = CmdUtil.probsFor(expr)[1]
-    pflat = CmdUtil.probFlat(curp, 0.0)
+    # pflat = CmdUtil.probFlat(curp, 0.0)
 
     oqss = Chains.getOqss(chains()[expr].chain);
     res = []
@@ -396,6 +396,7 @@ function bb(expr = expir(20))
         for mid in 1:14
             for w in 1:(18-mid)
                 lms = CmdUtil.findCondor(oqss, curp+off, Side.short, mid, w; maxDiff=5)
+                !isnothing(lms) || continue
                 ret = combineTo(Ret, lms, curp)
                 met = calcMetrics(prob, ret)
                 profit = calcProfit(ret)
@@ -404,7 +405,7 @@ function bb(expr = expir(20))
                 isOther = met.prob > MinProb && rate > MinRate
                 if profit >= MinProfit && isOther
                     runSync(lockBb) do
-                        push!(res, (;args=(off, mid, w), lms, ret, met, rate))
+                        push!(res, (;args=(off, mid, w), lms, ret, met, rate, prob))
                     end
                 end
             end
@@ -435,8 +436,12 @@ end
 calcProfit(ret) = min(ret[1], ret[end]) / 2 - .02
 calcWidth(lms::Vector{LegMeta}) = ( (mn, mx) = extrema(getStrike, lms) ; return mx - mn )
 
+lms(ex) = find(x -> x[1] == ex, bbres)[2][1].lms
+lmsb(ex) = vcat(xlms(ex), lms(ex))
+
 # TODO: add query to get all Filled trades not entered today so we can check annualized rate if close
 # TODO: maybe add filter to avoid options that have low vol/interest
 # TODO: try puts and both puts/calls
+# TODO: we can enter multiple for same expr if their lows don't overlap because we try to close early
 
 end
