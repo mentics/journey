@@ -380,6 +380,13 @@ end
 #  (20, 2, 13, 4, 9, 3)
 #  (15, 2, 6, 6, 3, 1)
 
+findNear(oqs, curp, near) = findfirst(x -> abs(getStrike(x) - curp) <= near, oqs)
+findMids(oqss, curp, near) = (;
+    callLong=findNear(oqss.call.long, curp, near),
+    callShort=findNear(oqss.call.short, curp, near),
+    putLong=findNear(oqss.put.long, curp, near),
+    putShort=findNear(oqss.put.short, curp, near))
+
 const lockBb = ReentrantLock()
 function bb(ex)
     expr = expir(ex)
@@ -392,21 +399,32 @@ function bb(ex)
     # pflat = CmdUtil.probFlat(curp, 0.0)
 
     oqss = Chains.getOqss(chains()[expr].chain);
+    # ( midCallLong, midCallShort, midPutLong, midPutShort )
     res = []
     Threads.@threads for off in -24:32
-        for mid in 1:14
-            for w in 1:(18-mid)
-                lms = CmdUtil.findCondor(oqss, curp+off, Side.short, mid, w; maxDiff=5)
-                !isnothing(lms) || continue
-                ret = combineTo(Ret, lms, curp)
-                met = calcMetrics(prob, ret)
-                profit = calcProfit(ret)
-                annual = 365 / (expr - today()).value
-                rate = annual * profit / (-met.mn)
-                isOther = met.prob > MinProb && rate > MinRate
-                if profit >= MinProfit && isOther
-                    runSync(lockBb) do
-                        push!(res, (;args=(off, mid, w), lms, ret, met, rate, prob))
+        mids = findMids(oqss, curp + off, 0.5)
+        isnothing(findfirst(isnothing, mids)) || continue
+        # println(mids)
+        # error("stop")
+        for toInner in 1:14
+            for toOuter in 1:(18-toInner)
+                for lms in (
+                    CmdUtil.makeCondorCall(oqss, mids, toInner, toOuter),
+                    CmdUtil.makeCondorPut(oqss, mids, toInner, toOuter),
+                    CmdUtil.makeCondorIron(oqss, mids, toInner, toOuter)
+                )
+                    # lms = CmdUtil.findCondor(oqss, curp+off, Side.short, mid, w; maxDiff=5)
+                    !isnothing(lms) || continue
+                    ret = combineTo(Ret, lms, curp)
+                    met = calcMetrics(prob, ret)
+                    profit = calcProfit(ret)
+                    annual = 365 / (expr - today()).value
+                    rate = annual * profit / (-met.mn)
+                    isOther = met.prob > MinProb && rate > MinRate
+                    if profit >= MinProfit && isOther
+                        runSync(lockBb) do
+                            push!(res, (;args=(mids, toInner, toOuter), lms=collect(lms), ret, met, rate, prob, oqss))
+                        end
                     end
                 end
             end
@@ -419,7 +437,7 @@ end
 
 using Calendars
 function bball()
-    Calendars.ensureCal(today(), expir(30))
+    Calendars.ensureCal(today(), expirs()[end])
     res = Dict()
     for ex in 10:20 # 20 is deliberate, it's about where the monthlies end TODO: look up exactly when they do
         res[ex] = bb(ex)
@@ -456,12 +474,29 @@ end
 calcProfit(ret) = min(ret[1], ret[end]) / 2 - .02
 calcWidth(lms::Vector{LegMeta}) = ( (mn, mx) = extrema(getStrike, lms) ; return mx - mn )
 
-lms(ex) = find(x -> x[1] == ex, bbres)[2][1].lms
-lmsb(ex) = vcat(xlms(ex), lms(ex))
+lms(ex)::Vector{LegMeta} = find(x -> x[1] == ex, bbres)[2][1].lms
+lmsb(ex)::Vector{LegMeta} = vcat(xlms(ex), lms(ex))
 
 # TODO: add query to get all Filled trades not entered today so we can check annualized rate if close
 # TODO: maybe add filter to avoid options that have low vol/interest
 # TODO: try puts and both puts/calls
 # TODO: we can enter multiple for same expr if their lows don't overlap because we try to close early
+
+using StoreTrade, TradeInfo, StatusTypes, TradeTypes, LogUtil
+function bbToClose()
+    return filter(findTrades(Filled)) do trade
+        getTargetDate(trade) >= Date(2022,8,19) || return false
+        ur = TradeInfo.urpnl(trade)
+        mn, mx = TradeInfo.minMaxPnl(trade)
+        annual = 365 / (getTargetDate(trade) - toDateMarket(tsFilled(trade))).value
+        rate = annual * ur / (-mn)
+        if ur > 0.0 # mx / 2
+            println("Found rate $(nstr(rate)) for $(ur) / $(mx) risked $(-mn)")
+            # println(trade)
+            return true
+        end
+        return false
+    end
+end
 
 end

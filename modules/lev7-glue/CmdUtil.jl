@@ -28,7 +28,7 @@ function calcPosStrat(forDate::Date, sp::Currency, vtyRatio::Float64, extra::Uni
     end
 end
 
-xlmsv(ex=0) = tos(Vector{LegMeta}, tradesToClose(ex))
+xlmsv(ex=0)::Vector{LegMeta} = tos(Vector{LegMeta}, tradesToClose(ex))
 function xlms(when=0)::Vector{LegMeta}
     combineTo(Vector{LegMeta}, tradesToClose(when))
     # trades = findTrades(forDate, Filled)
@@ -127,25 +127,56 @@ function probFlat(center::Real, ends::Float64)::Prob
 end
 
 using Chains, SmallTypes, LegMetaTypes
-# oqss = getOqs(exp, [], curp)
-function findCondor(oqss::Oqss, curp::Currency, side::Side.T, mid, w; maxDiff=1.0)
-    if side == Side.long
-        distsLong = [-mid-w, mid+w] ./ 2
-        distsShort = [-mid, mid] ./ 2
-    else
-        distsShort = [-mid-w, mid+w] ./ 2
-        distsLong = [-mid, mid] ./ 2
-    end
+# function findCondor(oqss::Oqss, curp::Currency, side::Side.T, mid, w; maxDiff=1.0)
+#     if side == Side.long
+#         distsLong = [-mid-w, mid+w] ./ 2
+#         distsShort = [-mid, mid] ./ 2
+#     else
+#         distsShort = [-mid-w, mid+w] ./ 2
+#         distsLong = [-mid, mid] ./ 2
+#     end
 
-    oqssLong = Chains.findOqs(oqss.call.long, curp::Currency, distsLong; maxDiff)
-    !isnothing(oqssLong) || return nothing
-    longs = map(oq -> LegMeta(oq, 1.0, Side.long), oqssLong)
+#     oqssLong = Chains.findOqs(oqss.call.long, curp::Currency, distsLong; maxDiff)
+#     !isnothing(oqssLong) || return nothing
+#     longs = map(oq -> LegMeta(oq, 1.0, Side.long), oqssLong)
 
-    oqssShort = Chains.findOqs(oqss.call.short, curp::Currency, distsShort; maxDiff)
-    !isnothing(oqssShort) || return nothing
-    shorts = map(oq -> LegMeta(oq, 1.0, Side.short), oqssShort)
+#     oqssShort = Chains.findOqs(oqss.call.short, curp::Currency, distsShort; maxDiff)
+#     !isnothing(oqssShort) || return nothing
+#     shorts = map(oq -> LegMeta(oq, 1.0, Side.short), oqssShort)
 
-    return sort!(vcat(shorts, longs); by=getStrike)
+#     return sort!(vcat(shorts, longs); by=getStrike)
+# end
+
+makeLeg(oqs, ind, side) = 0 < ind < length(oqs) ? LegMeta(oqs[ind], 1.0, side) : nothing
+
+function makeCondorCall(oqss::Oqss, mids, toInner::Int, toOuter::Int)::Union{Nothing,Coll{LegMeta}}
+    res = (makeLeg(oqss.call.short, mids.callShort - toInner - toOuter, Side.short),
+        makeLeg(oqss.call.long, mids.callLong - toInner, Side.long),
+        makeLeg(oqss.call.long, mids.callLong + toInner, Side.long),
+        makeLeg(oqss.call.short, mids.callShort + toInner + toOuter, Side.short))
+    return isnothing(findfirst(isnothing, res)) ? res : nothing
 end
+
+function makeCondorPut(oqss::Oqss, mids, toInner::Int, toOuter::Int)::Union{Nothing,Coll{LegMeta}}
+    res = (makeLeg(oqss.put.short, mids.callShort - toInner - toOuter, Side.short),
+        makeLeg(oqss.put.long, mids.callLong - toInner, Side.long),
+        makeLeg(oqss.put.long, mids.callLong + toInner, Side.long),
+        makeLeg(oqss.put.short, mids.callShort + toInner + toOuter, Side.short))
+    return isnothing(findfirst(isnothing, res)) ? res : nothing
+end
+
+function makeCondorIron(oqss::Oqss, mids, toInner::Int, toOuter::Int)::Union{Nothing,Coll{LegMeta}}
+    res = (makeLeg(oqss.put.short, mids.callShort - toInner - toOuter, Side.short),
+        makeLeg(oqss.put.long, mids.callLong - toInner, Side.long),
+        makeLeg(oqss.call.long, mids.callLong + toInner, Side.long),
+        makeLeg(oqss.call.short, mids.callShort + toInner + toOuter, Side.short))
+    return isnothing(findfirst(isnothing, res)) ? res : nothing
+end
+
+# makeCondorIron(oqss::Oqss, mids, toInner::Int, toOuter::Int)::Coll{LegMeta} = (
+#     LegMeta(oqss.put.short[mids.callShort - toInner - toOuter], 1.0, Side.short),
+#     LegMeta(oqss.put.long[mids.callLong - toInner], 1.0, Side.long),
+#     LegMeta(oqss.call.long[mids.callLong + toInner], 1.0, Side.long),
+#     LegMeta(oqss.call.short[mids.callShort + toInner + toOuter], 1.0, Side.short))
 
 end

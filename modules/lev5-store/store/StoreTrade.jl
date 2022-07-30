@@ -45,15 +45,32 @@ function loadLegTrade(lid::Int)
     loadLegTrade(select("select * from VLegTrade where lid=?", lid)[1])
 end
 
+qmarks(num) = "$(join(repeat(['?'], num), ','))"
+
+using IterTools
+const VEC_EMPTY_TRADES = Trade[]
+loadTrades(tids::Coll{Int})::Vector{Trade} = loadTrades(qmarks(length(tids)), tids)
+function loadTrades(clauseIn::String, clauseArgs...)::Vector{Trade}
+    ts = select("select * from VTrade where tid in ($(clauseIn))", clauseArgs...)
+    !isempty(ts) || return VEC_EMPTY_TRADES
+    legsRows = select("select * from VLegTrade where tid in ($(clauseIn)) order by tid asc, strike asc", clauseArgs...)
+    return map(zip(ts, groupby(x -> x.tid, legsRows))) do (t, tlrs)
+        legs = loadLegTrade.(tlrs)
+        return Trade{strToStatus(t.status)}(t.tid, t.targetdate, dbdc(t.primitdir), dbdc(t.prilldiropen), dbdc(t.prilldirclose),
+              legs, t.tscreated, noth(t.tsfilled), noth(t.tsclosed), TradeMeta(dbdc(t.underbid), dbdc(t.underask)))
+    end
+end
+
 dbdc(x) = isSomething(x) ? C(Float64(x)) : nothing
 noth(x) = ismissing(x) ? nothing : x
 
-findTrades(states::Type{<:Status}...)::Vector{Trade} = loadTrade.(selectCol("select tid from Trade where status in ($(join(repeat(['?'], length(states)), ',')))", states...))
-function findTrades(exp::Date, states::Type{<:Status}...)::Vector{Trade}
-    strStates = join(repeat(['?'], length(states)), ',')
-    tids = selectCol("select tid from Trade where targetDate = ? and status in ($(strStates))", exp, states...)
-    loadTrade.(tids)
-end
+findTrades(states::Type{<:Status}...)::Vector{Trade} = loadTrades("select tid from Trade where status in ($(qmarks(length(states))))", states...)
+findTrades(exp::Date, states::Type{<:Status}...)::Vector{Trade} = loadTrades("select tid from Trade where targetDate = ? and status in ($(qmarks(length(states))))", exp, states...)
+# function findTrades(exp::Date, states::Type{<:Status}...)::Vector{Trade}
+#     strStates = join(repeat(['?'], length(states)), ',')
+#     tids = selectCol("select tid from Trade where targetDate = ? and status in ($(strStates))", exp, states...)
+#     loadTrade.(tids)
+# end
 # TODO: make this work with local timezone to date properly
 findTradeEntered(d::Date)::Vector{Trade} = loadTrade.(selectCol("select tid from Trade where cast(tsCreated as date)=?", d))
 
