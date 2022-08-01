@@ -4,9 +4,6 @@ using DateUtil
 using Markets, Chains
 using OutputUtil
 
-# TODO: would this return the same for then and now?
-# TODO: implement with new calcs
-# minMaxPnl(trad::Trade{<:WithFilled})::Tuple{Currency,Currency} = (123.123, 234.234) # Currency.(minMax(segsetCheck(trad, findPriceOpen(trad))))
 using Globals, RetTypes
 minMaxPnl(trad::Trade)::Tuple{Currency,Currency} = C.(extrema(getVals(combineTo(Ret, [trad], getTargetDate(trad), market().startPrice, Globals.get(:vtyRatio)))))
 
@@ -66,5 +63,12 @@ indentedLegs(trad::Trade) = join(["  $(string(leg))" for leg in getLegs(trad)], 
 # TODO: move?
 using SmallTypes, QuoteTypes
 SH.calcQuote(lookup::Function, trade::Trade, act::Action.T=Action.open)::Quote = calcQuote(lookup, getLegs(trade), act)
+
+export urpnl
+function urpnl(trade::Trade)::Currency
+    netOpen = getNetOpen(trade)
+    prClose = getBid(quoter(trade, Action.close))
+    return netOpen + prClose
+end
 
 end
