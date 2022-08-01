@@ -1,6 +1,7 @@
 module CmdUtil
 using Dates
 using StatusTypes
+using LogUtil
 using StoreTrade
 using Expirations
 
@@ -55,7 +56,9 @@ const PROBS_SNAP2 = Dict{Tuple{String, Date, Currency},Tuple{Prob,Prob}}()
 probsFor(snapName::String, to::Date, curp::Real) = useKey(PROBS_SNAP2, (snapName, to, curp)) do
     chains = Chains.chainSnap(snapName)
     tex = calcTex(Snapshots.snapToTs(snapName), to)
-    ivsd = ivTexToStdDev(calcNearIv(to, chains), tex)
+    nearIv = calcNearIv(to, chains)
+    (!isnothing(nearIv) && isfinite(nearIv)) || @logret "makeProbs: Invalid ivsd $(ivsd) $(nearIv) $(tex) $(targetDate) $(curp)"
+    ivsd = ivTexToStdDev(nearIv, tex)
     pnd = probsNormDist(curp, ivsd)
     # TODO: this numdays proxy calc is wrong. Completely change how we calc probHist, do it based on tex
     phOrig = probHist(curp, round(Int, tex / TexPerDay))
@@ -63,10 +66,10 @@ probsFor(snapName::String, to::Date, curp::Real) = useKey(PROBS_SNAP2, (snapName
     return (ph, pnd)
 end
 
-function makeProbs(tex::Float64, targetDate::Date; curp::Currency=market().curp)::Tuple
+function makeProbs(tex::Float64, targetDate::Date; curp::Currency=market().curp)::Union{Nothing,Tuple}
     nearIv = calcNearIv(targetDate, curp)
+    (!isnothing(nearIv) && isfinite(nearIv)) || @logret "makeProbs: Invalid ivsd $(ivsd) $(nearIv) $(tex) $(targetDate) $(curp)"
     ivsd = ivTexToStdDev(nearIv, tex)
-    @assert isfinite(ivsd) "Invalid ivsd $(ivsd) $(nearIv) $(tex) $(targetDate) $(curp)"
     # @info "makeProbs" tex targetDate curp ivsd
     # shift = ivsd/2
     pnd = probsNormDist(curp, ivsd)

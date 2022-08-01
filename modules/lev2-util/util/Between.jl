@@ -34,7 +34,7 @@ SH.combineTo(::Type{Ret}, legs::Coll{Leg,4}, oqter, forDate::Date, sp::Currency,
 # TODO: convert directly to these objects (or related) from db?
 # SH.toLegMetas(trads) = reduce(vcat, toLegMeta.(getLegs(trad)) for trad in trads; init=Vector{LegMeta}())
 
-SH.to(::Type{LegMeta}, lg::LegTrade)::LegMeta = LegMeta(Leg(getOption(lg), getQuantity(lg), getSide(lg)), Quote(Action.open, getPrillDirOpen(lg)), OptionMeta(getIv(lg)))
+SH.to(::Type{LegMeta}, lg::LegTrade)::LegMeta = LegMeta(Leg(getOption(lg), getQuantity(lg), getSide(lg)), Quote(Action.open, getPrillDirOpen(lg)), getOptionMeta(lg))
 # (SH.to(::Type{LegMeta}, lg::T)::LegMeta) where T<:LegTrade = LegMeta(Leg(getOption(lg), getQuantity(lg), getSide(lg)), Quote(Action.open, getNetOpen(lg)), OptionMeta(getIv(lg)))
 
 # TODO: don't do collect, figure out dispatch for iterators

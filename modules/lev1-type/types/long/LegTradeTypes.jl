@@ -1,6 +1,6 @@
 module LegTradeTypes
 using Dates
-using SH, BaseTypes, StatusTypes, LegTypes
+using SH, BaseTypes, StatusTypes, LegTypes, OptionMetaTypes
 
 export LegTrade, LegTradeMeta, getTid
 
@@ -12,6 +12,8 @@ end
 SH.getBid(ltm::LegTradeMeta) = ltm.bid
 SH.getAsk(ltm::LegTradeMeta) = ltm.ask
 SH.getIv(ltm::LegTradeMeta) = ltm.iv
+# TODO: store all the greeks
+SH.getOptionMeta(ltm::LegTradeMeta) = OptionMeta(;mid_iv=ltm.iv)
 
 struct LegTrade
     id::Int
@@ -45,6 +47,8 @@ SH.getPrillDirClose(o::LegTrade) = o.prillDirClose
 SH.getMeta(o::LegTrade) = o.meta
 SH.getNetOpen(o::LegTrade) = isnothing(o.prillDirOpen) ? missing : getQuantity(o) * o.prillDirOpen
 SH.getNetClose(o::LegTrade) = isnothing(o.prillDirClose) ? missing : getQuantity(o) * o.prillDirClose
+# TODO: store all the greeks
+SH.getOptionMeta(lt::LegTrade) = getOptionMeta(lt.meta)
 
 # TODO: whatever uses this, change the code to follow example in Store.findUnknownPositions
 SH.addQuantity(lt::LegTrade, addend::Real) = LegTrade(lt; leg=Leg(lt.leg; quantity=(getQuantity(lt.leg) + addend)))

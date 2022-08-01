@@ -1,6 +1,7 @@
 module CmdExplore
 using Dates
-using SH, Globals, BaseTypes, SmallTypes, RetTypes, StratTypes, LegMetaTypes, ConstructUtil
+using SH, Globals, BaseTypes, SmallTypes, RetTypes, StratTypes, LegMetaTypes
+using LogUtil, ConstructUtil
 using Shorthand, Between
 using Expirations, Markets, Chains
 using DrawStrat
@@ -395,7 +396,9 @@ function bb(ex)
     MinRate = .4
 
     curp = market().curp
-    prob = CmdUtil.probsFor(expr)[1]
+    probs = CmdUtil.probsFor(expr)
+    !isnothing(probs) || @logret "bb: Skipping expr $(expr)"
+    prob = probs[1]
     # pflat = CmdUtil.probFlat(curp, 0.0)
 
     oqss = Chains.getOqss(chains()[expr].chain);
@@ -440,7 +443,8 @@ function bball()
     Calendars.ensureCal(today(), expirs()[end])
     res = Dict()
     for ex in 10:20 # 20 is deliberate, it's about where the monthlies end TODO: look up exactly when they do
-        res[ex] = bb(ex)
+        y = bb(ex)
+        isnothing(y) || (res[ex] = y)
     end
     global bbres = sort!(filter(x -> x[2] != [], collect(res)); by=x -> x[1])
     bbrep()
@@ -482,8 +486,9 @@ lmsb(ex)::Vector{LegMeta} = vcat(xlms(ex), lms(ex))
 # TODO: try puts and both puts/calls
 # TODO: we can enter multiple for same expr if their lows don't overlap because we try to close early
 
-using StoreTrade, TradeInfo, StatusTypes, TradeTypes, LogUtil
+using StoreTrade, TradeInfo, StatusTypes, TradeTypes
 function bbToClose()
+    isnothing(snap()) || error("Can't show bbToClose when snapped")
     return filter(findTrades(Filled)) do trade
         getTargetDate(trade) >= Date(2022,8,19) || return false
         ur = TradeInfo.urpnl(trade)

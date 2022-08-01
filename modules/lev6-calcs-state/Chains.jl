@@ -97,7 +97,7 @@ function isQuotable(style::Style.T, exp::Date, strike::Currency)::Bool
     return !isnothing(res) && getBid(res) > 0.0
 end
 
-ivs(exps::AVec{Date}=expirs(), curp::Real=market().curp, chs::CHAINS_TYPE=chains()) = [(exp, round(calcNearIv(exp, curp, chs); digits=4)) for exp in exps]
+ivs(exps::AVec{Date}=expirs(), curp::Real=market().curp, chs::CHAINS_TYPE=chains()) = [(exp, calcNearIv(exp, curp, chs)) for exp in exps]
 
 #region Local
 const CHAINS = :chains
@@ -126,10 +126,13 @@ end
 
 # TODO: what's the right way to aggregate?
 # TODO: change, or add, to the calc for VIX
-function calcNearIv(dt::Date, curp::Real, chs::CHAINS_TYPE=chains())::Float64
-    ivs = filter(x -> x != 0.0, getIv.(getMeta.(nearOqs(curp, dt, chs))))
-    @assert length(ivs) > 0 "No ivs in calcNearIv($(dt), $(length(chs))) curp=$(curp)"
-    avg(ivs)
+function calcNearIv(dt::Date, curp::Real, chs::CHAINS_TYPE=chains())::Union{Nothing,Float64}
+    ivs = getIv.(getMeta.(nearOqs(curp, dt, chs)))
+    isnothing(findfirst(x -> x == 0.0, ivs)) || @logret "No ivs in calcNearIv($(dt), $(length(chs))) curp=$(curp)"
+    # ivs = filter(x -> x != 0.0, )
+    # !isempty(ivs) || @logret "No ivs in calcNearIv($(dt), $(length(chs))) curp=$(curp)"
+    # @assert length(ivs) > 0 "No ivs in calcNearIv($(dt), $(length(chs))) curp=$(curp)"
+    round(avg(ivs); digits=4)
 end
 nearOqs(curp::Currency, d::Date, chs, dist::Int=20)::Vector{OptionQuote} = nearOqs(curp, chs[d].chain, dist)
 nearOqs(curp::Currency, oqs, dist::Int=20)::Vector{OptionQuote} = filter(x -> abs(getStrike(x) - curp) <= dist, oqs)
@@ -190,9 +193,9 @@ end
 
 toOptionMeta(::Nothing) = OptionMeta(0.0)
 function toOptionMeta(greeks::Dict{String,T}) where T
-    val = tryKeys(greeks, 0.0, "mid_iv", "ask_iv", "bid_iv")
-    @assert val >= 0.0 "toOptionMeta $(val) $(greeks)"
-    OptionMeta(val)
+    # val = tryKeys(greeks, 0.0, "mid_iv", "ask_iv", "bid_iv")
+    # @assert val >= 0.0 "toOptionMeta $(val) $(greeks)"
+    return OptionMeta(greeks)
 end
 #endregion
 

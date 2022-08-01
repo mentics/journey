@@ -6,7 +6,7 @@ export getStyle, getExpiration, getStrike, getSide, getQuantity, getAction
 export getBid, getAsk
 export toCode, toOther
 export getIv
-export getOption, getLeg, getMeta, getQuote
+export getOption, getLeg, getMeta, getOptionMeta, getQuote
 export calcQuote, calcOptQuote
 export getQuantityDir, addQuantity
 
@@ -37,6 +37,7 @@ function getAction() end
 function getOption() end
 function getQuote() end
 function getMeta() end
+function getOptionMeta() end
 function getLeg() end
 
 function toCode() end

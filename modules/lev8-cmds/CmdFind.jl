@@ -44,7 +44,7 @@ ofor(i::Int) = Main.save[:track][expir(i)]
 lmsFor(i::Int) = vcat(ofor(i).lmss...)
 lmssd(lmss) = drlms(vcat(lmss...))
 
-dinDraw(i::Int) = dinDraw(Main.save[:track][expir(i)])
+dinDraw(i::Int) = ( a = Main.save[:track][expir(i)] ; dinDraw(a.ctx, a) )
 # dinDraw(all::NamedTuple) = dinDraw(all.ctx, all.lmss, all.rets, all.mets)
 addScore(met) = merge(met, (;score=score(nothing, met)))
 function dinDraw(ctx, resAll)

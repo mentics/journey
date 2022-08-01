@@ -59,7 +59,7 @@ BackupImageDir = "C:/data/tmp/backup"
 UseImagePath = "C:/data/tmp/$(fn)"
 PackageCompiler.create_sysimage(usings; sysimage_path=NewImagePath, precompile_statements_file=precompFiltered)
 
-using Filesystem
+# using Filesystem
 temp = mktempdir(BackupImageDir; prefix="img", cleanup=false)
 !isfile(UseImagePath) || mv(UseImagePath, joinpath(temp, fn))
 mv(NewImagePath, UseImagePath)
