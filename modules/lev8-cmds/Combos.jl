@@ -118,54 +118,75 @@ end
 const ExpirMap = Dict{String,Vector{Date}}()
 getExpirations(sym) = useKey(() -> tradierExpirations(sym), ExpirMap, sym)
 
+const RawChainMap2 = Dict{String,Dict{Date,Vector{Dict{String,Any}}}}()
 const ChainMap = Dict{String,ChainsType}()
 const Under = Dict{String,Dict{String,Any}}()
-function getChains(sym)
-    !haskey(ChainMap, sym) || return # isempty(ChainMap[sym]) || return
+function getChains(sym; up=false)
+    up || !haskey(ChainMap, sym) || return # isempty(ChainMap[sym]) || return
     println("Calling tradier for $(sym)")
     expAll = getExpirations(sym)
+
     ChainMap[sym] = ChainsType()
+    RawChainMap2[sym] = Dict{Date,Dict{String,Any}}()
     if isempty(expAll)
         Under[sym] = Dict()
         return
     end
-    exps = expAll[1] == today() ? expAll[2:min(4,length(expAll))] : expAll[1:min(3,length(expAll))]
-    ChainMap[sym] = Chains.loadChains(exps, market().curp, sym)
     Under[sym] = tradierQuote(sym)
+
+    exprs = expAll[1] == today() ? expAll[2:min(4,length(expAll))] : expAll[1:min(3,length(expAll))]
+    for expr in exprs
+        raw = tradierOptionChain(expr, sym)
+        RawChainMap2[sym][expr] = raw # Dict(d["strike"] => d for d in raw)
+        ChainMap[sym][expr] = Chains.procChain(expr, raw)
+    end
     return
 end
 
 using Between
-function look()
-    for sym in keys(ChainMap)
-        locUnder = Under[sym]
-        chs = ChainMap[sym]
-        for expr in sort!(collect(keys(chs)))
-            oqs = filter(isPut, chs[expr].chain)
-            timult = 252 / bdays(today(), expr)
-            # TODO: use IV to figure out how far out to go?
-            # or could maybe get 52 week range
-            bid = locUnder["bid"]
-            i = findfirst(oq -> getStrike(oq) > 0.9 * bid, oqs)
-            !isnothing(i) || continue
-            oq = oqs[max(1, i-1)]
-            strike = getStrike(oq)
-            primitDir = bap(oq)
-            rate = timult * primitDir / strike
-            if rate > 0.5
-                println("$(sym)[$(expr)]: $(bid) -> $(strike) at $(primitDir) ($(getQuote(oq))) / $(strike) = $(rate)")
-            end
-        end
+function look(sym)
+    getChains(sym)
+    locUnder = Under[sym]
+    chs = ChainMap[sym]
+    for expr in sort!(collect(keys(chs)))
+        oqs = filter(isPut, chs[expr].chain)
+        timult = 252 / bdays(today(), expr)
+        # TODO: use IV to figure out how far out to go?
+        # or could maybe get 52 week range
+        bid = locUnder["bid"]
+        i = findfirst(oq -> getStrike(oq) > 0.9 * bid, oqs)
+        !isnothing(i) || continue
+        oq = oqs[max(1, i-1)]
+        strike = getStrike(oq)
+        primitDir = bap(oq)
+        rate = timult * primitDir / strike
+        # if rate > 0.5
+            println("$(sym)[$(expr)]: $(bid) -> $(strike) at $(primitDir) ($(getQuote(oq))) / $(strike) = $(rate)")
+        # end
+    end
+end
+
+function lookAll()
+    for sym in cands
+        look(sym)
     end
 end
 
 function run()
-    # makeSyms()
-    for cand in cands
-        sym = cand["symbol"]
-        getChains(sym)
+    makeSyms()
+    lookAll()
+end
+
+function vol(sym)
+    for expr in keys(RawChainMap2[sym])
+        vol = 0
+        opint = 0
+        for tq in RawChainMap2[sym][expr]
+            vol += tq["average_volume"]
+            opint += tq["open_interest"]
+        end
+        println("$(sym) $(expr): $(vol) volume $(opint) opint")
     end
-    look()
 end
 
 # TODO: get option chains and put premium rates

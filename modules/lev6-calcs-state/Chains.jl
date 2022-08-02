@@ -1,7 +1,7 @@
 module Chains
 using Dates
 using CollUtil, DictUtil, DateUtil, CalcUtil, LogUtil, VectorCalcUtil
-using Globals, BaseTypes, SH, SmallTypes, ChainTypes, QuoteTypes, OptionTypes, OptionMetaTypes, LegTypes, LegMetaTypes
+using Globals, BaseTypes, SH, Bins, SmallTypes, ChainTypes, QuoteTypes, OptionTypes, OptionMetaTypes, LegTypes, LegMetaTypes
 using TradierData, Caches
 using DataHelper, Markets, Calendars, Expirations
 
@@ -14,7 +14,10 @@ const ChainsType = Dict{Date,OptionChain}
 
 ftrue(_) = true
 
-function getOqss(oqs::Vector{OptionQuote}, curp::Currency, legsCheck=LegMeta[], noLimit=false)::Oqss
+distRatio(x1, x2) = x2 == 0.0 ? 0.0 : abs(1.0 - x1 / x2)
+
+function getOqss(oqsIn::Vector{OptionQuote}, curp::Currency, legsCheck=LegMeta[], noLimit=false)::Oqss
+    oqs = filter(oq -> distRatio(getStrike(oq), curp) < Bins.SPAN/2, oqsIn)
     fconl = !isConflict(legsCheck, Side.long)
     fcons = !isConflict(legsCheck, Side.short)
     fcans = noLimit ? ftrue : canShort(Globals.get(:Strats), curp)
@@ -27,7 +30,8 @@ function getOqss(oqs::Vector{OptionQuote}, curp::Currency, legsCheck=LegMeta[], 
     oqsPutShort = filter(SmallTypes.isPut, oqsShort)
     return Styles(Sides(oqsCallLong, oqsCallShort), Sides(oqsPutLong, oqsPutShort))
 end
-function getOqss(oqs)::Oqss
+function getOqss(oqsIn)::Oqss
+    oqs = filter(oq -> distRatio(getStrike(oq), curp) < Bins.SPAN/2, oqsIn)
     oqsValid = Iterators.filter(isValid, oqs)
 
     oqsLong = oqsValid # Iterators.filter(isLong, oqsValid)
@@ -114,7 +118,7 @@ function update()::Nothing
 end
 function newVal()::ChainsType
     curp = market().curp
-    chs = loadChains(expirs(), curp)
+    chs = loadChains(expirs())
     updateIvs(curp, chs)
     return chs
 end
@@ -128,7 +132,7 @@ end
 # TODO: change, or add, to the calc for VIX
 function calcNearIv(dt::Date, curp::Real, chs::ChainsType=chains())::Union{Nothing,Float64}
     ivs = getIv.(getMeta.(nearOqs(curp, dt, chs)))
-    isnothing(findfirst(x -> x == 0.0, ivs)) || @logret "No ivs in calcNearIv($(dt), $(length(chs))) curp=$(curp)"
+    isnothing(findfirst(x -> x == 0.0, ivs)) || @logret "No ivs in calcNearIv" dt length(chs) curp
     # ivs = filter(x -> x != 0.0, )
     # !isempty(ivs) || @logret "No ivs in calcNearIv($(dt), $(length(chs))) curp=$(curp)"
     # @assert length(ivs) > 0 "No ivs in calcNearIv($(dt), $(length(chs))) curp=$(curp)"
@@ -143,12 +147,12 @@ function chainLookup(exp::Date, style::Style.T, strike::Currency)::OptionQuote
 end
 # lup(ch::OptionChain; style=nothing, strike=nothing) = filter(x -> (isnothing(style) || getStyle(x) == style) && (isnothing(strike) || getStrike(x) == strike), ch.chain)
 
-function loadChains(expirations::AVec{Date}, cp::Currency, symbol="SPY")::ChainsType
+function loadChains(expirations::AVec{Date}, symbol="SPY")::ChainsType
     chains = ChainsType()
     for exp in expirations
         try
             tradChain = tradierOptionChain(exp, symbol)
-            chains[exp] = procChain(exp, cp, tradChain)
+            chains[exp] = procChain(exp, tradChain)
         catch e
             rethrow(e)
             # if isnothing(snap())
@@ -163,7 +167,7 @@ function loadChains(expirations::AVec{Date}, cp::Currency, symbol="SPY")::Chains
     return chains
 end
 
-function procChain(exp::Date, cp::Currency, data::Vector{Dict{String,Any}})::OptionChain
+function procChain(exp::Date, data::Vector{Dict{String,Any}})::OptionChain
     res = Vector{OptionQuote}()
     for raw in data
         strike = Currency(raw["strike"])

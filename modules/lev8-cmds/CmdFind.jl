@@ -66,6 +66,7 @@ end
 # TODO: instead of hardcoded minevr, use distance from fromevr because it changes when price changes
 # TODO: do a single loop through setting MinEvr initially
 NumExps = 11
+resetState() = ( empty!(Main.save[:MinScores]) ; empty!(Main.save[:track]) )
 function scandin()
     track = useKey(Dict{Date,Any}, Main.save, :track)
     minScores = useKey(Dict{Int,Float64}, Main.save, :MinScores)
@@ -116,7 +117,7 @@ function exsToScan()
     newActive = queryEntered(today(), Starting)
     exAvoid = map(row -> searchsortedfirst(expirs(), row.targetdate), newActive)
     nextMarketChange() - now(UTC) < Hour(4) && push!(exAvoid, 1)
-    return setdiff(1:NumExps, exAvoid)
+    return filter!(x -> x < 10, setdiff(1:NumExps, exAvoid))
 end
 
 #========== Begin: Test One ===========#

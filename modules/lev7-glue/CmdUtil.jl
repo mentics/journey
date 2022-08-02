@@ -57,7 +57,7 @@ probsFor(snapName::String, to::Date, curp::Real) = useKey(PROBS_SNAP2, (snapName
     chains = Chains.chainSnap(snapName)
     tex = calcTex(Snapshots.snapToTs(snapName), to)
     nearIv = calcNearIv(to, chains)
-    (!isnothing(nearIv) && isfinite(nearIv)) || @logret "makeProbs: Invalid ivsd $(ivsd) $(nearIv) $(tex) $(targetDate) $(curp)"
+    (!isnothing(nearIv) && isfinite(nearIv)) || @logret "makeProbs: Invalid ivsd" ivsd nearIv tex targetDate curp
     ivsd = ivTexToStdDev(nearIv, tex)
     pnd = probsNormDist(curp, ivsd)
     # TODO: this numdays proxy calc is wrong. Completely change how we calc probHist, do it based on tex
@@ -68,47 +68,14 @@ end
 
 function makeProbs(tex::Float64, targetDate::Date; curp::Currency=market().curp)::Union{Nothing,Tuple}
     nearIv = calcNearIv(targetDate, curp)
-    (!isnothing(nearIv) && isfinite(nearIv)) || @logret "makeProbs: Invalid ivsd $(ivsd) $(nearIv) $(tex) $(targetDate) $(curp)"
+    (!isnothing(nearIv) && isfinite(nearIv)) || @logret "makeProbs: Invalid ivsd" ivsd nearIv tex targetDate curp
     ivsd = ivTexToStdDev(nearIv, tex)
-    # @info "makeProbs" tex targetDate curp ivsd
-    # shift = ivsd/2
     pnd = probsNormDist(curp, ivsd)
-    probs = (pnd,)
-    # pndL = probsNormDist(sp, ivsd, -shift)# + .25 * numDays * .05))
-    # pndR = probsNormDist(sp, ivsd, shift)# + .25 * numDays * .05))
-    # probs = (pnd, pndL, pndR)
     # TODO: this numdays proxy calc is wrong. Completely change how we calc probHist, do it based on tex
-    # phOrig = probHist(curp, round(Int, tex / TexPerDay))
-    # pvals = getVals(phOrig)
-    # ph = Prob(getCenter(phOrig), smooth(getVals(phOrig)))
-    # return (ph, pnd)
-    # pideal = Scoring.probIdeal(ph)
+    phOrig = probHist(curp, round(Int, tex / TexPerDay))
+    ph = Prob(getCenter(phOrig), smooth(getVals(phOrig)))
+    probs = (ph,)
 
-    # s = 0.0
-    # i = 0
-    # while (s < .5)
-    #     i += 1
-    #     s += pvals[i]
-    # end
-    # # mu = sp * Bins.x(i)
-
-    # pndsh = probsNormDist(sp, ivsd, Bins.x(i) - 1.0)
-    # probs = (pideal, ph, pndsh)
-    # probs = (pndsh + ph,)
-    # probs = (pndsh, pnd, ph)
-    # pflat = probFlat(Float64(curp), 0.0) # pnd[1]/2)
-    # probs = (pnd + pflat,)
-    # probs = (pnd,)
-    # probs = (pflat,)
-    # pflat = probRoof(Float64(sp), pnd[1]/2)
-    # pflat = probFlat(getCenter(pnd), pnd.vals[1])
-    # pshort = probMid(ph, binMin(), 1.0)
-    # plong = probMid(ph, 1., binMax())
-    # pmid = probMid(ph, .5*(1.0+binMin()), .5*(1.0+binMax()))
-    # ppos = isnothing(lastPosRet[]) ? nothing : retToProb(lastPosRet[])
-    # pposInv = isnothing(lastPosRet[]) ? nothing : invert(ppos)
-    # pposHyb = Prob(getCenter(ph), normalize!(getVals(ph) .+ (getVals(pposInv) .* 2)))
-    # probs = (ph,pnd)
     for probInd in eachindex(probs)
         prob = probs[probInd]
         pvals = getVals(prob)

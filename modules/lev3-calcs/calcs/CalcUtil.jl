@@ -66,7 +66,8 @@ function calcEvr(profit::Float64, loss::Float64)::Float64
     l = loss #/tot
     # ev = p + l
     # return p / (1 - 2*l) + 2*l / (1 + p)
-    return p == 0.0 ? 100 * l : p / (1 - l) + l / (1 + p)
+    # return p == 0.0 ? 100 * l : p / (1 - l) + l / (1 + p)
+    return p == 0.0 ? 100 * l : p / (1 - 2*l) + 2*l / (1 + p)
     # return p / (1 - l)
     # return p / (1 - 2*l) # used this before, but it let profit overshadow loss... but maybe it was just because it was a deep hole right near price with less than 2 days left
     # evr = if p == 0.0; l

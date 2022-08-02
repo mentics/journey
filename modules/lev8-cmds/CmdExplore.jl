@@ -18,7 +18,11 @@ using Positions
 function findShortsToClose()
     filter(positions(;age=Second(0))) do p
         oq = optQuoter(getLeg(p), Action.close)
-        return getSide(p) == Side.short && abs(getBid(oq)) < .02
+        if getSide(p) == Side.short && abs(getBid(oq)) <= .02
+            println("Found ", oq)
+            return true
+        end
+        return false
     end
 end
 
@@ -381,6 +385,10 @@ end
 #  (20, 2, 13, 4, 9, 3)
 #  (15, 2, 6, 6, 3, 1)
 
+using Intervals
+const OpenInterval = Interval{Currency,Open,Open}
+intervalFor(lms) = OpenInterval(extrema(getStrike, lms)...)
+
 findNear(oqs, curp, near) = findfirst(x -> abs(getStrike(x) - curp) <= near, oqs)
 findMids(oqss, curp, near) = (;
     callLong=findNear(oqss.call.long, curp, near),
@@ -394,30 +402,49 @@ function bb(ex)
     MinProfit = .1
     MinProb = .9
     MinRate = .4
+    lmsCur = xlms(ex)
+    ivalsCur = intervalFor.(Iterators.partition(lmsCur, 4))
 
     curp = market().curp
     probs = CmdUtil.probsFor(expr)
-    !isnothing(probs) || @logret "bb: Skipping expr $(expr)"
+    !isnothing(probs) || @logret "bb: Skipping expr" expr
     prob = probs[1]
     # pflat = CmdUtil.probFlat(curp, 0.0)
 
     oqss = Chains.getOqss(chains()[expr].chain);
     # ( midCallLong, midCallShort, midPutLong, midPutShort )
     res = []
-    Threads.@threads for off in -24:32
+    Threads.@threads for off in -12:24
         mids = findMids(oqss, curp + off, 0.5)
         isnothing(findfirst(isnothing, mids)) || continue
         # println(mids)
         # error("stop")
         for toInner in 1:14
             for toOuter in 1:(18-toInner)
+                # ibot = mids.callShort - toInner - toOuter
+                # ibot > 0 || continue
+
+                # itop = mids.putShort + toInner + toOuter
+                # itop < length(oqss.call.short) || continue
+
+                # bot = oqss.put.short[ibot]
+                # top = oqss.call.short[itop]
+
                 for lms in (
                     CmdUtil.makeCondorCall(oqss, mids, toInner, toOuter),
                     CmdUtil.makeCondorPut(oqss, mids, toInner, toOuter),
                     CmdUtil.makeCondorIron(oqss, mids, toInner, toOuter)
                 )
-                    # lms = CmdUtil.findCondor(oqss, curp+off, Side.short, mid, w; maxDiff=5)
                     !isnothing(lms) || continue
+                    ival = intervalFor(lms)
+                    # if !isempty(ivalsCur)
+                    #     println("check ", typeof(ivalsCur))
+                    #     println(ivalsCur)
+                    #     isnothing(findfirst(Intervals.overlaps(ival, ivc) for ivc in ivalsCur)) || continue
+                    #     error("stop")
+                    # end
+                    isnothing(findfirst(Intervals.overlaps(ival, ivc) for ivc in ivalsCur)) || continue
+                    # lms = CmdUtil.findCondor(oqss, curp+off, Side.short, mid, w; maxDiff=5)
                     ret = combineTo(Ret, lms, curp)
                     met = calcMetrics(prob, ret)
                     profit = calcProfit(ret)
@@ -489,17 +516,18 @@ lmsb(ex)::Vector{LegMeta} = vcat(xlms(ex), lms(ex))
 using StoreTrade, TradeInfo, StatusTypes, TradeTypes
 function bbToClose()
     isnothing(snap()) || error("Can't show bbToClose when snapped")
-    return filter(findTrades(Filled)) do trade
-        getTargetDate(trade) >= Date(2022,8,19) || return false
+    return filter(sort!(findTrades(Filled); by=getTargetDate)) do trade
+        targ = getTargetDate(trade)
+        targ >= Date(2022,8,19) || return false
         ur = TradeInfo.urpnl(trade)
         mn, mx = TradeInfo.minMaxPnl(trade)
-        annual = 365 / (getTargetDate(trade) - toDateMarket(tsFilled(trade))).value
+        annual = 365 / (targ - toDateMarket(tsFilled(trade))).value
         rate = annual * ur / (-mn)
-        if ur > 0.0 # mx / 2
-            println("Found rate $(nstr(rate)) for $(ur) / $(mx) risked $(-mn)")
+        # if ur > 0.0 # mx / 2
+            println("Rate for $(strShort(targ)) = $(nstr(rate)) ur:$(ur) maxp:$(mx) maxl:$(-mn)")
             # println(trade)
-            return true
-        end
+            # return true
+        # end
         return false
     end
 end

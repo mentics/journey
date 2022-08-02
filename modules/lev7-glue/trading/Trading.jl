@@ -49,11 +49,13 @@ function closeTrade(optQuoter, trade::Trade{<:Closeable}, primitDir::PriceT; pre
     end
     tid = getId(trade)
     exp = getTargetDate(trade)
-    # TODO: consider something else because not closing future calendar longs
-    # Close legs which are worthless
-    shortCount = closeTinyLegs!(useLegs, tid, optQuoter, 4, Side.short, exp; pre)
-    if (shortCount > 0)
-        closeTinyLegs!(useLegs, tid, optQuoter, shortCount, Side.long, exp; pre)
+    if !skipMin
+        # TODO: consider something else because not closing future calendar longs
+        # Close legs which are worthless
+        shortCount = closeTinyLegs!(useLegs, tid, optQuoter, 4, Side.short, exp; pre)
+        if (shortCount > 0)
+            closeTinyLegs!(useLegs, tid, optQuoter, shortCount, Side.long, exp; pre)
+        end
     end
 
     if !skipMin && abs(primitDir) <= 0.01
