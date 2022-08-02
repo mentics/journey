@@ -7,10 +7,10 @@ using DataHelper, Markets, Calendars, Expirations
 
 export chains, getOqs, ivs, calcNearIv
 export quoter, optQuoter, isQuotable
-export Oqss
+export ChainsType, Oqss
 
 const Oqss = Styles{Sides{Vector{OptionQuote}}}
-const CHAINS_TYPE = Dict{Date,OptionChain}
+const ChainsType = Dict{Date,OptionChain}
 
 ftrue(_) = true
 
@@ -69,8 +69,8 @@ end)
 
 using ThreadUtil
 const lock = ReentrantLock()
-const CHAINS_SNAP = Dict{String,CHAINS_TYPE}()
-chainSnap(snapName::String, revert=true)::CHAINS_TYPE = useKey(CHAINS_SNAP, snapName) do
+const CHAINS_SNAP = Dict{String,ChainsType}()
+chainSnap(snapName::String, revert=true)::ChainsType = useKey(CHAINS_SNAP, snapName) do
     runSync(lock) do
         back = snap()
         !isnothing(back) || error("Don't chainsSnap when not snapped")
@@ -82,8 +82,8 @@ chainSnap(snapName::String, revert=true)::CHAINS_TYPE = useKey(CHAINS_SNAP, snap
     end
 end
 
-function chains(; up=false)::CHAINS_TYPE
-    cache!(CHAINS_TYPE, CHAINS, tooOld(PERIOD_UPDATE, isMarketOpen()); up) do
+function chains(; up=false)::ChainsType
+    cache!(ChainsType, CHAINS, tooOld(PERIOD_UPDATE, isMarketOpen()); up) do
         up || @log error "Chains not up to date"
         newVal()
     end
@@ -97,7 +97,7 @@ function isQuotable(style::Style.T, exp::Date, strike::Currency)::Bool
     return !isnothing(res) && getBid(res) > 0.0
 end
 
-ivs(exps::AVec{Date}=expirs(), curp::Real=market().curp, chs::CHAINS_TYPE=chains()) = [(exp, calcNearIv(exp, curp, chs)) for exp in exps]
+ivs(exps::AVec{Date}=expirs(), curp::Real=market().curp, chs::ChainsType=chains()) = [(exp, calcNearIv(exp, curp, chs)) for exp in exps]
 
 #region Local
 const CHAINS = :chains
@@ -112,7 +112,7 @@ function update()::Nothing
     setCache!(CHAINS, newVal())
     return
 end
-function newVal()::CHAINS_TYPE
+function newVal()::ChainsType
     curp = market().curp
     chs = loadChains(expirs(), curp)
     updateIvs(curp, chs)
@@ -126,7 +126,7 @@ end
 
 # TODO: what's the right way to aggregate?
 # TODO: change, or add, to the calc for VIX
-function calcNearIv(dt::Date, curp::Real, chs::CHAINS_TYPE=chains())::Union{Nothing,Float64}
+function calcNearIv(dt::Date, curp::Real, chs::ChainsType=chains())::Union{Nothing,Float64}
     ivs = getIv.(getMeta.(nearOqs(curp, dt, chs)))
     isnothing(findfirst(x -> x == 0.0, ivs)) || @logret "No ivs in calcNearIv($(dt), $(length(chs))) curp=$(curp)"
     # ivs = filter(x -> x != 0.0, )
@@ -143,11 +143,11 @@ function chainLookup(exp::Date, style::Style.T, strike::Currency)::OptionQuote
 end
 # lup(ch::OptionChain; style=nothing, strike=nothing) = filter(x -> (isnothing(style) || getStyle(x) == style) && (isnothing(strike) || getStrike(x) == strike), ch.chain)
 
-function loadChains(expirations::AVec{Date}, cp::Currency)::CHAINS_TYPE
-    chains = CHAINS_TYPE()
+function loadChains(expirations::AVec{Date}, cp::Currency, symbol="SPY")::ChainsType
+    chains = ChainsType()
     for exp in expirations
         try
-            tradChain = tradierOptionChain(exp)
+            tradChain = tradierOptionChain(exp, symbol)
             chains[exp] = procChain(exp, cp, tradChain)
         catch e
             rethrow(e)
@@ -191,7 +191,7 @@ function procChain(exp::Date, cp::Currency, data::Vector{Dict{String,Any}})::Opt
     return OptionChain(res, nowMs())
 end
 
-toOptionMeta(::Nothing) = OptionMeta(0.0)
+toOptionMeta(::Nothing) = OptionMeta()
 function toOptionMeta(greeks::Dict{String,T}) where T
     # val = tryKeys(greeks, 0.0, "mid_iv", "ask_iv", "bid_iv")
     # @assert val >= 0.0 "toOptionMeta $(val) $(greeks)"

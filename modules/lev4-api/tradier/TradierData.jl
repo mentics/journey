@@ -1,7 +1,7 @@
 module TradierData
 using Dates
 using BaseTypes
-using DictUtil, CollUtil, DateUtil
+using LogUtil, DictUtil, CollUtil, DateUtil
 using TradierConfig, TradierBase
 
 export tradierQuote, tradierQuotes, tradierOptionChain, tradierHistQuotes, tradierExpirations, tradierCalendar, tradierClock
@@ -58,7 +58,16 @@ end
 
 function tradierExpirations(sym::String=getDefaultSymbol())
     raw = tradierGet("/markets/options/expirations?symbol=$(sym)&includeAllRoots=true&strikes=true", Call(nameof(var"#self#")))
-    return sort(map(s -> Date(s["date"], TRADIER_DATE_FORMAT), raw["expirations"]["expiration"]))
+    # println(raw)
+    # # data = tryKeys(raw, nothing, "expirations", "expiration")
+    # println(data)
+    if haskey(raw, "expirations") && !isnothing(raw["expirations"]) && haskey(raw["expirations"], "expiration")
+        return sort(map(s -> Date(s["date"], TRADIER_DATE_FORMAT), raw["expirations"]["expiration"]))
+    else
+        @log warn "Expirations not found for" sym
+        println("Expirations not found for ", sym)
+        return Dict{String,Any}[]
+    end
 end
 
 function tradierCalendar(from::Date, to::Date)::Dict{Date,Dict{String,Any}}
