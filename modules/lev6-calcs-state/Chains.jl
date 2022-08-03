@@ -30,7 +30,7 @@ function getOqss(oqsIn::Vector{OptionQuote}, curp::Currency, legsCheck=LegMeta[]
     oqsPutShort = filter(SmallTypes.isPut, oqsShort)
     return Styles(Sides(oqsCallLong, oqsCallShort), Sides(oqsPutLong, oqsPutShort))
 end
-function getOqss(oqsIn)::Oqss
+function getOqss(oqsIn, curp)::Oqss
     oqs = filter(oq -> distRatio(getStrike(oq), curp) < Bins.SPAN/2, oqsIn)
     oqsValid = Iterators.filter(isValid, oqs)
 

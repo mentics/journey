@@ -41,8 +41,8 @@ end
 function writeCsv(path::AStr, data::Union{Vector{Tuple},Vector{NamedTuple}})
     writedlm(path, data, ',')
 end
-function readCsv(path::AStr)
-    readdlm(path, ',')
+function readCsv(path::AStr; kws...)
+    readdlm(path, ','; kws...)
 end
 
 function readLastLines(path::AStr, n::Int=1, maxLineLength::Int=1000)::String

@@ -289,6 +289,12 @@ git-tree-sha1 = "56559bbef6ca5ea0c0818fa5c90320398a6fbf8d"
 uuid = "e2ba6199-217a-4e67-a87a-7c52f15ade04"
 version = "0.1.8"
 
+[[deps.EzXML]]
+deps = ["Printf", "XML2_jll"]
+git-tree-sha1 = "0fa3b52a04a4e210aeb1626def9c90df3ae65268"
+uuid = "8f5d6c58-4d21-5cfd-889c-e3ad7ee6a615"
+version = "1.1.0"
+
 [[deps.FFMPEG]]
 deps = ["FFMPEG_jll"]
 git-tree-sha1 = "b57e3acbe22f8484b4b5ff66a7499717fe1a9cc8"
@@ -1333,6 +1339,12 @@ git-tree-sha1 = "de67fa59e33ad156a590055375a30b23c40299d3"
 uuid = "efce3f68-66dc-5838-9240-27a6d6f5f9b6"
 version = "0.5.5"
 
+[[deps.XLSX]]
+deps = ["Artifacts", "Dates", "EzXML", "Printf", "Tables", "ZipFile"]
+git-tree-sha1 = "af7488251fcabdabbdeaecc4648f29fd2d15f1a8"
+uuid = "fdbf4ff8-1666-58a4-91e7-1b58723a45e0"
+version = "0.8.1"
+
 [[deps.XML2_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Libiconv_jll", "Pkg", "Zlib_jll"]
 git-tree-sha1 = "58443b63fb7e465a8a7210828c91c08b92132dff"
@@ -1422,6 +1434,12 @@ deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
 git-tree-sha1 = "79c31e7844f6ecf779705fbc12146eb190b7d845"
 uuid = "c5fb5394-a638-5e4d-96e5-b29de1b5cf10"
 version = "1.4.0+3"
+
+[[deps.ZipFile]]
+deps = ["Libdl", "Printf", "Zlib_jll"]
+git-tree-sha1 = "ef4f23ffde3ee95114b461dc667ea4e6906874b2"
+uuid = "a5390f91-8eb1-5f08-bee0-b1d1ffed6cea"
+version = "0.10.0"
 
 [[deps.Zlib_jll]]
 deps = ["Libdl"]

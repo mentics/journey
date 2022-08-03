@@ -68,7 +68,7 @@ end
 
 function makeProbs(tex::Float64, targetDate::Date; curp::Currency=market().curp)::Union{Nothing,Tuple}
     nearIv = calcNearIv(targetDate, curp)
-    (!isnothing(nearIv) && isfinite(nearIv)) || @logret "makeProbs: Invalid ivsd" ivsd nearIv tex targetDate curp
+    (!isnothing(nearIv) && isfinite(nearIv)) || @logret "makeProbs: Invalid ivsd" nearIv targetDate curp
     ivsd = ivTexToStdDev(nearIv, tex)
     pnd = probsNormDist(curp, ivsd)
     # TODO: this numdays proxy calc is wrong. Completely change how we calc probHist, do it based on tex
@@ -120,26 +120,32 @@ using Chains, SmallTypes, LegMetaTypes
 makeLeg(oqs, ind, side) = 0 < ind < length(oqs) ? LegMeta(oqs[ind], 1.0, side) : nothing
 
 function makeCondorCall(oqss::Oqss, mids, toInner::Int, toOuter::Int)::Union{Nothing,Coll{LegMeta}}
-    res = (makeLeg(oqss.call.short, mids.callShort - toInner - toOuter, Side.short),
-        makeLeg(oqss.call.long, mids.callLong - toInner, Side.long),
-        makeLeg(oqss.call.long, mids.callLong + toInner, Side.long),
-        makeLeg(oqss.call.short, mids.callShort + toInner + toOuter, Side.short))
+    innerUp = toInner ÷ 2
+    innerDown = toInner - innerUp
+    res = (makeLeg(oqss.call.short, mids.callShort - innerDown - toOuter, Side.short),
+        makeLeg(oqss.call.long, mids.callLong - innerDown, Side.long),
+        makeLeg(oqss.call.long, mids.callLong + innerUp, Side.long),
+        makeLeg(oqss.call.short, mids.callShort + innerUp + toOuter, Side.short))
     return isnothing(findfirst(isnothing, res)) ? res : nothing
 end
 
 function makeCondorPut(oqss::Oqss, mids, toInner::Int, toOuter::Int)::Union{Nothing,Coll{LegMeta}}
-    res = (makeLeg(oqss.put.short, mids.callShort - toInner - toOuter, Side.short),
-        makeLeg(oqss.put.long, mids.callLong - toInner, Side.long),
-        makeLeg(oqss.put.long, mids.callLong + toInner, Side.long),
-        makeLeg(oqss.put.short, mids.callShort + toInner + toOuter, Side.short))
+    innerUp = toInner ÷ 2
+    innerDown = toInner - innerUp
+    res = (makeLeg(oqss.put.short, mids.callShort - innerDown - toOuter, Side.short),
+        makeLeg(oqss.put.long, mids.callLong - innerDown, Side.long),
+        makeLeg(oqss.put.long, mids.callLong + innerUp, Side.long),
+        makeLeg(oqss.put.short, mids.callShort + innerUp + toOuter, Side.short))
     return isnothing(findfirst(isnothing, res)) ? res : nothing
 end
 
 function makeCondorIron(oqss::Oqss, mids, toInner::Int, toOuter::Int)::Union{Nothing,Coll{LegMeta}}
-    res = (makeLeg(oqss.put.short, mids.callShort - toInner - toOuter, Side.short),
-        makeLeg(oqss.put.long, mids.callLong - toInner, Side.long),
-        makeLeg(oqss.call.long, mids.callLong + toInner, Side.long),
-        makeLeg(oqss.call.short, mids.callShort + toInner + toOuter, Side.short))
+    innerUp = toInner ÷ 2
+    innerDown = toInner - innerUp
+    res = (makeLeg(oqss.put.short, mids.callShort - innerDown - toOuter, Side.short),
+        makeLeg(oqss.put.long, mids.callLong - innerDown, Side.long),
+        makeLeg(oqss.call.long, mids.callLong + innerUp, Side.long),
+        makeLeg(oqss.call.short, mids.callShort + innerUp + toOuter, Side.short))
     return isnothing(findfirst(isnothing, res)) ? res : nothing
 end
 

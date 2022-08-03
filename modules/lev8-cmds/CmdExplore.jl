@@ -411,7 +411,7 @@ function bb(ex)
     prob = probs[1]
     # pflat = CmdUtil.probFlat(curp, 0.0)
 
-    oqss = Chains.getOqss(chains()[expr].chain);
+    oqss = Chains.getOqss(chains()[expr].chain, curp);
     # ( midCallLong, midCallShort, midPutLong, midPutShort )
     res = []
     Threads.@threads for off in -12:24
@@ -419,17 +419,8 @@ function bb(ex)
         isnothing(findfirst(isnothing, mids)) || continue
         # println(mids)
         # error("stop")
-        for toInner in 1:14
-            for toOuter in 1:(18-toInner)
-                # ibot = mids.callShort - toInner - toOuter
-                # ibot > 0 || continue
-
-                # itop = mids.putShort + toInner + toOuter
-                # itop < length(oqss.call.short) || continue
-
-                # bot = oqss.put.short[ibot]
-                # top = oqss.call.short[itop]
-
+        for toInner in 1:10
+            for toOuter in 1:(7 - (toInner ÷ 2 + 1))
                 for lms in (
                     CmdUtil.makeCondorCall(oqss, mids, toInner, toOuter),
                     CmdUtil.makeCondorPut(oqss, mids, toInner, toOuter),
@@ -460,7 +451,8 @@ function bb(ex)
             end
         end
     end
-    sort!(res; rev=true, by=x -> x.met.prob * x.rate)
+    # sort!(res; rev=true, by=x -> x.met.prob * x.rate)
+    sort!(res; rev=true, by=x -> x.met.evr)
     # res2 = filter(x -> x[4].mx >= .2, res)
     return res
 end
