@@ -18,7 +18,7 @@ using Positions
 function findShortsToClose()
     filter(positions(;age=Second(0))) do p
         oq = optQuoter(getLeg(p), Action.close)
-        if getSide(p) == Side.short && abs(getBid(oq)) <= .02
+        if getSide(p) == Side.short && abs(getBid(oq)) <= .03
             println("Found ", oq)
             return true
         end

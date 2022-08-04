@@ -24,8 +24,8 @@ function filt1(x)
         gradeAtAbove(nt[req], "C-") || return false
     end
     grades = gradeAtAbove(nt.DivSafety, "C") &&
-                gradeAtAbove(nt.DivGrowth, "C") &&
-                gradeAtAbove(nt.DivYield, "C") &&
+                # gradeAtAbove(nt.DivGrowth, "C") &&
+                gradeAtAbove(nt.DivYield, "C-") &&
                 gradeAtAbove(nt.DivConsistency, "C")
     return grades
     return true

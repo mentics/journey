@@ -68,14 +68,18 @@ function procExpired()
             if dbLeg.qtyremain > abs(qtyExpDir)
                 @warn "Check quantity" qtyExpDir dbLeg
             else
-                # TODO: ??? This results in the expired leg 10 showing up in unmatched with increasing negative qty. need to clean that up.
-                update("insert into LegUsed (lid, olid, act, quantity) values (?, ?, ?, ?)", dbLeg.lid, 100, -1, dbLeg.qtyremain)
-                update("update Trade set status = vt.status from VTrade vt where vt.tid=? and Trade.tid=?", dbLeg.tid, dbLeg.tid)
+                expireLeg(dbLeg.tid, dbLeg.lid, dbLeg.qtyremain)
                 qtyExpDir -= copysign(dbLeg.qtyremain, qtyExpDir)
             end
         end
     end
     dbChecks()
+end
+
+function expireLeg(tid, lid, qty)
+    # TODO: ??? This results in the expired leg 10 showing up in unmatched with increasing negative qty. need to clean that up.
+    update("insert into LegUsed (lid, olid, act, quantity) values (?, ?, ?, ?)", lid, 100, -1, qty)
+    update("update Trade set status = vt.status from VTrade vt where vt.tid=? and Trade.tid=?", tid, tid)
 end
 
 #region Local

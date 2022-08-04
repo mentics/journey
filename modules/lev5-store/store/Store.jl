@@ -23,7 +23,7 @@ function dbChecks()
     rows = select("select lid, quantity, qtyUsed from VLegFilled where quantity < qtyUsed")
     !isempty(rows) && report("VLegFilledOpen with quantity < qtyUsed", rows)
 
-    rows = select("select oid, orderType, primitDir, prillDir from Ord where (orderType = 3 and (primitDir <= 0 or prillDir <= 0)) or (orderType = 2 and (primitDir >= 0 or prillDir >= 0)) and oid not in (16579946, 16609492)")
+    rows = select("select oid, orderType, primitDir, prillDir from Ord where (orderType = 3 and (primitDir <= 0 or prillDir <= 0)) or (orderType = 2 and (primitDir >= 0 or prillDir >= 0)) and oid not in (16579946, 16609492, 17398981)")
     !isempty(rows) && report("Ord primitDir or prillDir wrong sign", rows)
 
     rows = select(sqlTimeCheck())

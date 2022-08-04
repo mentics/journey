@@ -5,12 +5,21 @@ using DateUtil, DictUtil
 using TradierData
 using Markets, Chains
 
+ActiveSyms = ["LUMN", "PARA", "SWKS", "TECK", "NUE"]
+BadPricing = ["BAX", "OLN"]
+excludes(lll) = filter!(x -> !(x.sym in ActiveSyms) && !(x.sym in BadPricing) && x.strike <= 105.0, lll)
+function clean(lll)
+    excludes(lll)
+    sort!(lll; rev=true, by=x->x.rate)
+end
+
 function lookAll(cands)
     global Looked = []
     for sym in cands
         append!(Looked, look(sym))
     end
-    return Looked
+    global LookedRaw = copy(Looked)
+    return clean(Looked)
 end
 
 const ExpirMap = Dict{String,Vector{Date}}()
@@ -53,7 +62,7 @@ function look(sym)
         # TODO: use IV to figure out how far out to go?
         # or could maybe get 52 week range
         underBid = locUnder["bid"]
-        startI = findfirst(oq -> getStrike(oq) > 0.92 * underBid, oqs)
+        startI = findfirst(oq -> getStrike(oq) > 0.94 * underBid, oqs)
         !isnothing(startI) || continue
         for i in (startI-5):(startI-1)
             i >= 1 || continue
@@ -62,9 +71,9 @@ function look(sym)
             primitDir = bap(oq)
             rate = timult * primitDir / strike
             println("$(sym)[$(expr)]: $(underBid) -> $(strike) at $(primitDir) ($(getQuote(oq))) / $(strike) = $(rate)")
-            if rate > 0.5
+            # if rate > 0.1
                 push!(res, (;sym, expr, underBid, strike, primitDir, rate, oq))
-            end
+            # end
         end
     end
     return res
