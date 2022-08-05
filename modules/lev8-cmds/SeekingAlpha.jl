@@ -5,14 +5,14 @@ using BaseTypes
 
 const Cands = Dict{String,NamedTuple}()
 const Syms = String[]
-function getCands(filt=filt1; up=false)
+function getCandSyms(filt=filt1; up=false)
     loadWeeklys()
     loadSa()
     empty!(Cands)
     empty!(Syms)
     merge!(Cands, filter(filt, Combined))
     append!(Syms, keys(Cands))
-    return Cands
+    return Syms
 end
 
 RequirePass = (:Valuation, :Profitability) # :Growth, :Momentum
@@ -44,9 +44,14 @@ BaseDir = "C:/Users/joel/Downloads"
 resetSa() = ( empty!(Combined) ; empty!(Summary) ; empty!(Dividends) )
 function loadSa(;up=false)
     !up || resetSa()
-    isempty(Combined) || return
     xlfnSum = sort!(filter!(x -> occursin("sa-summary", x), readdir(BaseDir; join=true)); rev=true, by=x -> unix2datetime(mtime(x)))[1]
     xlfnDiv = sort!(filter!(x -> occursin("sa-dividends", x), readdir(BaseDir; join=true)); rev=true, by=x -> unix2datetime(mtime(x)))[1]
+
+    if unix2datetime(mtime(xlfnSum)) < (now(UTC) - Hour(8))
+        error("Sa file not downloaded today")
+    end
+    isempty(Combined) || return
+
     xfSum = XLSX.readxlsx(xlfnSum)
     XLSX.openxlsx(xlfnDiv; mode="rw") do xfDiv
         sheetSum = xfSum[1]

@@ -82,9 +82,9 @@ function scandin()
         check = exsToScan()
         for i in check
             runCheck(i, track, minScores)
-            sleep(2.0)
+            sleep(4.0)
         end
-        sleep(8.0)
+        sleep(18.0)
     end
 end
 function runCheck(i, track, minScores, notify=true)
@@ -117,7 +117,7 @@ function exsToScan()
     newActive = queryEntered(today(), Starting)
     exAvoid = map(row -> searchsortedfirst(expirs(), row.targetdate), newActive)
     nextMarketChange() - now(UTC) < Hour(4) && push!(exAvoid, 1)
-    return filter!(x -> x < 10, setdiff(1:NumExps, exAvoid))
+    return filter!(x -> expir(x) < Date(2022,8,19), setdiff(1:NumExps, exAvoid))
 end
 
 #========== Begin: Test One ===========#

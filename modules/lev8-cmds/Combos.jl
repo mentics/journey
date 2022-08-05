@@ -4,22 +4,24 @@ using SH, BaseTypes, SmallTypes
 using DateUtil, DictUtil
 using TradierData
 using Markets, Chains
+import SeekingAlpha
 
 ActiveSyms = ["LUMN", "PARA", "SWKS", "TECK", "NUE"]
-BadPricing = ["BAX", "OLN"]
-excludes(lll) = filter!(x -> !(x.sym in ActiveSyms) && !(x.sym in BadPricing) && x.strike <= 105.0, lll)
-function clean(lll)
-    excludes(lll)
-    sort!(lll; rev=true, by=x->x.rate)
-end
 
-function lookAll(cands)
+function lookAll(cands=SeekingAlpha.getCandSyms())
     global Looked = []
     for sym in cands
         append!(Looked, look(sym))
     end
     global LookedRaw = copy(Looked)
     return clean(Looked)
+end
+
+BadPricing = ["BAX", "OLN"]
+excludes(lll) = filter!(x -> !(x.sym in ActiveSyms) && !(x.sym in BadPricing) && x.strike <= 105.0, lll)
+function clean(lll)
+    excludes(lll)
+    sort!(lll; rev=true, by=x->x.rate)
 end
 
 const ExpirMap = Dict{String,Vector{Date}}()
