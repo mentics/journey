@@ -2,9 +2,7 @@ lms0 = arl(0) ; lms1 = arl(1) ; lms2 = vcat(lms0, lms1)
 aa(2; lmsPos=lms2)
 But the TO metrics of the prev isn't equaling the FROM in the next?
 
-Get option increment size so we can filter out those that require .05 increments.
-
-Get volatility and 52 week range on stocks so we can calculate how far away from curp we are willing to go for strike
+Combos: Get volatility and 52 week range on stocks so we can calculate how far away from curp we are willing to go for strike
 or could get history and calc 99 percentile move
 
 implement MaxClose in trade printout
