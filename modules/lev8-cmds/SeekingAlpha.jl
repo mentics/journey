@@ -41,16 +41,17 @@ const Combined = Dict{String,NamedTuple}()
 const Summary = Dict{String,NamedTuple}()
 const Dividends = Dict{String,NamedTuple}()
 BaseDir = "C:/Users/joel/Downloads"
-resetSa() = ( empty!(Combined) ; empty!(Summary) ; empty!(Dividends) )
+resetSa() = ( empty!(Combined) ; empty!(Summary) ; empty!(Dividends) ; empty!(Weeklys) )
 function loadSa(;up=false)
     !up || resetSa()
     xlfnSum = sort!(filter!(x -> occursin("sa-summary", x), readdir(BaseDir; join=true)); rev=true, by=x -> unix2datetime(mtime(x)))[1]
     xlfnDiv = sort!(filter!(x -> occursin("sa-dividends", x), readdir(BaseDir; join=true)); rev=true, by=x -> unix2datetime(mtime(x)))[1]
 
     if unix2datetime(mtime(xlfnSum)) < (now(UTC) - Hour(8))
-        error("Sa file not downloaded today")
+        error("Sa file not downloaded today. Go to: https://seekingalpha.com/screeners/922a27ae98-To-Download")
     end
     isempty(Combined) || return
+    println("Loading sa")
 
     xfSum = XLSX.readxlsx(xlfnSum)
     XLSX.openxlsx(xlfnDiv; mode="rw") do xfDiv
@@ -79,6 +80,7 @@ using FileUtil
 const Weeklys = Dict{String,AVec}()
 function loadWeeklys()
     isempty(Weeklys) || return
+    println("Loading weeklys")
     fn = joinpath(BaseDir, "weeklys.csv")
     if !isfile(fn) || unix2datetime(mtime(fn)) < (now(UTC) - Week(1))
         println("************** downloading weeklys")

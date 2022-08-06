@@ -6,7 +6,11 @@ using TradierData
 using Markets, Chains
 import SeekingAlpha
 
-ActiveSyms = ["LUMN", "PARA", "SWKS", "TECK", "NUE"]
+# TODO: add filter for earnings and dividends
+
+# ActiveSyms = ["LUMN", "PARA", "SWKS", "TECK", "NUE"]
+TempIgnore = ["APA"] # 2022.08.05
+ActiveSyms = ["NUE", "DVN", "TECK", "PARA", "CC"]
 
 function lookAll(cands=SeekingAlpha.getCandSyms())
     global Looked = []
@@ -18,7 +22,7 @@ function lookAll(cands=SeekingAlpha.getCandSyms())
 end
 
 BadPricing = ["BAX", "OLN"]
-excludes(lll) = filter!(x -> !(x.sym in ActiveSyms) && !(x.sym in BadPricing) && x.strike <= 105.0, lll)
+excludes(lll) = filter!(x -> !(x.sym in ActiveSyms) && !(x.sym in BadPricing) && !(x.sym in TempIgnore) && x.strike <= 105.0, lll)
 function clean(lll)
     excludes(lll)
     sort!(lll; rev=true, by=x->x.rate)
@@ -64,11 +68,12 @@ function look(sym)
         # TODO: use IV to figure out how far out to go?
         # or could maybe get 52 week range
         underBid = locUnder["bid"]
-        startI = findfirst(oq -> getStrike(oq) > 0.94 * underBid, oqs)
+        startI = findfirst(oq -> getStrike(oq) > 0.92 * underBid, oqs)
         !isnothing(startI) || continue
         for i in (startI-5):(startI-1)
             i >= 1 || continue
             oq = oqs[i]
+            getBid(oq) > 0.0 || continue
             strike = getStrike(oq)
             primitDir = bap(oq)
             rate = timult * primitDir / strike
