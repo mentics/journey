@@ -6,7 +6,6 @@ using TradierConfig
 export TradierException, HttpException
 export tradierGet, tradierPost, tradierPostVector
 
-
 struct TradierException <: Exception
     url::String
     result::TradierResp
@@ -20,7 +19,7 @@ end
 function tradierGet(pathQuery::AbstractString, info::CallInfo{T})::T where T
     call(pathQuery, info) do url
         try
-            resp = HTTP.get(url, getHeaders())
+            resp = HTTP.get(url, TradierConfig.HEADERS_GET[])
             @log tradier "tradierGet:" url resp
             return resp
         catch e
@@ -32,7 +31,7 @@ end
 function tradierPost(pathQuery::AbstractString, payload::AbstractString, info::CallInfo{T})::T where T
     call(pathQuery, info) do url
         try
-            resp = HTTP.post(url, getHeaders(), payload)
+            resp = HTTP.post(url, TradierConfig.HEADERS_POST[], payload)
             @log tradier "tradierPost:" url payload resp
             return resp
         catch e

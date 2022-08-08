@@ -12,13 +12,13 @@ function tradierQuote(sym::AStr=getDefaultSymbol())::TradierResp
     return raw["quotes"]["quote"]
 end
 
-tradierQuotes(syms::AStr...)::Vector{TradierResp} = tradierQuotes(syms)
-function tradierQuotes(syms::Coll{<:AStr})::Vector{TradierResp}
-    raw = tradierGet("/markets/quotes?symbols=$(join(syms, ','))&greeks=false", Call(nameof(var"#self#")))
-    haskey(raw["quotes"], "quote") || error(raw)
-    return raw["quotes"]["quote"]
+tradierQuotes(syms::AStr...)::TradierResp = tradierQuotes(syms)
+function tradierQuotes(syms::Coll{<:AStr})::TradierResp
+    payload = "symbols=$(join(syms, ','))&greeks=false"
+    raw = tradierPost("/markets/quotes", payload, Call(nameof(var"#self#")))
+    # haskey(raw["quotes"], "quote") || error(raw)
+    return raw["quotes"]
 end
-
 
 import Globals
 tradierOptionChain(exp::Date, sym::String=getDefaultSymbol())::TradierRespVec = begin

@@ -46,9 +46,8 @@ getDefaultSymbol()::String = cfg[:defaultSymbol]
 # getApiKey() = cfg[:env].apiKey
 # getBaseUrl() = cfg[:env].baseUrl
 
-getHeaders() = (("Authorization", "Bearer $(cfg[:apiKey])"),
-             ("Accept", "application/json"))
-            #  ("Accept-Encoding", "gzip"))
+const HEADERS_GET = Ref{Vector{Pair}}()
+const HEADERS_POST = Ref{Vector{Pair}}()
 
 toTradierUrl(pathQuery::AStr) = cfg[:baseUrl] * pathQuery
 
@@ -81,6 +80,8 @@ const cfg = Dict{Symbol,Any}()
 function __init__()
     # only set default config if not already set
     haskey(cfg, :defaultSymbol) || setDefaultConfig()
+    HEADERS_GET[] = ["Authorization" => "Bearer $(cfg[:apiKey])", "Accept" => "application/json"]
+    HEADERS_POST[] = vcat(HEADERS_GET[], "Content-Type" => "application/x-www-form-urlencoded")
 end
 function setDefaultConfig()
     tenv(:prod)

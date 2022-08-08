@@ -1,7 +1,5 @@
-include("repl-base.jl")
+include("repl-simple.jl")
 
-using Dates
-using SH, BaseTypes, Globals, Bins, SmallTypes, StratTypes, LegTypes, LegMetaTypes
 using Calendars, Markets, Chains, Expirations, Sched
 using ProcOrder, CmdTrading, CmdExplore, CmdFind
 
@@ -11,3 +9,4 @@ todo()
 drx()
 
 xx = CmdExplore
+using Combos, SeekingAlpha ; c = Combos ; sa = SeekingAlpha;
