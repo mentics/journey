@@ -7,7 +7,7 @@ using Markets, Chains
 import SeekingAlpha
 
 # ActiveSyms = ["LUMN", "PARA", "SWKS", "TECK", "NUE"]
-TempIgnore = ["APA"] # 2022.08.05
+TempIgnore = ["APA", "BBBY"] # 2022.08.05
 ActiveSyms = ["NUE", "DVN", "TECK", "PARA", "CC"]
 
 function lookAll(cands=SeekingAlpha.getCandSyms())
@@ -19,8 +19,7 @@ function lookAll(cands=SeekingAlpha.getCandSyms())
     return clean(Looked)
 end
 
-BadPricing = ["BAX", "OLN"]
-excludes(lll) = filter!(x -> !(x.sym in ActiveSyms) && !(x.sym in BadPricing) && !(x.sym in TempIgnore) && x.strike <= 105.0, lll)
+excludes(lll) = filter!(x -> !(x.sym in ActiveSyms) && !(x.sym in BadPricing) && !(x.sym in TempIgnore) && !(x.sym in Ignore) && x.strike <= 105.0, lll)
 function clean(lll)
     excludes(lll)
     sort!(lll; rev=true, by=x->x.rate)
@@ -59,12 +58,17 @@ end
 const DF = dateformat"mm/dd/yyyy"
 const FUTURE = today() + Year(100)
 parseDate(strDate) = strDate == "-" ? FUTURE : ( date = Date(strDate, DF) ; date >= today() ? date : FUTURE )
+function parseDate(d::Dict, k::String)
+    haskey(d, k) ? parseDate(d[k]) : return FUTURE
+end
 
 using Between
 function look(sym)
     res = []
-    about = SeekingAlpha.Cands[sym]
-    maxDate = min(parseDate(about[:earningsUpcomingAnnounceDate]), parseDate(about[Symbol("dividendsEx-DivDate")]))
+    # about = SeekingAlpha.Cands[sym]
+    about = SeekingAlpha.SaMetrics
+    # maxDate = min(parseDate(about[:earningsUpcomingAnnounceDate]), parseDate(about[Symbol("dividendsEx-DivDate")]))
+    maxDate = min(parseDate(about, "earning_announce_date"), parseDate(about, "div_pay_date"))
     getChains(sym, maxDate)
     locUnder = Under[sym]
     chs = ChainMap[sym]
@@ -80,14 +84,14 @@ function look(sym)
         for i in (startI-5):(startI-1)
             i >= 1 || continue
             oq = oqs[i]
-            getBid(oq) > 0.0 || continue
+            getBid(oq) >= 0.05 || continue
             strike = getStrike(oq)
             primitDir = bap(oq)
             rate = timult * primitDir / strike
             println("$(sym)[$(expr)]: $(underBid) -> $(strike) at $(primitDir) ($(getQuote(oq))) / $(strike) = $(rate)")
-            # if rate > 0.1
+            if rate > 0.1
                 push!(res, (;sym, expr, underBid, strike, primitDir, rate, oq))
-            # end
+            end
         end
     end
     return res

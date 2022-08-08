@@ -1,7 +1,7 @@
 #!/bin/bash
 
 
-curl 'https://seekingalpha.com/api/v3/screener_results' \
+curl -v 'https://seekingalpha.com/api/v3/screener_results' \
   -H 'authority: seekingalpha.com' \
   -H 'accept: */*' \
   -H 'accept-language: en-US,en;q=0.9' \

@@ -71,7 +71,7 @@ function update()::Nothing
     return
 end
 function newVal()::Market
-    tqs = tradierQuotes(("SPY", "VIX"))
+    tqs = tradierQuotes(("SPY", "VIX"))["quote"]
     tq = tqs[1]
     tsMarket = unix2datetime(max(tq["bid_date"], tq["ask_date"])/1000)
     # TODO: clean this up
