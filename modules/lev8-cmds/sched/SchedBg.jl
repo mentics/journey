@@ -11,7 +11,7 @@ Jobs = [
     ("run-backupOrders", SchedBg, "ProcSched.backupOrders", "whenBackupOrders", true),
     ("run-procExpired", SchedBg, "ProcSched.procExpired", "whenProcExpired", true),
     ("run-snapshots", SchedBg, "snaveWrapper", "whenSnapshots", false),
-    ("run-strat", SchedBg, "stratWrapper", "whenStrat", false),
+    # ("run-strat", SchedBg, "stratWrapper", "whenStrat", false),
 ]
 
 # TODO: only run on weekdays?

@@ -1,28 +1,31 @@
 module Combos
-using Dates
+using Dates, IterTools, NamedTupleTools
 using SH, BaseTypes, SmallTypes
-using DateUtil, DictUtil
+using DateUtil, DictUtil, OutputUtil
 using TradierData
 using Markets, Chains
 import SeekingAlpha
 
-# ActiveSyms = ["LUMN", "PARA", "SWKS", "TECK", "NUE"]
-TempIgnore = ["APA", "BBBY"] # 2022.08.05
-ActiveSyms = ["NUE", "DVN", "TECK", "PARA", "CC"]
+TempIgnore = []
+# ActiveSyms = ["CODX", "DVN", "EQRX", "NUE", "OPEN", "TECK", "CLOV", "PARA", "ASRT", "CDEV", "NVTA","NNVC","DNMR","FSR","BLUE"]
+ActiveSyms = ["BLUE","NNVC","NVTA","FSR","WTI","DNMR"]
 
-function lookAll(cands=SeekingAlpha.getCandSyms())
+function lookAll(cands=SeekingAlpha.totry())
     global Looked = []
     for sym in cands
         append!(Looked, look(sym))
     end
     global LookedRaw = copy(Looked)
-    return clean(Looked)
+    global Looked = clean(Looked)
+    pretyble(delete.(Looked, :oq))
+    return Looked
 end
 
-excludes(lll) = filter!(x -> !(x.sym in ActiveSyms) && !(x.sym in BadPricing) && !(x.sym in TempIgnore) && !(x.sym in Ignore) && x.strike <= 105.0, lll)
+excludes(lll) = filter!(x -> !(x.sym in ActiveSyms) && !(x.sym in SeekingAlpha.BadPricing) && !(x.sym in TempIgnore) && !(x.sym in SeekingAlpha.Ignore) && x.strike <= 105.0, lll)
 function clean(lll)
     excludes(lll)
-    sort!(lll; rev=true, by=x->x.rate)
+    # sort!(lll; rev=true, by=x->x.rate)
+    return sort!(map(g -> g[findmax(x -> x.rate, g)[2]], groupby(r -> r.sym, sort!(lll; by=x->x.sym))); rev=true, by=x->x.rate)
 end
 
 const ExpirMap = Dict{String,Vector{Date}}()
@@ -56,19 +59,23 @@ function getChains(sym::String, maxDate::Date; up=false)
 end
 
 const DF = dateformat"mm/dd/yyyy"
-const FUTURE = today() + Year(100)
-parseDate(strDate) = strDate == "-" ? FUTURE : ( date = Date(strDate, DF) ; date >= today() ? date : FUTURE )
+parseDate(seconds::Int) = unix2datetime(seconds)
+parseDate(strDate::String) = strDate == "-" ? DATE_FUTURE : ( date = Date(strDate, DF) ; date >= today() ? date : DATE_FUTURE )
 function parseDate(d::Dict, k::String)
-    haskey(d, k) ? parseDate(d[k]) : return FUTURE
+    haskey(d, k) ? parseDate(d[k]) : return DATE_FUTURE
 end
 
+sa = SeekingAlpha
+import TradierData:findEarnDate,findExDate
 using Between
 function look(sym)
+    try
     res = []
     # about = SeekingAlpha.Cands[sym]
-    about = SeekingAlpha.SaMetrics
+    # about = SeekingAlpha.Data[:metrics]
     # maxDate = min(parseDate(about[:earningsUpcomingAnnounceDate]), parseDate(about[Symbol("dividendsEx-DivDate")]))
-    maxDate = min(parseDate(about, "earning_announce_date"), parseDate(about, "div_pay_date"))
+    # maxDate = min(parseDate(about, "earning_announce_date"), parseDate(about, "div_pay_date"))
+    maxDate = min(findExDate(sa.Dividends[sym]), findEarnDate(sa.Earnings[sym]))
     getChains(sym, maxDate)
     locUnder = Under[sym]
     chs = ChainMap[sym]
@@ -95,6 +102,10 @@ function look(sym)
         end
     end
     return res
+    catch e
+        @error "look" sym
+        rethrow(e)
+    end
 end
 
 function vol(sym)

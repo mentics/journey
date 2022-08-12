@@ -14,7 +14,8 @@ export isNowWithinMarket
 
 #### new stuff
 
-export SECOND_ZERO, TIME_ZERO, DATETIME_ZERO, INTERTIME_ZERO
+export SECOND_ZERO, TIME_ZERO, DATE_ZERO, DATETIME_ZERO, INTERTIME_ZERO
+export DATE_FUTURE
 export InterTime, timeIn
 
 export fromMarketTZ, toDateMarket, toTimeMarket
@@ -32,6 +33,9 @@ const SECOND_ZERO = Second(0)
 const SECOND_DAY = Second(Day(1))
 const TIME_ZERO = Time(0)
 const DATETIME_ZERO = DateTime(0)
+const DATE_ZERO = Date(0)
+
+const DATE_FUTURE = today() + Year(100)
 
 const InterTime = Interval{Time,Closed,Closed}
 const INTERTIME_ZERO = Interval(TIME_ZERO, TIME_ZERO)

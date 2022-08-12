@@ -38,12 +38,10 @@ function appendCsv(path::AStr, data::Vector{<:Dict}; keys=keys(data[1]))
     end
     nothing
 end
-function writeCsv(path::AStr, data::Union{Vector{Tuple},Vector{NamedTuple}})
-    writedlm(path, data, ',')
-end
-function readCsv(path::AStr; kws...)
-    readdlm(path, ','; kws...)
-end
+writeCsv(path::AStr, data::Union{Vector{Tuple},Vector{NamedTuple}}) = writedlm(path, data, ',')
+readCsv(path::AStr; kws...) = readdlm(path, ','; kws...)
+readTsv(path::AStr; kws...) = readdlm(path, '\t'; kws...)
+readTsv(path::AStr, type::Type; kws...) = readdlm(path, '\t', type; kws...)
 
 function readLastLines(path::AStr, n::Int=1, maxLineLength::Int=1000)::String
     result = IOBuffer()

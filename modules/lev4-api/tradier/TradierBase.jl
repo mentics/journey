@@ -19,19 +19,20 @@ end
 function tradierGet(pathQuery::AbstractString, info::CallInfo{T})::T where T
     call(pathQuery, info) do url
         try
-            resp = HTTP.get(url, TradierConfig.HEADERS_GET[])
+            resp = HTTP.get(url, TradierConfig.HEADERS_GET[]; retry=true, retries=3)
             @log tradier "tradierGet:" url resp
             return resp
         catch e
-            @log error "HTTP error in tradierPost:" url info
+            @log error "HTTP error in tradierPost:" url info resp.request.txcount
             rethrow()
         end
     end
 end
-function tradierPost(pathQuery::AbstractString, payload::AbstractString, info::CallInfo{T})::T where T
+function tradierPost(pathQuery::AbstractString, payload::AbstractString, info::CallInfo{T}; retries=0)::T where T
     call(pathQuery, info) do url
         try
-            resp = HTTP.post(url, TradierConfig.HEADERS_POST[], payload)
+            kws = retries == 0 ? (;) : (;retry=true, retries, retry_non_idempotent=true)
+            resp = HTTP.post(url, TradierConfig.HEADERS_POST[], payload; kws...)
             @log tradier "tradierPost:" url payload resp
             return resp
         catch e

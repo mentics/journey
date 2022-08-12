@@ -14,7 +14,7 @@ function calcMetrics(prob::Prob, vals::AVec{Float64}, numLegs::Int, binsi=Bins.i
         v = vals[i]
         v > 0.0 && (profit += pvals[i] * v)
     end
-    global cap = 0.5 + log(1.0 + profit)
+    global cap = 0.5 + 0.5 * log(1.0 + profit)
     adjust = 0.005 * numLegs
     # @info "cap" cap adjust
     mm = calcMetrics1(pvals, vals, cap, adjust, binsi)

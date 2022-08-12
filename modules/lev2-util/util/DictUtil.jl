@@ -11,7 +11,7 @@ export walkKeys
 
 (tryKey(d::Dict{K,T}, key::K)::Union{Nothing,T}) where {K,T} = haskey(d, key) && (dk = d[key]; !isnothing(dk)) ? dk : nothing
 (tryKey(d::Dict{K,V}, key::K, els::V2)::V2) where {K,V,V2<:V} = haskey(d, key) && (dk = d[key]; !isnothing(dk)) ? dk : els
-tryKeys(d::Dict{<:Any,<:Any}, els, keys...) = (val = find(!isnothing, map(k->tryKey(d,k), keys)); return isnothing(val) ? els : val)
+# tryKeys(d::Dict{<:Any,<:Any}, els, keys...) = (val = find(!isnothing, map(k->tryKey(d,k), keys)); return isnothing(val) ? els : val)
 # function (useKey(finit::Function, d::Dict{K,V}, key::K)::V2) where {K,V,V2<:V}
 function useKey(finit::Union{Function,Type}, d::Dict, key)
     haskey(d, key) || (d[key] = finit())
@@ -20,6 +20,18 @@ end
 function useKey(d::Dict, key, els)
     haskey(d, key) || (d[key] = els)
     return d[key]
+end
+
+function safeKeys(d::Dict, els, keys...)
+    cur = d
+    for k in keys
+        if haskey(cur, k)
+            cur = cur[k]
+        else
+            return els
+        end
+    end
+    return cur
 end
 
 function getLastDict(d::Dict, keys...)

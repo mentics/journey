@@ -2,6 +2,14 @@ lms0 = arl(0) ; lms1 = arl(1) ; lms2 = vcat(lms0, lms1)
 aa(2; lmsPos=lms2)
 But the TO metrics of the prev isn't equaling the FROM in the next?
 
+Earnings date for MUX didn't work
+also didn't work for JOBY
+
+
+call tradier to get dividend ex date
+call tradier to get earnings date: https://documentation.tradier.com/brokerage-api/markets/fundamentals/get-calendars
+filter if primitDir for this strike is better than primitDir for next higher strike (ie. bad pricing)
+
 Combos: Get volatility and 52 week range on stocks so we can calculate how far away from curp we are willing to go for strike
 or could get history and calc 99 percentile move
 
