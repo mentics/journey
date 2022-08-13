@@ -5,22 +5,24 @@ using Globals, BaseTypes, SH, Bins, SmallTypes, ChainTypes, QuoteTypes, OptionTy
 using TradierData, Caches
 using DataHelper, Markets, Calendars, Expirations
 
-export chains, getOqs, ivs, calcNearIv
+export chains, chain, ivs, calcNearIv
 export quoter, optQuoter, isQuotable
 export ChainsType, Oqss
 
 const Oqss = Styles{Sides{Vector{OptionQuote}}}
 const ChainsType = Dict{Date,OptionChain}
 
-ftrue(_) = true
+# ftrue(_) = true
 
-distRatio(x1, x2) = x2 == 0.0 ? 0.0 : abs(1.0 - x1 / x2)
+# distRatio(x1, x2) = x2 == 0.0 ? 0.0 : abs(1.0 - x1 / x2)
 
-function getOqss(oqsIn::Vector{OptionQuote}, curp::Currency, legsCheck=LegMeta[], noLimit=false)::Oqss
-    oqs = filter(oq -> distRatio(getStrike(oq), curp) < Bins.SPAN/2, oqsIn)
+getOqss(i::Int, curp::Currency, legsCheck=LegMeta[])::Oqss = getOqss(expir(i), curp, legsCheck)
+getOqss(expr::Date, curp::Currency, legsCheck=LegMeta[])::Oqss = getOqss(chain(expr), curp, legsCheck)
+function getOqss(oqs::Vector{OptionQuote}, curp::Currency, legsCheck=LegMeta[])::Oqss
+    # oqs = filter(oq -> distRatio(getStrike(oq), curp) < Bins.SPAN/2, oqsIn)
     fconl = !isConflict(legsCheck, Side.long)
     fcons = !isConflict(legsCheck, Side.short)
-    fcans = noLimit ? ftrue : canShort(Globals.get(:Strats), curp)
+    # fcans = noLimit ? ftrue : canShort(Globals.get(:Strats), curp) # noLimit=false
     oqsValid = filter(isValid(curp), oqs)
     oqsLong = filter(fconl, oqsValid)
     oqsCallLong = filter(SmallTypes.isCall, oqsLong)
@@ -30,8 +32,8 @@ function getOqss(oqsIn::Vector{OptionQuote}, curp::Currency, legsCheck=LegMeta[]
     oqsPutShort = filter(SmallTypes.isPut, oqsShort)
     return Styles(Sides(oqsCallLong, oqsCallShort), Sides(oqsPutLong, oqsPutShort))
 end
-function getOqss(oqsIn, curp)::Oqss
-    oqs = filter(oq -> distRatio(getStrike(oq), curp) < Bins.SPAN/2, oqsIn)
+function getOqss(oqsIn::Vector{OptionQuote}, curp::Currency)::Oqss
+    # oqs = filter(oq -> distRatio(getStrike(oq), curp) < Bins.SPAN/2, oqsIn)
     oqsValid = Iterators.filter(isValid, oqs)
 
     oqsLong = oqsValid # Iterators.filter(isLong, oqsValid)
@@ -86,6 +88,8 @@ chainSnap(snapName::String, revert=true)::ChainsType = useKey(CHAINS_SNAP, snapN
     end
 end
 
+chain(i::Int)::Vector{OptionQuote} = chain(expir(i))
+chain(expr::Date)::Vector{OptionQuote} = chains()[expr].chain
 function chains(; up=false)::ChainsType
     cache!(ChainsType, CHAINS, tooOld(PERIOD_UPDATE, isMarketOpen()); up) do
         up || @log error "Chains not up to date"
@@ -134,7 +138,7 @@ function calcNearIv(dt::Date, curp::Real, chs::ChainsType=chains())::Union{Nothi
     ivs = getIv.(getMeta.(nearOqs(curp, dt, chs)))
     isnothing(findfirst(x -> x == 0.0, ivs)) || @logret "No ivs in calcNearIv" dt length(chs) curp
     # ivs = filter(x -> x != 0.0, )
-    # !isempty(ivs) || @logret "No ivs in calcNearIv($(dt), $(length(chs))) curp=$(curp)"
+    !isempty(ivs) || @logret "No ivs in calcNearIv" dt length(chs) curp
     # @assert length(ivs) > 0 "No ivs in calcNearIv($(dt), $(length(chs))) curp=$(curp)"
     round(avg(ivs); digits=4)
 end

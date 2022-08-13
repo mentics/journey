@@ -6,10 +6,6 @@ using TradierData
 using Markets, Chains
 import SeekingAlpha
 
-TempIgnore = []
-# ActiveSyms = ["CODX", "DVN", "EQRX", "NUE", "OPEN", "TECK", "CLOV", "PARA", "ASRT", "CDEV", "NVTA","NNVC","DNMR","FSR","BLUE"]
-ActiveSyms = ["BLUE","NNVC","NVTA","FSR","WTI","DNMR"]
-
 function lookAll(cands=SeekingAlpha.totry())
     global Looked = []
     for sym in cands
@@ -94,7 +90,7 @@ function look(sym)
             getBid(oq) >= 0.05 || continue
             strike = getStrike(oq)
             primitDir = bap(oq)
-            rate = timult * primitDir / strike
+            rate = timult * (primitDir - .0065) / strike # .0065 is the trade commission for fidelity
             println("$(sym)[$(expr)]: $(underBid) -> $(strike) at $(primitDir) ($(getQuote(oq))) / $(strike) = $(rate)")
             if rate > 0.1
                 push!(res, (;sym, expr, underBid, strike, primitDir, rate, oq))

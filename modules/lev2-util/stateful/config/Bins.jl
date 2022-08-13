@@ -56,8 +56,8 @@ nearest(x::Float64)::Int = isLeft(x) ? 1 : isRight(x) ? VNUM : 2 + round(Int, (x
 leftOf(x::Float64)::Int = isRight(x) ? VNUM : max(1, 2 + floor(Int, (x - MFIRST) / WIDTH))
 rightOf(x::Float64)::Int = isLeft(x) ? 1 : min(VNUM, -1 + VNUM - floor(Int, (MLAST - x) / WIDTH))
 
-isLeft(x::Float64) = x <= XLEFT
-isRight(x::Float64) = x >= XRIGHT
+isLeft(x::Real) = x <= XLEFT
+isRight(x::Real) = x >= XRIGHT
 
 with(x::Float64)::Vector{Float64} = fill(x, VNUM)
 with(f::Function)::Vector{Float64} = map(f, xs())

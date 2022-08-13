@@ -23,8 +23,8 @@ function tradierGet(pathQuery::AbstractString, info::CallInfo{T})::T where T
             @log tradier "tradierGet:" url resp
             return resp
         catch e
-            @log error "HTTP error in tradierPost:" url info resp.request.txcount
-            rethrow()
+            @log error "HTTP error in tradierGet:" url info
+            rethrow(e)
         end
     end
 end

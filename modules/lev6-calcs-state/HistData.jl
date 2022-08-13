@@ -1,6 +1,6 @@
 module HistData
 using Dates, DelimitedFiles
-using Globals, BaseTypes, FileUtil, DateUtil
+using Globals, BaseTypes, FileUtil, DateUtil, LogUtil
 using Caches, TradierData
 
 export dataDaily, dataDay
@@ -11,15 +11,10 @@ const DailyRowType = NamedTuple{(:date, :open, :high, :low, :close, :volume), Tu
 const DailyType = Vector{DailyRowType}
 const RetsItemType = NamedTuple{(:interval, :ret, :date, :dailyIndex), Tuple{Int,Float64,Date,Int}}
 
-const header = [:date, :open, :high, :low, :close, :volume]
-const pathDaily = dirData("hist", "daily", "spy", "spy-daily.csv")
-
-const DAILY = :daily
-
 # In descending date order
-dataDaily(;up=false)::DailyType = cache!(() -> updateDaily(), DailyType, DAILY, Hour(4); up)
-dataDaily(d::Date)::DailyType = (daily = dataDaily() ; daily[findfirst(r->r.date <= d, daily):end])
-dataDaily(from::Date, to::Date)::DailyType = filter(r -> from <= r.date <= to, dataDaily())
+dataDaily(sym::AStr="SPY"; up=false)::DailyType = cache!(() -> updateDaily(sym), DailyType, Symbol("daily-$(lowercase(sym))"), Hour(4); up)
+dataDaily(d::Date, sym::AStr="SPY")::DailyType = (daily = dataDaily(sym) ; daily[findfirst(r->r.date <= d, daily):end])
+dataDaily(from::Date, to::Date, sym::AStr="SPY")::DailyType = filter(r -> from <= r.date <= to, dataDaily(sym))
 
 priceOpen(d::Date)::Currency = dataDay(d).open
 dataDay(d::Date)::DailyRowType = (daily = dataDaily() ; daily[findfirst(r->r.date == d, daily)])
@@ -78,28 +73,33 @@ function makeRetsExpirs2(daily, maxInterval::Int)::Vector{Vector{RetsItemType}}
 end
 
 #region Local
-function updateDaily()::DailyType
-    if !isfile(pathDaily)
-        error("can't find file: $(pathDaily)")
-        # daily = Tradier.tradierHistQuotes(cfg, "SPY", "daily", Date(2000,1,1), Dates.today()+Day(1))
-        daily = getDataDaily(Date(2000,1,1), Dates.today()+Day(1))
-        writeCsv(pathDaily, daily; keys=string.(header))
+const header = [:date, :open, :high, :low, :close, :volume]
+# const pathDaily = dirData("hist", "daily", "spy", "spy-daily.csv")
+# const pathDailyVix = dirData("hist", "daily", "spy", "vix-daily.csv")
+pathDaily(sym::AStr)::String = dirData("hist", "daily", "$(sym)-daily.csv")
+
+function updateDaily(sym)::DailyType
+    path = pathDaily(lowercase(sym))
+    if !isfile(path)
+        @log warn "Can't find file for $(sym): $(path)"
+        daily = getDataDaily(Date(2000,1,1), Dates.today()+Day(1), sym)
+        writeCsv(path, daily; keys=string.(header))
     else
-        lastLine = readLastLines(pathDaily)
+        lastLine = readLastLines(path)
         lastDate = Date(split(lastLine, ',')[1])
         lastExpected = lastTradingDay(Dates.today() - Day(1))
         if lastDate < lastExpected
-            newDaily = getDataDaily(lastDate+Day(1), lastExpected)
+            newDaily = getDataDaily(lastDate+Day(1), lastExpected, sym)
             if !isnothing(newDaily)
                 if length(newDaily) > 0 && haskey(newDaily[1], "date")
-                    appendCsv(pathDaily, newDaily; keys=string.(header))
+                    appendCsv(path, newDaily; keys=string.(header))
                 else
                     throw("Unexpected hist daily response: " * string(newDaily))
                 end
             end
         end
     end
-    return load(pathDaily)
+    return load(path)
 end
 
 function load(path)
@@ -123,7 +123,7 @@ strToDate(x) = x
 #     return d
 # end
 
-getDataDaily(from, to) = tradierHistQuotes("daily", from, to)
+getDataDaily(from, to, sym="SPY") = tradierHistQuotes("daily", from, to, sym)
 #endregion
 
 end

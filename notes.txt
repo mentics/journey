@@ -1,10 +1,12 @@
-lms0 = arl(0) ; lms1 = arl(1) ; lms2 = vcat(lms0, lms1)
-aa(2; lmsPos=lms2)
-But the TO metrics of the prev isn't equaling the FROM in the next?
+Two sets of
+
+.*\s(.+) Cash Covered Put.*
+
+
+How about do our trade search for anything that is > 90% probability and > 100% annual rate?
 
 Earnings date for MUX didn't work
 also didn't work for JOBY
-
 
 call tradier to get dividend ex date
 call tradier to get earnings date: https://documentation.tradier.com/brokerage-api/markets/fundamentals/get-calendars

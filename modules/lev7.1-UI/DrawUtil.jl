@@ -152,6 +152,16 @@ function drawDots!(vals; kws...)
     fig = scatter!(vals; kws...)
     return fig
 end
+
+export drawBars, drawBars!
+function drawBars(vals; kws...)
+    fig = barplot(vals; kws...)
+    return fig
+end
+function drawBars!(vals; kws...)
+    fig = barplot!(vals; kws...)
+    return fig
+end
 #endregion
 
 end

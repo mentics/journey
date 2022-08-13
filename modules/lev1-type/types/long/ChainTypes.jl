@@ -7,6 +7,7 @@ struct OptionQuote
     option::Option
     quot::Quote
     meta::OptionMeta
+    src::Union{Nothing,Dict{String,Any}}
 end
 OptionQuote(;option=Option(), quot=Quote(), meta=OptionMeta()) = OptionQuote(option, quot, meta)
 OptionQuote(oq::OptionQuote; option=getOption(oq), quot=getQuote(oq), meta=getMeta(oq)) = OptionQuote(option, quot, meta)
@@ -26,11 +27,10 @@ SH.getAsk(oq::OptionQuote) = getAsk(oq.quot)
 SH.getIv(oq::OptionQuote) = oq.meta.iv
 
 SH.isValid(curp::Currency) =
-    oq ->
-        getBid(oq) > 0.0
-        # &&
-        # (abs(1.0 - curp / getStrike(oq)) <= .15)
-SH.isValid(oq::OptionQuote) = getBid(oq) > 0.0
+    oq::OptionQuote ->
+        getBid(oq) > 0.0 &&
+        (abs(getStrike(oq) / curp - 1.0) <= Bins.SPAN/2)
+# SH.isValid(oq::OptionQuote) = getBid(oq) > 0.0
 
 struct OptionChain
     chain::Vector{OptionQuote}

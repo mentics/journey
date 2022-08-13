@@ -1,6 +1,6 @@
 module Calendars
 using Dates
-using Globals, DateUtil, LogUtil, ThreadUtil, MarketDurUtil
+using Globals, DateUtil, LogUtil, ThreadUtil, MarketDurUtil, FileUtil
 using TradierData
 
 export isMarketOpen, nextMarketChange, getMarketOpen, getMarketClose, getMarketTime
@@ -16,7 +16,10 @@ nextMarketChange() = ( check() ; Info[].nextChange )
 getMarketOpen(d::Date) = fromMarketTZ(d, first(getMarketTime(d).opens))
 getMarketClose(d::Date) = fromMarketTZ(d, last(getMarketTime(d).opens))
 # DateTime(astimezone(ZonedDateTime(DateTime("$(d)T$(cal[d]["open"]["end"])"), tz"America/New_York"), tz"UTC"))
-getMarketTime(d::Date)::MarketTime = Info[].markTime[d]
+function getMarketTime(d::Date)::MarketTime
+    haskey(Info[].markTime, d) || ensureCalYear(d)
+    return Info[].markTime[d]
+end
 # calcTimeToClose(ts::DateTime, d::Date)::Period = ts - getMarketClose(d)
 
 # in hours
@@ -53,6 +56,12 @@ struct CalInfo
     markDur::Dict{Date,MarketDur}
     ts::DateTime
 end
+import JSON3, Intervals
+JSON3.StructType(::Type{CalInfo}) = JSON3.Struct()
+JSON3.StructType(::Type{MarketTime}) = JSON3.Struct()
+JSON3.StructType(::Type{MarketDur}) = JSON3.Struct()
+JSON3.StructType(::Type{Intervals.Interval{Time,Intervals.Closed,Intervals.Closed}}) = JSON3.Struct()
+JSON3.StructType(::Type{Second}) = JSON3.Struct()
 
 const Info = Ref{CalInfo}(CalInfo(false, DATETIME_ZERO, Dict(), Dict(), DATETIME_ZERO))
 const Lock = ReentrantLock()
@@ -61,24 +70,42 @@ function __init__()
     updateCalendar()
 end
 
+const InfoPath = dirData("hist", "cal-info.json")
+saveInfo() = writeJson(InfoPath, Info[])
+loadInfo() = ( println("Loading cal info") ; Info[] = loadJson(InfoPath, CalInfo) )
+
 function check()
     isnothing(snap()) || error("Session timing doesn't work when snapped")
     Info[].nextChange < now(UTC) && updateCalendar()
 end
 
-function updateCalendar(;from=(firstdayofmonth(today()) - Year(1)), to=(lastdayofmonth(today() + Year(1))))::Nothing
+function updateCalendar(;from=firstdayofyear(today()), to=lastdayofyear(today()))::Nothing
     runSync(Lock) do
         @log debug "updateCalendar"
-        isOpen, nextChange = today() != Date(2022,6,20) ? tradierClock() : (false, DateTime("2022-06-20T20:00:00"))
-        cal = tradierCalendar(from, to)
-        markTime = Dict(d => MarketTime(data) for (d, data) in cal)
-        markDur = Dict(d => MarketDur(mt) for (d, mt) in markTime)
-        Info[] = CalInfo(isOpen, nextChange, markTime, markDur, now(UTC))
+        Info[].ts == DATETIME_ZERO && isfile(InfoPath) && loadInfo()
+        isOpen, nextChange = today() != Date(2022,6,20) ? tradierClock() : (false, DateTime("2022-06-20T20:00:00")) # hard coded because the API missed this new holiday
+        !haskey(Info[].markDur, from) || !haskey(Info[].markDur, to) || return
+        if year(from) > 2012
+            cal = tradierCalendar(from, to)
+            markTime = Dict(d => MarketTime(data) for (d, data) in cal)
+            markDur = Dict(d => MarketDur(mt) for (d, mt) in markTime)
+        else
+            TODO: use isBusDay to populate
+        end
+        if Info[].ts == DATETIME_ZERO
+            Info[] = CalInfo(isOpen, nextChange, markTime, markDur, now(UTC))
+        else
+            merge!(Info[].markTime, markTime)
+            merge!(Info[].markDur, markDur)
+            Info[].ts = now(UTC)
+        end
+        saveInfo()
         @log info "Updated calendar" isOpen nextChange
     end
     return
 end
 
+ensureCalYear(d::Date) = ensureCal(firstdayofyear(d), lastdayofyear(d))
 ensureCal(dt::Dates.AbstractDateTime...)::Nothing = ensureCal(Date.(dt)...)
 function ensureCal(dt::Date...)::Nothing
     from, to = extrema(dt)

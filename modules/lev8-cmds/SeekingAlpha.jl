@@ -4,9 +4,12 @@ import XLSX
 using BaseTypes
 using DateUtil, FileUtil, DictUtil
 
+ActiveSyms = ["BHC","BLUE","CLNN","CLOV","INVZ","NKLA","NNVC","NVTA","PAYO","SENS","TSP","WVE","FSR","WKHS","WTI","DNMR"]
+
 BadPricing = ["BAX", "OLN"]
-Ignore = ["SNDL","YANG","MUX","QD","RIOT","GOTU","TAL","ACB"]
-isGlobalIgnore(sym) = sym in BadPricing || sym in Ignore
+Ignore = ["SNDL","YANG","MUX","QD","RIOT","GOTU","TAL","ACB","HUT","IQ","JMIA"]
+IgnoreTemp = ["CORZ","CLSK"]
+isGlobalIgnore(sym) = sym in vcat(BadPricing, Ignore, IgnoreTemp, ActiveSyms)
 
 const BaseDir = mkpath(joinpath("C:/Users/joel/Downloads", "journey"))
 const BaseDirData = mkpath(joinpath(BaseDir, "data"))
@@ -26,8 +29,8 @@ function totry()
         gs = tryKey(Data[:grades], s)
         grade = isnothing(gs) || (checkGrade(gs, "value_category", 9) || checkGrade(gs, "profitability_category", 6) || checkGrade(gs, "growth_category", 6))
         return grade && !isnothing(bid) && bid >= 0.05 &&
-                DictUtil.safeKeys(Data, 0.0, :metrics, s, "quant_rating") > 2.5 &&
-                Quotes[s]["prevclose"] < 17.0
+                DictUtil.safeKeys(Data, 0.0, :metrics, s, "quant_rating") > 3.5 &&
+                Quotes[s]["prevclose"] < 12.0
         #
         # Grades[s]["momentum_category"] <= 9
     end

@@ -14,7 +14,7 @@ const PROBHISTS = :probHists
 const PROBHISTS_TYPE = Vector{PHType}
 const CFG_DEF = Dict{Symbol,Any}(
     :maxInterval => 200,
-    :numHistDays => 5000,
+    :numHistDays => 7000,
     :skipDays => 0, # So we can have some out-of-sample test data
     # :useWeights => false,
     # :weightDaysBack => 5,
@@ -41,6 +41,7 @@ function makeProbHists(cfg, forDate::Date, data)::Vector{PHType}
     if !isBusDay(forDate)
         throw("Invalid forDate $(forDate) is not a bday")
     end
+    println("Making prob hists with data length ", length(data))
 
     res = Vector{PHType}()
     # Calc from/to by skipping data that is later than forDate and the amount configured to skip and including enough at the end to handle interval and weight calcs
@@ -57,7 +58,8 @@ function makeProbHists(cfg, forDate::Date, data)::Vector{PHType}
     @log debug "Calculated rets for daily data indexes" length(rets[end]) from to
 
     for interval in 1:cfg[:maxInterval]
-        push!(res, makeProbHist(rets[interval]))
+        ph1 = makeProbHist(rets[interval])
+        push!(res, ph1)
     end
     return res
 end
@@ -65,19 +67,17 @@ end
 function makeProbHist(rets::AVec{RetsItemType})::PHType
     # bins = zeros(numBins())
     vals = Bins.with(0.0)
-    # lower = 0.0
-    # upper = 0.0
     weightSum = 0.0
     for i in 1:length(rets)
         (;ret) = rets[i]
         weight = 20.0 / (20.0 + i)
         weightSum += weight
         if Bins.isLeft(ret) # ret <= binsLeft()
-            # lower += weight
             vals[1] += weight
+            # println("found left ", weight)
         elseif Bins.isRight(ret) # ret >= binsRight()
-            # upper += weight
             vals[end] += weight
+            # println("found right ", weight)
         else
             b = Bins.nearest(ret)
             # if !Bins.isValidInd(b)

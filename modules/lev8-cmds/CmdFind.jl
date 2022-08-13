@@ -12,9 +12,6 @@ export ofor, lmsFor, lmssd, dinDraw
 
 using CmdUtil, CmdExplore, DrawStrat
 
-export exprs
-exprs() = pretyble([(;expir=x) for x in expirs()]; rowcol=true)
-
 function makeCtx(i::Int)
     exp = expir(i)
     curp = market().curp
@@ -120,7 +117,8 @@ function exsToScan()
     newActive = queryEntered(today(), Starting)
     exAvoid = map(row -> searchsortedfirst(expirs(), row.targetdate), newActive)
     nextMarketChange() - now(UTC) < Hour(4) && push!(exAvoid, 1)
-    return vcat(filter!(x -> expir(x) < Date(2022,8,19), setdiff(1:NumExps, exAvoid)),[17,18])
+    # return vcat(filter!(x -> expir(x) < Date(2022,8,19), setdiff(1:NumExps, exAvoid)),[17,18])
+    return setdiff(1:NumExps, exAvoid)
 end
 
 #========== Begin: Test One ===========#
