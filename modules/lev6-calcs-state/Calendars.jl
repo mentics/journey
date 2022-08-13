@@ -79,8 +79,12 @@ function check()
     Info[].nextChange < now(UTC) && updateCalendar()
 end
 
+resetCal() = Info[] = CalInfo(false, DATETIME_ZERO, Dict(), Dict(), DATETIME_ZERO)
+
+using MarketDurTypes
 function updateCalendar(;from=firstdayofyear(today()), to=lastdayofyear(today()))::Nothing
     runSync(Lock) do
+        @info "updateCalendar" from to stacktrace()
         @log debug "updateCalendar"
         Info[].ts == DATETIME_ZERO && isfile(InfoPath) && loadInfo()
         isOpen, nextChange = today() != Date(2022,6,20) ? tradierClock() : (false, DateTime("2022-06-20T20:00:00")) # hard coded because the API missed this new holiday
@@ -90,15 +94,29 @@ function updateCalendar(;from=firstdayofyear(today()), to=lastdayofyear(today())
             markTime = Dict(d => MarketTime(data) for (d, data) in cal)
             markDur = Dict(d => MarketDur(mt) for (d, mt) in markTime)
         else
-            TODO: use isBusDay to populate
+            markTime = Dict{Date,MarketTime}()
+            markDur = Dict{Date,MarketDur}()
+            for d in from:Day(1):to
+                if isweekend(d)
+                    markTime[d] = MarketDurTypes.MTIME_WEND
+                    markDur[d] = MarketDurTypes.DUR_WEND
+                elseif isBusDay(d)
+                    markTime[d] = MarketDurTypes.MTIME_OPEN
+                    markDur[d] = MarketDurTypes.DUR_OPEN
+                else
+                    markTime[d] = MarketDurTypes.MTIME_HOLIDAY
+                    markDur[d] = MarketDurTypes.DUR_HOLIDAY
+                end
+            end
         end
-        if Info[].ts == DATETIME_ZERO
-            Info[] = CalInfo(isOpen, nextChange, markTime, markDur, now(UTC))
-        else
-            merge!(Info[].markTime, markTime)
-            merge!(Info[].markDur, markDur)
-            Info[].ts = now(UTC)
-        end
+        Info[] = CalInfo(isOpen, nextChange, merge(Info[].markTime, markTime), merge(Info[].markDur, markDur), now(UTC))
+        # if Info[].ts == DATETIME_ZERO
+        #     Info[] = CalInfo(isOpen, nextChange, markTime, markDur, now(UTC))
+        # else
+        #     merge!(Info[].markTime, markTime)
+        #     merge!(Info[].markDur, markDur)
+        #     Info[].ts = now(UTC)
+        # end
         saveInfo()
         @log info "Updated calendar" isOpen nextChange
     end
@@ -109,12 +127,17 @@ ensureCalYear(d::Date) = ensureCal(firstdayofyear(d), lastdayofyear(d))
 ensureCal(dt::Dates.AbstractDateTime...)::Nothing = ensureCal(Date.(dt)...)
 function ensureCal(dt::Date...)::Nothing
     from, to = extrema(dt)
-    Info[].ts > DateTime(0) || ( updateCalendar(;from, to) ; return )
-    mn, mx = extrema(keys(Info[].markTime))
-    from = min(from, mn)
-    to = max(to, mx)
-    (mn === from && mx === to) || updateCalendar(;from, to)
+    from = firstdayofyear(from)
+    to = lastdayofyear(to)
+    # Info[].ts > DateTime(0) ||
+    haskey(Info[].markTime, from) && haskey(Info[].markTime, to) || updateCalendar(;from, to)
     return
+    # mn, mx = extrema(keys(Info[].markTime))
+    # from = min(from, mn)
+    # to = max(to, mx)
+    # @info "ensureCal" dt from to mn mx
+    # (mn === from && mx === to) || updateCalendar(;from, to)
+    # return
 end
 
 function calcDurPerYear()

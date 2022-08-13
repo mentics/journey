@@ -27,6 +27,9 @@ function MarketTime(data::Dict{String,Any})::MarketTime
         return MarketTime(MTStatus.open, pres, opens, posts)
     end
 end
+const MTIME_OPEN = MarketTime(MTStatus.open, InterTime(Time(7), Time(9, 24)), InterTime(Time(9, 30), Time(16)), InterTime(Time(16), Time(19, 55)))
+const MTIME_WEND = MarketTime(MTStatus.weekend, INTERTIME_ZERO, INTERTIME_ZERO, INTERTIME_ZERO)
+const MTIME_HOLIDAY = MarketTime(MTStatus.holiday, INTERTIME_ZERO, INTERTIME_ZERO, INTERTIME_ZERO)
 isOpen(mt::MarketTime) = mt.status == MTStatus.open
 isHoliday(mt::MarketTime) = mt.status == MTStatus.holiday
 
@@ -44,6 +47,7 @@ MarketDur(c, pre, o, post) = MarketDur(c, pre, o, post, SECOND_ZERO, SECOND_ZERO
 const DUR_ZERO = MarketDur(SECOND_ZERO, SECOND_ZERO, SECOND_ZERO, SECOND_ZERO, SECOND_ZERO, SECOND_ZERO)
 const DUR_WEND = MarketDur(SECOND_ZERO, SECOND_ZERO, SECOND_ZERO, SECOND_ZERO, Hour(24), SECOND_ZERO)
 const DUR_HOLIDAY = MarketDur(SECOND_ZERO, SECOND_ZERO, SECOND_ZERO, SECOND_ZERO, SECOND_ZERO, Hour(24))
+const DUR_OPEN = MarketDur(Second(40260), Second(8640), Second(23400), Second(14100), Second(0), Second(0))
 function MarketDur(mt::MarketTime)::MarketDur
     if isOpen(mt)
         closed = (first(mt.pres) - TIME_ZERO) + (first(mt.opens) - last(mt.pres)) + (first(mt.posts) - last(mt.opens)) + (TIME_ZERO - last(mt.posts) + Day(1))

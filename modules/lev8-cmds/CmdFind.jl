@@ -236,21 +236,22 @@ function findBestSpreadS(ctx, oqs, res)
     return res
 end
 
-function lyze(ctx, lms::Vector{LegMeta}, res)::Tuple
-    # TODO: we could calc the filter directly without creating ret and met
-    ret1 = combineTo(Ret, lms, ctx.curp)
-    met1 = calcMetrics(ctx.probs[1], ret1, Bins.binds())
-    # Bad data, you generally can't really get a 100% prob position. arbitrage exists, but don't count on getting lucky.
-    met1.prob < 1.0 || return res
-    met1.loss < 0.0 || return res
+# TODO: use from cmdutil
+# function lyze(ctx, lms::Vector{LegMeta}, res)::Tuple
+#     # TODO: we could calc the filter directly without creating ret and met
+#     ret1 = combineTo(Ret, lms, ctx.curp)
+#     met1 = calcMetrics(ctx.probs[1], ret1, Bins.binds())
+#     # Bad data, you generally can't really get a 100% prob position. arbitrage exists, but don't count on getting lucky.
+#     met1.prob < 1.0 || return res
+#     met1.loss < 0.0 || return res
 
-    lmsBoth = vcat(lms, ctx.lmsPos)
-    ret = combineTo(Ret, lmsBoth, ctx.curp)
-    met = calcMetrics(ctx.probs[1], ret, Bins.binds())
-    s = score(ctx.retPos, ctx.metPos, ret, met, ret1, met1)
-    # println("$(s) > $(res[1])")
-    return s > res[1] ? (s, (lms, ret, met, ret1, met1)) : res
-end
+#     lmsBoth = vcat(lms, ctx.lmsPos)
+#     ret = combineTo(Ret, lmsBoth, ctx.curp)
+#     met = calcMetrics(ctx.probs[1], ret, Bins.binds())
+#     s = score(ctx.retPos, ctx.metPos, ret, met, ret1, met1)
+#     # println("$(s) > $(res[1])")
+#     return s > res[1] ? (s, (lms, ret, met, ret1, met1)) : res
+# end
 
 function countType(lms::Vector)
     res = [0, 0, 0, 0]

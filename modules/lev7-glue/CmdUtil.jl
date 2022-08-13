@@ -29,18 +29,20 @@ function calcPosStrat(forDate::Date, sp::Currency, vtyRatio::Float64, extra::Uni
     end
 end
 
-xlmsv(ex=0)::Vector{LegMeta} = tos(Vector{LegMeta}, tradesToClose(ex))
-function xlms(when=0)::Vector{LegMeta}
-    combineTo(Vector{LegMeta}, tradesToClose(when))
-    # trades = findTrades(forDate, Filled)
-    # if !isempty(trades)
-    #     lms = tos(Vector{LegMeta}, trades)
-    #     sort!(lms; by=getStrike)
-    #     return lms
-    # else
-    #     return Vector{LegMeta}()
-    # end
-end
+xlmsv(ex::Int=0)::Vector{LegMeta} = tos(Vector{LegMeta}, tradesToClose(ex))
+xlms(ex::Int=0)::Vector{LegMeta} = xlms(expir(ex))
+xlms(expr::Date)::Vector{LegMeta} = combineTo(Vector{LegMeta}, tradesToClose(expr))
+# function xlms(when::Int=0)::Vector{LegMeta}
+#     combineTo(Vector{LegMeta}, tradesToClose(when))
+#     # trades = findTrades(forDate, Filled)
+#     # if !isempty(trades)
+#     #     lms = tos(Vector{LegMeta}, trades)
+#     #     sort!(lms; by=getStrike)
+#     #     return lms
+#     # else
+#     #     return Vector{LegMeta}()
+#     # end
+# end
 
 export probsFor
 using ProbTypes
@@ -67,10 +69,10 @@ probsFor(snapName::String, to::Date, curp::Real) = useKey(PROBS_SNAP2, (snapName
 end
 
 function makeProbs(tex::Float64, targetDate::Date; curp::Currency=market().curp)::Union{Nothing,Tuple}
-    nearIv = calcNearIv(targetDate, curp)
-    (!isnothing(nearIv) && isfinite(nearIv)) || @logret "makeProbs: Invalid ivsd" nearIv targetDate curp
-    ivsd = ivTexToStdDev(nearIv, tex)
-    pnd = probsNormDist(curp, ivsd)
+    # nearIv = calcNearIv(targetDate, curp)
+    # (!isnothing(nearIv) && isfinite(nearIv)) || @logret "makeProbs: Invalid ivsd" nearIv targetDate curp
+    # ivsd = ivTexToStdDev(nearIv, tex)
+    # pnd = probsNormDist(curp, ivsd)
     # TODO: this numdays proxy calc is wrong. Completely change how we calc probHist, do it based on tex
     phOrig = probHist(curp, round(Int, tex / TexPerDay))
     ph = Prob(getCenter(phOrig), smooth(getVals(phOrig)))

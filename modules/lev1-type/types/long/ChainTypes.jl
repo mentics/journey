@@ -1,5 +1,5 @@
 module ChainTypes
-using BaseTypes, SH, SmallTypes, OptionTypes, QuoteTypes, OptionMetaTypes
+using BaseTypes, SH, SmallTypes, OptionTypes, QuoteTypes, OptionMetaTypes, Bins
 
 export OptionQuote, OptionChain
 
@@ -9,9 +9,9 @@ struct OptionQuote
     meta::OptionMeta
     src::Union{Nothing,Dict{String,Any}}
 end
-OptionQuote(;option=Option(), quot=Quote(), meta=OptionMeta()) = OptionQuote(option, quot, meta)
-OptionQuote(oq::OptionQuote; option=getOption(oq), quot=getQuote(oq), meta=getMeta(oq)) = OptionQuote(option, quot, meta)
-OptionQuote(oq::OptionQuote, action::Action.T, side::Side.T) = OptionQuote(getOption(oq), Quote(getQuote(oq), action, side), getMeta(oq))
+OptionQuote(;option=Option(), quot=Quote(), meta=OptionMeta(), src=Nothing) = OptionQuote(option, quot, meta, src)
+OptionQuote(oq::OptionQuote; option=getOption(oq), quot=getQuote(oq), meta=getMeta(oq)) = OptionQuote(option, quot, meta, Nothing)
+OptionQuote(oq::OptionQuote, action::Action.T, side::Side.T) = OptionQuote(getOption(oq), Quote(getQuote(oq), action, side), getMeta(oq), Nothing)
 SH.getOption(oq::OptionQuote) = oq.option
 SH.getQuote(oq::OptionQuote) = oq.quot
 SH.getQuote(oq::OptionQuote, side::Side.T) = Quote(oq.quot, side)

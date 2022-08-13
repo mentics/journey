@@ -27,24 +27,25 @@ function getOqss(oqs::Vector{OptionQuote}, curp::Currency, legsCheck=LegMeta[]):
     oqsLong = filter(fconl, oqsValid)
     oqsCallLong = filter(SmallTypes.isCall, oqsLong)
     oqsPutLong = filter(SmallTypes.isPut, oqsLong)
-    oqsShort = filter(x -> fcons(x) && fcans(x), oqsValid)
+    # oqsShort = filter(x -> fcons(x) && fcans(x), oqsValid)
+    oqsShort = filter(x -> fcons(x), oqsValid)
     oqsCallShort = filter(SmallTypes.isCall, oqsShort)
     oqsPutShort = filter(SmallTypes.isPut, oqsShort)
     return Styles(Sides(oqsCallLong, oqsCallShort), Sides(oqsPutLong, oqsPutShort))
 end
-function getOqss(oqsIn::Vector{OptionQuote}, curp::Currency)::Oqss
-    # oqs = filter(oq -> distRatio(getStrike(oq), curp) < Bins.SPAN/2, oqsIn)
-    oqsValid = Iterators.filter(isValid, oqs)
+# function getOqss(oqsIn::Vector{OptionQuote}, curp::Currency)::Oqss
+#     # oqs = filter(oq -> distRatio(getStrike(oq), curp) < Bins.SPAN/2, oqsIn)
+#     oqsValid = Iterators.filter(isValid, oqs)
 
-    oqsLong = oqsValid # Iterators.filter(isLong, oqsValid)
-    oqsShort = oqsValid # Iterators.filter(isShort, oqsValid)
+#     oqsLong = oqsValid # Iterators.filter(isLong, oqsValid)
+#     oqsShort = oqsValid # Iterators.filter(isShort, oqsValid)
 
-    oqsCallLong = collect(Iterators.filter(SmallTypes.isCall, oqsLong))
-    oqsPutLong = collect(Iterators.filter(SmallTypes.isPut, oqsLong))
-    oqsCallShort = collect(Iterators.filter(SmallTypes.isCall, oqsShort))
-    oqsPutShort = collect(Iterators.filter(SmallTypes.isPut, oqsShort))
-    return Styles(Sides(oqsCallLong, oqsCallShort), Sides(oqsPutLong, oqsPutShort))
-end
+#     oqsCallLong = collect(Iterators.filter(SmallTypes.isCall, oqsLong))
+#     oqsPutLong = collect(Iterators.filter(SmallTypes.isPut, oqsLong))
+#     oqsCallShort = collect(Iterators.filter(SmallTypes.isCall, oqsShort))
+#     oqsPutShort = collect(Iterators.filter(SmallTypes.isPut, oqsShort))
+#     return Styles(Sides(oqsCallLong, oqsCallShort), Sides(oqsPutLong, oqsPutShort))
+# end
 
 function findOqs(oqs, curp::Currency, dists; maxDiff=1.0)
     res = Vector{OptionQuote}(undef, length(dists))
@@ -192,7 +193,7 @@ function procChain(exp::Date, data::Vector{Dict{String,Any}})::OptionChain
         if !haskey(raw, "greeks") || isnothing(raw["greeks"])
             @log debug "Missing greeks" opt qt
         end
-        newOpt = OptionQuote(opt, qt, toOptionMeta(raw["greeks"]))
+        newOpt = OptionQuote(opt, qt, toOptionMeta(raw["greeks"]), raw)
         push!(res, newOpt)
     end
     sort!(res, by=getStrike)
