@@ -1,6 +1,6 @@
 module CmdUtil
 using Dates
-using StatusTypes
+using StatusTypes, ChainTypes
 using LogUtil
 using StoreTrade
 using Expirations

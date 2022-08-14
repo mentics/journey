@@ -188,29 +188,29 @@ function findBestAll(ctx)::NamedTuple
     return (; scoreTo, lmss, retRuns, metRuns, ret1s, met1s)
 end
 
-function findBest(ctx, oqs)::Tuple
+function findBest(ctx, oqss)::Tuple
     res = (ctx.scorePos, nothing)
-    res = findBestSpread(ctx, oqs, res)
-    for oq in oqs.call.long
+    res = findBestSpread(ctx, oqss, res)
+    for oq in oqss.call.long
         lm = to(LegMeta, oq, Side.long)
         res = lyze(ctx, [lm], res)
     end
 
-    for oq in oqs.put.long
+    for oq in oqss.put.long
         lm = to(LegMeta, oq, Side.long)
         res = lyze(ctx, [lm], res)
     end
 
     incCallShort, incPutShort = countType(ctx.lmsPos)
     if incCallShort
-        for oq in oqs.call.short
+        for oq in oqss.call.short
             lm = to(LegMeta, oq, Side.short)
             res = lyze(ctx, [lm], res)
         end
     end
 
     if incPutShort
-        for oq in oqs.put.short
+        for oq in oqss.put.short
             lm = to(LegMeta, oq, Side.short)
             res = lyze(ctx, [lm], res)
         end

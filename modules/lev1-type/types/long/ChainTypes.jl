@@ -1,7 +1,9 @@
 module ChainTypes
+import Dates
 using BaseTypes, SH, SmallTypes, OptionTypes, QuoteTypes, OptionMetaTypes, Bins
 
 export OptionQuote, OptionChain
+export ChainsType, Oqss
 
 struct OptionQuote
     option::Option
@@ -36,5 +38,8 @@ struct OptionChain
     chain::Vector{OptionQuote}
     ts::Int
 end
+
+const ChainsType = Dict{Dates.Date,OptionChain}
+const Oqss = Styles{Sides{Vector{OptionQuote}}}
 
 end

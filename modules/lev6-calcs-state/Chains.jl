@@ -7,10 +7,6 @@ using DataHelper, Markets, Calendars, Expirations
 
 export chains, chain, ivs, calcNearIv
 export quoter, optQuoter, isQuotable
-export ChainsType, Oqss
-
-const Oqss = Styles{Sides{Vector{OptionQuote}}}
-const ChainsType = Dict{Date,OptionChain}
 
 # ftrue(_) = true
 
