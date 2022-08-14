@@ -13,8 +13,8 @@ function run()
 end
 
 function run(expr::Date)
-    ctx = ctxFor(expr)
-    oqss = Chains.getOqss(expr, ctx.curp, xlms(expr))
+    global ctx = ctxFor(expr)
+    global oqss = Chains.getOqss(expr, ctx.curp, xlms(expr))
     global res = Vector{NamedTuple}()
     # Cands.iterSingle(oqss, ctx, res) do lms, c, r
     #     jr = joe(c, lms)
@@ -23,14 +23,19 @@ function run(expr::Date)
     #     end
     # end
 
+    cnt = 0
+
     Cands.iterSpreads(oqss, ctx, res) do lms, c, r
+        cnt += 1
         jr = joe(c, lms)
         if jr.rate > 0.0
             push!(r, jr)
         end
     end
 
-    return sort!(res; rev=true, by=x -> x[1])
+    println("proced $(cnt)")
+
+    return sort!(res; rev=true, by=x -> x.rate)
 end
 
 function ctxFor(expr::Date)::NamedTuple
@@ -47,7 +52,6 @@ function ctxFor(expr::Date)::NamedTuple
         polms=xlms(expr)
     )
 end
-
 #region Local
 
 function joe(ctx, lms::Vector{LegMeta})
@@ -56,12 +60,13 @@ function joe(ctx, lms::Vector{LegMeta})
 
     ret = combineTo(Ret, lms, ctx.curp)
     met = calcMetrics(ctx.prob, ret)
-    if met.prob >= .5
+    if met.ev >= 0.0 && met.prob >= 0.9
         retb = combineTo(Ret, vcat(lms, ctx.polms), ctx.curp)
         # metb = calcMetrics(prob, retb)
         if minimum(getVals(retb)) > MaxLossExpr
             # TODO: consider using ev or evr or ? in rate calc
-            rate = ctx.timult * met.ev / (-met.mn)
+            # rate = ctx.timult * met.profit / (-met.mn)
+            rate = ctx.timult * met.mx / (-met.mn)
             # if met.ev > 0.0
             #     @info "joe" rate met
             # end

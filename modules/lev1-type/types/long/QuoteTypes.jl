@@ -29,7 +29,13 @@ export sumQuotes, improve
 function improve(q::Quote, r::Float64)::Currency
     b = getBid(q)
     a = getAsk(q)
-    return a <= 2*b ? b + r * (a - b) : b * (1.0 + r)
+    a = min(a, (b >= 0.0 ? 2*b : b/2))
+    return b + r * (a - b)
+    # if b < 0.0
+    #     a <= b/2 ? b + r * (a - b) : b * (1.0 - r)
+    # else
+    #     return a <= 2*b ? b + r * (a - b) : b * (1.0 + r)
+    # end
 end
 
 function sumQuotes(qs)

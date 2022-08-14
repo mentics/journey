@@ -11,9 +11,18 @@ function runTests()
 
     @testset "improve" begin
         @test improve(Quote(C(2.0), C(3.0)), .2) === C(2.2)
+        @test improve(Quote(C(2.0), C(3.0)), 1.0) === C(3.0)
         @test improve(Quote(C(2.0), C(4.0)), .2) === C(2.4)
         @test improve(Quote(C(2.0), C(5.0)), .2) === C(2.4)
         @test improve(Quote(C(3.0), C(55.0)), .3) === C(3.9)
+        @test improve(Quote(C(3.0), C(55.0)), 1.0) === C(6.0)
+        @test improve(Quote(C(-3.0), C(-2.2)), .3) === C(-2.76)
+        @test improve(Quote(C(-6.0), C(-3.0)), .3) === C(-5.1)
+        @test improve(Quote(C(-40.0), C(-20.0)), .5) === C(-30.0)
+        @test improve(Quote(C(-40.0), C(-3.0)), .5) === C(-30.0)
+        @test improve(Quote(C(-5.0), C(55.0)), .2) === C(-4.5)
+        @test improve(Quote(C(-5.0), C(55.0)), 1.0) === C(-2.5)
+        @test improve(Quote(C(-5.0), C(0.0)), 0.5) === C(-3.75)
     end
 end
 
