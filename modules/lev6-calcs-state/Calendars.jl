@@ -1,5 +1,6 @@
 module Calendars
 using Dates
+using MarketDurTypes
 using Globals, DateUtil, LogUtil, ThreadUtil, MarketDurUtil, FileUtil
 using TradierData
 
@@ -9,16 +10,16 @@ export calcTex, calcDurToExpr
 function isMarketOpen()
     isnothing(snap()) || return true # snave is not allowed when market is not open
     check()
-    return Info[].isOpen
+    return MktState.isOpen
 end
 # TODO: change name to mktChangeNext
-nextMarketChange() = ( check() ; Info[].nextChange )
+nextMarketChange() = ( check() ; MktState.nextChange )
 getMarketOpen(d::Date) = fromMarketTZ(d, first(getMarketTime(d).opens))
 getMarketClose(d::Date) = fromMarketTZ(d, last(getMarketTime(d).opens))
 # DateTime(astimezone(ZonedDateTime(DateTime("$(d)T$(cal[d]["open"]["end"])"), tz"America/New_York"), tz"UTC"))
 function getMarketTime(d::Date)::MarketTime
-    haskey(Info[].markTime, d) || ensureCalYear(d)
-    return Info[].markTime[d]
+    ensureCal(d)
+    return MktTime[d]
 end
 # calcTimeToClose(ts::DateTime, d::Date)::Period = ts - getMarketClose(d)
 
@@ -49,106 +50,126 @@ function calcDurToExpr(tsFrom::DateTime, dateTo::Date)::MarketDur
 end
 
 #region Local
-struct CalInfo
-    isOpen::Bool
-    nextChange::DateTime
-    markTime::Dict{Date,MarketTime}
-    markDur::Dict{Date,MarketDur}
-    ts::DateTime
+mutable struct MarketState
+    @atomic isOpen::Bool
+    @atomic nextChange::DateTime
+    @atomic ts::DateTime
 end
+const MktTime = Dict{Date,MarketTime}()
+const MktDur = Dict{Date,MarketDur}()
+
 import JSON3, Intervals
-JSON3.StructType(::Type{CalInfo}) = JSON3.Struct()
 JSON3.StructType(::Type{MarketTime}) = JSON3.Struct()
 JSON3.StructType(::Type{MarketDur}) = JSON3.Struct()
 JSON3.StructType(::Type{Intervals.Interval{Time,Intervals.Closed,Intervals.Closed}}) = JSON3.Struct()
 JSON3.StructType(::Type{Second}) = JSON3.Struct()
 
-const Info = Ref{CalInfo}(CalInfo(false, DATETIME_ZERO, Dict(), Dict(), DATETIME_ZERO))
-const Lock = ReentrantLock()
+const MktState = MarketState(false, DATETIME_ZERO, DATETIME_ZERO)
+const MktTimePath = dirData("hist", "marktime.json")
+const MktDurPath = dirData("hist", "markdur.json")
 
-function __init__()
-    updateCalendar()
+function init()
+    loadMarket()
+    updateState()
 end
 
-const InfoPath = dirData("hist", "cal-info.json")
-saveInfo() = writeJson(InfoPath, Info[])
-loadInfo() = ( println("Loading cal info") ; Info[] = loadJson(InfoPath, CalInfo) )
+# function __init__()
+#     loadMarket()
+#     # updateCalendar()
+#     updateState()
+# end
+
+function loadMarket()
+    println("Loading mark time/dur")
+    @assert isempty(MktTime)
+    @assert isempty(MktDur)
+    merge!(MktTime, loadJson(MktTimePath, Dict{Date,MarketTime}))
+    merge!(MktDur, loadJson(MktDurPath, Dict{Date,MarketDur}))
+end
+saveMarket() = ( writeJson(MktTimePath, MktTime) ; writeJson(MktDurPath, MktDur) )
 
 function check()
     isnothing(snap()) || error("Session timing doesn't work when snapped")
-    Info[].nextChange < now(UTC) && updateCalendar()
+    MktState.nextChange < now(UTC) && updateState()
 end
 
-resetCal() = Info[] = CalInfo(false, DATETIME_ZERO, Dict(), Dict(), DATETIME_ZERO)
+function updateState()
+    ts = now(UTC)
+    isOpen, nextChange = today() != Date(2022,6,20) ? tradierClock() : (false, DateTime("2022-06-20T20:00:00")) # hard coded because the API missed this eStateay
+    @atomic MktState.isOpen = isOpen
+    @atomic MktState.nextChange = nextChange
+    @atomic MktState.ts = ts
+end
 
-using MarketDurTypes
-function updateCalendar(;from=firstdayofyear(today()), to=lastdayofyear(today()))::Nothing
-    runSync(Lock) do
-        @info "updateCalendar" from to stacktrace()
-        @log debug "updateCalendar"
-        Info[].ts == DATETIME_ZERO && isfile(InfoPath) && loadInfo()
-        isOpen, nextChange = today() != Date(2022,6,20) ? tradierClock() : (false, DateTime("2022-06-20T20:00:00")) # hard coded because the API missed this new holiday
-        !haskey(Info[].markDur, from) || !haskey(Info[].markDur, to) || return
-        if year(from) > 2012
-            cal = tradierCalendar(from, to)
-            markTime = Dict(d => MarketTime(data) for (d, data) in cal)
-            markDur = Dict(d => MarketDur(mt) for (d, mt) in markTime)
-        else
-            markTime = Dict{Date,MarketTime}()
-            markDur = Dict{Date,MarketDur}()
-            for d in from:Day(1):to
-                if isweekend(d)
-                    markTime[d] = MarketDurTypes.MTIME_WEND
-                    markDur[d] = MarketDurTypes.DUR_WEND
-                elseif isBusDay(d)
-                    markTime[d] = MarketDurTypes.MTIME_OPEN
-                    markDur[d] = MarketDurTypes.DUR_OPEN
-                else
-                    markTime[d] = MarketDurTypes.MTIME_HOLIDAY
-                    markDur[d] = MarketDurTypes.DUR_HOLIDAY
-                end
-            end
-        end
-        Info[] = CalInfo(isOpen, nextChange, merge(Info[].markTime, markTime), merge(Info[].markDur, markDur), now(UTC))
-        # if Info[].ts == DATETIME_ZERO
-        #     Info[] = CalInfo(isOpen, nextChange, markTime, markDur, now(UTC))
-        # else
-        #     merge!(Info[].markTime, markTime)
-        #     merge!(Info[].markDur, markDur)
-        #     Info[].ts = now(UTC)
-        # end
-        saveInfo()
-        @log info "Updated calendar" isOpen nextChange
+# function updateCalendar(;from=firstdayofyear(today()), to=lastdayofyear(today()))::Nothing
+#     Info[] = CalInfo(isOpen, nextChange, Info[].markTime, Info[].markDur, Info[].ts)
+#     Info[].ts == DATETIME_ZERO && isfile(MarkDurPath) && loadInfo()
+#     !haskey(Info[].markDur, from) || !haskey(Info[].markDur, to) || return
+#     @info "updateCalendar" from to stacktrace()
+#     @log debug "updateCalendar"
+#     if year(from) > 2012
+#         cal = tradierCalendar(from, to)
+#         markTime = Dict(d => MarketTime(data) for (d, data) in cal)
+#         markDur = Dict(d => MarketDur(mt) for (d, mt) in markTime)
+#     else
+#         markTime = Dict{Date,MarketTime}()
+#         markDur = Dict{Date,MarketDur}()
+#         for d in from:Day(1):to
+#             if isweekend(d)
+#                 markTime[d] = MarketDurTypes.MTIME_WEND
+#                 markDur[d] = MarketDurTypes.DUR_WEND
+#             elseif isBusDay(d)
+#                 markTime[d] = MarketDurTypes.MTIME_OPEN
+#                 markDur[d] = MarketDurTypes.DUR_OPEN
+#             else
+#                 markTime[d] = MarketDurTypes.MTIME_HOLIDAY
+#                 markDur[d] = MarketDurTypes.DUR_HOLIDAY
+#             end
+#         end
+#     end
+#     Info[] = CalInfo(isOpen, nextChange, merge(Info[].markTime, markTime), merge(Info[].markDur, markDur), now(UTC))
+#     # if Info[].ts == DATETIME_ZERO
+#     #     Info[] = CalInfo(isOpen, nextChange, markTime, markDur, now(UTC))
+#     # else
+#     #     merge!(Info[].markTime, markTime)
+#     #     merge!(Info[].markDur, markDur)
+#     #     Info[].ts = now(UTC)
+#     # end
+#     saveInfo()
+#     @log info "Updated calendar" isOpen nextChange
+#     return
+# end
+
+# ensureCalYear(d::Date) = ensureCal(firstdayofyear(d), lastdayofyear(d))
+# ensureCal(dt::Dates.AbstractDateTime...)::Nothing = ensureCal(Date.(dt)...)
+function ensureCal(date::Date)::Nothing
+    haskey(MktTime, date) || error("Calendar doesn't have date ", date) # updateCalendar(;from, to)
+    return
+end
+function ensureCals(dates::Date...)::Nothing
+    for date in dates
+        haskey(MktTime, date) || error("Calendar doesn't have date ", date) # updateCalendar(;from, to)
     end
-    return
-end
-
-ensureCalYear(d::Date) = ensureCal(firstdayofyear(d), lastdayofyear(d))
-ensureCal(dt::Dates.AbstractDateTime...)::Nothing = ensureCal(Date.(dt)...)
-function ensureCal(dt::Date...)::Nothing
-    from, to = extrema(dt)
-    from = firstdayofyear(from)
-    to = lastdayofyear(to)
-    # Info[].ts > DateTime(0) ||
-    haskey(Info[].markTime, from) && haskey(Info[].markTime, to) || updateCalendar(;from, to)
-    return
-    # mn, mx = extrema(keys(Info[].markTime))
-    # from = min(from, mn)
-    # to = max(to, mx)
-    # @info "ensureCal" dt from to mn mx
-    # (mn === from && mx === to) || updateCalendar(;from, to)
+    # from, to = extrema(dt)
+    # from = firstdayofyear(from)
+    # to = lastdayofyear(to)
+    # haskey(Info[].markTime, from) && haskey(Info[].markTime, to) || updateCalendar(;from, to)
     # return
 end
 
-function calcDurPerYear()
-    dur = marketDur(Date(2022,1,1))
-    for day in Date(2022,1,2):Day(1):Date(2022,12,31)
-        dur += marketDur(day)
-    end
-    return dur
-end
+# function calcDurPerYear()
+#     dur = marketDur(Date(2022,1,1))
+#     for day in Date(2022,1,2):Day(1):Date(2022,12,31)
+#         dur += marketDur(day)
+#     end
+#     return dur
+# end
 
-marketDur(d::Date)::MarketDur = Info[].markDur[d]
+marketDur(d::Date)::MarketDur = MktDur[d]
 #endregion
+
+# __init__() = println("Calendars.__init__ called")
+
+# println("Calendars top level ran")
 
 end

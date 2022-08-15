@@ -23,7 +23,7 @@ end
 
 #region Local
 # TODO: if use fewer bins, prob isn't adjusted, so it will be lower
-MINP = 0.01 * Bins.binPercent()
+# MINP = 0.01 * Bins.binPercent()
 function calcMetrics1(pvals::AVec{Float64}, vals::AVec{Float64}, cap::Float64, adjust::Float64, binsi)
     @assert isfinite(cap) && isfinite(adjust) "invalid cap $(cap) or adjust $(adjust)"
     # @info "calcMetrics1" cap adjust
@@ -35,10 +35,10 @@ function calcMetrics1(pvals::AVec{Float64}, vals::AVec{Float64}, cap::Float64, a
     totalP = 0.0
     for i in binsi
         p = pvals[i]
-        if p < MINP
-            # println("Skipping ", p, ' ', MINP)
-            continue
-        end
+        # if p < MINP
+        #     # println("Skipping ", p, ' ', MINP)
+        #     continue
+        # end
         totalP += p
         v = vals[i]
         vadj = min(cap, v - adjust)

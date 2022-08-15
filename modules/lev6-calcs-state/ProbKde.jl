@@ -125,7 +125,10 @@ function makePdv(tex::Float64, var::Float64)
     vals = Bins.with(0.0)
 
     for (i, x) in Bins.midsi()
-        vals[i] = Bins.width() * pdf(ik, tex, x)
+        pd = pdf(ik, tex, x)
+        @assert pd > -1e-5 "pd too negative $(pd)"
+        pd >= 0.01 * Bins.binPercent() || (pd = 0.0)
+        vals[i] = Bins.width() * pd
     end
     # TODO: messy
     left = 0.0

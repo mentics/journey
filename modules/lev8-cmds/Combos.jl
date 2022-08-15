@@ -1,6 +1,6 @@
 module Combos
 using Dates, IterTools, NamedTupleTools
-using SH, BaseTypes, SmallTypes
+using SH, BaseTypes, SmallTypes, ChainTypes
 using DateUtil, DictUtil, OutputUtil
 using TradierData
 using Markets, Chains
@@ -19,7 +19,7 @@ end
 
 excludes(lll) = filter!(x -> !(x.sym in ActiveSyms) && !(x.sym in SeekingAlpha.BadPricing) && !(x.sym in TempIgnore) && !(x.sym in SeekingAlpha.Ignore) && x.strike <= 105.0, lll)
 function clean(lll)
-    excludes(lll)
+    # excludes(lll)
     # sort!(lll; rev=true, by=x->x.rate)
     return sort!(map(g -> g[findmax(x -> x.rate, g)[2]], groupby(r -> r.sym, sort!(lll; by=x->x.sym))); rev=true, by=x->x.rate)
 end

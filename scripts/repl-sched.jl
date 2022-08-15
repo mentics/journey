@@ -13,6 +13,9 @@ catch
   # ignore
 end
 
+using Calendars
+Calendars.init()
+
 using Globals
 using Markets
 urpon()
@@ -24,3 +27,6 @@ Sched.start()
 
 using SchedStrat
 ss = SchedStrat
+
+using DateUtil
+using Snapshots

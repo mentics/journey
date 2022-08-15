@@ -10,7 +10,7 @@ const lock = ReentrantLock()
 const MaxLossExpr = Ref{Float64}(-5.0)
 
 function run()
-    run(expir(2))
+    run(expir(1))
 end
 
 function run(expr::Date)
@@ -34,21 +34,32 @@ function run(expr::Date)
     #     end
     # end
 
-    Cands.iterCondors(oqss, ctx, res) do lms, c, r
+    maxSpreadWidth = C(10.0)
+
+    ress = [Vector{NamedTuple}() for _ in 1:Threads.nthreads()]
+    Cands.iterCondors(oqss, maxSpreadWidth, ctx, ress) do lms, c, rs
         cnt += 1
         jr = joe(c, lms)
         if jr.rate > 0.0
-            runSync(lock) do
-                push!(r, jr)
-            end
+            push!(rs[Threads.threadid()], jr)
+            # if length(rs[Threads.threadid()]) >= 1
+            #     return false
+            # end
+            # runSync(lock) do
+            #     push!(r, jr)
+            # end
         end
         if (cnt % 10000) == 0
             println("progress: ", cnt)
             flush(stdout)
         end
+        # if cnt > 100000
+        #     return false
+        # end
+        return true
     end
 
-    res = sort!(res; rev=true, by=x -> x.rate)
+    res = sort!(reduce(vcat, ress); rev=true, by=x -> x.rate)
     println("proced $(cnt), results: $(length(res))")
     return res
 end

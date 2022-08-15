@@ -14,8 +14,8 @@ for (root, dirs, files) in walkdir(joinpath(CODE_DIR, "modules"))
     end
 end
 
-sobj = nothing
-function saveObj(x)
-    global sobj = x
-    return "[Set obj type $(typeof(x))]"
-end
+# sobj = nothing
+# function saveObj(x)
+#     global sobj = x
+#     return "[Set obj type $(typeof(x))]"
+# end
