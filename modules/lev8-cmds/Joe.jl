@@ -1,12 +1,13 @@
 module Joe
 using Dates
-using SH, LegMetaTypes, RetTypes
-using OptionUtil, CalcUtil
+using SH, BaseTypes, LegMetaTypes, RetTypes
+using OptionUtil, CalcUtil, ThreadUtil
 import GenCands as Cands
 using Calendars, Expirations, Chains, ProbKde, Markets
 using CmdUtil
 
-MaxLossExpr = -5.0
+const lock = ReentrantLock()
+const MaxLossExpr = Ref{Float64}(-5.0)
 
 function run()
     run(expir(2))
@@ -25,17 +26,31 @@ function run(expr::Date)
 
     cnt = 0
 
-    Cands.iterSpreads(oqss, ctx, res) do lms, c, r
+    # Cands.iterSpreads(oqss, ctx, res) do lms, c, r
+    #     cnt += 1
+    #     jr = joe(c, lms)
+    #     if jr.rate > 0.0
+    #         push!(r, jr)
+    #     end
+    # end
+
+    Cands.iterCondors(oqss, ctx, res) do lms, c, r
         cnt += 1
         jr = joe(c, lms)
         if jr.rate > 0.0
-            push!(r, jr)
+            runSync(lock) do
+                push!(r, jr)
+            end
+        end
+        if (cnt % 10000) == 0
+            println("progress: ", cnt)
+            flush(stdout)
         end
     end
 
-    println("proced $(cnt)")
-
-    return sort!(res; rev=true, by=x -> x.rate)
+    res = sort!(res; rev=true, by=x -> x.rate)
+    println("proced $(cnt), results: $(length(res))")
+    return res
 end
 
 function ctxFor(expr::Date)::NamedTuple
@@ -54,16 +69,17 @@ function ctxFor(expr::Date)::NamedTuple
 end
 #region Local
 
-function joe(ctx, lms::Vector{LegMeta})
+function joe(ctx, lms::Coll{LegMeta})
     # targ = getExpiration(lms)
     rate = 0.0
 
     ret = combineTo(Ret, lms, ctx.curp)
     met = calcMetrics(ctx.prob, ret)
     if met.ev >= 0.0 && met.prob >= 0.9
-        retb = combineTo(Ret, vcat(lms, ctx.polms), ctx.curp)
+        # retb = combineTo(Ret, vcat(lms, ctx.polms), ctx.curp)
+        retb = combineTo(Ret, vcat(ctx.polms, lms...), ctx.curp)
         # metb = calcMetrics(prob, retb)
-        if minimum(getVals(retb)) > MaxLossExpr
+        if minimum(getVals(retb)) > MaxLossExpr[]
             # TODO: consider using ev or evr or ? in rate calc
             # rate = ctx.timult * met.profit / (-met.mn)
             rate = ctx.timult * met.mx / (-met.mn)
