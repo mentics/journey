@@ -1,8 +1,16 @@
 Process:
-1) Find SPY trades by running
+1) Find SPY trades by running the following for expr from 1 to about 4 (apr drops off). Consider apr > 1.0 and prob > .75 is ok. TODO: kelly?
 using Joe
 r = jorn(expir(EXPR))
 
+2) Look for short puts to buy with apr > .5
+ll = c.lookAll()
+
+This friday/saturday we should add search for covered calls because we have the big expiration on Friday and might need to.
+
+save ProbKde in file so it will cache for a day, though, probably want to get vix after opening
+
+get the kelly calculation working. We might want to use that.
 
 .*\s(.+) Cash Covered Put.*
 

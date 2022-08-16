@@ -2,6 +2,51 @@ module Kelly
 using Roots
 using BaseTypes
 
+# const BINS_ONES = Bins.with(1.0)
+# logain(prob, vals, ratio) = prob .* log1p.(ratio .* vals)
+eee(prob, vals, ratio) = sum(prob .* log1p.(ratio .* vals))
+dee(prob, vals, ratio) = sum(prob .* vals ./ (1.0 .+ (ratio .* vals)))
+dee2(pv, vals, ratio) = sum(pv ./ (1.0 .+ (ratio .* vals)))
+function ded(prob, vals)
+    pv = prob .* vals
+    xleft = .001
+    xright = .999
+    xmid = 0.5
+    left = dee2(pv, vals, xleft)
+    right = dee2(pv, vals, xright)
+    left > 0.0 || return -Inf
+    right < 0.0 || return 1.0
+    mid = dee2(pv, vals, xmid)
+    if mid < 0.0
+        right = mid
+        xright = xmid
+    else
+        left = mid
+        xleft = xmid
+    end
+
+    for _ in 1:14
+        w = xright - xleft
+        rat = left / (left - right)
+        xmid = rat > .1 ? xleft + rat * w : xleft + .25 * w
+        mid = dee2(pv, vals, xmid)
+        abs(mid) > 0.001 || return xmid
+        if mid < 0.0
+            right = mid
+            xright = xmid
+        else
+            left = mid
+            xleft = xmid
+        end
+    end
+    @error "calc kelly" xleft xmid xright left mid right
+    error("could not solve")
+end
+function ded(prob, vals, ratio)
+    dee(prob, vals, .001)
+end
+# sum += prob * ret / (1.0 .+ ratio * ret)
+
 # export findZero, kellySimple, kellySimpleF, kellyTerm, dKellyTerm
 # export kelly, kellyReturn, kellyOptimum
 

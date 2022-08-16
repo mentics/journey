@@ -102,4 +102,9 @@ function to() end
 # function to(::Type{T}, x, args...)::T where T end
 to(::Type{T}) where T = x -> to(T, x)
 
+## Extra
+# export lms
+# function lms() end
+##
+
 end

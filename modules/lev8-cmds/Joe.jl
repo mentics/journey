@@ -29,6 +29,17 @@ function calcMet(lms::Coll{LegMeta})
     calcMetrics(calcProb(lms), ret)
 end
 
+# export lms
+import CmdExplore
+lms(condor::Condor) = map(x -> x[1], Iterators.flatten(condor))
+SH.draw(condor::Condor) = CmdExplore.drlms(lms(condor))
+SH.draw!(condor::Condor) = CmdExplore.drlms!(lms(condor))
+function drawKelly(r)
+    vals = calcRet(lms(r.cond)).vals
+    risk = -minimum(vals)
+    draw([(ratio, Kelly.eee(ctx.prob.vals, vals / risk, ratio)) for ratio in .001:.001:.9])
+end
+
 function run()
     jorn(expir(1))
 end
@@ -58,6 +69,8 @@ function jorn(expr::Date)
 
     maxSpreadWidth = C(12.0)
 
+    empty!(Msgs)
+
     ress = [Vector{NamedTuple}() for _ in 1:Threads.nthreads()]
     Cands.iterCondors(oqss, maxSpreadWidth, ctx.curp, ctx, ress) do cond, c, rs
         cnt += 1
@@ -83,6 +96,7 @@ function jorn(expr::Date)
 
     res = sort!(reduce(vcat, ress); rev=true, by=x -> x.rate)
     println("proced $(cnt), results: $(length(res))")
+    isempty(Msgs) || @info Msgs
     return res
 end
 
@@ -146,23 +160,29 @@ function joe(ctx, cond::Condor)
     met = calcMetrics(ctx.prob, ret)
     global condor = cond
     @assert met.mx > 0.0 "met.mx > 0.0: $(lms(cond))"
-    if met.ev >= 0.0 && met.prob >= 0.75
-        # retb = combineTo(Ret, vcat(lms, ctx.polms), ctx.curp)
-        valsb = addRetVals!(tctx.retBuf2, tctx.retBuf1, ctx.retPos.vals)  # combineTo(Ret, vcat(ctx.polms, lms...), ctx.curp)
-        # metb = calcMetrics(prob, retb)
-        if minimum(valsb) > MaxLossExpr[]
-            # TODO: consider using ev or evr or ? in rate calc
-            rate = ctx.timult * met.ev / (-met.mn)
-            kelly = Kelly.simple(met.prob, met.profit, -met.loss)
-            # rate = ctx.timult * met.profit / (-met.mn)
-            # rate = ctx.timult * met.mx / (-met.mn)
-            # if met.ev > 0.0
-            #     @info "joe" rate met
-            # end
+    if met.mn > MaxLossExpr[] && met.prob >= 0.75 # && met.ev >= 0.0
+        kelly = Kelly.ded(ctx.prob.vals, ret.vals / (-minimum(ret.vals)))
+        if kelly > 0.0
+            # retb = combineTo(Ret, vcat(lms, ctx.polms), ctx.curp)
+            valsb = addRetVals!(tctx.retBuf2, tctx.retBuf1, ctx.retPos.vals)  # combineTo(Ret, vcat(ctx.polms, lms...), ctx.curp)
+            # metb = calcMetrics(prob, retb)
+            if minimum(valsb) > MaxLossExpr[]
+                # TODO: consider using ev or evr or ? in rate calc
+                rate = ctx.timult * met.ev / (-met.mn)
+                # rate = ctx.timult * met.profit / (-met.mn)
+                # rate = ctx.timult * met.mx / (-met.mn)
+            else
+                runSync(lockMsg) do
+                    Msgs[:MaxLossExpr] = ["Hit MLE"]
+                end
+            end
         end
     end
     return (;rate, cond, met, kelly)
 end
+
+const lockMsg = ReentrantLock()
+const Msgs = Dict{Symbol,Vector{Any}}()
 
 # function joe(ctx, lms)
 #     # targ = getExpiration(lms)

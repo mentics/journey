@@ -206,8 +206,6 @@ function strikeWidth(hasStrike1, hasStrike2)
 end
 
 longShort(leg1, leg2) = isLong(leg1) ? (leg1, leg2) : (leg2, leg1)
-
-lms(condor::Condor) = map(x -> x[1], Iterators.flatten(condor))
 #endregion
 
 end

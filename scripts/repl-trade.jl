@@ -8,5 +8,5 @@ using ProcOrder, CmdTrading, CmdExplore, CmdFind
 # todo()
 # drx()
 
-using CmdExplore ; xx = CmdExplore
-using Combos, SeekingAlpha ; c = Combos ; sa = SeekingAlpha;
+# using CmdExplore ; xx = CmdExplore
+using Combos, SeekingAlpha, Joe ; c = Combos ; sa = SeekingAlpha ; j = Joe
