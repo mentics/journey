@@ -12,6 +12,8 @@ save ProbKde in file so it will cache for a day, though, probably want to get vi
 
 get the kelly calculation working. We might want to use that.
 
+Is there a way to structure the trade so it tmie decay immediately starts moving in our direction?
+
 .*\s(.+) Cash Covered Put.*
 
 

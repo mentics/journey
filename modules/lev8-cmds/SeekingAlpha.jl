@@ -217,7 +217,7 @@ function getData(type, syms)
     notFound = DataNotFound[type]
     !isempty(dict) || loadData(type)
     filter!(!isGlobalIgnore, syms)
-    todo = String[]
+    global todo = String[]
     for s in syms
         !(s in notFound) || continue
         if !haskey(dict, s) || !haskey(dict[s], "tsUpdate") || DateTime(dict[s]["tsUpdate"]) < now(UTC) - Hour(12)
@@ -226,6 +226,9 @@ function getData(type, syms)
     end
     if !isempty(todo)
         println("Loading $(length(todo)) $(type)")
+        for s in todo
+            delete!(dict, s)
+        end
         for part in Iterators.partition(todo, 150)
             global procJson = loadData(type, part)
             procDict(dict, lookup, procJson)
