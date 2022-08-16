@@ -8,6 +8,9 @@ using Globals
 export makeRet, estAtPrice, combineRetVals!, combineRets, combineRetsC, combineRetVals
 
 # This is where we convert from Currency to Float64
+function makeRet(leg, neto::Currency, sp::Currency)::Ret
+    return atExp(getStyle(leg), Float64(getStrike(leg)), getSide(leg), getQuantity(leg), Float64(neto), Float64(sp))
+end
 function makeRet(leg::Leg, m::OptionMeta, neto::Currency, targetDate::Date, sp::Currency, vtyRatio::Float64=Globals.get(:vtyRatio))::Ret
     if getExpiration(leg) === targetDate
         return atExp(getStyle(leg), Float64(getStrike(leg)), getSide(leg), getQuantity(leg), Float64(neto), Float64(sp))
@@ -93,26 +96,26 @@ function atExp(style::Style.T, strike::Float64, side::Side.T, qty::Float64, neto
     return Ret(vals, sp, 1)
 end
 
-function afterExp(leg::Leg, m::OptionMeta, neto::Float64, targetDate::Date, sp::Float64, vtyRatio::Float64)::Ret
-    exp = getExpiration(leg)
-    if exp == targetDate
-        error("Wrong segment called with same exp", exp, targetDate)
-    else
-        vty = vtyRatio * getIv(m)
-        if !(.05 < vty < .5)
-            @log debug "Invalid vty in segPricing, using global average" vty leg
-            vty = vtyRatio * Globals.get(:vtyAvg)[exp]
-        end
-        # TODO: benchmark compare to simpler closure way
-        ctx = (getStyle(leg), Float64(getStrike(leg)), timeToExpir(targetDate, exp), vty, getQuantityDir(leg), neto, sp)
-        vals = valsFor(ctx) do (style, strike, toExpYear, vty, qtyDir, neto, sp), x
-            y = neto + qtyDir * priceOption((style, strike, toExpYear, vty)..., sp * x)
-            # (isfinite(y) && (-100.0 < y < 100.0)) || error("afterExp: calced nan ", x, " ", (sp, m1, x01, split, m2, x02))
-            return y
-        end
-        return Ret(vals, sp, 1)
-    end
-end
+# function afterExp(leg::Leg, m::OptionMeta, neto::Float64, targetDate::Date, sp::Float64, vtyRatio::Float64)::Ret
+#     exp = getExpiration(leg)
+#     if exp == targetDate
+#         error("Wrong segment called with same exp", exp, targetDate)
+#     else
+#         vty = vtyRatio * getIv(m)
+#         if !(.05 < vty < .5)
+#             @log debug "Invalid vty in segPricing, using global average" vty leg
+#             vty = vtyRatio * Globals.get(:vtyAvg)[exp]
+#         end
+#         # TODO: benchmark compare to simpler closure way
+#         ctx = (getStyle(leg), Float64(getStrike(leg)), timeToExpir(targetDate, exp), vty, getQuantityDir(leg), neto, sp)
+#         vals = valsFor(ctx) do (style, strike, toExpYear, vty, qtyDir, neto, sp), x
+#             y = neto + qtyDir * priceOption((style, strike, toExpYear, vty)..., sp * x)
+#             # (isfinite(y) && (-100.0 < y < 100.0)) || error("afterExp: calced nan ", x, " ", (sp, m1, x01, split, m2, x02))
+#             return y
+#         end
+#         return Ret(vals, sp, 1)
+#     end
+# end
 
 # │   leg = LegTypes.Leg(Option(call, 2022-04-11, 466.000), 1.0, SmallTypes.Side.long)
 # │   m = OptionMetaTypes.OptionMeta(0.13166179776743192)

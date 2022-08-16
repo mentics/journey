@@ -42,6 +42,10 @@ end
 #     oqsPutShort = collect(Iterators.filter(SmallTypes.isPut, oqsShort))
 #     return Styles(Sides(oqsCallLong, oqsCallShort), Sides(oqsPutLong, oqsPutShort))
 # end
+export filtOqss
+function filtOqss(f::Function, oqss::Oqss)
+    return Styles(Sides(filter(f, oqss.call.long), filter(f, oqss.call.short)), Sides(filter(f, oqss.put.long), filter(f, oqss.put.short)))
+end
 
 function findOqs(oqs, curp::Currency, dists; maxDiff=1.0)
     res = Vector{OptionQuote}(undef, length(dists))

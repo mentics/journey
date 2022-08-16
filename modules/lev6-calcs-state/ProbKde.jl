@@ -103,7 +103,8 @@ end
 function calcKde(data::NTuple{2,Vector{Float64}})::BivariateKDE
     bws = (1.0, Bins.width())
     bounds = (0.0, 1.1 * maximum(data[1])), (0.8, 1.1) .* extrema(data[2])
-    println("Calcing kde with length rets ", length(retsNtv.tex))
+    println("Calcing kde with length rets ", length(retsNtv.tex), " extrema(data[1])=$(extrema(data[1])), extrema(data[2])=$(extrema(data[2]))")
+    println(bounds)
     return KernelDensity.kde(data; bandwidth=bws, boundary=bounds)
 end
 
@@ -126,7 +127,8 @@ function makePdv(tex::Float64, var::Float64)
 
     for (i, x) in Bins.midsi()
         pd = pdf(ik, tex, x)
-        @assert pd > -1e-5 "pd too negative $(pd)"
+        # TODO: Why can this be negative? Ask on discourse?
+        @assert pd > -1e-4 "pd too negative $(pd) tex=$(tex), var=$(var), varBin=$(varBin), i=$(i), x=$(x), kpdf=$(pdf(k, tex, x))"
         pd >= 0.01 * Bins.binPercent() || (pd = 0.0)
         vals[i] = Bins.width() * pd
     end
@@ -134,12 +136,11 @@ function makePdv(tex::Float64, var::Float64)
     left = 0.0
     right = 0.0
     w = Float64(k.y.step)
-    # wh = w/2
     for x in k.y
-        # x2 = x + wh
-        x2 = x
-        Bins.isLeft(x2) && (left += w * pdf(ik, tex, x2))
-        Bins.isRight(x2) && (right += w * pdf(ik, tex, x2))
+        pd = pdf(ik, tex, x)
+        pd > 0.0 || continue
+        Bins.isLeft(x) && (left += w * pd)
+        Bins.isRight(x) && (right += w * pd)
     end
     vals[1] = left
     vals[end] = right

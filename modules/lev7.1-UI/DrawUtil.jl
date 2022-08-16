@@ -88,6 +88,14 @@ function drawProb(ax, prob, colorIndex, scale)
     return p
 end
 
+export drawProb!
+function drawProb!(center, vals)
+    # Bins.VNUM * vals
+    p = barplot!(center .* Bins.xs(), vals ./ Bins.width(); gap=0.0, inspectable=false) # color=colors[colorIndex]
+    # p.inspectable[] = false
+    return p
+end
+
 export rnd, rndUp, rndDown
 rnd(x, m, mode=RoundNearest) = round(x / m, mode) * m
 rndUp(x, m) = rnd(x, m, RoundUp)

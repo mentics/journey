@@ -1,4 +1,8 @@
-Two sets of
+Process:
+1) Find SPY trades by running
+using Joe
+r = jorn(expir(EXPR))
+
 
 .*\s(.+) Cash Covered Put.*
 

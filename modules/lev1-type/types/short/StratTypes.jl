@@ -1,12 +1,13 @@
 module StratTypes
 using SH, BaseTypes, RetTypes, LegMetaTypes
 
-export LegRet, AllLegs4, Spread, Spreads2, Combi, Strat, getRets
+export LegRet, AllLegs4, Spread, Condor, Spreads2, Combi, Strat, getRets
 export isCal, isCalShort, isCalLong, isVert, isSideSame, isStyleDiff
 
 const LegRet = Tuple{LegMeta,Ret}
 const AllLegs4 = NTuple{4,Vector{LegRet}}
 const Spread = Tuple{LegRet,LegRet}
+const Condor = Tuple{Spread,Spread}
 const Spreads2 = Tuple{Vector{Spread}, Vector{Spread}} # all call spreads and all put spreads
 const Combi = NTuple{4,LegRet}
 const Strat = Combi

@@ -9,8 +9,10 @@ using DrawStrat
 export sh, shc, shRet, shVals, drsh, drsh!, shLegs # shLegs is reexported form Shorthand
 export drlms, drlms!
 
-drlms(lms; kws...) = drawRet(combineTo(Ret, lms, minimum(getExpiration.(lms)), market().startPrice, getvr()); curp=market().curp, kws...)
-drlms!(lms; kws...) = drawRet!(combineTo(Ret, lms, minimum(getExpiration.(lms)), market().startPrice, getvr()); kws...)
+# drlms(lms; kws...) = drawRet(combineTo(Ret, lms, minimum(getExpiration.(lms)), market().startPrice, getvr()); curp=market().curp, kws...)
+# drlms!(lms; kws...) = drawRet!(combineTo(Ret, lms, minimum(getExpiration.(lms)), market().startPrice, getvr()); kws...)
+drlms(lms; kws...) = drawRet(combineTo(Ret, lms, market().startPrice); curp=market().curp, kws...)
+drlms!(lms; kws...) = drawRet!(combineTo(Ret, lms, market().startPrice); kws...)
 
 export findShortsToClose
 # TODO: move this to scheduled
