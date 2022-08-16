@@ -25,7 +25,7 @@ function ded(prob, vals)
         xleft = xmid
     end
 
-    for _ in 1:18
+    for _ in 1:50
         w = xright - xleft
         rat = left / (left - right)
         xmid = rat > .1 ? xleft + rat * w : xleft + .25 * w
