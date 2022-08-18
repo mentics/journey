@@ -13,9 +13,10 @@ function lookAll(cands=SeekingAlpha.totry())
     end
     global LookedRaw = copy(Looked)
     global Looked = clean(Looked)
-    pretyble(delete.(Looked, :oq))
+    pretyble(sort(delete.(Looked, :oq); by=x -> x.rate))
     return Looked
 end
+disp() = pretyble(sort(delete.(Looked, :oq); by=x -> x.rate))
 
 excludes(lll) = filter!(x -> !(x.sym in ActiveSyms) && !(x.sym in SeekingAlpha.BadPricing) && !(x.sym in TempIgnore) && !(x.sym in SeekingAlpha.Ignore) && x.strike <= 105.0, lll)
 function clean(lll)
@@ -78,11 +79,12 @@ function look(sym)
     for expr in sort!(collect(keys(chs)))
         # expr < maxDate || break # exprs sorted asc
         oqs = filter(isPut, chs[expr].chain)
+        # TODO: use tex instead of bdays?
         timult = 252 / bdays(today(), expr)
         underBid = locUnder["bid"]
         # TODO: use IV to figure out how far out to go?
         # or could maybe get 52 week range
-        startI = findfirst(oq -> getStrike(oq) > 0.92 * underBid, oqs)
+        startI = findfirst(oq -> getStrike(oq) > 0.9 * underBid, oqs)
         !isnothing(startI) || continue
         for i in (startI-5):(startI-1)
             i >= 1 || continue

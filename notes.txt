@@ -6,7 +6,14 @@ r = jorn(expir(EXPR))
 2) Look for short puts to buy with apr > .5
 ll = c.lookAll()
 
+use kelly to calculate position sizing based on number of open positions
+draw table of max loss desc order of trade fill time and show worst case "balance"
+
 This friday/saturday we should add search for covered calls because we have the big expiration on Friday and might need to.
+
+Load all trades into memory and all code for those can use in memory
+refresh load all trades everytime procOrders or new trade happen
+then it will be fast to keep track of our current positions to calculate new kelly sizing
 
 save ProbKde in file so it will cache for a day, though, probably want to get vix after opening
 
@@ -14,8 +21,11 @@ get the kelly calculation working. We might want to use that.
 
 Is there a way to structure the trade so it tmie decay immediately starts moving in our direction?
 
-.*\s(.+) Cash Covered Put.*
+scan all current open trades to find any that already are providing a return that is acceptable so we can close early
 
+put in mechanism to enforce not day trading
+
+.*\s(.+) Cash Covered Put.*
 
 How about do our trade search for anything that is > 90% probability and > 100% annual rate?
 
@@ -32,6 +42,17 @@ or could get history and calc 99 percentile move
 implement MaxClose in trade printout
 
 **** I need to do my own implied volatility calculation based on tex and maybe the new fit formula
+
+==========
+
+Can we take simultaneous kelly bets?
+Do we need to consider open positions as adding to a single bet and so position sizing based on that?
+Or can we consider each one as a separate bet and so size it solely on it's on kelly number?
+So, we could size every one at half kelly or something?
+Except... the kelly concept assumes iteration, so it assumes bet2 is sized based on the result of bet2.
+So... we could size bet n based on the worst cases of all existing bets.
+
+==========
 
 We're basing prob on ivs which is on prices which also affects metrics, so... seems like could be some circular reasoning there.
 Maybe use something else for prob?

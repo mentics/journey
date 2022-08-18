@@ -42,6 +42,7 @@ SH.to(::Type{LegMeta}, lg::LegTrade)::LegMeta = LegMeta(Leg(getOption(lg), getQu
 # TODO: don't do collect, figure out dispatch for iterators
 # collect(mapFlattenTo(getLegs, LegMeta, trades))
 SH.combineTo(::Type{Ret}, trades::AVec{<:Trade}, forDate::Date, sp::Currency, vtyRatio::Float64)::Ret = combineTo(Ret, combineTo(Vector{LegMeta}, trades), forDate, sp, vtyRatio)
+SH.combineTo(::Type{Ret}, trades::AVec{<:Trade}, sp::Currency)::Ret = combineTo(Ret, combineTo(Vector{LegMeta}, trades), sp)
 # SH.combineTo(::Type{Ret}, trade::Trade, forDate::Date, sp::Currency, vtyRatio::Float64)::Ret = combineTo(Ret, getLegs(trade), forDate, sp, vtyRatio)
 # SH.tos(::Type{Vector{LegMeta}}, trades::AVec{<:Trade})::Vector{LegMeta} = collect(mapFlattenTo(getLegs, LegMeta, trades))
 # SH.tos(::Type{Vector{Vector{LegMeta}}}, trades::AVec{<:Trade})::Vector{LegMeta} = collect(mapFlattenTo(getLegs, LegMeta, trades))

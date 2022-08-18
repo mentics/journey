@@ -69,7 +69,7 @@ strShort(ts::DateTime)::String = Dates.format(ZonedDateTime(ts, LOCALZONE; from_
 nextLocalTime(from::DateTime, tim::Time) = ( dt = DateTime(todayat(tim, LOCALZONE), UTC) ; return from < dt ? dt : dt + Day(1) )
 function nextMarketPeriod(from::DateTime, isMktOpen::Bool, tsMktChange::DateTime, period::Period, before::Period, after::Period)
     @assert Dates.value(after) > 0
-    @info "nextMarketPeriod" from tsMktChange
+    # @info "nextMarketPeriod" from tsMktChange
     @assert from <= tsMktChange
     @assert before < period
     if isMktOpen

@@ -62,8 +62,10 @@ function todo(ex=0)
 end
 
 using RetTypes, Between, DrawStrat
-toRet(trades, exp)::Ret = combineTo(Ret, trades, exp, market().startPrice, Globals.get(:vtyRatio)) # TODO: choose diff start price?
-toLms(trades, exp)::Ret = combineTo(LegMeta, trades, exp, market().startPrice, Globals.get(:vtyRatio)) # TODO: choose diff start price?
+toRet(trades, exp)::Ret = combineTo(Ret, trades, exp, market().curp, Globals.get(:vtyRatio)) # TODO: choose diff start price?
+# toLms(trades, exp)::Ret = combineTo(LegMeta, trades, exp, market().curp, Globals.get(:vtyRatio)) # TODO: choose diff start price?
+toRet(trades)::Ret = combineTo(Ret, trades, market().curp) # TODO: choose diff start price?
+toLms(trades)::Vector{LegMeta} = combineTo(Vector{LegMeta}, trades) # TODO: choose diff start price?
 # TODO: change so matches todo and expirs and all: 0 for today, 1 for non-today next exp, and default is 0
 drpos(exp=expir(0)) = drawRet(toRet(tradesToClose(exp), exp); probs=probs(), curp=market().curp, label="pos")
 export drt, adrt
@@ -82,6 +84,19 @@ function drx(ex=0)
         adrt(tod[i])
     end
     drawRet!(toRet(tod, expir(ex)); label="all")
+end
+
+function drx(ex, lms)
+    # TODO: read from cache
+    tod = tradesToClose(ex)
+    drt(tod[1])
+    for i in 2:length(tod)
+        adrt(tod[i])
+    end
+    curp = market().curp
+    drawRet!(combineTo(Ret, lms, curp); label="add")
+    posLms = toLms(tod)
+    drawRet!(combineTo(Ret, vcat(posLms, lms), curp); label="all")
 end
 
 # drawRet(tradesToRets(todo(ex)))

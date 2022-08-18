@@ -31,6 +31,7 @@ end
 
 using Rets, StratTypes
 function iterCondors(f::Function, oqss::Oqss, maxSpreadWidth::Currency, curp::Currency, args...)
+    # @warn "Still using left > 0.0 || continue"
     global spreads = Vector{Spread}()
     iterSpreads(oqss, maxSpreadWidth, args...) do (lm1, lm2), args...
         ret1 = makeRet(lm1, bap(lm1), curp)
@@ -49,7 +50,10 @@ function iterCondors(f::Function, oqss::Oqss, maxSpreadWidth::Currency, curp::Cu
                 s2 = spreads[j]
                 getStrike(s1[2]) <= getStrike(s2[1]) || continue
                 cond = (spreads[i], spreads[j])
-                max(condorExtrema(cond)...) > 0.0 || continue
+                left, mid, right = condorExtrema(cond)
+                max(left, mid, right) > 0.0 || continue
+                # left > 0.0 || continue
+
                 # @assert issorted(legs; by=getStrike) "Not sorted $(legs)" # already checked in condorExtrema
                 # d1 = abs(-(getStrike.(spreads[i])...))
                 # d2 = abs(-(getStrike.(spreads[j])...))
