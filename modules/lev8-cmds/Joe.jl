@@ -71,7 +71,7 @@ function jorn(expr::Date; nopos=false)
     #     end
     # end
 
-    maxSpreadWidth = C(12.0)
+    maxSpreadWidth = C(8.0)
 
     empty!(Msgs)
 

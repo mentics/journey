@@ -17,6 +17,7 @@ function lookAll(cands=SeekingAlpha.totry())
     return Looked
 end
 disp() = pretyble(sort(delete.(Looked, :oq); by=x -> x.rate))
+check(sym) = pretyble(delete.(look(sym; all=true), :oq))
 
 excludes(lll) = filter!(x -> !(x.sym in ActiveSyms) && !(x.sym in SeekingAlpha.BadPricing) && !(x.sym in TempIgnore) && !(x.sym in SeekingAlpha.Ignore) && x.strike <= 105.0, lll)
 function clean(lll)
@@ -65,7 +66,7 @@ end
 sa = SeekingAlpha
 import TradierData:findEarnDate,findExDate
 using Between
-function look(sym)
+function look(sym; all=false)
     try
     res = []
     # about = SeekingAlpha.Cands[sym]
@@ -82,11 +83,16 @@ function look(sym)
         # TODO: use tex instead of bdays?
         timult = 252 / bdays(today(), expr)
         underBid = locUnder["bid"]
-        # TODO: use IV to figure out how far out to go?
-        # or could maybe get 52 week range
-        startI = findfirst(oq -> getStrike(oq) > 0.9 * underBid, oqs)
-        !isnothing(startI) || continue
-        for i in (startI-5):(startI-1)
+        if all
+            range = 1:length(oqs)
+        else
+            # TODO: use IV to figure out how far out to go?
+            # or could maybe get 52 week range
+            startI = findfirst(oq -> getStrike(oq) > ratio * underBid, oqs)
+            !isnothing(startI) || continue
+            range = (startI-5):(startI-1)
+        end
+        for i in range
             i >= 1 || continue
             oq = oqs[i]
             getBid(oq) >= 0.05 || continue
@@ -94,7 +100,7 @@ function look(sym)
             primitDir = bap(oq)
             rate = timult * (primitDir - .0065) / strike # .0065 is the trade commission for fidelity
             println("$(sym)[$(expr)]: $(underBid) -> $(strike) at $(primitDir) ($(getQuote(oq))) / $(strike) = $(rate)")
-            if rate > 0.1
+            if all || rate > 0.1
                 push!(res, (;sym, expr, underBid, strike, primitDir, rate, oq))
             end
         end
