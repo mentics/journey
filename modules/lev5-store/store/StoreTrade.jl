@@ -63,6 +63,8 @@ function loadTrades(clauseIn::String, clauseArgs...)::Vector{Trade}
 end
 
 const TradesCache = Dict{Int,Trade}() # tid => trade
+export tradesCached
+tradesCached() = TradesCache
 function loadTradesCache()
     trades = loadTrades("select tid from VTrade where status != ? or tsCreated >= now()+'-24 hour' or tsfilled >= now()+'-24 hour' or tsclosed >= now()+'-24 hour'", Closed)
     empty!(TradesCache)

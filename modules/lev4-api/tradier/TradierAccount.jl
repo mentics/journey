@@ -2,7 +2,7 @@ module TradierAccount
 using CollUtil
 using BaseTypes, TradierConfig, TradierBase
 
-export tradierOrders, tradierOrder, tradierPositions
+export tradierOrders, tradierOrder, tradierPositions, tradierBalances
 
 function tradierOrders()::TradierRespVec
     result = tradierGet("/accounts/$(getAccountId())/orders?includeTags=true", Call(nameof(var"#self#")))
@@ -26,6 +26,11 @@ function tradierPositions()::TradierRespVec
     else
         return TRADIER_EMPTY
     end
+end
+
+function tradierBalances()::TradierResp
+    result = tradierGet("/accounts/$(getAccountId())/balances", Call(nameof(var"#self#")))
+    return result["balances"]
 end
 
 using Dates
@@ -60,10 +65,6 @@ end
 #     else
 #         return []
 #     end
-# end
-
-# function tradierBalances(config::TradierConfig=cfg(), accountId::AbstractString=config.accountId)
-#     return tradierGet(config, "/accounts/$(accountId)/balances")["balances"]
 # end
 
 end

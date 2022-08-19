@@ -1,6 +1,7 @@
 module GenCands
 using ThreadPools
 using SH, BaseTypes, SmallTypes, LegMetaTypes
+using OptionUtil
 using ChainTypes
 
 function iterSingle(f::Function, oqss::Oqss, args...)
@@ -50,8 +51,8 @@ function iterCondors(f::Function, oqss::Oqss, maxSpreadWidth::Currency, curp::Cu
                 s2 = spreads[j]
                 getStrike(s1[2]) <= getStrike(s2[1]) || continue
                 cond = (spreads[i], spreads[j])
-                left, mid, right = condorExtrema(cond)
-                max(left, mid, right) > 0.0 || continue
+                left, mid, right = OptionUtil.legs4Extrema(map(x -> x[1], (cond[1]..., cond[2]...)))
+                max(left, mid, right) > 0.02 || continue
                 # left > 0.0 || continue
 
                 # @assert issorted(legs; by=getStrike) "Not sorted $(legs)" # already checked in condorExtrema
@@ -103,7 +104,7 @@ function iterSpreads(f::Function, oqs::Sides{Vector{ChainTypes.OptionQuote}}, ma
         oq1 != oq2 || continue
         legLong = to(LegMeta, oq1, Side.long)
         legShort = to(LegMeta, oq2, Side.short)
-        _, mx = spreadExtrema(legLong, legShort)
+        _, mx = OptionUtil.spreadExtrema(legLong, legShort)
         mx > 0.0 || continue
         spr = getStrike(legLong) < getStrike(legShort) ? (legLong, legShort) : (legShort, legLong)
         f(spr, args...) || return false
@@ -158,44 +159,6 @@ end
 #     return true
 # end
 
-spreadExtrema(legLong, legShort) = minmax(spreadLevels(legLong, legShort)...)
-function spreadLevels(legLong::LegMeta, legShort::LegMeta)
-    netOpen = bap(legLong) + bap(legShort)
-    if getStyle(legLong) == Style.call
-        left = netOpen
-        sd = getStrike(legShort) - getStrike(legLong)
-        right = sd + netOpen
-        # if sign(sd) * sign(netOpen) > 0
-        #     @info "iterSpreads call sign mismatch" left right getStrike(legLong) getStrike(legShort) netOpen sign(sd) sign(netOpen) getQuote(legLong) getQuote(legShort)
-        # end
-        # if max(left, right) < 0.0
-        #     @info "iterSpreads too low" left right
-        # end
-    else
-        sd = getStrike(legLong) - getStrike(legShort)
-        left = sd + netOpen
-        right = netOpen
-        # if sign(sd) * sign(netOpen) > 0
-        #     @info "iterSpreads put sign mismatch" left right getStrike(legLong) getStrike(legShort) netOpen sign(sd) sign(netOpen) getQuote(legLong) getQuote(legShort)
-        # end
-        # if max(left, right) < 0.0
-        #     @info "iterSpreads too low" left right
-        # end
-    end
-    return (left, right)
-end
-
-function condorExtrema(cond::Condor)
-    @assert getStrike(cond[1][2]) <= getStrike(cond[2][1]) "$(getStrike.(cond[1])) $(getStrike.(cond[2]))" # issorted(legs; by=getStrike)
-    levLeft = spreadLevels(map(x -> x[1], longShort(cond[1]...))...)
-    levRight = spreadLevels(map(x -> x[1], longShort(cond[2]...))...)
-    left = levLeft[1] + levRight[1]
-    mid = levLeft[2] + levRight[1]
-    right = levLeft[2] + levRight[2]
-    # @info "condorExtrema" levLeft levRight left mid right
-    return (left, mid, right)
-end
-
 function maxStrike(hasStrike1, hasStrike2)
     s1 = getStrike(hasStrike1)
     s2 = getStrike(hasStrike2)
@@ -208,8 +171,6 @@ function strikeWidth(hasStrike1, hasStrike2)
     s2 = getStrike(hasStrike2)
     return abs(s1 - s2)
 end
-
-longShort(leg1, leg2) = isLong(leg1) ? (leg1, leg2) : (leg2, leg1)
 #endregion
 
 end

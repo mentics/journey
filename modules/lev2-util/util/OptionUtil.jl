@@ -73,4 +73,48 @@ texToYear(tex) = tex / texPerYear()
 # 252 days per year
 # 8760 hours per year
 
+legs2Extrema(legs::Coll) = spreadExtrema(longShort(legs[1], legs[2])...)
+legs2Levels(legs::Coll) = spreadLevels(longShort(legs[1], legs[2])...)
+spreadExtrema(legLong, legShort) = minmax(spreadLevels(legLong, legShort)...)
+function spreadLevels(legLong, legShort)
+    @assert getSide(legLong) == Side.long && getSide(legShort) == Side.short
+    netOpen = getNetOpen(legLong) + getNetOpen(legShort)
+    if getStyle(legLong) == Style.call
+        left = netOpen
+        sd = getStrike(legShort) - getStrike(legLong)
+        right = sd + netOpen
+        # if sign(sd) * sign(netOpen) > 0
+        #     @info "iterSpreads call sign mismatch" left right getStrike(legLong) getStrike(legShort) netOpen sign(sd) sign(netOpen) getQuote(legLong) getQuote(legShort)
+        # end
+        # if max(left, right) < 0.0
+        #     @info "iterSpreads too low" left right
+        # end
+    else
+        sd = getStrike(legLong) - getStrike(legShort)
+        left = sd + netOpen
+        right = netOpen
+        # if sign(sd) * sign(netOpen) > 0
+        #     @info "iterSpreads put sign mismatch" left right getStrike(legLong) getStrike(legShort) netOpen sign(sd) sign(netOpen) getQuote(legLong) getQuote(legShort)
+        # end
+        # if max(left, right) < 0.0
+        #     @info "iterSpreads too low" left right
+        # end
+    end
+    return (left, right)
+end
+
+function legs4Extrema(legs::Coll)
+    # @assert getStrike(cond[1][2]) <= getStrike(cond[2][1]) "$(getStrike.(cond[1])) $(getStrike.(cond[2]))" # issorted(legs; by=getStrike)
+    @assert issorted(legs; by=getStrike)
+    levLeft = spreadLevels(longShort(legs[1], legs[2])...)
+    levRight = spreadLevels(longShort(legs[3], legs[4])...)
+    left = levLeft[1] + levRight[1]
+    mid = levLeft[2] + levRight[1]
+    right = levLeft[2] + levRight[2]
+    # @info "condorExtrema" levLeft levRight left mid right
+    return (left, mid, right)
+end
+
+longShort(leg1, leg2) = isLong(leg1) ? (leg1, leg2) : (leg2, leg1)
+
 end

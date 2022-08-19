@@ -38,7 +38,7 @@ SH.getBid(lm::LegMeta) = getBid(lm.quot)
 SH.getAsk(lm::LegMeta) = getAsk(lm.quot)
 SH.getIv(lm::LegMeta) = getIv(lm.meta)
 
-# SH.getNetOpen(lm::LegMeta) = getQuantity(lm.leg) * getBid(lm.quot)
+SH.getNetOpen(lm::LegMeta) = getQuantity(lm.leg) * bap(lm) # getBid(lm.quot)
 
 SH.addQuantity(lm::LegMeta, addend::Real) =
     LegMeta(Leg(lm.leg; quantity=getQuantity(lm.leg) + addend), lm.quot, lm.meta)

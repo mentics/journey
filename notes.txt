@@ -6,6 +6,8 @@ r = jorn(expir(EXPR))
 2) Look for short puts to buy with apr > .5
 ll = c.lookAll()
 
+change position sizing to use max loss for each expiration
+
 Calc kelly sizing by looping through existing trades, calc worse case, use resulting balance * some % of kelly to say what size to use for new candidate trade
 use kelly to calculate position sizing based on number of open positions
 draw table of max loss desc order of trade fill time and show worst case "balance"

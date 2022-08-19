@@ -23,6 +23,12 @@ SH.getBid(q::Quote) = q.bid
 SH.getAsk(q::Quote) = q.ask
 Base.show(io::IO, q::Quote) = print(io, (q.action == Action.open ? "Qo" : "Qc") * (q.bid === q.ask ? "($(q.bid))" : "($(q.bid), $(q.ask))"))
 
+# SH.bap(lm)::Currency = getBid(lm)
+# SH.bap(hasQuotes::Coll)::Currency = sum(getBid, hasQuotes)
+# RAT2 = .2
+SH.bap(hasQuote)::Currency = round(improve(getQuote(hasQuote), .2), RoundDown; digits=2)
+SH.bap(hasQuotes::Coll)::Currency = round(improve(sumQuotes(getQuote.(hasQuotes)), .2), RoundDown; digits=2)
+
 # TODO: Move these
 export sumQuotes, improve
 # improve(q::Quote, r::Float64)::Currency = getBid(q) + r * (getAsk(q) - getBid(q))

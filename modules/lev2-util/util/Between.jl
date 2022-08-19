@@ -3,12 +3,6 @@ using Dates
 using SH, BaseTypes, SmallTypes, QuoteTypes, OptionMetaTypes, StratTypes, LegMetaTypes, RetTypes, StatusTypes
 using Rets, LegTypes, TradeTypes, LegTradeTypes
 
-# SH.bap(lm)::Currency = getBid(lm)
-# SH.bap(hasQuotes::Coll)::Currency = sum(getBid, hasQuotes)
-# RAT2 = .2
-SH.bap(hasQuote)::Currency = round(improve(getQuote(hasQuote), .2), RoundDown; digits=2)
-SH.bap(hasQuotes::Coll)::Currency = round(improve(sumQuotes(getQuote.(hasQuotes)), .2), RoundDown; digits=2)
-
 # SH.to(::Type{LegMeta}, lg::Leg, qt::Quote, met::OptionMeta)::LegMeta = ( side = getSide(side) ; LegMeta(Leg(getOption(lg), getQuantity(lg), side), qt, met) )
 # SH.to(::Type{LegMeta}, lg::Leg, qt::OptionQuote)::LegMeta = ( side = getSide(side) ; LegMeta(Leg(getOption(lg), getQuantity(lg), side), qt, met) )
 SH.to(::Type{LegMeta}, leg::Leg, oqter)::LegMeta = ( (oq, side) = (oqter(leg), getSide(leg)) ; LegMeta(Leg(getOption(leg), getQuantity(leg), side), getQuote(oq, side), getMeta(oq)) )

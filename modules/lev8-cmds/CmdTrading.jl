@@ -5,6 +5,7 @@ using DateUtil, LogUtil
 using Trading, Quoting
 using Calendars, Markets, Expirations, Chains, StoreTrade
 using CmdStrats
+using OptionUtil
 
 export so, sor, solr, todo, ct, ctr, drpos, tot, drx
 export cleg, clegr
@@ -35,6 +36,30 @@ function so(lms::Coll{LegMeta,4}; ratio=nothing, at=nothing, pre=true, skipConfi
 
     tid = pre ? submitPreview(lms, pr) : submitLive(lms, pr, market().curQuot)
     return pre ? 0 : tid
+end
+
+using TradierAccount
+function tradeSize(kelly::Float64, kellyRatio::Float64 = 0.5)
+    bal = tradierBalances()["total_cash"]
+    println("Starting bal ", bal)
+    trades = sort!(collect(values(tradesCached())); by=x -> tsCreated(x))
+    rows = NamedTuple[]
+    # TODO: groupby expiration and get worst case for all trades together in expiration
+    for trade in trades
+        # lms = to(Vector{LegMeta}, trade)
+        legs = getLegs(trade)
+        if length(legs) == 4
+            mn = min(OptionUtil.legs4Extrema(legs)...)
+        elseif length(legs) == 2
+            mn = min(OptionUtil.legs2Extrema(legs)...)
+        else
+            error("not supported single leg calc yet")
+        end
+        bal += 100 * mn
+        push!(rows, (;mn, bal))
+    end
+    pretyble(rows)
+    println("$(kellyRatio) kelly trade size: ", kelly * kellyRatio * bal)
 end
 #endregion
 
