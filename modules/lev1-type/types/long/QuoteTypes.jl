@@ -28,6 +28,7 @@ Base.show(io::IO, q::Quote) = print(io, (q.action == Action.open ? "Qo" : "Qc") 
 # RAT2 = .2
 SH.bap(hasQuote)::Currency = round(improve(getQuote(hasQuote), .2), RoundDown; digits=2)
 SH.bap(hasQuotes::Coll)::Currency = round(improve(sumQuotes(getQuote.(hasQuotes)), .2), RoundDown; digits=2)
+SH.bap(qt::Quote)::Currency = round(improve(qt, .2), RoundDown; digits=2)
 
 # TODO: Move these
 export sumQuotes, improve

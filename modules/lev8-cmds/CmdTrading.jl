@@ -61,6 +61,23 @@ function tradeSize(kelly::Float64, kellyRatio::Float64 = 0.5)
     pretyble(rows)
     println("$(kellyRatio) kelly trade size: ", kelly * kellyRatio * bal)
 end
+
+function findTradesToClose()
+    for trade in values(StoreTrade.tradesCached())
+        ts = tsFilled(trade)
+        ts < DateTime(today()) || continue
+        neto = getNetOpen(trade)
+        qt = quoter(trade, Action.close)
+        netc = bap(qt)
+        curVal = neto + netc
+        if curVal > 0.0
+            timult = 1 / calcTex(ts, today())
+            mn = min(OptionUtil.legs4Extrema(getLegs(trade))...)
+            rate = timult * curVal / (-mn)
+            println("Trade ", getId(trade), " (", strShort(getTargetDate(trade)), "): ", (;curVal, rate, mn, timult))
+        end
+    end
+end
 #endregion
 
 #region CurrentPosition

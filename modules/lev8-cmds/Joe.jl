@@ -161,6 +161,7 @@ function joe(ctx, cond::Condor)
     tctx = ctx.threads[Threads.threadid()]
     roi = -Inf
     rate = -Inf
+    rateEv = -Inf
     kelly = -Inf
     lms = nothing
     ret = Ret(condorRetVals!(tctx.retBuf1, condRetVals(cond)), ctx.curp, 4)
@@ -176,7 +177,7 @@ function joe(ctx, cond::Condor)
             minb = minimum(valsb)
             if minb >= ctx.posMin || minb > MaxLossExpr[]
                 # TODO: consider using ev or evr or ? in rate calc
-                # rate = ctx.timult * met.ev / (-met.mn)
+                rateEv = ctx.timult * met.ev / (-met.mn)
                 rate = ctx.timult * met.profit / (-met.mn)
                 roi = rate * kelly
                 # rate = ctx.timult * met.mx / (-met.mn)
@@ -188,7 +189,7 @@ function joe(ctx, cond::Condor)
             end
         end
     end
-    return (;roi, rate, kelly, cond, met, lms)
+    return (;roi, rate, rateEv, kelly, cond, met, lms)
 end
 
 const lockMsg = ReentrantLock()
