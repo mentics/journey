@@ -28,3 +28,6 @@ status = (now(localzone()) - tsBak) < Hour(24)  ? "ok" : "WARNING"
 
 using Emails
 sendEmail("***REMOVED***", "Daily $(today()) report $(status)", String(take!(io)))
+
+using ProcOrder
+procOrders()

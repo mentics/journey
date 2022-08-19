@@ -28,6 +28,7 @@ function procOrders()::Bool
     for tord in tords
         res |= procOrder(tord)
     end
+    StoreTrade.loadTradesUpdated()
     Store.dbChecks()
     return res
 end

@@ -6,24 +6,21 @@ r = jorn(expir(EXPR))
 2) Look for short puts to buy with apr > .5
 ll = c.lookAll()
 
+Calc kelly sizing by looping through existing trades, calc worse case, use resulting balance * some % of kelly to say what size to use for new candidate trade
 use kelly to calculate position sizing based on number of open positions
 draw table of max loss desc order of trade fill time and show worst case "balance"
 
-This friday/saturday we should add search for covered calls because we have the big expiration on Friday and might need to.
+scan all current open trades to find any that already are providing a return that is acceptable so we can close early
 
-Load all trades into memory and all code for those can use in memory
-refresh load all trades everytime procOrders or new trade happen
-then it will be fast to keep track of our current positions to calculate new kelly sizing
+This friday/saturday we should add search for covered calls because we have the big expiration on Friday and might need to.
 
 save ProbKde in file so it will cache for a day, though, probably want to get vix after opening
 
-get the kelly calculation working. We might want to use that.
-
-Is there a way to structure the trade so it tmie decay immediately starts moving in our direction?
-
-scan all current open trades to find any that already are providing a return that is acceptable so we can close early
+Is there a way to structure the trade so it time decay immediately starts moving in our direction?
 
 put in mechanism to enforce not day trading
+
+====================
 
 .*\s(.+) Cash Covered Put.*
 

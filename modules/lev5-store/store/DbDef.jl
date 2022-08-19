@@ -36,11 +36,14 @@ create table if not exists LegOrd(olid Int not null primary key, oid Int not nul
     tsCreated timestamp not null, tsFilled timestamp not null,
     foreign key(oid) references Ord(oid) on delete cascade)
 """
+# TODO: create index on LegOrd (tsFilled)
 
 DdlLegUsed() = """
 create table if not exists LegUsed(lid Int not null, olid Int not null, act Int not null, quantity decimal(10,3) not null,
     foreign key(lid) references LegTrade(lid), foreign key(olid) references LegOrd(olid), primary key(lid, olid, act))
 """
+# TODO: create index on LegUsed (act)
+# CREATE INDEX ON legused (act, olid, lid) STORING (quantity)
 #endregion
 
 #region VLegTrade
@@ -75,7 +78,7 @@ from LegTrade lt
 
 #region VTrade
 VTrade() = """
-create view VTrade as
+create materialized view VTrade as
 select t.tid, t.tsCreated tsCreated, t.primitDir, t.targetDate, tm.underBid, tm.underAsk,
     mo.pd prillDirOpen, mc.pd prillDirClose, mo.tsFilled tsFilled, mc.tsFilled tsClosed,
     case when mc.qtyUsed = mc.quantity then 'Closed' when mc.qtyUsed > 0 then 'PartialClosed' when mo.qtyUsed = mo.quantity then 'Filled' when mo.qtyUsed > 0 then 'PartialFilled' else 'Starting' end as status
@@ -83,6 +86,10 @@ from Trade t join TradeMeta tm on t.tid=tm.tid
     left outer join lateral (select tid, sum(quantity) quantity, sum(qtyUsed) qtyUsed, sum(quantity * prillDir) pd, max(tsFilled) tsFilled from VLegFilled lfo where act=1 and tid=t.tid group by tid) mo on mo.tid=t.tid
     left outer join lateral (select tid, sum(quantity) quantity, sum(qtyUsed) qtyUsed, sum(quantity * prillDir) pd, max(tsFilled) tsFilled from VLegFilled lfc where act=-1 and tid=t.tid group by tid) mc on mc.tid=t.tid
 """
+# TODO:
+# CREATE INDEX ON mvtrade (tid)
+# CREATE INDEX ON mvtrade (tsfilled) STORING (tid, tsclosed)
+# CREATE INDEX ON mvtrade (tsclosed) STORING (tid, tsfilled)
 # , max(tsCreated) tsCreated # in the mo select clause
 
 # create view VTrade as

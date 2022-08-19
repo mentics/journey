@@ -23,6 +23,7 @@ function newTrade(primitDir::PriceT, legs::Coll{LegMeta,4}, underBid::Currency, 
                     lid, getBid(lq), getAsk(lq), getIv(lq))
         end
     end
+    loadTradesUpdated()
     return tid
 end
 
@@ -59,6 +60,17 @@ function loadTrades(clauseIn::String, clauseArgs...)::Vector{Trade}
         return Trade{strToStatus(t.status)}(t.tid, t.targetdate, dbdc(t.primitdir), dbdc(t.prilldiropen), dbdc(t.prilldirclose),
               legs, t.tscreated, noth(t.tsfilled), noth(t.tsclosed), TradeMeta(dbdc(t.underbid), dbdc(t.underask)))
     end
+end
+
+const TradesCache = Dict{Int,Trade}() # tid => trade
+function loadTradesCache()
+    trades = loadTrades("select tid from VTrade where status != ? or tsCreated >= now()+'-24 hour' or tsfilled >= now()+'-24 hour' or tsclosed >= now()+'-24 hour'", Closed)
+    empty!(TradesCache)
+    for trade in trades TradesCache[getId(trade)] = trade end
+end
+function loadTradesUpdated()
+    trades = loadTrades("select tid from VTrade where tsfilled >= now()+'-2 hour' or tsclosed >= now()+'-2 hour'")
+    for trade in trades TradesCache[getId(trade)] = trade end
 end
 
 dbdc(x) = isSomething(x) ? C(Float64(x)) : nothing
@@ -116,6 +128,7 @@ function deleteTrade(tid::Int)
     # else
     #     @info "Not deleted."
     # end
+    delete!(TradesCache, tid)
 end
 function undeleteTrade(tid::Int)
     t = loadJson(dirData("save/deletedTrades/$(tid).json"), Trade)
