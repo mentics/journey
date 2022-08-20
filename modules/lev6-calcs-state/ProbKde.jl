@@ -1,7 +1,7 @@
 module ProbKde
 using Dates, KernelDensity
-using LogUtil, CollUtil, VectorCalcUtil
 using BaseTypes, Bins, ProbTypes
+using Globals, LogUtil, CollUtil, VectorCalcUtil, FileUtil
 using Caches, HistData, Markets, Calendars
 
 # TODO: consider adding tex=0, x=x data to force endpoint data
@@ -13,18 +13,20 @@ function probKde(center::Real, tex::Real, var::Real; up=false)::Prob
     return Prob(Float64(center), makePdv(tex, var))
 end
 
-makeProb(center::Real, tex::Real, var::Real) = Prob(Float64(center), makePdv(tex, var))
-
 #region Local
-NumVarBins = 20
-MaxDays = 200
+const NumVarBins = 20
+const MaxDays = 200
 const Updated = Ref{DateTime}(DateTime(0))
 const VarBins = Vector{Float64}(undef, NumVarBins - 1)
 const Kdes = Vector{BivariateKDE}(undef, NumVarBins)
 const KdeInterps = Vector{InterpKDE{<:BivariateKDE}}(undef, NumVarBins)
 
+const BaseDir = dirData("prob")
+makePath(sym::Symbol) = joinpath(BaseDir, "kde-$(sym).json")
+
 function update()
-    println("Updating ProbKde")
+    ( path = makePath(:kdes) ; isfile(path) && unix2datetime(mtime(path)) > (now(UTC) - Hour(8)) && loadData() && return )
+    println("Calculating ProbKde")
     forDate = market().startDay
     dailySpy = dataDaily(forDate, "SPY")
     dailyVix = dataDaily(forDate, "VIX")
@@ -34,7 +36,23 @@ function update()
     calcVarBins(retsNtv)
     calcKdes(retsNtv)
     Updated[] = now(UTC)
+    saveData()
     return
+end
+
+function saveData()
+    writeJson(makePath(:varbins), VarBins)
+    writeJson(makePath(:kdes), Kdes)
+    writeJson(makePath(:kdeinterps), KdeInterps)
+end
+
+function loadData()
+    println("Loading ProbKde")
+    empty!.((VarBins, Kdes, KdeInterps))
+    loadJson!(makePath(:varbins), VarBins)
+    loadJson!(makePath(:kdes), Kdes)
+    loadJson!(makePath(:kdeinterps), KdeInterps)
+    Updated[] = unix2datetime(mtime(File))
 end
 
 function calcRets(maxNumDays::Int, daily::DailyType, dailyVar::DailyType)::Vector{NamedTuple}

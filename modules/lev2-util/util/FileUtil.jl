@@ -2,7 +2,7 @@ module FileUtil
 using JSON3, DelimitedFiles
 using BaseTypes
 
-export loadJson, writeJson
+export loadJson, loadJson!, writeJson
 export readLastLines
 export writeStr, writeCsv, appendCsv, readCsv
 
@@ -14,6 +14,7 @@ function (loadJson(path::AStr, typ::Type{T}=Dict)::T) where T
         return typ()
     end
 end
+loadJson!(path::AStr, o) = JSON3.read!(read(path, String), o)
 
 writeJson(path, d::Dict) = open(path, "w") do io; JSON3.pretty(io, d; allow_inf=true) end
 writeJson(path, o) = open(path, "w") do io; JSON3.pretty(io, o; allow_inf=true) end

@@ -14,8 +14,6 @@ Calc kelly sizing by looping through existing trades, calc worse case, use resul
 use kelly to calculate position sizing based on number of open positions
 draw table of max loss desc order of trade fill time and show worst case "balance"
 
-save ProbKde in file so it will cache for a day, though, probably want to get vix after opening
-
 Is there a way to structure the trade so it time decay immediately starts moving in our direction?
 
 put in mechanism to enforce not day trading

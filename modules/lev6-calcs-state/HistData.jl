@@ -76,7 +76,7 @@ end
 const header = [:date, :open, :high, :low, :close, :volume]
 # const pathDaily = dirData("hist", "daily", "spy", "spy-daily.csv")
 # const pathDailyVix = dirData("hist", "daily", "spy", "vix-daily.csv")
-pathDaily(sym::AStr)::String = dirData("hist", "daily", "$(sym)-daily.csv")
+pathDaily(sym::AStr)::String = joinpath(dirData("hist", "daily"), "$(sym)-daily.csv")
 
 function updateDaily(sym)::DailyType
     path = pathDaily(lowercase(sym))

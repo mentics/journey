@@ -65,8 +65,9 @@ JSON3.StructType(::Type{Intervals.Interval{Time,Intervals.Closed,Intervals.Close
 JSON3.StructType(::Type{Second}) = JSON3.Struct()
 
 const MktState = MarketState(false, DATETIME_ZERO, DATETIME_ZERO)
-const MktTimePath = dirData("hist", "marktime.json")
-const MktDurPath = dirData("hist", "markdur.json")
+const BaseDir = dirData("cal")
+const MktTimePath = joinpath(BaseDir, "marktime.json")
+const MktDurPath = joinpath(BaseDir, "markdur.json")
 
 function init()
     loadMarket()

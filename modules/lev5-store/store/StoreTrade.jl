@@ -124,7 +124,7 @@ function deleteTrade(tid::Int)
     # print("Are you sure this trade should be deleted? (N/y)")
     # input = readline()
     # if input == "y"
-        writeStr(dirData("save/deletedTrades/$(tid).json"), DictUtil.jsonPretty(trade))
+        writeStr(joinpath(dirData("save/deletedTrades"), "$(tid).json"), DictUtil.jsonPretty(trade))
         res = update("delete from Trade where tid=?", tid)
         @info "Deleted." res
     # else
@@ -133,7 +133,7 @@ function deleteTrade(tid::Int)
     delete!(TradesCache, tid)
 end
 function undeleteTrade(tid::Int)
-    t = loadJson(dirData("save/deletedTrades/$(tid).json"), Trade)
+    t = loadJson(joinpath(dirData("save/deletedTrades"), "$(tid).json"), Trade)
     inTransaction() do
         update("insert into Trade (tid, status, tsCreated, primitDir, targetDate) values (?, ?, ?, ?, ?)", getId(t), Starting, tsCreated(t), getPrimitDir(t), getTargetDate(t))
         tmet = getMeta(t)
