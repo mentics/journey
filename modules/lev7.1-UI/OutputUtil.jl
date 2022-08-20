@@ -7,7 +7,7 @@ using DateUtil
 # TODO: go over all this
 
 export confirm
-export pretty, pretyble, spretyble, niceShow
+export pretty, pretyble, spretyble, niceShow, sho
 export PRI, SEC
 
 function confirm()
@@ -47,7 +47,8 @@ function niceShow(a)
 end
 
 # ppFormat(v, _, _) = v isa Float64 ? string(round(v; digits=3)) : v
-function ppFormat(v, _, _)
+ppFormat(v, _, _) = sho(v)
+function sho(v)
     if eltype(v) === Float64
         return map(x -> round(x; digits=3), v)
     elseif eltype(v) === Currency

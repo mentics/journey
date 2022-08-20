@@ -1,12 +1,15 @@
 Process:
-1) Find SPY trades by running the following for expr from 1 to whatever (saw some > .74 cases even at 10 or more). Consider apr > 1.0 and prob > .75 is ok. TODO: kelly?
+1) Find SPY trades by running the following for expr from 1 to whatever (saw some > .74 cases even at 10 or more). Consider roi > 1.0 and prob > .75 is ok. TODO: kelly?
 using Joe
 r = jorn(expir(EXPR))
 
+2) Look for trades to close early by running:
+using CmdTrading
+CmdTrading.findTradesToClose()
+
+#### Not sure doing short puts is worth the bother other than it's one of the few things we can do in the brokerage link account, which is about $100k we need to manage. ####
 2) Look for short puts to buy with apr > .5
 ll = c.lookAll()
-
-scan all current open trades to find any that already are providing a return that is acceptable so we can close early
 
 change position sizing to use max loss for each expiration
 

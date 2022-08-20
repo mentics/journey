@@ -160,6 +160,7 @@ import Kelly
 function joe(ctx, cond::Condor)
     tctx = ctx.threads[Threads.threadid()]
     roi = -Inf
+    roiEv = -Inf
     rate = -Inf
     rateEv = -Inf
     kelly = -Inf
@@ -180,6 +181,7 @@ function joe(ctx, cond::Condor)
                 rateEv = ctx.timult * met.ev / (-met.mn)
                 rate = ctx.timult * met.profit / (-met.mn)
                 roi = rate * kelly
+                roiEv = rateEv * kelly
                 # rate = ctx.timult * met.mx / (-met.mn)
                 lms = tolms(cond)
             else
@@ -189,7 +191,7 @@ function joe(ctx, cond::Condor)
             end
         end
     end
-    return (;roi, rate, rateEv, kelly, cond, met, lms)
+    return (;roi, roiEv, rate, rateEv, kelly, cond, met, lms)
 end
 
 const lockMsg = ReentrantLock()
