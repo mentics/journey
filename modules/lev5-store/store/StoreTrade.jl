@@ -64,11 +64,12 @@ end
 
 const TradesCache = Dict{Int,Trade}() # tid => trade
 export tradesCached
-tradesCached() = TradesCache
+tradesCached() = isempty(TradesCache) ? loadTradesCache() : TradesCache
 function loadTradesCache()
     trades = loadTrades("select tid from VTrade where status != ? or tsCreated >= now()+'-24 hour' or tsfilled >= now()+'-24 hour' or tsclosed >= now()+'-24 hour'", Closed)
     empty!(TradesCache)
     for trade in trades TradesCache[getId(trade)] = trade end
+    return TradesCache
 end
 function loadTradesUpdated()
     trades = loadTrades("select tid from VTrade where tsfilled >= now()+'-2 hour' or tsclosed >= now()+'-2 hour'")
