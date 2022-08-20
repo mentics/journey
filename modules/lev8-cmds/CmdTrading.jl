@@ -1,5 +1,5 @@
 module CmdTrading
-using Dates
+using Dates, IterTools
 using Globals, BaseTypes, SH, SmallTypes, StratTypes, StatusTypes, TradeTypes, LegTradeTypes, LegMetaTypes
 using DateUtil, LogUtil
 using Trading, Quoting
@@ -57,6 +57,23 @@ function tradeSize(kelly::Float64, kellyRatio::Float64 = 0.5)
         end
         bal += 100 * mn
         push!(rows, (;mn, bal))
+    end
+    pretyble(rows)
+    println("$(kellyRatio) kelly trade size: ", kelly * kellyRatio * bal)
+end
+
+function tradeSize2(kelly::Float64, kellyRatio::Float64 = 0.5)
+    bal = tradierBalances()["total_cash"]
+    println("Starting bal ", bal)
+    trades = sort!(collect(values(tradesCached())); by=getTargetDate)
+    rows = NamedTuple[]
+    for extrades in groupby(t -> getTargetDate(t), trades)
+        # legs = Iterators.flatten(map(getLegs, extrades))
+        date = getTargetDate(extrades[1])
+        ret = toRet(extrades, date)
+        mn = minimum(getVals(ret))
+        bal += 100 * mn
+        push!(rows, (;date, mn, bal))
     end
     pretyble(rows)
     println("$(kellyRatio) kelly trade size: ", kelly * kellyRatio * bal)

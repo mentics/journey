@@ -17,12 +17,19 @@ end
 const NumVarBins = 20
 const MaxDays = 200
 const Updated = Ref{DateTime}(DateTime(0))
-const VarBins = Vector{Float64}(undef, NumVarBins - 1)
-const Kdes = Vector{BivariateKDE}(undef, NumVarBins)
-const KdeInterps = Vector{InterpKDE{<:BivariateKDE}}(undef, NumVarBins)
+const VarBins = Ref(Vector{Float64}(undef, NumVarBins - 1))
+const Kdes = Ref(Vector{BivariateKDE}(undef, NumVarBins))
+const KdeInterps = Ref(Vector{InterpKDE{<:BivariateKDE}}(undef, NumVarBins))
 
 const BaseDir = dirData("prob")
-makePath(sym::Symbol) = joinpath(BaseDir, "kde-$(sym).json")
+makePath(sym::Symbol) = joinpath(BaseDir, "kde-$(sym).ser")
+
+# using JSON3
+# import Interpolations, OffsetArrays
+# # KernelDensity.BivariateKDE{StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64}, StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64}}
+# # JSON3.StructType(::Type{BivariateKDE}) = JSON3.Struct()
+# JSON3.StructType(::Type{KernelDensity.BivariateKDE{StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64}, StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64}}}) = JSON3.Struct()
+# JSON3.StructType(::Type{KernelDensity.InterpKDE{KernelDensity.BivariateKDE{StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64}, StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64}}, Interpolations.FilledExtrapolation{Float64, 2, Interpolations.ScaledInterpolation{Float64, 2, Interpolations.BSplineInterpolation{Float64, 2, OffsetArrays.OffsetMatrix{Float64, Matrix{Float64}}, Interpolations.BSpline{Interpolations.Quadratic{Interpolations.Line{Interpolations.OnGrid}}}, Tuple{Base.OneTo{Int64}, Base.OneTo{Int64}}}, Interpolations.BSpline{Interpolations.Quadratic{Interpolations.Line{Interpolations.OnGrid}}}, Tuple{StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64}, StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64}}}, Interpolations.BSpline{Interpolations.Quadratic{Interpolations.Line{Interpolations.OnGrid}}}, Float64}}}) = JSON3.Struct()
 
 function update()
     ( path = makePath(:kdes) ; isfile(path) && unix2datetime(mtime(path)) > (now(UTC) - Hour(8)) && loadData() && return )
@@ -40,19 +47,22 @@ function update()
     return
 end
 
+using Serialization
 function saveData()
-    writeJson(makePath(:varbins), VarBins)
-    writeJson(makePath(:kdes), Kdes)
-    writeJson(makePath(:kdeinterps), KdeInterps)
+    serialize(makePath(:varbins), VarBins[])
+    serialize(makePath(:kdes), Kdes[])
+    serialize(makePath(:kdeinterps), KdeInterps[])
+    return
 end
 
 function loadData()
     println("Loading ProbKde")
-    empty!.((VarBins, Kdes, KdeInterps))
-    loadJson!(makePath(:varbins), VarBins)
-    loadJson!(makePath(:kdes), Kdes)
-    loadJson!(makePath(:kdeinterps), KdeInterps)
-    Updated[] = unix2datetime(mtime(File))
+    pathKde = makePath(:kdes)
+    VarBins[] = deserialize(makePath(:varbins))
+    Kdes[] = deserialize(pathKde)
+    KdeInterps[] = deserialize(makePath(:kdeinterps))
+    Updated[] = unix2datetime(mtime(pathKde))
+    return
 end
 
 function calcRets(maxNumDays::Int, daily::DailyType, dailyVar::DailyType)::Vector{NamedTuple}
@@ -88,7 +98,7 @@ function calcVarBins(retsNtv::NamedTuple)
     binSize = length(varSorted) ÷ NumVarBins
     bin = 1
     for i in binSize:binSize:(length(varSorted) - binSize)
-        VarBins[bin] = varSorted[i]
+        VarBins[][bin] = varSorted[i]
         bin += 1
     end
 end
@@ -104,14 +114,14 @@ function calcKdes(retsNtv::NamedTuple)
         push!(datas[bin][2], ret[i])
     end
     for i in 1:NumVarBins
-        Kdes[i] = calcKde(datas[i])
-        KdeInterps[i] = InterpKDE(Kdes[i])
+        Kdes[][i] = calcKde(datas[i])
+        KdeInterps[][i] = InterpKDE(Kdes[][i])
     end
 end
 
 function findVarBin(val::Float64)
-    for i in 1:length(VarBins)
-        if val < VarBins[i]
+    for i in 1:length(VarBins[])
+        if val < VarBins[][i]
             return i
         end
     end
@@ -137,8 +147,8 @@ end
 
 function makePdv(tex::Float64, var::Float64)
     varBin = findVarBin(log(var))
-    k = Kdes[varBin]
-    ik = KdeInterps[varBin]
+    k = Kdes[][varBin]
+    ik = KdeInterps[][varBin]
     # texBinWidth = k.x.step
     # TODO: figure out what correct calc is instead of just normalizing
     vals = Bins.with(0.0)
@@ -169,3 +179,31 @@ end
 #endregion
 
 end
+
+
+# using StructEquality
+# @struct_equal BivariateKDE
+# @struct_equal InterpKDE
+# function test()
+#     # const VarBins = Ref(Vector{Float64}(undef, NumVarBins - 1))
+#     # const Kdes = Ref(Vector{BivariateKDE}(undef, NumVarBins))
+#     # const KdeInterps = Ref(Vector{InterpKDE{<:BivariateKDE}}(undef, NumVarBins))
+
+#     VarBins[] = Vector{Float64}(undef, NumVarBins - 1)
+#     Kdes[] = Vector{BivariateKDE}(undef, NumVarBins)
+#     KdeInterps[] = Vector{InterpKDE{<:BivariateKDE}}(undef, NumVarBins)
+#     !isfile(makePath(:varbins)) || rm.((makePath(:varbins), makePath(:kdes), makePath(:kdeinterps)))
+#     update()
+#     global copyVarBins = copy(VarBins[])
+#     global copyKdes = copy(Kdes[])
+#     global copyKdeInterps = copy(KdeInterps[])
+
+#     VarBins[] = Vector{Float64}(undef, NumVarBins - 1)
+#     Kdes[] = Vector{BivariateKDE}(undef, NumVarBins)
+#     KdeInterps[] = Vector{InterpKDE{<:BivariateKDE}}(undef, NumVarBins)
+#     @assert !isassigned(Kdes[], 1)
+#     loadData()
+#     @assert VarBins[] == copyVarBins
+#     @assert Kdes[] == copyKdes
+#     @assert KdeInterps[] == copyKdeInterps
+# end
