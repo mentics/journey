@@ -90,9 +90,9 @@ end
 
 export drawProb!
 function drawProb!(center, vals)
-    # Bins.VNUM * vals
-    p = barplot!(center .* Bins.xs(), vals ./ Bins.width(); gap=0.0, inspectable=false) # color=colors[colorIndex]
-    # p.inspectable[] = false
+    colorIndex = 1
+    colors = (GLMakie.RGBA(0.5, 0.5, 1.0, 0.5), GLMakie.RGBA(0.0, 0.5, 0.5, 0.5), GLMakie.RGBA(0.5, 0.5, 0.5, 0.5))
+    p = barplot!(center .* Bins.xs(), .01 * vals ./ Bins.width(); gap=0.0, inspectable=false, color=colors[colorIndex])
     return p
 end
 

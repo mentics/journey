@@ -2,6 +2,16 @@ module CalcUtil
 using SH, BaseTypes, Bins, ProbTypes, RetTypes
 
 export calcMetrics #, calcKelly, calcKelly!
+export adjust!
+
+# TODO: probably everywhere that calls calcMetrics needs to call adjust! first
+# We maybe could just do adjust on short legs?
+adjustment(numLegs::Int) = -0.005 * numLegs
+function adjust!(vals::Vector{Float64}, numLegs::Int)
+    adjusted = adjustment(numLegs)
+    vals .+= adjusted
+    return adjusted
+end
 
 function calcMetrics(prob::Prob, ret::Ret, bins=Bins.inds())
     @assert getCenter(prob) == getCenter(ret) "calcMetrics(): Centers don't match $(getCenter(prob)) $(getCenter(ret))"
@@ -15,23 +25,22 @@ function calcMetrics(prob::Prob, vals::AVec{Float64}, numLegs::Int, binsi=Bins.i
         v > 0.0 && (profit += pvals[i] * v)
     end
     global cap = 0.5 + 0.5 * log(1.0 + profit)
-    adjust = 0.005 * numLegs
-    # @info "cap" cap adjust
-    mm = calcMetrics1(pvals, vals, cap, adjust, binsi)
+    # adjust = 0.005 * numLegs
+    # mm = calcMetrics1(pvals, vals, cap, adjust, binsi)
+    mm = calcMetrics1(pvals, vals, cap, binsi)
     return (;mm..., numLegs)
 end
 
 #region Local
 # TODO: if use fewer bins, prob isn't adjusted, so it will be lower
 # MINP = 0.01 * Bins.binPercent()
-function calcMetrics1(pvals::AVec{Float64}, vals::AVec{Float64}, cap::Float64, adjust::Float64, binsi)
-    @assert isfinite(cap) && isfinite(adjust) "invalid cap $(cap) or adjust $(adjust)"
-    # @info "calcMetrics1" cap adjust
+# function calcMetrics1(pvals::AVec{Float64}, vals::AVec{Float64}, cap::Float64, adjust::Float64, binsi)
+function calcMetrics1(pvals::AVec{Float64}, vals::AVec{Float64}, cap::Float64, binsi)
+    # @assert isfinite(cap) && isfinite(adjust) "invalid cap $(cap) or adjust $(adjust)"
+    @assert isfinite(cap) "invalid cap $(cap)"
     profit = loss = prob = 0.0
     mn = Inf
     mx = -Inf
-    # @info "check" cap adjust
-    # for (p, v) in Iterators.zip(pvals, vals)
     totalP = 0.0
     for i in binsi
         p = pvals[i]
@@ -41,7 +50,7 @@ function calcMetrics1(pvals::AVec{Float64}, vals::AVec{Float64}, cap::Float64, a
         # end
         totalP += p
         v = vals[i]
-        vadj = min(cap, v - adjust)
+        vadj = min(cap, v) # min(cap, v - adjust)
         ad = p * vadj
         vadj > 0.0 && (profit += ad ; prob += p)
         vadj < 0.0 && (loss += ad)

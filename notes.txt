@@ -1,7 +1,13 @@
 Process:
 1) Find SPY trades by running the following for expr from 1 to whatever (saw some > .74 cases even at 10 or more). Consider roi > 1.0 and prob > .75 is ok. TODO: kelly?
 using Joe
-r = jorn(expir(EXPR))
+j = Joe
+jorn(1:4)
+xmet(1, j.rs1[1].lms)
+xkel(1, j.rs1[1].lms)
+xdr(1, j.rs1[1].lms)
+so(j.rs1[1].lms)
+solr(j.rs1[1].lms, primitDir)
 
 2) Look for trades to close early by running:
 using CmdTrading

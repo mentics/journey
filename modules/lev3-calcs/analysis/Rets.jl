@@ -19,14 +19,32 @@ function makeRet(leg::Leg, m::OptionMeta, neto::Currency, targetDate::Date, sp::
     end
 end
 
-function combineRetVals!(buf, rets::NTuple{4,Ret})
+function combineRetVals!(buf::Vector{Float64}, rets::NTuple{4,Ret})
     # TODO: can remove asserts to speed up later
-    @assert rets[1].center == rets[2].center == rets[3].center == rets[4].center
-    valss = map(r->r.vals, rets)
-    for i in eachindex(valss[1])
-        buf[i] = valss[1][i] + valss[2][i] + valss[3][i] + valss[4][i]
+    # @assert rets[1].center == rets[2].center == rets[3].center == rets[4].center
+    a, b, c, d = (rets[1].vals, rets[2].vals, rets[3].vals, rets[4].vals)
+    for i in eachindex(buf)
+        buf[i] = a[i] + b[i] + c[i] + d[i] # valss[1][i] + valss[2][i] + valss[3][i] + valss[4][i]
     end
+    return
 end
+
+function combineRetVals!(buf::Vector{Float64}, rets::NTuple{2,Ret})
+    a = rets[1].vals
+    b = rets[2].vals
+    for i in eachindex(buf)
+        buf[i] = a[i] + b[i]
+    end
+    return
+end
+
+function addRetVals!(bufTo::Vector{Float64}, bufFrom::Vector{Float64}, extraVals::Vector{Float64})
+    for i in eachindex(bufTo)
+        bufTo[i] = bufFrom[i] + extraVals[i]
+    end
+    return
+end
+
 function combineRetVals!(buf::Vector{Float64}, rets::NTuple{4,Ret}, extra::Vector{Float64})
     # TODO: can remove asserts to speed up later
     @assert rets[1].center == rets[2].center == rets[3].center == rets[4].center

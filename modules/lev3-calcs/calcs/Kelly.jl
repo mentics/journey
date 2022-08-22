@@ -2,6 +2,8 @@ module Kelly
 using Roots
 using BaseTypes
 
+calc(pvals, vals) = ded(pvals, vals)
+
 # const BINS_ONES = Bins.with(1.0)
 # logain(prob, vals, ratio) = prob .* log1p.(ratio .* vals)
 eee(prob, vals, ratio) = sum(prob .* log1p.(ratio .* vals))

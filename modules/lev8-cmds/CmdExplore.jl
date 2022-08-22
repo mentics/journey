@@ -411,7 +411,8 @@ function bb(ex)
     ivalsCur = intervalFor.(Iterators.partition(lmsCur, 4))
 
     curp = market().curp
-    prob = CmdUtil.probsFor(expr)
+    probs = CmdUtil.probsFor(expr)
+    prob = probs[1]
     !isnothing(prob) || @logret "bb: Skipping expr" expr
     # pflat = CmdUtil.probFlat(curp, 0.0)
 

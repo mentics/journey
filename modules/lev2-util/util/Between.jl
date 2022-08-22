@@ -37,7 +37,7 @@ SH.to(::Type{LegMeta}, lg::LegTrade)::LegMeta = LegMeta(Leg(getOption(lg), getQu
 # collect(mapFlattenTo(getLegs, LegMeta, trades))
 SH.combineTo(::Type{Ret}, trades::AVec{<:Trade}, forDate::Date, sp::Currency, vtyRatio::Float64)::Ret = combineTo(Ret, combineTo(Vector{LegMeta}, trades), forDate, sp, vtyRatio)
 SH.combineTo(::Type{Ret}, trades::AVec{<:Trade}, sp::Currency)::Ret = combineTo(Ret, combineTo(Vector{LegMeta}, trades), sp)
-# SH.combineTo(::Type{Ret}, trade::Trade, forDate::Date, sp::Currency, vtyRatio::Float64)::Ret = combineTo(Ret, getLegs(trade), forDate, sp, vtyRatio)
+SH.to(::Type{Ret}, trade::Trade, sp::Currency)::Ret = combineTo(Ret, tos(LegMeta, getLegs(trade)), sp)
 # SH.tos(::Type{Vector{LegMeta}}, trades::AVec{<:Trade})::Vector{LegMeta} = collect(mapFlattenTo(getLegs, LegMeta, trades))
 # SH.tos(::Type{Vector{Vector{LegMeta}}}, trades::AVec{<:Trade})::Vector{LegMeta} = collect(mapFlattenTo(getLegs, LegMeta, trades))
 SH.to(::Type{Vector{LegMeta}}, trade::Trade)::Vector{LegMeta} = collect(mapFlattenTo(getLegs, LegMeta, [trade])) # TODO: cleanup, don't reuse wrongly

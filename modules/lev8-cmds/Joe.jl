@@ -5,6 +5,7 @@ using OptionUtil, CalcUtil, ThreadUtil, OutputUtil
 import GenCands
 using Calendars, Expirations, Chains, ProbKde, Markets
 using CmdUtil
+using CmdTools
 
 export jorn
 
@@ -13,15 +14,17 @@ export jorn
 function jorn(exs; kws...)
     # rs = Dict{Int,NamedTuple}()
     global ress = Vector{Vector{NamedTuple}}(undef,maximum(exs))
+    global ctxs = Vector{NamedTuple}(undef,maximum(exs))
     global rs1 = NamedTuple[]
     for i in exs
-        r = runJorn(expir(i); kws...)
+        r, ctx = runJorn(expir(i); kws...)
         !isempty(r) || continue
         ress[i] = r
+        ctxs[i] = ctx
         push!(rs1, merge((;i), r[1]))
     end
-    pretyble(delete.(rs1, :lms, :met))
-    return ress
+    disp()
+    return
 end
 function disp()
     pretyble(delete.(rs1, :lms, :met))
@@ -29,13 +32,12 @@ end
 
 function runJorn(expr::Date; nopos=false, all=false)
     maxSpreadWidth = C(8.0)
-    global ctx = makeCtx(expr; nopos, all)
-    global oqss = filtOqss(Chains.getOqss(expr, ctx.curp, xlms(expr))) do oq
+    ctx = makeCtx(expr; nopos, all)
+    oqss = filtOqss(Chains.getOqss(expr, ctx.curp, xlms(expr))) do oq
         abs(getStrike(oq) / ctx.curp - 1.0) < 0.1
     end
     ress = [Vector{NamedTuple}() for _ in 1:Threads.nthreads()]
 
-    cnt = 0
     # GenCands.iterSingle(oqss, ctx, res) do lms, c, r
     #     jr = joe(c, lms)
     #     if jr.rate > 0.0
@@ -43,38 +45,35 @@ function runJorn(expr::Date; nopos=false, all=false)
     #     end
     # end
 
+    cnt = 0
+    empty!(Msgs)
     GenCands.paraSpreads(oqss, maxSpreadWidth, ctx, ress) do lms, c, rs
         cnt += 1
-        jr = joe(c, lms)
-        if jr.rate > 0.0
+        jr = joeSpread(c, lms)
+        if !isnothing(jr)
             push!(rs[Threads.threadid()], jr)
         end
         return true
     end
-    global res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roi)
+    res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roi)
     println("proced $(cnt), results: $(length(res))")
     isempty(Msgs) || @info Msgs
-    return res
 
+    cnt = 0
     empty!(Msgs)
-
     GenCands.iterCondors(oqss, maxSpreadWidth, ctx.curp, ctx, ress) do cond, c, rs
-        # cnt += 1
-        jr = joe(c, cond)
-        if jr.rate > 0.0
+        cnt += 1
+        jr = joeCond(c, cond)
+        if !isnothing(jr)
             push!(rs[Threads.threadid()], jr)
         end
-        # if (cnt % 1000000) == 0
-        #     println("progress $(Threads.threadid()): ", cnt)
-        #     flush(stdout)
-        # end
         return true
     end
-
-    global res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roi)
-    println("proced $(cnt), results: $(length(res))")
     isempty(Msgs) || @info Msgs
-    return res
+
+    res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roi)
+    println("proced $(cnt), results: $(length(res))")
+    return (res, ctx)
 end
 
 using Caches, TradierData
@@ -86,25 +85,10 @@ const MaxLoss = Ref{Float64}(-2.0)
 
 calcRate(to::Date, ret, risk) = (ret / risk) * (1 / texToYear(calcTex(now(UTC), to)))
 
-# TODO: move
-function calcProb(lms::Coll{LegMeta})
-    start = market().tsMarket
-    expr = minimum(getExpiration.(lms))
-    tex = calcTex(start, expr)
-    curp = market().curp
-    vix = loadVix()
-    return probKde(curp, tex, vix)
-end
-# calcRet(lms::Coll{LegMeta}, curp = market().curp) = combineTo(Ret, lms, curp)
-function calcMet(lms::Coll{LegMeta})
-    ret = calcRet(lms)
-    calcMetrics(calcProb(lms), ret)
-end
-
 # export lms
 # import CmdExplore
 # toLms(condor::Condor) = map(x -> x[1], Iterators.flatten(condor))
-toLms(condor::Condor) = (condor[1][1], condor[1][2], condor[2][1], condor[2][2])
+toLms(condor::Condor) = (condor[1][1][1], condor[1][2][1], condor[2][1][1], condor[2][2][1])
 # SH.draw(condor::Condor) = CmdExplore.drlms(toLms(condor))
 # SH.draw!(condor::Condor) = CmdExplore.drlms!(toLms(condor))
 function drawKelly(r)
@@ -113,32 +97,12 @@ function drawKelly(r)
     draw([(ratio, Kelly.eee(ctx.prob.vals, vals / risk, ratio)) for ratio in .001:.001:.9])
 end
 
-condTo(buf::Vector{Float64}, s::Coll{LegRet})::Vector{Float64} = ( combineRetVals!(buf, tos(Ret, s)) ; return buf )
-
-function condorRetVals!(buf, valss)
-    # TODO: can remove asserts to speed up later
-    # @assert rets[1].center == rets[2].center == rets[3].center == rets[4].center
-    for i in eachindex(buf)
-        buf[i] = valss[1][i] + valss[2][i] + valss[3][i] + valss[4][i]
-    end
-    return buf
-end
-
-function addRetVals!(bufTo, bufFrom, extraVals)
-    for i in eachindex(bufTo)
-        bufTo[i] = bufFrom[i] + extraVals[i]
-    end
-    return bufTo
-end
-
-# condRetVals(condor) = (getVals(condor[1][1][2]), getVals(condor[1][2][2]), getVals(condor[2][1][2]), getVals(condor[2][2][2]))
-
-function loadVix()
-    cache!(Float64, :vixLast, Minute(10)) do
-        # TODO: support snapped?
-        tradierQuote("VIX")["last"]
-    end
-end
+# function loadVix()
+#     cache!(Float64, :vixLast, Minute(10)) do
+#         # TODO: support snapped?
+#         tradierQuote("VIX")["last"]
+#     end
+# end
 
 function makeCtx(expr::Date; nopos, all)::NamedTuple
     start = market().tsMarket
@@ -147,7 +111,7 @@ function makeCtx(expr::Date; nopos, all)::NamedTuple
     timult = 1 / texToYear(tex)
     posLms = nopos ? LegMeta[] : xlms(expr)
     posRet = combineTo(Ret, posLms, curp)
-    vix = loadVix()
+    vix = market().vix
     threads = [(;
         retBuf1 = Bins.empty(),
         retBuf2 = Bins.empty()
@@ -165,30 +129,46 @@ function makeCtx(expr::Date; nopos, all)::NamedTuple
 end
 
 import Kelly
-joe(ctx, cond::Condor) = joe(ctx, toLms(cond))
-function joe(ctx, lms::Coll{LegMeta})
+condRets(condor) = (condor[1][1][2], condor[1][2][2], condor[2][1][2], condor[2][2][2])
+
+function joeSpread(ctx, lms::NTuple{2,LegMeta})
     tctx = ctx.threads[Threads.threadid()]
-    all = ctx.all
-    roi = -Inf
-    roiEv = -Inf
-    rate = -Inf
-    rateEv = -Inf
-    kelly = -Inf
-    # ret = Ret(condorRetVals!(tctx.retBuf1, condRetVals(cond)), ctx.curp, 4)
     ret = combineTo(Ret, lms, ctx.curp)
+    # TODO: use thread buffer, tctx.retBuf1
+    adjust!(ret.vals, ret.numLegs) # reduce for slippage and closing short cost
+    r = joe(ctx, tctx, ret)
+    return isnothing(r) ? nothing : merge(r, (;lms))
+end
+using Rets
+function joeCond(ctx, cond::Condor)
+    tctx = ctx.threads[Threads.threadid()]
+    combineRetVals!(tctx.retBuf1, condRets(cond))
+    ret = Ret(tctx.retBuf1, ctx.curp, 4)
+    adjust!(ret.vals, ret.numLegs) # reduce for slippage and closing short cost
+    r = joe(ctx, tctx, ret)
+    return isnothing(r) ? nothing : merge(r, (;lms=toLms(cond)))
+end
+function joe(ctx, tctx, ret)
+    MinMx = 0.04
+    all = ctx.all
+    # roi = -Inf
+    # roiEv = -Inf
+    # rate = -Inf
+    # rateEv = -Inf
+    # kelly = -Inf
     met = calcMetrics(ctx.prob, ret)
-    if met.mx <= 0.0
-        global lmsBad = lms
-        global metBad = met
-        error("met.mx $(met.mx) > 0.0")
-    end
+    # if met.mx > -adjusted
+    #     global lmsBad = lms
+    #     global metBad = met
+    #     return
+    #     error("met.mx $(met.mx) <= $(-adjusted)")
+    # end
     # TODO: is ev > 0 too restrictive? and why can kelly be > 0 when ev < 0?
-    if all || (met.mn > MaxLoss[] && met.prob >= 0.75 && met.ev >= 0.0)
-        # TODO: needs to be adjusted like calcMetrics does
-        kelly = Kelly.ded(ctx.prob.vals, ret.vals ./ (-minimum(ret.vals)))
+    if all || (met.mx >= MinMx && met.mn > MaxLoss[] && met.prob >= 0.75 && met.ev >= 0.0)
+        kelly = calcKelly(prob, ret)
         if kelly > 0.0
-            # retb = combineTo(Ret, vcat(lms, ctx.posLms), ctx.curp)
-            valsb = addRetVals!(tctx.retBuf2, tctx.retBuf1, ctx.posRet.vals)  # combineTo(Ret, vcat(ctx.posLms, lms...), ctx.curp)
+            Rets.addRetVals!(tctx.retBuf2, tctx.retBuf1, ctx.posRet.vals)  # combineTo(Ret, vcat(ctx.posLms, lms...), ctx.curp)
+            valsb = tctx.retBuf2
             # metb = calcMetrics(prob, retb)
             minb = minimum(valsb)
             if all || (minb >= ctx.posMin || minb > MaxLossExpr[])
@@ -198,6 +178,7 @@ function joe(ctx, lms::Coll{LegMeta})
                 roi = rate * kelly
                 roiEv = rateEv * kelly
                 # rate = ctx.timult * met.mx / (-met.mn)
+                return (;roi, roiEv, rate, rateEv, kelly, met)
             else
                 runSync(lockMsg) do
                     Msgs[:MaxLossExpr] = ["Hit MLE", minb, ctx.posMin, MaxLossExpr[]]
@@ -205,7 +186,7 @@ function joe(ctx, lms::Coll{LegMeta})
             end
         end
     end
-    return (;roi, roiEv, rate, rateEv, kelly, met, lms)
+    return nothing
 end
 
 const lockMsg = ReentrantLock()

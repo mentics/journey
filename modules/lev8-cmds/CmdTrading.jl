@@ -89,7 +89,7 @@ function findTradesToClose()
         curVal = neto + netc
         if curVal > 0.0
             tex = calcTex(ts, today())
-            timult = 1 / tex
+            timult = 1 / texToYear(tex)
             mn = min(OptionUtil.legs4Extrema(getLegs(trade))...)
             rate = timult * curVal / (-mn)
             println("Trade ", getId(trade), " (", strShort(Date(ts)), " - ", strShort(getTargetDate(trade)), "): ", map(x -> sho(x), (;curVal, neto, netc, rate, mn, tex, timult)))
@@ -146,6 +146,7 @@ function drx(ex=0)
     drawRet!(toRet(tod, expir(ex)); label="all")
 end
 
+# TODO: moevd to CmdPos as xdr
 function drx(ex, lms)
     # TODO: read from cache
     tod = tradesToClose(ex)

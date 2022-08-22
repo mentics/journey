@@ -2,7 +2,10 @@ module GenCands
 using ThreadPools
 using SH, BaseTypes, SmallTypes, LegMetaTypes
 using OptionUtil
+import CalcUtil
 using ChainTypes
+
+const MinSpreadMx = 0.01
 
 function iterSingle(f::Function, oqss::Oqss, args...)
     for oq in oqss.call.long
@@ -105,7 +108,7 @@ function iterSpreads(f::Function, oqs::Sides{Vector{ChainTypes.OptionQuote}}, ma
         legLong = to(LegMeta, oq1, Side.long)
         legShort = to(LegMeta, oq2, Side.short)
         _, mx = OptionUtil.spreadExtrema(legLong, legShort)
-        mx > 0.0 || continue
+        mx > MinSpreadMx || continue
         spr = getStrike(legLong) < getStrike(legShort) ? (legLong, legShort) : (legShort, legLong)
         f(spr, args...) || return false
     end
@@ -122,7 +125,7 @@ function paraSpreads(f::Function, oqs::Sides{Vector{ChainTypes.OptionQuote}}, ma
             legLong = to(LegMeta, oq1, Side.long)
             legShort = to(LegMeta, oq2, Side.short)
             _, mx = OptionUtil.spreadExtrema(legLong, legShort)
-            mx > 0.0 || continue
+            mx > MinSpreadMx || continue
             spr = getStrike(legLong) < getStrike(legShort) ? (legLong, legShort) : (legShort, legLong)
             # f(spr, args...) || ( finish = stop ; break )
             f(spr, args...) || return false

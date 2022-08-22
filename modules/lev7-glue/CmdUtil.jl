@@ -29,9 +29,7 @@ function calcPosStrat(forDate::Date, sp::Currency, vtyRatio::Float64, extra::Uni
     end
 end
 
-xlmsv(ex::Int=0)::Vector{LegMeta} = tos(Vector{LegMeta}, tradesToClose(ex))
-xlms(ex::Int=0)::Vector{LegMeta} = xlms(expir(ex))
-xlms(expr::Date)::Vector{LegMeta} = combineTo(Vector{LegMeta}, tradesToClose(expr))
+# xlmsv(ex::Int=0)::Vector{LegMeta} = tos(Vector{LegMeta}, tradesToClose(ex))
 # function xlms(when::Int=0)::Vector{LegMeta}
 #     combineTo(Vector{LegMeta}, tradesToClose(when))
 #     # trades = findTrades(forDate, Filled)
