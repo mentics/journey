@@ -8,7 +8,7 @@ using Caches, HistData, Markets, Calendars
 
 export probKde
 
-function probKde(center::Real, tex::Real, var::Real; up=false)::Prob
+function probKde(center::Float64, tex::Float64, var::Float64; up=false)::Prob
     (up || Updated[] < now(UTC) - Hour(8)) && update()
     return Prob(Float64(center), makePdv(tex, var))
 end
@@ -32,7 +32,7 @@ makePath(sym::Symbol) = joinpath(BaseDir, "kde-$(sym).ser")
 # JSON3.StructType(::Type{KernelDensity.InterpKDE{KernelDensity.BivariateKDE{StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64}, StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64}}, Interpolations.FilledExtrapolation{Float64, 2, Interpolations.ScaledInterpolation{Float64, 2, Interpolations.BSplineInterpolation{Float64, 2, OffsetArrays.OffsetMatrix{Float64, Matrix{Float64}}, Interpolations.BSpline{Interpolations.Quadratic{Interpolations.Line{Interpolations.OnGrid}}}, Tuple{Base.OneTo{Int64}, Base.OneTo{Int64}}}, Interpolations.BSpline{Interpolations.Quadratic{Interpolations.Line{Interpolations.OnGrid}}}, Tuple{StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64}, StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64}}}, Interpolations.BSpline{Interpolations.Quadratic{Interpolations.Line{Interpolations.OnGrid}}}, Float64}}}) = JSON3.Struct()
 
 function update()
-    ( path = makePath(:kdes) ; isfile(path) && unix2datetime(mtime(path)) > (now(UTC) - Hour(8)) && loadData() && return )
+    ( path = makePath(:kdes) ; isfile(path) && unix2datetime(mtime(path)) > (now(UTC) - Hour(8)) && (loadData() ; return) )
     println("Calculating ProbKde")
     forDate = market().startDay
     dailySpy = dataDaily(forDate, "SPY")

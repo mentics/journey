@@ -18,8 +18,9 @@ verifyPos(leg::LegTrade, poss::Vector{Position}=positions(;age=Minute(10)))::Boo
 const POSITIONS = :positions
 const POSITIONS_TYPE = Vector{Position}
 
-getPoss() = toPosition.(tradierPositions())
+getPoss() = filter(!isnothing, toPosition.(tradierPositions()))
 function toPosition(tierPos::Dict{String,Any})
+    length(tierPos["symbol"]) == 18 || (println("WARN: Found unexpected position (may be assignment): ", tierPos) ; return )
     qty = Float64(tierPos["quantity"])
     Position(toLeg(tierPos, qty), toBasis(tierPos, qty), tier.parseTs(tierPos["date_acquired"]))
 end

@@ -89,8 +89,9 @@ chainSnap(snapName::String, revert=true)::ChainsType = useKey(CHAINS_SNAP, snapN
     end
 end
 
+const OQ_EMPTY = Vector{OptionQuote}()
 chain(i::Int)::Vector{OptionQuote} = chain(expir(i))
-chain(expr::Date)::Vector{OptionQuote} = chains()[expr].chain
+chain(expr::Date)::Vector{OptionQuote} = ( chs = chains() ; haskey(chs, expr) ? chs[expr].chain : OQ_EMPTY )
 function chains(; up=false)::ChainsType
     cache!(ChainsType, CHAINS, tooOld(PERIOD_UPDATE, isMarketOpen()); up) do
         up || @log error "Chains not up to date"
@@ -99,7 +100,7 @@ function chains(; up=false)::ChainsType
 end
 
 quoter(x, act::Action.T=Action.open)::Quote = calcQuote(chainLookup, x, act)
-optQuoter(x, act::Action.T=Action.open)::OptionQuote = calcOptQuote(chainLookup, x, act)
+optQuoter(x, act::Action.T=Action.open)::Union{Nothing,OptionQuote} = calcOptQuote(chainLookup, x, act)
 isQuotable(o::Option)::Bool = isQuotable(getStyle(o), getExpiration(o), getStrike(o))
 function isQuotable(style::Style.T, exp::Date, strike::Currency)::Bool
     res = find(chains()[exp].chain) do x; getStyle(x) === style && getStrike(x) === strike end
@@ -146,9 +147,10 @@ end
 nearOqs(curp::Currency, d::Date, chs, dist::Int=20)::Vector{OptionQuote} = nearOqs(curp, chs[d].chain, dist)
 nearOqs(curp::Currency, oqs, dist::Int=20)::Vector{OptionQuote} = filter(x -> abs(getStrike(x) - curp) <= dist, oqs)
 
-function chainLookup(exp::Date, style::Style.T, strike::Currency)::OptionQuote
-    res = find(chains()[exp].chain) do x; getStyle(x) === style && getStrike(x) === strike end
-    isnothing(res) ? error("Could not quote $(exp), $(style), $(strike)") : res
+function chainLookup(exp::Date, style::Style.T, strike::Currency)::Union{Nothing,OptionQuote}
+    res = find(chain(exp)) do x; getStyle(x) === style && getStrike(x) === strike end
+    !isnothing(res) || println("WARN: Could not quote $(exp), $(style), $(strike)")
+    return res
 end
 # lup(ch::OptionChain; style=nothing, strike=nothing) = filter(x -> (isnothing(style) || getStyle(x) == style) && (isnothing(strike) || getStrike(x) == strike), ch.chain)
 

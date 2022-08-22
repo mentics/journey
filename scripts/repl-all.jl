@@ -1,4 +1,4 @@
-include("repl-base.jl")
+include("repl-trade.jl")
 
 using Dates
 using SH, BaseTypes, Globals, Bins, SmallTypes, StratTypes, LegTypes, LegMetaTypes
@@ -28,8 +28,11 @@ dbChecks();
 devoff();
 procOrders();
 SchedLive.add();
-Sched.start();
 println("Ready to trade: ", isrtd());
+
+using Sched, SchedBg
+SchedBg.add()
+Sched.start()
 
 bbres = xx.bball();
 xx.bbToClose();

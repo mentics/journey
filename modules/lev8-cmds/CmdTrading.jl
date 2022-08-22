@@ -127,11 +127,11 @@ toRet(trades, exp)::Ret = combineTo(Ret, trades, exp, market().curp, Globals.get
 toRet(trades)::Ret = combineTo(Ret, trades, market().curp) # TODO: choose diff start price?
 toLms(trades)::Vector{LegMeta} = combineTo(Vector{LegMeta}, trades) # TODO: choose diff start price?
 # TODO: change so matches todo and expirs and all: 0 for today, 1 for non-today next exp, and default is 0
-drpos(exp=expir(0)) = drawRet(toRet(tradesToClose(exp), exp); probs=probs(), curp=market().curp, label="pos")
+drpos(exp=expir(0)) = drawRet(toRet(tradesToClose(exp), exp); prob=prob(), curp=market().curp, label="pos")
 export drt, adrt
-# drt(i::Int, ex=1) = drawRet(toRet([tradesFor(ex)[i]], ex), probs(), market().curp, "t$(i)")
+# drt(i::Int, ex=1) = drawRet(toRet([tradesFor(ex)[i]], ex), prob(), market().curp, "t$(i)")
 # adrt(i::Int, ex=1) = drawRet!(toRet([tradesFor(ex)[i]], ex), "t$(i)")
-drt(tid::Int) = ( trade = cacheTrades[tid] ; drawRet(toRet([trade], getTargetDate(trade)), probs(), market().curp, "t$(tid)") )
+drt(tid::Int) = ( trade = cacheTrades[tid] ; drawRet(toRet([trade], getTargetDate(trade)), prob(), market().curp, "t$(tid)") )
 adrt(tid::Int) = ( trade = cacheTrades[tid] ; drawRet!(toRet([trade], getTargetDate(trade)), "t$(tid)") )
 drt(trade::Trade) = drawRet(toRet([trade], getTargetDate(trade)); probs=probsFor(getTargetDate(trade)), curp=market().curp, label="t$(getId(trade))")
 adrt(trade::Trade) = drawRet!(toRet([trade], getTargetDate(trade)); label="t$(getId(trade))")
@@ -174,7 +174,7 @@ tot() = findTradeEntered(today())
 # tradesToRet(trades::AVec{<:Trade}, forDate::Date, sp::Currency, vtyRatio::Float64)::Ret =
 #     combineRets([lmToRet(lm, getMeta(optQuoter(lm)), forDate, sp, vtyRatio) for lm in collect(mapFlattenTo(getLegs, LegMeta, trades))])
 # toRet2(trades, ex)::Ret = tradesToRet(trades, expir(ex), market().startPrice, 1.0) # TODO: choose diff start price?
-# drpos2(ex=1) = drawRet!(toRet2(todo(ex), ex), "pos2")#, probs(), market().curp, "pos2")
+# drpos2(ex=1) = drawRet!(toRet2(todo(ex), ex), "pos2")#, prob(), market().curp, "pos2")
 #endregion
 
 ct(trad::Trade{<:Closeable}; kws...) = closePos(trad; kws..., pre=true)

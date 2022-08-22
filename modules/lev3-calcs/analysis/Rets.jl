@@ -96,26 +96,26 @@ function atExp(style::Style.T, strike::Float64, side::Side.T, qty::Float64, neto
     return Ret(vals, sp, 1)
 end
 
-# function afterExp(leg::Leg, m::OptionMeta, neto::Float64, targetDate::Date, sp::Float64, vtyRatio::Float64)::Ret
-#     exp = getExpiration(leg)
-#     if exp == targetDate
-#         error("Wrong segment called with same exp", exp, targetDate)
-#     else
-#         vty = vtyRatio * getIv(m)
-#         if !(.05 < vty < .5)
-#             @log debug "Invalid vty in segPricing, using global average" vty leg
-#             vty = vtyRatio * Globals.get(:vtyAvg)[exp]
-#         end
-#         # TODO: benchmark compare to simpler closure way
-#         ctx = (getStyle(leg), Float64(getStrike(leg)), timeToExpir(targetDate, exp), vty, getQuantityDir(leg), neto, sp)
-#         vals = valsFor(ctx) do (style, strike, toExpYear, vty, qtyDir, neto, sp), x
-#             y = neto + qtyDir * priceOption((style, strike, toExpYear, vty)..., sp * x)
-#             # (isfinite(y) && (-100.0 < y < 100.0)) || error("afterExp: calced nan ", x, " ", (sp, m1, x01, split, m2, x02))
-#             return y
-#         end
-#         return Ret(vals, sp, 1)
-#     end
-# end
+function afterExp(leg::Leg, m::OptionMeta, neto::Float64, targetDate::Date, sp::Float64, vtyRatio::Float64)::Ret
+    exp = getExpiration(leg)
+    if exp == targetDate
+        error("Wrong segment called with same exp", exp, targetDate)
+    else
+        vty = vtyRatio * getIv(m)
+        if !(.05 < vty < .5)
+            @log debug "Invalid vty in segPricing, using global average" vty leg
+            vty = vtyRatio * Globals.get(:vtyAvg)[exp]
+        end
+        # TODO: benchmark compare to simpler closure way
+        ctx = (getStyle(leg), Float64(getStrike(leg)), timeToExpir(targetDate, exp), vty, getQuantityDir(leg), neto, sp)
+        vals = valsFor(ctx) do (style, strike, toExpYear, vty, qtyDir, neto, sp), x
+            y = neto + qtyDir * priceOption((style, strike, toExpYear, vty)..., sp * x)
+            # (isfinite(y) && (-100.0 < y < 100.0)) || error("afterExp: calced nan ", x, " ", (sp, m1, x01, split, m2, x02))
+            return y
+        end
+        return Ret(vals, sp, 1)
+    end
+end
 
 # │   leg = LegTypes.Leg(Option(call, 2022-04-11, 466.000), 1.0, SmallTypes.Side.long)
 # │   m = OptionMetaTypes.OptionMeta(0.13166179776743192)

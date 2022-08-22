@@ -70,8 +70,21 @@ const MktTimePath = joinpath(BaseDir, "marktime.json")
 const MktDurPath = joinpath(BaseDir, "markdur.json")
 
 function init()
-    loadMarket()
+    loadCal()
     updateState()
+end
+const TestData = Dict()
+function __init__()
+  println("Running init")
+  @assert isempty(TestData)
+  TestData[1] = "1"
+  if ccall(:jl_generating_output, Cint, ()) != 1
+    println("We are actual loading the module for runtime, not caching code to disk. TestData keys: ", keys(TestData))
+    TestData[2] = "2"
+else
+    println("Hit the else. TestData keys: ", keys(TestData))
+    TestData[3] = "3"
+  end
 end
 
 # function __init__()
@@ -80,14 +93,14 @@ end
 #     updateState()
 # end
 
-function loadMarket()
+function loadCal()
     println("Loading mark time/dur")
     @assert isempty(MktTime)
     @assert isempty(MktDur)
     merge!(MktTime, loadJson(MktTimePath, Dict{Date,MarketTime}))
     merge!(MktDur, loadJson(MktDurPath, Dict{Date,MarketDur}))
 end
-saveMarket() = ( writeJson(MktTimePath, MktTime) ; writeJson(MktDurPath, MktDur) )
+saveCal() = ( writeJson(MktTimePath, MktTime) ; writeJson(MktDurPath, MktDur) )
 
 function check()
     isnothing(snap()) || error("Session timing doesn't work when snapped")
@@ -140,6 +153,14 @@ end
 #     @log info "Updated calendar" isOpen nextChange
 #     return
 # end
+
+function addYear(year)
+    cal = tradierCalendar(firstdayofyear(Date(year)), lastdayofyear(Date(year)))
+    markTime = Dict(d => MarketTime(data) for (d, data) in cal)
+    markDur = Dict(d => MarketDur(mt) for (d, mt) in markTime)
+    merge!(MktTime, markTime)
+    merge!(MktDur, markDur)
+end
 
 # ensureCalYear(d::Date) = ensureCal(firstdayofyear(d), lastdayofyear(d))
 # ensureCal(dt::Dates.AbstractDateTime...)::Nothing = ensureCal(Date.(dt)...)

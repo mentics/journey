@@ -42,6 +42,7 @@ function procOrderRaw(tord::Dict{String,Any})::Bool
     isnothing(snap()) || error("Do not procOrders when snapped")
     logOrderRaw(tord)
     if tord["class"] == "combo"
+        global comboOrder = tord
         @error "TODO: Combo order still not handled, skipping"
         return false
     end
@@ -93,9 +94,11 @@ function matchOrders(tid::Int)
         updateCnt += 1
     end
     if updateCnt > 0
-        update("update Trade set status = vt.status from VTrade vt where vt.tid=? and Trade.tid=?", tid, tid)
+        updateTradeStatus(tid)
     end
 end
+
+updateTradeStatus(tid) = update("update Trade set status = vt.status from VTrade vt where vt.tid=? and Trade.tid=?", tid, tid)
 
 #region Local
 const LOCK = ReentrantLock()
@@ -122,7 +125,7 @@ function procOrder(tid::Int, ord::Order{Filled})::Bool
 end
 
 # intended to be manually called
-# example: tid: 70, lidAssigned: 274(452@4-22), lidCombo: 276(457@4-25)
+# example: tid: 70, lidAssigned: 274(452@4-22), lidCombo: 276(457@4-25), ProcOrder.comboOrder (after running procOrders)
 function procAssigned(tid::Int, lidAssigned::Int, lidCombo::Int, tord::Dict{String,Any})
     isnothing(snap()) || error("Do not procOrders when snapped")
     leg1 = loadLegTrade(lidAssigned)

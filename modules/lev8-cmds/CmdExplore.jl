@@ -273,7 +273,7 @@ end
 using CalcUtil, Bins
 function CalcUtil.calcMetrics(snapName::String, exp::Date, curp::Currency, lms; bins=Bins.inds())
     # prob = CmdUtil.probFlat(curp, 0.0)
-    prob = probsFor(snapName, exp, curp)[1]
+    prob = probsFor(snapName, exp, curp)
     ret = combineTo(Ret, lms, exp, curp)
     return (ret, calcMetrics(prob, ret, bins))
 end
@@ -400,7 +400,10 @@ findMids(oqss, curp, near) = (;
 
 const lockBb = ReentrantLock()
 function bb(ex)
+    res = []
     expr = expir(ex)
+    # @info "bb" market().startDay ex expr (expr - market().startDay) (expr - market().startDay < Day(200))
+    expr - market().startDay < Day(200) || return
     MinProfit = .1
     MinProb = .9
     MinRate = .4
@@ -408,14 +411,12 @@ function bb(ex)
     ivalsCur = intervalFor.(Iterators.partition(lmsCur, 4))
 
     curp = market().curp
-    probs = CmdUtil.probsFor(expr)
-    !isnothing(probs) || @logret "bb: Skipping expr" expr
-    prob = probs[1]
+    prob = CmdUtil.probsFor(expr)
+    !isnothing(prob) || @logret "bb: Skipping expr" expr
     # pflat = CmdUtil.probFlat(curp, 0.0)
 
     oqss = Chains.getOqss(chains()[expr].chain, curp);
     # ( midCallLong, midCallShort, midPutLong, midPutShort )
-    res = []
     Threads.@threads for off in -12:24
         mids = findMids(oqss, curp + off, 0.5)
         isnothing(findfirst(isnothing, mids)) || continue
@@ -461,9 +462,9 @@ end
 
 using Calendars
 function bball()
-    Calendars.ensureCal(today(), expirs()[end])
+    Calendars.ensureCals(today(), expirs()[end])
     res = Dict()
-    for ex in 10:20 # 20 is deliberate, it's about where the monthlies end TODO: look up exactly when they do
+    for ex in 1:20 # 20 is deliberate, it's about where the monthlies end TODO: look up exactly when they do
         y = bb(ex)
         isnothing(y) || (res[ex] = y)
     end

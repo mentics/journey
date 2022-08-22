@@ -48,9 +48,10 @@ export probsFor
 using ProbTypes
 using OptionUtil, ProbUtil, VectorCalcUtil
 using Markets, Calendars, ProbHist
-probFor(i::Int; kws...) = probsFor(i; kws...)[1]
 probsFor(i::Int; kws...) = probsFor(expir(i); kws...)
-probsFor(exp::Date; kws...) = makeProbs(calcTex(market().tsMarket, exp), exp; kws...)
+# probsFor(exp::Date; kws...) = makeProbs(calcTex(market().tsMarket, exp), exp; kws...)
+using ProbKde
+probsFor(exp::Date; kws...) = [probKde(Float64(market().curp), calcTex(market().tsMarket, exp), Float64(market().vix))]
 
 using DictUtil
 import Snapshots

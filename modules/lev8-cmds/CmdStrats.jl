@@ -161,6 +161,7 @@ ctx() = lastCtx[]
 # curStrat() = lastPosStrat[]
 # curVals() = getVals(curRet())
 probs() = lastCtx[].probs
+prob() = probs()[1]
 pvals() = map(x->getVals(x), probs())
 
 #region Local

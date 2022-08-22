@@ -631,7 +631,7 @@ function testScore()
     Main.save[:lmsPos] = lmsPos
     drawRet(cret; label="c")
     # drawRet!(ret1; label="1")
-    met = calcMetrics(probsFor(8)[1], cret)
+    met = calcMetrics(probsFor(8), cret)
     @info "Result" length(rets) met
 end
 

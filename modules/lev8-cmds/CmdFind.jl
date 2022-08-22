@@ -15,16 +15,16 @@ using CmdUtil, CmdExplore, DrawStrat
 function makeCtx(i::Int)
     exp = expir(i)
     curp = market().curp
-    probs = probsFor(exp; curp)
+    prob = probsFor(exp; curp)
     lmsPos = xlms(exp)
     retPos = combineTo(Ret, lmsPos, curp)
-    metPos = calcMetrics(probs[1], retPos, Bins.binds())
+    metPos = calcMetrics(prob, retPos, Bins.binds())
     scorePos = score(retPos, metPos)
-    return (; exp, probs, curp, lmsPos, retPos, metPos, scorePos)
+    return (; exp, prob, curp, lmsPos, retPos, metPos, scorePos)
 end
 function makeCtx(ctx, lmsRun, retRun, metRun)
     scoreRun = score(retRun, metRun)
-    return (; ctx.exp, ctx.probs, ctx.curp, lmsPos=lmsRun, retPos=retRun, metPos=metRun, scorePos=scoreRun)
+    return (; ctx.exp, ctx.prob, ctx.curp, lmsPos=lmsRun, retPos=retRun, metPos=metRun, scorePos=scoreRun)
 end
 
 function din(i::Int)
@@ -51,7 +51,7 @@ function dinDraw(ctx, resAll)
     (;ret1s, met1s, retRuns, metRuns) = resAll
     pretyble(map(addScore, vcat(ctx.metPos, met1s, metRuns[end])))
     pretyble(map(addScore,vcat(ctx.metPos, metRuns)))
-    drawRet(ctx.retPos; ctx.probs, ctx.curp, label="from")
+    drawRet(ctx.retPos; ctx.prob, ctx.curp, label="from")
     for i in 1:length(ret1s)
         drawRet!(ret1s[i]; label=string(i))
     end
@@ -237,21 +237,21 @@ function findBestSpreadS(ctx, oqs, res)
 end
 
 # TODO: use from cmdutil
-# function lyze(ctx, lms::Vector{LegMeta}, res)::Tuple
-#     # TODO: we could calc the filter directly without creating ret and met
-#     ret1 = combineTo(Ret, lms, ctx.curp)
-#     met1 = calcMetrics(ctx.probs[1], ret1, Bins.binds())
-#     # Bad data, you generally can't really get a 100% prob position. arbitrage exists, but don't count on getting lucky.
-#     met1.prob < 1.0 || return res
-#     met1.loss < 0.0 || return res
+function lyze(ctx, lms::Vector{LegMeta}, res)::Tuple
+    # TODO: we could calc the filter directly without creating ret and met
+    ret1 = combineTo(Ret, lms, ctx.curp)
+    met1 = calcMetrics(ctx.prob, ret1, Bins.binds())
+    # Bad data, you generally can't really get a 100% prob position. arbitrage exists, but don't count on getting lucky.
+    met1.prob < 1.0 || return res
+    met1.loss < 0.0 || return res
 
-#     lmsBoth = vcat(lms, ctx.lmsPos)
-#     ret = combineTo(Ret, lmsBoth, ctx.curp)
-#     met = calcMetrics(ctx.probs[1], ret, Bins.binds())
-#     s = score(ctx.retPos, ctx.metPos, ret, met, ret1, met1)
-#     # println("$(s) > $(res[1])")
-#     return s > res[1] ? (s, (lms, ret, met, ret1, met1)) : res
-# end
+    lmsBoth = vcat(lms, ctx.lmsPos)
+    ret = combineTo(Ret, lmsBoth, ctx.curp)
+    met = calcMetrics(ctx.prob, ret, Bins.binds())
+    s = score(ctx.retPos, ctx.metPos, ret, met, ret1, met1)
+    # println("$(s) > $(res[1])")
+    return s > res[1] ? (s, (lms, ret, met, ret1, met1)) : res
+end
 
 function countType(lms::Vector)
     res = [0, 0, 0, 0]

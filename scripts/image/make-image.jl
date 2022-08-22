@@ -54,8 +54,8 @@ end
 
 using PackageCompiler
 fn = "sysimage-journey.dll"
+BackupImageDir = mkpath("C:/data/tmp/backup")
 NewImagePath = "C:/data/tmp/new/$(fn)"
-BackupImageDir = "C:/data/tmp/backup"
 UseImagePath = "C:/data/tmp/$(fn)"
 PackageCompiler.create_sysimage(usings; sysimage_path=NewImagePath, precompile_statements_file=precompFiltered)
 

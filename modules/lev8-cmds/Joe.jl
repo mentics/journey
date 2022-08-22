@@ -2,7 +2,7 @@ module Joe
 using Dates
 using SH, BaseTypes, Bins, LegMetaTypes, RetTypes, StratTypes
 using OptionUtil, CalcUtil, ThreadUtil, OutputUtil
-import GenCands as Cands
+import GenCands
 using Calendars, Expirations, Chains, ProbKde, Markets
 using CmdUtil
 
@@ -64,14 +64,14 @@ function runJorn(expr::Date; nopos=false, all=false)
     ress = [Vector{NamedTuple}() for _ in 1:Threads.nthreads()]
 
     cnt = 0
-    # Cands.iterSingle(oqss, ctx, res) do lms, c, r
+    # GenCands.iterSingle(oqss, ctx, res) do lms, c, r
     #     jr = joe(c, lms)
     #     if jr.rate > 0.0
     #         push!(r, jr)
     #     end
     # end
 
-    Cands.paraSpreads(oqss, maxSpreadWidth, ctx, ress) do lms, c, rs
+    GenCands.paraSpreads(oqss, maxSpreadWidth, ctx, ress) do lms, c, rs
         cnt += 1
         jr = joe(c, lms)
         if jr.rate > 0.0
@@ -86,7 +86,7 @@ function runJorn(expr::Date; nopos=false, all=false)
 
     empty!(Msgs)
 
-    Cands.iterCondors(oqss, maxSpreadWidth, ctx.curp, ctx, ress) do cond, c, rs
+    GenCands.iterCondors(oqss, maxSpreadWidth, ctx.curp, ctx, ress) do cond, c, rs
         # cnt += 1
         jr = joe(c, cond)
         if jr.rate > 0.0

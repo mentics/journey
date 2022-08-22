@@ -66,6 +66,7 @@ SH.calcQuote(lookup::Function, trade::Trade, act::Action.T=Action.open)::Quote =
 
 export urpnl
 function urpnl(trade::Trade)::Currency
+    getTargetDate(trade) >= market().startDay || error("Tried to get urpnl of past trade")
     netOpen = getNetOpen(trade)
     prClose = getBid(quoter(trade, Action.close))
     return netOpen + prClose
