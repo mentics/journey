@@ -11,6 +11,9 @@ pathOrderBackup(oid::Int) = joinpath(dirOrderBackup(), "$(oid).json")
 function dbChecks()
     @log debug "dbChecks"
 
+    rows = select("select t.tid from Trade t where status='Starting' and tsCreated<?", now(UTC) - Hour(2))
+    !isempty(rows) && report("Trade still starting after 2 hours", rows)
+
     rows = select("select * from vlegtrade where expiration < current_date and status != 'Closed'")
     !isempty(rows) && report("LegTrade expired but not Closed", rows)
 

@@ -1,5 +1,5 @@
 module NormDists
-using SpecialFunctions
+# using SpecialFunctions
 
 export NormDist, pdf, pdff, cdf, cdff
 
@@ -19,7 +19,7 @@ pdf(nd::NormDist, x::Float64)::Float64 = nd.front * exp(- (x - nd.μ)^2 / nd.bot
 pdff(nd::NormDist) = x -> pdf(nd, x)
 
 # Adapted from https://github.com/JuliaStats/StatsFuns.jl/blob/master/src/distrs/norm.jl#L45
-cdf(d::NormDist, x::Float64)::Float64 = erfc(-(x - d.μ)/d.σ * INV_ROOT2) / 2
+cdf(d::NormDist, x::Float64)::Float64 = error("not implemented special functions") # erfc(-(x - d.μ)/d.σ * INV_ROOT2) / 2
 cdff(d::NormDist) = x -> cdf(d, x)
 
 end

@@ -13,7 +13,7 @@ import CmdUtil:tradesToClose
 import ProbKde
 import Kelly
 
-export xprob, xlms, xret, xmet, xdr
+export xprob, xlms, xret, xmet, xkel, xdr
 function xprob(ex::Int, curp=market().curp)
     expr = expir(ex)
     mkt = market()
@@ -26,8 +26,8 @@ xlms(expr::Date)::Vector{LegMeta} = SH.combineTo(Vector{LegMeta}, tradesToClose(
 xlms(ex::Int)::Vector{LegMeta} = xlms(expir(ex))
 xret(ex::Int, curp::Currency=market().curp)::Ret = SH.combineTo(Ret, xlms(ex), curp)
 xret(ex::Int, add::Coll{LegMeta}, curp::Currency=market().curp)::Ret = SH.combineTo(Ret, vcat(xlms(ex), collect(add)), curp)
-xmet(ex::Int, curp::Currency=market().curp)::NamedTuple = ( lms = xlms(ex) ; CalcUtil.calcMetrics(xprob(lms), SH.combineTo(Ret, lms, curp)) )
-xmet(ex::Int, add::Coll{LegMeta}, curp::Currency=market().curp)::NamedTuple = ( lms = vcat(xlms(ex), collect(add)) ; CalcUtil.calcMetrics(xprob(lms), SH.combineTo(Ret, lms, curp)) )
+xmet(ex::Int, curp::Currency=market().curp)::NamedTuple = ( lms = xlms(ex) ; CalcUtil.calcMetrics(xprob(ex, curp), SH.combineTo(Ret, lms, curp)) )
+xmet(ex::Int, add::Coll{LegMeta}, curp::Currency=market().curp)::NamedTuple = ( lms = vcat(xlms(ex), collect(add)) ; CalcUtil.calcMetrics(xprob(ex, curp), SH.combineTo(Ret, lms, curp)) )
 xkel(ex::Int, curp::Currency=market().curp)::Float64 = calcKelly(xprob(ex, curp), xret(ex, curp))
 xkel(ex::Int, add::Coll{LegMeta}, curp::Currency=market().curp)::Float64 = calcKelly(xprob(ex, curp), xret(ex, add, curp))
 # TODO: If type for metrics, then could follow the `to` pattern
@@ -46,8 +46,9 @@ function xdr(ex::Int, add::Union{Nothing,Coll{LegMeta}}=nothing, curp::Currency=
         trade = tod[i]
         DrawStrat.drawRet!(SH.to(Ret, trade, curp); label="t$(SH.getId(trade))")
     end
-    isnothing(add) || DrawStrat.drawRet!(combineTo(Ret, lms, curp); label="add")
-    lmsAll = isnothing(add) ? SH.combineTo(Vector{LegMeta}, tod) : vcat(polms, add)
+    isnothing(add) || DrawStrat.drawRet!(SH.combineTo(Ret, add, curp); label="add")
+    polms = SH.combineTo(Vector{LegMeta}, tod)
+    lmsAll::Vector{LegMeta} = isnothing(add) ? polms : vcat(polms, collect(add))
     DrawStrat.drawRet!(SH.combineTo(Ret, lmsAll, curp); label="all")
 end
 

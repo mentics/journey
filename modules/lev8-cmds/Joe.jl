@@ -5,7 +5,7 @@ using OptionUtil, CalcUtil, ThreadUtil, OutputUtil
 import GenCands
 using Calendars, Expirations, Chains, ProbKde, Markets
 using CmdUtil
-using CmdTools
+using CmdPos
 
 export jorn
 
@@ -45,19 +45,19 @@ function runJorn(expr::Date; nopos=false, all=false)
     #     end
     # end
 
-    cnt = 0
-    empty!(Msgs)
-    GenCands.paraSpreads(oqss, maxSpreadWidth, ctx, ress) do lms, c, rs
-        cnt += 1
-        jr = joeSpread(c, lms)
-        if !isnothing(jr)
-            push!(rs[Threads.threadid()], jr)
-        end
-        return true
-    end
-    res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roi)
-    println("proced $(cnt), results: $(length(res))")
-    isempty(Msgs) || @info Msgs
+    # cnt = 0
+    # empty!(Msgs)
+    # GenCands.paraSpreads(oqss, maxSpreadWidth, ctx, ress) do lms, c, rs
+    #     cnt += 1
+    #     jr = joeSpread(c, lms)
+    #     if !isnothing(jr)
+    #         push!(rs[Threads.threadid()], jr)
+    #     end
+    #     return true
+    # end
+    # res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roi)
+    # println("proced $(cnt), results: $(length(res))")
+    # isempty(Msgs) || @info Msgs
 
     cnt = 0
     empty!(Msgs)
@@ -119,7 +119,7 @@ function makeCtx(expr::Date; nopos, all)::NamedTuple
     return (;
         all,
         curp,
-        prob=probKde(Float64(curp), tex, vix),
+        prob=probKde(F(curp), tex, F(vix)),
         timult,
         posLms,
         posRet,
@@ -165,12 +165,13 @@ function joe(ctx, tctx, ret)
     # end
     # TODO: is ev > 0 too restrictive? and why can kelly be > 0 when ev < 0?
     if all || (met.mx >= MinMx && met.mn > MaxLoss[] && met.prob >= 0.75 && met.ev >= 0.0)
-        kelly = calcKelly(prob, ret)
+        kelly = CmdPos.calcKelly(ctx.prob, ret)
         if kelly > 0.0
-            Rets.addRetVals!(tctx.retBuf2, tctx.retBuf1, ctx.posRet.vals)  # combineTo(Ret, vcat(ctx.posLms, lms...), ctx.curp)
+            Rets.addRetVals!(tctx.retBuf2, ctx.posRet.vals, ret.vals)  # combineTo(Ret, vcat(ctx.posLms, lms...), ctx.curp)
             valsb = tctx.retBuf2
             # metb = calcMetrics(prob, retb)
             minb = minimum(valsb)
+            # @info "check" minb ctx.posMin MaxLossExpr[]
             if all || (minb >= ctx.posMin || minb > MaxLossExpr[])
                 # TODO: consider using ev or evr or ? in rate calc
                 rateEv = ctx.timult * met.ev / (-met.mn)

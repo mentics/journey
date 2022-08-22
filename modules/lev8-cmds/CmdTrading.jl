@@ -81,6 +81,7 @@ end
 
 function findTradesToClose()
     for trade in values(StoreTrade.tradesCached())
+        trade isa Trade{Filled} || continue
         ts = tsFilled(trade)
         ts < DateTime(today()) || continue
         neto = getNetOpen(trade)
