@@ -1,5 +1,5 @@
 module LegTradeInfo
-using SH, BaseTypes, LegTradeTypes
+using SH, BaseTypes, SmallTypes, LegTradeTypes
 using Chains, Expirations
 
 Base.show(io::IO, leg::LegTrade) = print(io, string(leg))

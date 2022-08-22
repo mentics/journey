@@ -6,10 +6,10 @@ function findUsings(base, fil)
             line = spl[1]
         end
         if startswith(line, "using")
-            append!(res, split(line, r"[,\s]+")[2:end])
+            append!(res, skipDots(split(line, r"[,\s]+")[2:end]))
         elseif startswith(line, "import")
             if !occursin(":", line)
-                append!(res, split(line, r"[,\s]+")[2:end])
+                append!(res, skipDots(split(line, r"[,\s]+")[2:end]))
             else
                 m = match(r"\s(.+?)(?:\:|$)", line)
                 if isnothing(m)
@@ -21,6 +21,7 @@ function findUsings(base, fil)
     end
     return res
 end
+skipDots(arr) = filter(x -> !occursin('.', x), arr)
 
 mods = String[]
 usings = String[]
