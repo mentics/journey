@@ -19,6 +19,8 @@ CmdTrading.findTradesToClose()
 ll = c.lookAll()
 
 
+got BlackBoxOptim branch: https://github.com/robertfeldt/BlackBoxOptim.jl#compathelper/new_version/2022-06-20-01-48-33-841-02748865794
+
 Fix rate calc in findTradesToClose
 
 kelly calc in Joe needs to be adjusted lik calcmetrics
