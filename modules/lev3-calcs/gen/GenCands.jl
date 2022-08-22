@@ -121,10 +121,11 @@ function paraSpreads(f::Function, oqs::Sides{Vector{ChainTypes.OptionQuote}}, ma
             oq1 != oq2 || continue
             legLong = to(LegMeta, oq1, Side.long)
             legShort = to(LegMeta, oq2, Side.short)
-            _, mx = spreadExtrema(legLong, legShort)
+            _, mx = OptionUtil.spreadExtrema(legLong, legShort)
             mx > 0.0 || continue
             spr = getStrike(legLong) < getStrike(legShort) ? (legLong, legShort) : (legShort, legLong)
-            f(spr, args...) || ( finish = stop ; break )
+            # f(spr, args...) || ( finish = stop ; break )
+            f(spr, args...) || return false
         end
         finish || break
     end
