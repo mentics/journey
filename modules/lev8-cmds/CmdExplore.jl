@@ -5,6 +5,7 @@ using LogUtil, ConstructUtil
 using Shorthand, Between
 using Expirations, Markets, Chains
 using DrawStrat
+using CmdPos
 
 export sh, shc, shRet, shVals, drsh, drsh!, shLegs # shLegs is reexported form Shorthand
 export drlms, drlms!

@@ -120,6 +120,20 @@ SH.getVals(::Nothing) = nothing
 export sortScore
 sortScore()::Nothing = sortar(byScore)
 
+using SH, BaseTypes, RetTypes, LegMetaTypes, StratTypes
+using StoreTrade
+function calcPosStrat(forDate::Date, sp::Currency, vtyRatio::Float64, extra::Union{Nothing,Vector{LegMeta}}=nothing)::Vector{LegRet}
+    lms = xlms(forDate)
+    if !isempty(lms)
+        isnothing(extra) || append!(lms, extra)
+        sort!(lms; by=getStrike)
+        # return [(lm, to(Ret, lm, forDate, sp, vtyRatio)) for lm in lms]
+        return tos(LegRet, lms, forDate, sp, vtyRatio)
+    else
+        return Vector{LegRet}()
+    end
+end
+
 # TODO: optimize this (so much new vector)
 withPosStrat(s::Strat)::Vector{LegRet} = vcat(collect(s), lastPosStrat[])
 function sa(cnt::Int=20)::Nothing

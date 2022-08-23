@@ -13,10 +13,20 @@ import CmdUtil:tradesToClose
 import ProbKde
 import Kelly
 
+(concat(a::AVec{T}, b::AVec{T})::Vector{T}) where T = vcat(a, b)
+# (concat(a::NTuple{N,T}, b::NTuple{N,T})::Vector{T}) where N,T = collect(Iterators.flatten((a, b)))
+(concat(a::Coll{T}, b::Coll{T})::Vector{T}) where T = collect(Iterators.flatten((a, b)))
+
+cret(lms::Coll{LegMeta}, curp::Currency=market().curp)::Ret = SH.combineTo(Ret, lms, curp)
+cret(lms::Coll{LegMeta}, add::Coll{LegMeta}, curp::Currency=market().curp)::Ret = cret(concat(lms, add), curp)
+cmet(prob::Prob, ret::Ret) = CalcUtil.calcMetrics(prob, ret)
+ckel(prob::Prob, ret::Ret) = Kelly.calc(prob.vals, ret.vals ./ (-minimum(ret.vals)))
+
 export xprob, xlms, xret, xmet, xkel, xdr
-function xprob(ex::Int, curp=market().curp)
+function xprob(ex::Int)
     expr = expir(ex)
     mkt = market()
+    curp = mkt.curp
     start = mkt.tsMarket
     tex = Calendars.calcTex(start, expr)
     vix = mkt.vix
@@ -24,12 +34,29 @@ function xprob(ex::Int, curp=market().curp)
 end
 xlms(expr::Date)::Vector{LegMeta} = SH.combineTo(Vector{LegMeta}, tradesToClose(expr))
 xlms(ex::Int)::Vector{LegMeta} = xlms(expir(ex))
-xret(ex::Int, curp::Currency=market().curp)::Ret = SH.combineTo(Ret, xlms(ex), curp)
-xret(ex::Int, add::Coll{LegMeta}, curp::Currency=market().curp)::Ret = SH.combineTo(Ret, vcat(xlms(ex), collect(add)), curp)
-xmet(ex::Int, curp::Currency=market().curp)::NamedTuple = ( lms = xlms(ex) ; CalcUtil.calcMetrics(xprob(ex, curp), SH.combineTo(Ret, lms, curp)) )
-xmet(ex::Int, add::Coll{LegMeta}, curp::Currency=market().curp)::NamedTuple = ( lms = vcat(xlms(ex), collect(add)) ; CalcUtil.calcMetrics(xprob(ex, curp), SH.combineTo(Ret, lms, curp)) )
-xkel(ex::Int, curp::Currency=market().curp)::Float64 = calcKelly(xprob(ex, curp), xret(ex, curp))
-xkel(ex::Int, add::Coll{LegMeta}, curp::Currency=market().curp)::Float64 = calcKelly(xprob(ex, curp), xret(ex, add, curp))
+xlms(ex::Int, add::Coll{LegMeta})::Vector{LegMeta} = concat(xlms(ex), add)
+
+xret(ex::Int, curp::Currency=market().curp)::Ret = cret(xlms(ex), curp)
+xret(ex::Int, add::Coll{LegMeta}, curp::Currency=market().curp)::Ret = cret(ex, xlms(ex, add), curp)
+
+xmet(ex::Int)::NamedTuple = CalcUtil.calcMetrics(xprob(ex), xret(ex))
+xmet(ex::Int, add::Coll{LegMeta})::NamedTuple = CalcUtil.calcMetrics(xprob(ex), xret(ex, add))
+
+xkel(ex::Int, curp::Currency=market().curp)::Float64 = ckel(xprob(ex), xret(ex, curp))
+xkel(ex::Int, add::Coll{LegMeta}, curp::Currency=market().curp)::Float64 = ckel(xprob(ex), xret(ex, add, curp))
+
+function x3(ex::Int)
+    lms = xlms(ex)
+    ret = cret(lms)
+    met = cmet(xprob(ex), ret)
+    return (;lms, ret, met)
+end
+function x3(ex::Int, add::Coll{LegMeta})
+    lms = xlms(ex, add)
+    ret = cret(lms)
+    met = cmet(xprob(ex), ret)
+    return (;lms, ret, met)
+end
 # TODO: If type for metrics, then could follow the `to` pattern
 
 # import CmdTrading # TODO: just temporary to get drt
@@ -51,8 +78,5 @@ function xdr(ex::Int, add::Union{Nothing,Coll{LegMeta}}=nothing, curp::Currency=
     lmsAll::Vector{LegMeta} = isnothing(add) ? polms : vcat(polms, collect(add))
     DrawStrat.drawRet!(SH.combineTo(Ret, lmsAll, curp); label="all")
 end
-
-# TODO: move?
-calcKelly(prob::Prob, ret::Ret) = Kelly.calc(prob.vals, ret.vals ./ (-minimum(ret.vals)))
 
 end

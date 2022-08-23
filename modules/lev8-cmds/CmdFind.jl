@@ -4,7 +4,7 @@ using SH, Globals, Bins, DateUtil, OutputUtil, DictUtil
 using SmallTypes, LegTypes, LegMetaTypes, RetTypes, StatusTypes, OptionTypes
 using CalcUtil, Shorthand, Emails
 using Snapshots, Markets, Expirations, Chains, ConTime, Calendars, StoreTrade
-using CmdStrats # TODO: probsFor somewhere elese
+using CmdUtil, CmdPos
 using DrawStrat
 
 export testOne, din, scandin
@@ -15,7 +15,7 @@ using CmdUtil, CmdExplore, DrawStrat
 function makeCtx(i::Int)
     exp = expir(i)
     curp = market().curp
-    prob = probsFor(exp; curp)
+    prob = probsFor(exp; curp)[1]
     lmsPos = xlms(exp)
     retPos = combineTo(Ret, lmsPos, curp)
     metPos = calcMetrics(prob, retPos, Bins.binds())
@@ -51,7 +51,7 @@ function dinDraw(ctx, resAll)
     (;ret1s, met1s, retRuns, metRuns) = resAll
     pretyble(map(addScore, vcat(ctx.metPos, met1s, metRuns[end])))
     pretyble(map(addScore,vcat(ctx.metPos, metRuns)))
-    drawRet(ctx.retPos; ctx.prob, ctx.curp, label="from")
+    drawRet(ctx.retPos; probs=[ctx.prob], ctx.curp, label="from")
     for i in 1:length(ret1s)
         drawRet!(ret1s[i]; label=string(i))
     end
