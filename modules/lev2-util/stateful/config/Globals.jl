@@ -33,9 +33,9 @@ function __init__()
         :snapTs => nothing,
         :useCurp => true,
         :Strats => Dict{Symbol,Any}(
-            :maxStrikeDist => 28,
-            :maxPutHeight => 2,
-            :maxCallHeight => 16 # TODO: compare results if allow deeper calls
+            :maxStrikeDist => 28.0,
+            :maxPutHeight => 3.2,
+            :maxCallHeight => 22.0 # TODO: compare results if allow deeper calls
         )
     )
 end

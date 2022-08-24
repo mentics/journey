@@ -3,12 +3,12 @@ Process:
 using Joe
 j = Joe
 jorn(1:4)
-curi = 1
-xdr(1, j.rs1[curi].lms)
-xmet(1, j.rs1[curi].lms)
-xkel(1, j.rs1[curi].lms)
-so(j.rs1[curi].lms)
-solr(j.rs1[curi].lms, primitDir)
+i = 1
+xdr(i, j.rs1[i].lms)
+xmet(i, j.rs1[i].lms)
+xkel(i, j.rs1[i].lms)
+so(j.rs1[i].lms)
+solr(j.rs1[i].lms, primitDir)
 
 2) Look for trades to close early by running:
 using CmdTrading
@@ -18,6 +18,11 @@ CmdTrading.findTradesToClose()
 2) Look for short puts to buy with apr > .5
 ll = c.lookAll()
 
+
+fix close range in trade output to ignore closed legs
+
+restructure: low level, call it KelCalc.jl and in glue level have Kel.jl. Same for Ret and Met, etc.
+Then in general use can type: Kel.calc, Met.calc, Ret.calc, etc.
 
 got BlackBoxOptim branch: https://github.com/robertfeldt/BlackBoxOptim.jl#compathelper/new_version/2022-06-20-01-48-33-841-02748865794
 

@@ -45,19 +45,19 @@ function runJorn(expr::Date; nopos=false, all=false)
     #     end
     # end
 
-    # cnt = 0
-    # empty!(Msgs)
-    # GenCands.paraSpreads(oqss, maxSpreadWidth, ctx, ress) do lms, c, rs
-    #     cnt += 1
-    #     jr = joeSpread(c, lms)
-    #     if !isnothing(jr)
-    #         push!(rs[Threads.threadid()], jr)
-    #     end
-    #     return true
-    # end
-    # res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roi)
-    # println("proced $(cnt), results: $(length(res))")
-    # isempty(Msgs) || @info Msgs
+    cnt = 0
+    empty!(Msgs)
+    GenCands.paraSpreads(oqss, maxSpreadWidth, ctx, ress) do lms, c, rs
+        cnt += 1
+        jr = joeSpread(c, lms)
+        if !isnothing(jr)
+            push!(rs[Threads.threadid()], jr)
+        end
+        return true
+    end
+    res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roi)
+    println("proced $(cnt), results: $(length(res))")
+    isempty(Msgs) || @info Msgs
 
     cnt = 0
     empty!(Msgs)
@@ -71,7 +71,8 @@ function runJorn(expr::Date; nopos=false, all=false)
     end
     isempty(Msgs) || @info Msgs
 
-    res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roi)
+    # res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roi)
+    res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roiEv)
     println("proced $(cnt), results: $(length(res))")
     return (res, ctx)
 end
@@ -165,7 +166,7 @@ function joe(ctx, tctx, ret)
     # end
     # TODO: is ev > 0 too restrictive? and why can kelly be > 0 when ev < 0?
     if all || (met.mx >= MinMx && met.mn > MaxLoss[] && met.prob >= 0.75 && met.ev >= 0.0)
-        kelly = CmdPos.calcKelly(ctx.prob, ret)
+        kelly = ckel(ctx.prob, ret)
         if kelly > 0.0
             Rets.addRetVals!(tctx.retBuf2, ctx.posRet.vals, ret.vals)  # combineTo(Ret, vcat(ctx.posLms, lms...), ctx.curp)
             valsb = tctx.retBuf2

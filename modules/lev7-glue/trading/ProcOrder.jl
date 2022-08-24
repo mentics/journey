@@ -131,7 +131,7 @@ function procAssigned(tid::Int, lidAssigned::Int, lidCombo::Int, tord::Dict{Stri
     leg1 = loadLegTrade(lidAssigned)
     leg2 = loadLegTrade(lidCombo)
     newOrder = TradierOrderConvert.fromAssigned(tord, leg1, leg2)
-    return newOrder
+    # return newOrder
     storeOrder(newOrder)
     matchOrders(tid)
 end

@@ -34,19 +34,29 @@ end
 gpu_enabled = enable_gpu(true)
 
 ## Model parameters
-dim_val = 512 # This can be any value. 512 is used in the original transformer paper.
-n_heads = 8 # The number of attention heads (aka parallel attention layers). dim_val must be divisible by this number
-n_decoder_layers = 4 # Number of times the decoder layer is stacked in the decoder
-n_encoder_layers = 4 # Number of times the encoder layer is stacked in the encoder
+# dim_val = 512 # This can be any value. 512 is used in the original transformer paper.
+# n_heads = 8 # The number of attention heads (aka parallel attention layers). dim_val must be divisible by this number
+# n_decoder_layers = 4 # Number of times the decoder layer is stacked in the decoder
+# n_encoder_layers = 4 # Number of times the encoder layer is stacked in the encoder
+# input_size = 1 # The number of input variables. 1 if univariate forecasting.
+# dec_seq_len = 92 # length of input given to decoder. Can have any integer value.
+# enc_seq_len = 153 # length of input given to encoder. Can have any integer value.
+# output_sequence_length = 58 # Length of the target sequence, i.e. how many time steps should your forecast cover
+# in_features_encoder_linear_layer = 2048 # As seen in Figure 1, each encoder layer has a feed forward layer. This variable determines the number of neurons in the linear layer inside the encoder layers
+# in_features_decoder_linear_layer = 2048 # Same as above but for decoder
+# max_seq_len = enc_seq_len # What's the longest sequence the model will encounter? Used to make the positional encoder
+
+dim_val = 32 # This can be any value. 512 is used in the original transformer paper.
+n_heads = 4 # The number of attention heads (aka parallel attention layers). dim_val must be divisible by this number
+n_decoder_layers = 2 # Number of times the decoder layer is stacked in the decoder
+n_encoder_layers = 2 # Number of times the encoder layer is stacked in the encoder
 input_size = 1 # The number of input variables. 1 if univariate forecasting.
-dec_seq_len = 92 # length of input given to decoder. Can have any integer value.
-enc_seq_len = 153 # length of input given to encoder. Can have any integer value.
-output_sequence_length = 58 # Length of the target sequence, i.e. how many time steps should your forecast cover
-in_features_encoder_linear_layer = 2048 # As seen in Figure 1, each encoder layer has a feed forward layer. This variable determines the number of neurons in the linear layer inside the encoder layers
-in_features_decoder_linear_layer = 2048 # Same as above but for decoder
+dec_seq_len = 31 # length of input given to decoder. Can have any integer value.
+enc_seq_len = 73 # length of input given to encoder. Can have any integer value.
+output_sequence_length = 17 # Length of the target sequence, i.e. how many time steps should your forecast cover
+in_features_encoder_linear_layer = 512 # As seen in Figure 1, each encoder layer has a feed forward layer. This variable determines the number of neurons in the linear layer inside the encoder layers
+in_features_decoder_linear_layer = 512 # Same as above but for decoder
 max_seq_len = enc_seq_len # What's the longest sequence the model will encounter? Used to make the positional encoder
-
-
 
 
 #define 2 layer of transformer
@@ -82,16 +92,6 @@ function decoder_forward(tgt, t1)
     p = linear(t2)
     return p
 end
-
-
-
-
-
-
-
-
-
-
 
 function generate_seq(x, seq_len)
 	result = Matrix{Float64}[]
@@ -171,9 +171,6 @@ for i = 1:1000
     end
 end
 
-
-
-
 function prediction(test_data)
 	seq = Array{Float32}[]
 	test_loader = Flux.Data.DataLoader(test_data, batchsize=32)
@@ -194,9 +191,6 @@ function prediction(test_data)
 	return seq
 end
 
-
-
-
 seq_train = Vector{Float64}(prediction(data))
 
 # ╔═╡ 77e65945-2a10-4723-979a-f33170e71500
@@ -213,11 +207,11 @@ end
 
 fig = myplot(data[end,:],seq_train)
 
-savefig(fig,"train_fig.png")
+# savefig(fig,"train_fig.png")
 
 myplot(testdata[end,:],seq_test)
 
-savefig(fig,"test_fig.png")
+# savefig(fig,"test_fig.png")
 
 Flux.Losses.mse(testdata[end,:],seq_test)
 

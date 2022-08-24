@@ -5,6 +5,7 @@ import SH
 import LegMetaTypes:LegMeta
 import ProbTypes:Prob
 import Rets:Ret
+import CollUtil:concat
 import CalcUtil
 import Calendars
 import Markets:market
@@ -13,16 +14,13 @@ import CmdUtil:tradesToClose
 import ProbKde
 import Kelly
 
-(concat(a::AVec{T}, b::AVec{T})::Vector{T}) where T = vcat(a, b)
-# (concat(a::NTuple{N,T}, b::NTuple{N,T})::Vector{T}) where N,T = collect(Iterators.flatten((a, b)))
-(concat(a::Coll{T}, b::Coll{T})::Vector{T}) where T = collect(Iterators.flatten((a, b)))
-
+export cret, cmet, ckel
 cret(lms::Coll{LegMeta}, curp::Currency=market().curp)::Ret = SH.combineTo(Ret, lms, curp)
 cret(lms::Coll{LegMeta}, add::Coll{LegMeta}, curp::Currency=market().curp)::Ret = cret(concat(lms, add), curp)
 cmet(prob::Prob, ret::Ret) = CalcUtil.calcMetrics(prob, ret)
 ckel(prob::Prob, ret::Ret) = Kelly.calc(prob.vals, ret.vals ./ (-minimum(ret.vals)))
 
-export xprob, xlms, xret, xmet, xkel, xdr
+export xprob, xlms, xret, xmet, xkel, xdr, x3
 function xprob(ex::Int)
     expr = expir(ex)
     mkt = market()
@@ -37,7 +35,7 @@ xlms(ex::Int)::Vector{LegMeta} = xlms(expir(ex))
 xlms(ex::Int, add::Coll{LegMeta})::Vector{LegMeta} = concat(xlms(ex), add)
 
 xret(ex::Int, curp::Currency=market().curp)::Ret = cret(xlms(ex), curp)
-xret(ex::Int, add::Coll{LegMeta}, curp::Currency=market().curp)::Ret = cret(ex, xlms(ex, add), curp)
+xret(ex::Int, add::Coll{LegMeta}, curp::Currency=market().curp)::Ret = cret(xlms(ex, add), curp)
 
 xmet(ex::Int)::NamedTuple = CalcUtil.calcMetrics(xprob(ex), xret(ex))
 xmet(ex::Int, add::Coll{LegMeta})::NamedTuple = CalcUtil.calcMetrics(xprob(ex), xret(ex, add))
@@ -59,7 +57,6 @@ function x3(ex::Int, add::Coll{LegMeta})
 end
 # TODO: If type for metrics, then could follow the `to` pattern
 
-# import CmdTrading # TODO: just temporary to get drt
 import DrawStrat
 
 function xdr(ex::Int, add::Union{Nothing,Coll{LegMeta}}=nothing, curp::Currency=market().curp)
