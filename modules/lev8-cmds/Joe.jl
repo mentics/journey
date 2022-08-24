@@ -45,19 +45,19 @@ function runJorn(expr::Date; nopos=false, all=false)
     #     end
     # end
 
-    cnt = 0
-    empty!(Msgs)
-    GenCands.paraSpreads(oqss, maxSpreadWidth, ctx, ress) do lms, c, rs
-        cnt += 1
-        jr = joeSpread(c, lms)
-        if !isnothing(jr)
-            push!(rs[Threads.threadid()], jr)
-        end
-        return true
-    end
-    res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roi)
-    println("proced $(cnt), results: $(length(res))")
-    isempty(Msgs) || @info Msgs
+    # cnt = 0
+    # empty!(Msgs)
+    # GenCands.paraSpreads(oqss, maxSpreadWidth, ctx, ress) do lms, c, rs
+    #     cnt += 1
+    #     jr = joeSpread(c, lms)
+    #     if !isnothing(jr)
+    #         push!(rs[Threads.threadid()], jr)
+    #     end
+    #     return true
+    # end
+    # res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roi)
+    # println("proced $(cnt), results: $(length(res))")
+    # isempty(Msgs) || @info Msgs
 
     cnt = 0
     empty!(Msgs)
@@ -146,6 +146,7 @@ function joeCond(ctx, cond::Condor)
     combineRetVals!(tctx.retBuf1, condRets(cond))
     ret = Ret(tctx.retBuf1, ctx.curp, 4)
     adjust!(ret.vals, ret.numLegs) # reduce for slippage and closing short cost
+    # ret.vals[end] > 0 || return nothing # TODO: remove?
     r = joe(ctx, tctx, ret)
     return isnothing(r) ? nothing : merge(r, (;lms=toLms(cond)))
 end

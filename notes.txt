@@ -18,6 +18,10 @@ CmdTrading.findTradesToClose()
 2) Look for short puts to buy with apr > .5
 ll = c.lookAll()
 
+test multivariate transformer learning by adding another input that randomly switches between 1 and -1 and when -1 it changes the direction of the sine wave
+[sine(2π*i/100) for i in 1000]
+eg: but with random instead of periodic: [sin((i % 40 > 20 ? -1 : 1) * 2π*i/100) for i in 1:1000]
+
 
 fix close range in trade output to ignore closed legs
 

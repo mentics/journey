@@ -120,8 +120,8 @@ function translate(x)
 
     len = length(ix)
     for i = 1:2len
-        trg = todevice(vocab(seq))
-        dec = decoder_forward(trg, enc)
+        trg = todevice(vocab(seq)) # 1: [2]
+        dec = decoder_forward(trg, enc) # 1: [len13]
         #move back to gpu due to argmax wrong result on CuArrays
         ntok = onecold(collect(dec), labels)
         push!(seq, ntok[end])

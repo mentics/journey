@@ -24,24 +24,43 @@ function config()
         forecastLen = 4,
         fullLen = 20 + 4,
 
-        batchSize = 128
+        batchSize = 256,
+        trainIterMax = 1000,
+        trainLossTarget = .001
     )
 end
 
 function run(cfg=config())
-    model = makeModel(cfg)
+    global model = makeModel(cfg)
 
-    lenTrain = 500
-    lenTest = 200
-    seqAll = makeSeq(lenTrain + lenTest, cfg.fullLen)
-    fulls = seqToFulls(seqAll, cfg.fullLen)
+    dataTrain, _ = makeData(500, 200, cfg.fullLen)
+
+    train!(cfg, model, dataTrain)
+    test(cfg, model)
+    return model
+end
+
+import DrawUtil:draw,draw!
+function test(cfg, model)
+    _, dataTest = makeData(500, 200, cfg.fullLen)
+    testOut = check(cfg, model, dataTest)
+    # actual = [full[end:end,:] for full in test]
+    actual = mapreduce(x->x[end:end,:], vcat, dataTest)
+    println("Overall test loss: ", Flux.Losses.mse(testOut, actual))
+    display(draw(actual[:]))
+    draw!(testOut[:])
+end
+
+function makeData(lenTrain, lenTest, fullLen)
+    # lenTrain = 500
+    # lenTest = 200
+    seqAll = makeSeq(lenTrain + lenTest, fullLen)
+    fulls = seqToFulls(seqAll, fullLen)
     @assert length(fulls) == lenTrain + lenTest
     train = fulls[1:lenTrain]
     test = fulls[(lenTrain+1):end]
     @assert length(test) == lenTest
-
-    train!(cfg, model, train)
-    # check(cfg, model, test)
+    return (train, test)
 end
 
 makeSeq(cntAll, fullLen) = [sin(2π*i/10) for i in 1:(cntAll + fullLen)]
@@ -129,7 +148,8 @@ end
 function train!(cfg, model, fulls)
     mfulls = reduce(hcat, fulls)
     global batches = Flux.Data.DataLoader(mfulls; batchsize=cfg.batchSize)
-    for i in 1:10
+    los = 100.0
+    for i in 1:cfg.trainIterMax
         for batch in batches
             sz = size(batch)
             seq = reshape(batch, (cfg.inputDim, sz[1], sz[2])) # size(seq) = (inputDim, fullLen, batchSize)
@@ -138,57 +158,38 @@ function train!(cfg, model, fulls)
             grad = gradient(()->loss(model, x, shifted, y), model.params)
             update!(model.opt, model.params, grad)
 
-            # if i % 8 == 0
-                l = loss(model, x, shifted, y)
-                println("loss = $l")
-            # end
+            if i % 8 == 0
+                los = loss(model, x, shifted, y)
+                println("loss = $los")
+            end
         end
+        los > cfg.trainLossTarget || break
     end
 end
 
-function check(model, fulls)
+function check(cfg, model, fulls::AbstractVector{T})::T where T
+	seqOut = Array{Float32}(undef, 0, size(fulls[1])[2])
+    # println("check ", typeof(seqOut))
     mfulls = reduce(hcat, fulls)
     batches = Flux.Data.DataLoader(mfulls; batchsize=cfg.batchSize)
     for batch in batches
         sz = size(batch)
         seq = reshape(batch, (cfg.inputDim, sz[1], sz[2])) # size(seq) = (inputDim, fullLen, batchSize)
-        x, shifted, y = splitSeq(cfg.inputLen, cfg.forecastLen, seq)
-        # size(x) = (inputDim, seqLen, batchSize)
-        # size(shifted) = (inputDim, forecastLength, batchSize)
-        # size(y) = (inputDim, forecastLength, batchSize)
-
-        # devx, devshifted, devy = todevice(x, shifted, y) # move to gpu
-        grad = gradient(()->loss(model, x, shifted, y), model.params)
-        update!(model.opt, model.params, grad)
-
-        # if i % 8 == 0
-            l = loss(model, x, shifted, y)
-            println("loss = $l")
-        # end
+        full = seq[:,1:cfg.fullLen,:]
+        # full = todevice(full)
+        x = full[:,1:cfg.inputLen,:]
+        shifted = full[:,cfg.inputLen:sz[1]-1,:]
+        out = model.exec(x, shifted)
+        # global out = model.exec(x, shifted)
+        # global outEnd = out[end:end,:]
+        # println(typeof(out), ' ', size(out))
+        # println(typeof(outEnd), ' ', size(outEnd'))
+		seqOut = vcat(seqOut, out[end:end,:]')
+		# seqOut = vcat(seqOut, collect(out[end,:]))
+        # append!(seqOut, collect(out[end:end,:]))
     end
+    return seqOut
 end
-
-function prediction(test_data)
-	seq = Array{Float32}[]
-	test_loader = Flux.Data.DataLoader(test_data, batchsize=32)
-	for x in test_loader
-		sz = size(x)
-		sub_sequence = reshape(x,(1,sz[1],sz[2]))
-		#@show enc_seq_len
-		ix = sub_sequence[:,1:enc_seq_len+output_sequence_length,:]
-		#@show size(x),size(ix)
-		ix = todevice(ix)
-		enc = encoder_forward(ix[:,1:enc_seq_len,:])
-		trg = ix[:,enc_seq_len:sz[1]-1,:]
-		#@show size(trg),size(enc)
-		dec = decoder_forward(trg, enc)
-		#@show size(dec[end,:])
-		seq = vcat(seq,collect(dec[end,:]))
-	end
-	return seq
-end
-
-
 
 function splitSeq(inputLen, forecastLen, sequence)
     # sequence has 3 dims: inputDim, fullLen, batchSize
