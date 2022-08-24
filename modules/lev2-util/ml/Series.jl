@@ -4,44 +4,82 @@ module Series
 # using Transformers.Datasets: batched
 # using Flux: gradient
 # using Flux.Optimise: update!
+import Flux: Flux,Dense,ADAM,gradient
+import Flux.Optimise: update!
+import Transformers: Transformer,TransformerDecoder
+import Transformers.Basic: PositionEmbedding
+
+#==
+full = includes both input and forecast
+==#
 
 function config()
     return (;
         inputDim = 1,
-        inputEmbed = 8,
+        inputEmbedDim = 8,
         numHeads = 2,
         neuronsPerHead = 8,
         hiddenSize = 16,
-        forecastLength = 4
+        inputLen = 20,
+        forecastLen = 4,
+        fullLen = 20 + 4,
+
+        batchSize = 128
     )
 end
 
 function run(cfg=config())
     model = makeModel(cfg)
-    train, test = makeData()
-    train!(model, train)
-    check(model, test)
+
+    lenTrain = 500
+    lenTest = 200
+    seqAll = makeSeq(lenTrain + lenTest, cfg.fullLen)
+    fulls = seqToFulls(seqAll, cfg.fullLen)
+    @assert length(fulls) == lenTrain + lenTest
+    train = fulls[1:lenTrain]
+    test = fulls[(lenTrain+1):end]
+    @assert length(test) == lenTest
+
+    train!(cfg, model, train)
+    # check(cfg, model, test)
 end
 
-function makeData()
-    train = [round.(rand(10); digits=3) for i in 1:100]
-    test = [round.(rand(10); digits=3) for i in 1:10]
-    return ((train, train), (test, test)) # x and y are the same because this is just a copy task
+makeSeq(cntAll, fullLen) = [sin(2π*i/10) for i in 1:(cntAll + fullLen)]
+
+function seqToFulls(seq, fullLen)
+    # Matrix{Float32} here indicates the type going into the input: a one dimensional matrix.
+    res = Vector{Matrix{Float32}}()
+    for i in 1:(length(seq) - fullLen)
+        full = reshape(seq[i:i+fullLen-1],(fullLen,1))
+        push!(res, full)
+    end
+    return res
+    # train = [round.(rand(10); digits=3) for i in 1:100]
+    # test = [round.(rand(10); digits=3) for i in 1:10]
+    # return ((train, train), (test, test)) # x and y are the same because this is just a copy task
 end
 
 function makeEe(cfg)
-    embed = Dense(cfg.inputDim, cfg.inputEmbed) # |> gpu
-    encode = PositionEmbedding(cfg.inputEmbed) # |> gpu
+    embed = Dense(cfg.inputDim => cfg.inputEmbedDim) # |> gpu
+    encode = PositionEmbedding(cfg.inputEmbedDim) # |> gpu
     exec = function(x)
-        we = embed(x)
-        return we .+ encode(we)
+        # julia> loss(src, trg, trg_y)
+        # ┌ Info: [2022-08-23T22:44:04] efor
+        # │   typeof(x) = Array{Float32, 3}
+        # └   typeof(e) = Matrix{Float32} (alias for Array{Float32, 2})
+
+        embx = embed(x)
+        # println("check ", typeof(x), ' ', typeof(embx))
+        # error("stop")
+        encx = encode(embx)
+        return embx .+ encx
     end
     return (;exec, layers=(;embed, encode))
 end
 
 function makeEncoder(cfg, eeExec)
-    encoder1 = Transformer(cfg.inputEmbed, cfg.numHeads, cfg.neuronsPerHead, cfg.hiddenSize) # |> gpu
-    encoder2 = Transformer(cfg.inputEmbed, cfg.numHeads, cfg.neuronsPerHead, cfg.hiddenSize) # |> gpu
+    encoder1 = Transformer(cfg.inputEmbedDim, cfg.numHeads, cfg.neuronsPerHead, cfg.hiddenSize) # |> gpu
+    encoder2 = Transformer(cfg.inputEmbedDim, cfg.numHeads, cfg.neuronsPerHead, cfg.hiddenSize) # |> gpu
     exec = function(x)
         e = eeExec(x)
         # t1 = dropout_pos_enc(t1)
@@ -53,14 +91,16 @@ function makeEncoder(cfg, eeExec)
 end
 
 function makeDecoder(cfg, eeExec)
-    decoder1 = TransformerDecoder(cfg.inputEmbed, cfg.numHeads, cfg.neuronsPerHead, cfg.hiddenSize) # |> gpu
-    decoder2 = TransformerDecoder(cfg.inputEmbed, cfg.numHeads, cfg.neuronsPerHead, cfg.hiddenSize) # |> gpu
-    linear = Dense(cfg.forecastLength * cfg.inputEmbed, cfg.forecastLength) |> gpu
-    exec = function(x, m)
-        e = eeExec(x)
-        t1 = decoder1(e, m)
-        t2 = decoder2(t1, m)
-        flat = Flux.flatten(t2)
+    # decEncer = Dense(cfg.inputDim, cfg.inputEmbedDim) # |> gpu
+    decoder1 = TransformerDecoder(cfg.inputEmbedDim, cfg.numHeads, cfg.neuronsPerHead, cfg.hiddenSize) # |> gpu
+    decoder2 = TransformerDecoder(cfg.inputEmbedDim, cfg.numHeads, cfg.neuronsPerHead, cfg.hiddenSize) # |> gpu
+    linear = Dense(cfg.forecastLen * cfg.inputEmbedDim => cfg.forecastLen) # |> gpu
+    exec = function(shifted, encOut)
+        esh = eeExec(shifted)
+        # esh = decEncer(shifted)
+        t3 = decoder1(esh, encOut)
+        t4 = decoder2(esh, t3)
+        flat = Flux.flatten(t4)
         p = linear(flat)
         return p
     end
@@ -68,56 +108,101 @@ function makeDecoder(cfg, eeExec)
 end
 
 function makeModel(cfg)
-    (;ee, eeLayers) = makeEe(cfg)
-    (;enc, encLayers) = makeEncoder(cfg, ee)
-    (;dec, decLayers) = makeDecoder(cfg, ee)
+    (fee, eeLayers) = makeEe(cfg)
+    (fenc, encLayers) = makeEncoder(cfg, fee)
+    (fdec, decLayers) = makeDecoder(cfg, fee)
     params = Flux.params(eeLayers..., encLayers..., decLayers...)
     opt = ADAM(1e-4)
-    exec = function(x)
-        x1 = enc(x)
-        x2 = dec(x, x1)
+    exec = function(x, shifted)
+        encOut = fenc(x)
+        return fdec(shifted, encOut)
     end
     return (;exec, opt, params)
 end
 
-function loss(x, y)
-    enc = encoder_forward(x)
-    dec = decoder_forward(x, enc)
-    err = Flux.Losses.mse(dec, y)
+function loss(model, x, shifted, y)
+    out = model.exec(x, shifted)
+    err = Flux.Losses.mse(out, y)
     return err
 end
 
-function train!(model, xy)
-    # i = 0
-    # for (x, y) in xys
-        # x, y = todevice(x, y) # move to gpu
-        grad = gradient(()->loss(x, y), ps)
-        update!(model.optimizer, model.params, grad)
-    #     i += 1
-    #     if i % 8 == 0
-    #         l = loss(x, y)
-    #         println("loss = $l")
-    #     end
-    # end
+function train!(cfg, model, fulls)
+    mfulls = reduce(hcat, fulls)
+    global batches = Flux.Data.DataLoader(mfulls; batchsize=cfg.batchSize)
+    for i in 1:10
+        for batch in batches
+            sz = size(batch)
+            seq = reshape(batch, (cfg.inputDim, sz[1], sz[2])) # size(seq) = (inputDim, fullLen, batchSize)
+            x, shifted, y = splitSeq(cfg.inputLen, cfg.forecastLen, seq)
+            # devx, devshifted, devy = todevice(x, shifted, y) # move to gpu
+            grad = gradient(()->loss(model, x, shifted, y), model.params)
+            update!(model.opt, model.params, grad)
+
+            # if i % 8 == 0
+                l = loss(model, x, shifted, y)
+                println("loss = $l")
+            # end
+        end
+    end
 end
 
-function check(model, xy)
+function check(model, fulls)
+    mfulls = reduce(hcat, fulls)
+    batches = Flux.Data.DataLoader(mfulls; batchsize=cfg.batchSize)
+    for batch in batches
+        sz = size(batch)
+        seq = reshape(batch, (cfg.inputDim, sz[1], sz[2])) # size(seq) = (inputDim, fullLen, batchSize)
+        x, shifted, y = splitSeq(cfg.inputLen, cfg.forecastLen, seq)
+        # size(x) = (inputDim, seqLen, batchSize)
+        # size(shifted) = (inputDim, forecastLength, batchSize)
+        # size(y) = (inputDim, forecastLength, batchSize)
+
+        # devx, devshifted, devy = todevice(x, shifted, y) # move to gpu
+        grad = gradient(()->loss(model, x, shifted, y), model.params)
+        update!(model.opt, model.params, grad)
+
+        # if i % 8 == 0
+            l = loss(model, x, shifted, y)
+            println("loss = $l")
+        # end
+    end
 end
 
-function splitSeq(sequence, enc_seq_len, target_seq_len)
-    # sequence has 3 dims: input size, sequence+target length, batch size
-    fullLen is seq + targ len
+function prediction(test_data)
+	seq = Array{Float32}[]
+	test_loader = Flux.Data.DataLoader(test_data, batchsize=32)
+	for x in test_loader
+		sz = size(x)
+		sub_sequence = reshape(x,(1,sz[1],sz[2]))
+		#@show enc_seq_len
+		ix = sub_sequence[:,1:enc_seq_len+output_sequence_length,:]
+		#@show size(x),size(ix)
+		ix = todevice(ix)
+		enc = encoder_forward(ix[:,1:enc_seq_len,:])
+		trg = ix[:,enc_seq_len:sz[1]-1,:]
+		#@show size(trg),size(enc)
+		dec = decoder_forward(trg, enc)
+		#@show size(dec[end,:])
+		seq = vcat(seq,collect(dec[end,:]))
+	end
+	return seq
+end
+
+
+
+function splitSeq(inputLen, forecastLen, sequence)
+    # sequence has 3 dims: inputDim, fullLen, batchSize
 	fullLen = size(sequence)[2]
-	@assert fullLen == enc_seq_len + target_seq_len
-	src = sequence[:,1:enc_seq_len,:]
-	trg = sequence[:,enc_seq_len:fullLen-1,:]
-	@assert size(trg)[2] == target_seq_len
-	trg_y = sequence[:,fullLen-target_seq_len+1:fullLen,:]
-	@assert size(trg_y)[2] == target_seq_len
-	if size(trg_y)[1] == 1
-	 	return src, trg, dropdims(trg_y; dims=1)
+	@assert fullLen == inputLen + forecastLen
+	x = sequence[:,1:inputLen,:]
+	shifted = sequence[:,inputLen:fullLen-1,:]
+	@assert size(shifted)[2] == forecastLen
+	y = sequence[:,fullLen-forecastLen+1:fullLen,:]
+	@assert size(y)[2] == forecastLen
+	if size(y)[1] == 1
+	 	return x, shifted, dropdims(y; dims=1)
 	else
-		return src, trg, trg_y
+		return x, shifted, y
 	end
 end
 
