@@ -75,6 +75,8 @@ dropout_pos_enc = Dropout(p) |> gpu
 #linear = Positionwise(Dense(dim_val, output_sequence_length))
 linear = Dense(output_sequence_length*dim_val,output_sequence_length) |> gpu
 function encoder_forward(x)
+    println("ef ", typeof(x), ' ', typeof(encoder_input_layer))
+    error("stop")
     x = encoder_input_layer(x)
     e = positional_encoding_layer(x)
     t1 = x .+ e

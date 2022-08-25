@@ -72,4 +72,23 @@ function ntvFromVnt(vnt::Vector{NamedTuple})::NamedTuple
     return ntv
 end
 
+export roll2
+function roll2(f, iter)
+    prev, rest = Iterators.peel(iter)
+    for x in rest
+        f(prev, x)
+        prev = x
+    end
+end
+
+export mapRoll2
+function mapRoll2(f, iter)
+    prev, rest = Iterators.peel(iter)
+    return map(rest) do x
+        res = f(prev, x)
+        prev = x
+        return res
+    end
+end
+
 end
