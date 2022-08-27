@@ -145,8 +145,8 @@ function SH.draw(vals; kws...)
     return fig
 end
 
-function SH.draw!(vals)
-    lines!(vals)
+function SH.draw!(vals; kws...)
+    lines!(vals; kws...)
 end
 
 function drawDots(vals; kws...)

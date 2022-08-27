@@ -1,34 +1,46 @@
 module TryFluxMulti
 using Flux
+using CUDA
+
+Base.IteratorSize(::Type{<:CuIterator}) = Base.SizeUnknown()
 
 const N = Float32
 
-# TYPE_ARR = Array
-INPUT_WIDTH = 5
-INPUT_LEN = 70
-INPUT_SIZE = (INPUT_WIDTH, INPUT_LEN)
-OUTPUT_WIDTH = INPUT_WIDTH
-OUTPUT_LEN = 20
-OUTPUT_SIZE = (OUTPUT_WIDTH, OUTPUT_LEN)
-INPUT = Array{N, length(INPUT_SIZE)}
-OUTPUT = Array{N, length(OUTPUT_SIZE)}
-BATCH_COUNT = 10
-BATCH_SIZE = 64
-BATCH_INPUT_SIZE = (INPUT_SIZE..., BATCH_SIZE)
-BATCH_OUTPUT_SIZE = (OUTPUT_SIZE..., BATCH_SIZE)
-BATCH_INPUT = Array{eltype(INPUT), max(1,ndims(INPUT))+1}
-BATCH_OUTPUT = Array{eltype(OUTPUT), max(1,ndims(OUTPUT))+1}
-BatchBufferInput = BATCH_INPUT(undef, INPUT_WIDTH, INPUT_LEN, BATCH_SIZE)
-BatchBufferOutput = BATCH_OUTPUT(undef, OUTPUT_WIDTH, OUTPUT_LEN, BATCH_SIZE)
+function config()
+    inputWidth = 5
+    inputLen = 70
+    outputLen = 2
+    batchCount = 100
+    batchSize = 128
+
+    inputSize = (inputWidth, inputLen)
+    outputWidth = inputWidth
+    outputSize = (outputWidth, outputLen)
+    InputType = Array{N, length(inputSize)}
+    OutputType = Array{N, length(outputSize)}
+
+    batchInputSize = (inputSize..., batchSize)
+    batchOutputSize = (outputSize..., batchSize)
+    BatchInputType = Array{eltype(InputType), max(1,ndims(InputType))+1}
+    BatchOutputType = Array{eltype(OutputType), max(1,ndims(OutputType))+1}
+    bufIn = BatchInputType(undef, inputWidth, inputLen, batchSize)
+    bufOut = BatchOutputType(undef, outputWidth, outputLen, batchSize)
+
+    return (; inputWidth, inputLen, outputLen, batchCount, batchSize,
+            inputSize, outputWidth, outputSize,
+            batchInputSize, batchOutputSize, batchBufferInput, batchBufferOutput,
+            bufIn, bufOut)
+end
 
 function run()
-    global model = makeModel2()
-    opt = Descent()
-    train(model, opt)
+    cfg = config()
+    global model = makeModel(cfg)
+    opt = Adam()
+    train(cfg, model, opt)
     return model
 end
 
-function valueAt(seqIndex::Int)::NTuple{INPUT_WIDTH,N}
+function valueAt(seqIndex::Int) # ::NTuple{cfg.inputWidth,N}
     s5 = sin(2π*seqIndex/100)
     s4 = sin(2π*seqIndex/10)
     s3 = sin((s5 > 0 ? -1 : 1) * 2π*seqIndex/200)
@@ -37,99 +49,104 @@ function valueAt(seqIndex::Int)::NTuple{INPUT_WIDTH,N}
     return (s1, s2, s3, s4, s5)
 end
 
-function batchInput!(buf::BATCH_INPUT, seqStart::Int)
-    for b in 1:BATCH_SIZE
-        for i in 1:INPUT_LEN
+function batchInput!(buf, seqStart::Int) # cfg.batchInputType
+    _, len, batchSize = size(buf)
+    for b in 1:batchSize
+        for i in 1:len
             buf[:,i,b] .= valueAt(b + seqStart + i)
         end
     end
     return
 end
 
-function batchOutput!(buf::BATCH_OUTPUT, seqStart::Int)
-    seqStart += INPUT_LEN
-    for b in 1:BATCH_SIZE
-        for i in 1:OUTPUT_LEN
+function batchOutput!(buf, seqStart::Int) # cfg.batchOutputType
+    _, len, batchSize = size(buf)
+    seqStart += len
+    for b in 1:batchSize
+        for i in 1:len
             buf[:,i,b] .= valueAt(b + seqStart + i)
         end
     end
     return
 end
 
-function batchTrain(i::Int)::Tuple{BATCH_OUTPUT,BATCH_OUTPUT}
-    batchInput!(BatchBufferInput, i)
-    batchOutput!(BatchBufferOutput, i)
-    return (BatchBufferInput, BatchBufferOutput)
+function batchTrain(model, i::Int)::Tuple{BATCH_OUTPUT,BATCH_OUTPUT}
+    batchInput!(model.bufIn, i)
+    batchOutput!(model.bufOut, i)
+    return (model.bufIn, model.bufOut)
 end
 
-function batchTest(i::Int)::Tuple{BATCH_OUTPUT,BATCH_OUTPUT}
+function batchTest(model, i::Int)::Tuple{BATCH_OUTPUT,BATCH_OUTPUT}
     ind = i+7171
-    batchInput!(BatchBufferInput, ind)
-    batchOutput!(BatchBufferOutput, ind)
-    return (BatchBufferInput, BatchBufferOutput)
+    batchInput!(model.bufIn, ind)
+    batchOutput!(model.bufOut, ind)
+    return (model.bufIn, model.bufOut)
 end
 
-# unsq(x) = Flux.unsqueeze(x; dims=INPUT_SIZE)
-# (2,3,2)
 unflatten(dims::NTuple{N,Int}) where N = x -> reshape(x, dims)
 
-function makeModel()
+function makeModel1()
     exec = Chain(Flux.flatten,
-          Dense(INPUT_WIDTH * INPUT_LEN => OUTPUT_WIDTH * OUTPUT_LEN),
-          unflatten(BATCH_OUTPUT_SIZE))
+          Dense(cfg.inputWidth * cfg.inputLen => cfg.outputWidth * cfg.outputLen),
+          unflatten(cfg.batchOutputSize))
     params = Flux.params(exec)
     loss(x::Union{INPUT,BATCH_INPUT}, y::Union{OUTPUT,BATCH_OUTPUT}) = Flux.Losses.mse(exec(x), y)
     return (;exec, loss, params)
 end
 
-function makeModel2()
+function makeModel(cfg)
     exec = Chain(Flux.flatten,
-          Dense(INPUT_WIDTH * INPUT_LEN => 4096),
-          Dense(4096 => OUTPUT_WIDTH * OUTPUT_LEN),
-        #   Dense(INPUT_WIDTH * INPUT_LEN => OUTPUT_WIDTH * OUTPUT_LEN),
-          unflatten(BATCH_OUTPUT_SIZE))
+          Dense(cfg.inputWidth * cfg.inputLen => 4096),
+          Dense(4096 => 4096),
+          Dense(4096 => cfg.outputWidth * cfg.outputLen),
+          unflatten(cfg.batchOutputSize)) |> gpu
     params = Flux.params(exec)
-    loss(x::Union{INPUT,BATCH_INPUT}, y::Union{OUTPUT,BATCH_OUTPUT}) = Flux.Losses.mse(exec(x), y)
-    return (;exec, loss, params)
+    # loss(x::Union{<:INPUT,<:BATCH_INPUT}, y::Union{<:OUTPUT,<:BATCH_OUTPUT})::Float32 = Flux.Losses.mse(exec(x), y)
+    loss(x, y) = Flux.Losses.mse(exec(x), y)
+    lossm(x, y, mexec) = Flux.Losses.mse(mexec(x), y)
+    return (;exec, loss, params, lossm)
 end
 
-function train(model, opt)
-    dataIter = (batchTrain(i) for i in 1:BATCH_COUNT)
-    progress = trainProgress(model, first(dataIter), .01, .1)
-    for _ in 1:1000
+function train(cfg, model, opt)
+    dataIter = CuIterator(batchTrain(cfg, i) for i in 1:BATCH_COUNT)
+    dataCheck = deepcopy(batchTrain(cfg, 1)) |> gpu
+    progress = trainProgress(model, dataCheck, .000001, 1)
+    for i in 1:1000
         Flux.train!(model.loss, model.params, dataIter, opt)
-        if progress()
+        if progress(i)
             break
         end
     end
-    println("Last train loss: ", model.loss(first(dataIter)...))
+    println("Last train loss: ", model.loss(dataCheck...))
 end
 
 function trainProgress(model, dataCheck, lossTarget, seconds)
-    return Flux.throttle(seconds) do
+    return Flux.throttle(seconds) do i
         los = model.loss(dataCheck...)
+        println("$(i): loss = ", los)
         return los < lossTarget
     end
 end
 
 import DrawUtil:draw,draw!
-function test(model)
+function test(cfg, model)
     println("Testing")
-    dataIter = (batchTest(i) for i in 1:BATCH_COUNT)
+    execCpu = model.exec |> cpu
+    dataIter = (batchTest(model, i) for i in 1:BATCH_COUNT)
     err = 0.0
     len = 0
-    actual = Array{N, length(OUTPUT_SIZE)}(undef, OUTPUT_WIDTH, 0) # fill(0, length(OUTPUT_SIZE))...)
-    predict = Array{N, length(OUTPUT_SIZE)}(undef, OUTPUT_WIDTH, 0) # fill(0, length(OUTPUT_SIZE))...)
+    actual = cfg.InputType(undef, cfg.outputWidth, 0)
+    predict = cfg.OutputType(undef, cfg.outputWidth, 0)
     for b in dataIter
-        err += model.loss(b...)
+        err += model.lossm(b..., execCpu)
         len += 1
         actual = hcat(actual, b[2][:,:,end])
-        predict = hcat(predict, model.exec(b[1])[:,:,end])
+        predict = hcat(predict, execCpu(b[1])[:,:,end])
     end
     errMean = err / len
     println("Testing mean loss (len=$(len)) = $(errMean)")
-    display(draw(actual[1,:]))
-    draw!(predict[1,:])
+    display(draw(actual[1,:]; color=:green))
+    draw!(predict[1,:]; color=:yellow)
     return (actual, predict)
 end
 
