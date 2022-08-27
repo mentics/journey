@@ -36,9 +36,9 @@ function submitLive(legs, primitDir, mktqt)
     return tid
 end
 
-function closeTrade(optQuoter, trade::Trade{<:Closeable}, primitDir::PriceT; pre=true, legsInd=nothing, skipMin=false)::Union{Nothing,Dict{String,Any}}
+function closeTrade(optQuoter, trade::Trade{<:Closeable}, primitDir::PriceT; pre=true, legs=nothing, skipMin=false)::Union{Nothing,Dict{String,Any}}
     inLegs = getLegs(trade)
-    inLegs = isnothing(legsInd) ? inLegs : inLegs[legsInd]
+    inLegs = isnothing(legs) ? inLegs : inLegs[legs]
     veri = verifyPoss(inLegs)
     checkTradeLegs(inLegs)
     if !intest() && false in veri # TODO: enhance test to set positions properly to test this part?

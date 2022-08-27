@@ -24,17 +24,17 @@ s.runRet([d.close for d in dataDaily()]);
 function config()
     return (;
         inputDim = 1,
-        inputEmbedDim = 256,
-        numHeads = 4,
-        neuronsPerHead = 32,
-        hiddenSize = 512,
-        inputLen = 100,
-        forecastLen = 10,
-        fullLen = 100 + 10,
+        inputEmbedDim = 512,
+        numHeads = 8,
+        neuronsPerHead = 64,
+        hiddenSize = 2048,
+        inputLen = 40,
+        forecastLen = 2,
+        fullLen = 40 + 2,
 
-        batchSize = 128,
-        trainIterMax = 2000,
-        trainLossTarget = .1^2,
+        batchSize = 32,
+        trainIterMax = 1000,
+        trainLossTarget = .1^3,
         dataMaxLength = 2000,
         dataTrainRatio = 0.7
     )
@@ -47,10 +47,11 @@ retMakeData(prices, cfg=config()) = splitData(cfg, seqToFulls(cfg.fullLen, retMa
 
 function retRunTrain(data, cfg=config(); reset=false)
     # TODO: take random samples for train and test so no time bias
-    (!reset && hasproperty(@__MODULE__, :model)) || ( println("Creating new model") ; global model = makeModel(cfg) )
+    (!reset && isdefined(@__MODULE__, :model)) || ( println("Creating new model") ; global model = makeModel(cfg) )
     train!(cfg, model, data[1])
     return (cfg, model, data)
 end
+what() = isdefined(@__MODULE__, :model)
 
 function retRunTest(model, data, cfg=config())
     test(cfg, model, data[2])
@@ -194,7 +195,7 @@ function train!(cfg, model, fulls)
     println("Training")
     mfulls = reduce(hcat, fulls)
     global batches = Flux.Data.DataLoader(mfulls; batchsize=cfg.batchSize)
-    los = 100.0
+    println("Iterating")
     for i in 1:cfg.trainIterMax
         for batch in batches
             sz = size(batch)
@@ -202,13 +203,21 @@ function train!(cfg, model, fulls)
             floss = model.floss(seq)
             grad = gradient(floss, model.params)
             update!(model.opt, model.params, grad)
-
-            if i % 100 == 0
-                los = floss()
-                println("loss = $los")
-            end
         end
-        los > cfg.trainLossTarget || break
+        if i % 10 == 0
+            err = 0.0
+            len = 0
+            for batch in batches
+                sz = size(batch)
+                seq = reshape(batch, (cfg.inputDim, sz[1], sz[2])) # size(seq) = (inputDim, fullLen, batchSize)
+                err += model.floss(seq)()
+                len += 1
+            end
+            errAvg = err / len
+            println("$(i): loss = $(errAvg)")
+            flush(stdout)
+            errAvg > cfg.trainLossTarget || ( println("Reached target, stopping.") ; break )
+        end
     end
 end
 

@@ -381,3 +381,8 @@ end
 function LibPQ.pqparse(::Type{Decimal}, str::AbstractString)
 	parse(Decimal, lowercase(str))
 end
+ ================================
+
+# 3d matrix:
+m3 = cat([1 2 3; 1 2 3], [4 5 6; 4 5 6]; dims=3)
+reshape(reshape(m3, (2*3, 2)), (2,3,2))
