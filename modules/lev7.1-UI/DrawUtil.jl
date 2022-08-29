@@ -162,12 +162,12 @@ function drawDots!(vals; kws...)
 end
 
 export drawBars, drawBars!
-function drawBars(vals; kws...)
-    fig = barplot(vals; kws...)
+function drawBars(args...; kws...)
+    fig = barplot(args...; kws...)
     return fig
 end
-function drawBars!(vals; kws...)
-    fig = barplot!(vals; kws...)
+function drawBars!(args...; kws...)
+    fig = barplot!(args...; kws...)
     return fig
 end
 #endregion

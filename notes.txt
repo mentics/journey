@@ -22,6 +22,7 @@ test multivariate transformer learning by adding another input that randomly swi
 [sine(2π*i/100) for i in 1000]
 eg: but with random instead of periodic: [sin((i % 40 > 20 ? -1 : 1) * 2π*i/100) for i in 1:1000]
 
+Doing FFT analysis on time series is useful to find cycles
 
 fix close range in trade output to ignore closed legs
 
