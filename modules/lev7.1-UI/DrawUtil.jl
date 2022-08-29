@@ -139,7 +139,7 @@ function SH.draw(xs, ys; kws...)
 end
 
 function SH.draw(vals; kws...)
-    closeWin()
+    # closeWin()
     fig = lines(vals; kws...)
     DataInspector(fig.figure)
     return fig
