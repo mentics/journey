@@ -88,6 +88,7 @@ function look(sym; all=false)
         else
             # TODO: use IV to figure out how far out to go?
             # or could maybe get 52 week range
+            ratio = .94
             startI = findfirst(oq -> getStrike(oq) > ratio * underBid, oqs)
             !isnothing(startI) || continue
             range = (startI-5):(startI-1)

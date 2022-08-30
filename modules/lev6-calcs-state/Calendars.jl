@@ -75,16 +75,16 @@ function init()
 end
 const TestData = Dict()
 function __init__()
-  println("Running init")
-  @assert isempty(TestData)
-  TestData[1] = "1"
-  if ccall(:jl_generating_output, Cint, ()) != 1
-    println("We are actual loading the module for runtime, not caching code to disk. TestData keys: ", keys(TestData))
-    TestData[2] = "2"
-else
-    println("Hit the else. TestData keys: ", keys(TestData))
-    TestData[3] = "3"
-  end
+    println("Running init")
+    @assert isempty(TestData)
+    TestData[1] = "1"
+    if ccall(:jl_generating_output, Cint, ()) != 1
+        println("We are actual loading the module for runtime, not caching code to disk. TestData keys: ", keys(TestData))
+        TestData[2] = "2"
+    else
+        println("Hit the else. TestData keys: ", keys(TestData))
+        TestData[3] = "3"
+    end
 end
 
 # function __init__()

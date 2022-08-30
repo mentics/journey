@@ -1,14 +1,14 @@
 module SeekingAlpha
 using Dates, Tables, HTTP, JSON3
-import XLSX
+# import XLSX
 using BaseTypes
 using DateUtil, FileUtil, DictUtil
 
 ActiveSyms = [] # ["BHC","BLUE","CLNN","CLOV","CTIC","INVZ","NKLA","NNVC","NVTA","PAYO","SENS","TSP","WVE","FSR","WKHS","WTI","DNMR"]
 
-BadPricing = ["BAX", "OLN"]
+BadPricing = []#"BAX", "OLN"]
 Ignore = ["SNDL","YANG","MUX","QD","RIOT","GOTU","TAL","ACB","HUT","IQ","JMIA","ABEV"]
-IgnoreTemp = ["CORZ","CLSK"]
+IgnoreTemp = []#"CORZ","CLSK"]
 isGlobalIgnore(sym) = sym in vcat(BadPricing, Ignore, IgnoreTemp, ActiveSyms)
 
 const BaseDir = mkpath(joinpath("C:/Users/joel/Downloads", "journey"))
@@ -54,15 +54,15 @@ end
 
 filtWeeklys(s::AStr) = haskey(Weeklys, s)
 function filt1(s::AStr)
-    return Quotes[s]["average_volume"] > 1000000
+    return Quotes[s]["average_volume"] > 100000 && Quotes[s]["prevclose"] < 57.0
 end
 
 
 
 #region SaOld
-const Combined = Dict{String,Dict{Symbol,Any}}()
-const Syms = String[]
-const Cands = Dict{String,Dict{Symbol,Any}}()
+# const Combined = Dict{String,Dict{Symbol,Any}}()
+# const Syms = String[]
+# const Cands = Dict{String,Dict{Symbol,Any}}()
 
 # function getCandSyms(filt=filt1; up=false)
 #     loadWeeklys()
@@ -91,41 +91,41 @@ const Cands = Dict{String,Dict{Symbol,Any}}()
 #     return true
 # end
 
-const Pages = Dict{String,Dict{String,Dict{Symbol,Any}}}()
-const PageNames = ["summary", "dividends", "earnings"]
-function loadSa(;up=false)
-    !up || resetSa()
+# const Pages = Dict{String,Dict{String,Dict{Symbol,Any}}}()
+# const PageNames = ["summary", "dividends", "earnings"]
+# function loadSa(;up=false)
+#     !up || resetSa()
 
-    xlfn = sort!(filter!(x -> occursin("sa-" * PageNames[1], x), readdir(BaseDir; join=true)); rev=true, by=x -> unix2datetime(mtime(x)))[1]
-    if unix2datetime(mtime(xlfn)) < (now(UTC) - Hour(8))
-        error("Sa file not downloaded today. Go to: https://seekingalpha.com/screeners/922a27ae98-To-Download")
-    end
-    isempty(Combined) || return
-    println("Loading sa")
+#     xlfn = sort!(filter!(x -> occursin("sa-" * PageNames[1], x), readdir(BaseDir; join=true)); rev=true, by=x -> unix2datetime(mtime(x)))[1]
+#     if unix2datetime(mtime(xlfn)) < (now(UTC) - Hour(8))
+#         error("Sa file not downloaded today. Go to: https://seekingalpha.com/screeners/922a27ae98-To-Download")
+#     end
+#     isempty(Combined) || return
+#     println("Loading sa")
 
-    for pageName in PageNames
-        xlfn = sort!(filter!(x -> occursin("sa-" * pageName, x), readdir(BaseDir; join=true)); rev=true, by=x -> unix2datetime(mtime(x)))[1]
+#     for pageName in PageNames
+#         xlfn = sort!(filter!(x -> occursin("sa-" * pageName, x), readdir(BaseDir; join=true)); rev=true, by=x -> unix2datetime(mtime(x)))[1]
 
-        XLSX.openxlsx(xlfn; mode="rw") do xf
-            sheet = xf[1]
-            if !startswith(sheet[1,1], pageName)
-                for i in 1:100
-                    x = sheet[1,i]
-                    !ismissing(x) || break
-                    sheet[1,i] = pageName * filter(!isspace, x)
-                end
-            end
-            table = rowtable(XLSX.gettable(sheet))
-            Pages[pageName] = Dict{String,Dict{String,Any}}()
-            toDict!(Pages[pageName], table, Symbol(pageName * "Symbol"))
-        end
-    end
+#         XLSX.openxlsx(xlfn; mode="rw") do xf
+#             sheet = xf[1]
+#             if !startswith(sheet[1,1], pageName)
+#                 for i in 1:100
+#                     x = sheet[1,i]
+#                     !ismissing(x) || break
+#                     sheet[1,i] = pageName * filter(!isspace, x)
+#                 end
+#             end
+#             table = rowtable(XLSX.gettable(sheet))
+#             Pages[pageName] = Dict{String,Dict{String,Any}}()
+#             toDict!(Pages[pageName], table, Symbol(pageName * "Symbol"))
+#         end
+#     end
 
-    for sym in keys(Pages[PageNames[1]])
-        isnothing(findfirst(x -> !haskey(Pages[x], sym), PageNames[2:end])) || continue
-        Combined[sym] = Dict(Iterators.flatten(map(x -> x[sym], values(Pages))))
-    end
-end
+#     for sym in keys(Pages[PageNames[1]])
+#         isnothing(findfirst(x -> !haskey(Pages[x], sym), PageNames[2:end])) || continue
+#         Combined[sym] = Dict(Iterators.flatten(map(x -> x[sym], values(Pages))))
+#     end
+# end
 #endregion
 
 #region PenWek
@@ -231,8 +231,11 @@ function getData(type, syms)
         for part in Iterators.partition(todo, 150)
             global procJson = loadData(type, part)
             procDict(dict, lookup, procJson)
-            skipped = filter(s -> !haskey(dict, s), syms)
+            skipped = filter(s -> !haskey(dict, s), part)
+            isempty(skipped) || println("skipped: ", skipped)
+            # error("stop")
             append!(notFound, skipped)
+            unique!(notFound)
             saveData(type)
         end
     end
@@ -385,7 +388,8 @@ isValue(s::AStr) = !isempty(s) && !isnothing(findfirst(!isspace, s))
 using TranscodingStreams, CodecZlib
 function procResp(resp)
     global raw = resp.body
-    content = transcode(CodecZlib.GzipDecompressor, raw)
+    # content = transcode(CodecZlib.GzipDecompressor, raw)
+    content = String(raw)
     json = JSON3.read(content, Dict)
     if !haskey(json, "data")
         @error "no data key" content

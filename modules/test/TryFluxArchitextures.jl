@@ -45,8 +45,8 @@ function run1()
 
     function loss(x, y)
         # println("loss: ", typeof(x), "\n", typeof(y))
+        # Flux.reset!(model)
         l = Flux.mse(model(x), y')
-        Flux.reset!(model)
         return l
     end
 

@@ -3,7 +3,8 @@ module ModuleUtil
 export findCycles
 
 function findCycles()
-    isdefined(@__MODULE__, :MAPPING) || makeMapping()
+    # isdefined(@__MODULE__, :MAPPING) ||
+    makeMapping()
     findCycle(MAPPING, "root", keys(MAPPING), 1)
 end
 
