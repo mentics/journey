@@ -1,5 +1,6 @@
 module TryFluxMulti
 using Flux
+import MLUtil
 using CUDA
 
 Base.IteratorSize(::Type{<:CuIterator}) = Base.SizeUnknown()
@@ -83,12 +84,10 @@ function batchTest(model, i::Int)::Tuple{BATCH_OUTPUT,BATCH_OUTPUT}
     return (model.bufIn, model.bufOut)
 end
 
-unflatten(dims::NTuple{N,Int}) where N = x -> reshape(x, dims)
-
 function makeModel1()
     exec = Chain(Flux.flatten,
           Dense(cfg.inputWidth * cfg.inputLen => cfg.outputWidth * cfg.outputLen),
-          unflatten(cfg.batchOutputSize))
+          MLUtil.unflatten(cfg.batchOutputSize))
     params = Flux.params(exec)
     loss(x::Union{INPUT,BATCH_INPUT}, y::Union{OUTPUT,BATCH_OUTPUT}) = Flux.Losses.mse(exec(x), y)
     return (;exec, loss, params)
@@ -99,7 +98,7 @@ function makeModel(cfg)
           Dense(cfg.inputWidth * cfg.inputLen => 4096),
           Dense(4096 => 4096),
           Dense(4096 => cfg.outputWidth * cfg.outputLen),
-          unflatten(cfg.batchOutputSize)) |> gpu
+          MLUtil.unflatten(cfg.batchOutputSize)) |> gpu
     params = Flux.params(exec)
     # loss(x::Union{<:INPUT,<:BATCH_INPUT}, y::Union{<:OUTPUT,<:BATCH_OUTPUT})::Float32 = Flux.Losses.mse(exec(x), y)
     loss(x, y) = Flux.Losses.mse(exec(x), y)
