@@ -12,6 +12,15 @@ drawBars(freqXs, freqYs)
 
 # ============
 
+sampleRate = 100
+rets = rand(1000)
+
+freqXs = fftshift(fftfreq(length(rets), sampleRate))
+freqYs = rets |> fft |> fftshift .|> abs
+drawBars(freqXs, freqYs)
+
+# ============
+
 sampleRate = 1000
 dailys = dataDaily()
 closes = [d.close for d in dailys]
