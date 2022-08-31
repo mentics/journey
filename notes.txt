@@ -8,7 +8,7 @@ r = j.ress[i][1]
 xdr(i, r.lms)
 xmet(i, r.lms)
 xkel(i, r.lms)
-so(j.r.lms)
+so(r.lms)
 solr(r.lms, primitDir)
 
 2) Look for trades to close early by running:
@@ -18,6 +18,8 @@ CmdTrading.findTradesToClose()
 #### Not sure doing short puts is worth the bother other than it's one of the few things we can do in the brokerage link account, which is about $100k we need to manage. ####
 2) Look for short puts to buy with apr > .5
 ll = c.lookAll()
+
+Need to move adjust back into calcutil.calcmetrics beacuse xmet and friends
 
 test multivariate transformer learning by adding another input that randomly switches between 1 and -1 and when -1 it changes the direction of the sine wave
 [sine(2π*i/100) for i in 1000]

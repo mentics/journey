@@ -37,11 +37,11 @@ xlms(ex::Int, add::Coll{LegMeta})::Vector{LegMeta} = concat(xlms(ex), add)
 xret(ex::Int, curp::Currency=market().curp)::Ret = cret(xlms(ex), curp)
 xret(ex::Int, add::Coll{LegMeta}, curp::Currency=market().curp)::Ret = cret(xlms(ex, add), curp)
 
-xmet(ex::Int)::NamedTuple = cmet(xprob(ex), xret(ex))
-function xmet(ex::Int, add::Coll{LegMeta})
+xmet(ex::Int, curp::Currency=market().curp)::NamedTuple = cmet(xprob(ex), xret(ex, curp))
+function xmet(ex::Int, add::Coll{LegMeta}, curp::Currency=market().curp)
     prob = xprob(ex)
     return (merge((;type=z[1]), z[2]) for z in zip((:from, :add, :both),
-        (xmet(ex), cmet(prob, cret(add)), cmet(prob, xret(ex, add)))))
+        (xmet(ex, curp), cmet(prob, cret(add, curp)), cmet(prob, xret(ex, add, curp)))))
 end
 
 xkel(ex::Int, curp::Currency=market().curp)::Float64 = ckel(xprob(ex), xret(ex, curp))

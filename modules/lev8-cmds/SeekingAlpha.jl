@@ -7,7 +7,7 @@ using DateUtil, FileUtil, DictUtil
 ActiveSyms = [] # ["BHC","BLUE","CLNN","CLOV","CTIC","INVZ","NKLA","NNVC","NVTA","PAYO","SENS","TSP","WVE","FSR","WKHS","WTI","DNMR"]
 
 BadPricing = []#"BAX", "OLN"]
-Ignore = ["SNDL","YANG","MUX","QD","RIOT","GOTU","TAL","ACB","HUT","IQ","JMIA","ABEV"]
+Ignore = ["SNDL","YANG","MUX","QD","RIOT","GOTU","TAL","ACB","HUT","IQ","JMIA","ABEV","JDST"]
 IgnoreTemp = []#"CORZ","CLSK"]
 isGlobalIgnore(sym) = sym in vcat(BadPricing, Ignore, IgnoreTemp, ActiveSyms)
 
@@ -54,7 +54,12 @@ end
 
 filtWeeklys(s::AStr) = haskey(Weeklys, s)
 function filt1(s::AStr)
-    return Quotes[s]["average_volume"] > 100000 && Quotes[s]["prevclose"] < 57.0
+    if isnothing(Quotes[s]["prevclose"])
+        println("No prevclose for ", s, ", skipping.")
+        return false
+    else
+        return Quotes[s]["average_volume"] > 100000 && Quotes[s]["prevclose"] < 57.0
+    end
 end
 
 

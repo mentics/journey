@@ -18,9 +18,9 @@ const N = Float64
 function train!(model, loss, cfg, seqm)
     batchIter = makeBatchIter(cfg, seqm)
     params = Flux.params(model)
-    opt = Adam()
+    opt = Flux.Adam()
     for b in batchIter
-        grad = gradient(() -> loss(b), params)
+        grad = Flux.gradient(() -> loss(b), params)
         update!(opt, params, grad)
         cb()
     end

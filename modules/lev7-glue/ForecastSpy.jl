@@ -1,7 +1,8 @@
 module ForecastSpy
 import Dates:Date
-import Forecast:N
+import Flux
 using BaseTypes
+import Forecast:N
 
 #==
 Input:
@@ -29,7 +30,7 @@ end
 function config()
     return (;
         inputWidth = 12,
-        inputLen = 30,
+        inputLen = 70,
         outputInds = [1],
         castLen = 20,
         binCnt = 100,
@@ -82,13 +83,19 @@ end
 prep1(x, xp) = 100.0 * (x / xp)
 
 function makeModel(cfg)
-    model = Chain(Flux.flatten,
-          Dense(cfg.inputWidth * cfg.inputLen => 4096),
-          Dense(4096 => cfg.binCnt * cfg.castLen),
-          softmax)
+    model = Flux.Chain(
+                Flux.flatten,
+                Flux.Dense(cfg.inputWidth * cfg.inputLen => 4096),
+                Flux.Dense(4096 => cfg.binCnt * cfg.castLen),
+                Flux.softmax,
+                x -> reshape(x, (cfg.binCnt, cfg.castLen, cfg.batchSize)))
     function loss(batch)
         x, y = batch
-        Flux.Losses.mse(model(x), y)
+        @assert size(x) == (cfg.inputWidth, cfg.inputLen, cfg.batchSize)
+        @assert size(y) == (length(cfg.outputInds), cfg.castLen, cfg.batchSize) "size(y) == $(size(y))"
+        global pred = model(x)
+        @show typeof(pred) size(pred)
+        Flux.Losses.mse(pred, y)
     end
     return (;model, loss)
 end
