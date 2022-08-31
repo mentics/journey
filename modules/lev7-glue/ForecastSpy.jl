@@ -1,8 +1,8 @@
 module ForecastSpy
 import Dates:Dates,Date
-import Flux
+import Flux:Flux #,gpu
 using BaseTypes
-import Forecast:Forecast,N
+import Forecast:Forecast,N1
 
 #==
 # TODO: can't make equal sized bins: too much future info and maybe not as useful for low prob outliers
@@ -14,12 +14,19 @@ b1 = first(batchIter)
 fs.run()
 grad = Flux.gradient(() -> fs.loss(b1), fs.params)
 
-
-xy1 = fc.singleXY(fs.cfg, fs.seqm, 1)
+i = 2
+xy1 = fc.singleXY(fs.cfg, fs.seqm, i)
 fs.loss(xy1)
 
 argmax(fs.model(xy1[1]); dims=1)
 argmax(fs.yoh(fs.cfg, xy1[2]); dims=1)
+
+xy1 = fc.singleXY(fs.cfg, fs.seqm, 1);
+argmax(fs.model(xy1[1]); dims=1)
+xy1 = fc.singleXY(fs.cfg, fs.seqm, 2);
+argmax(fs.model(xy1[1]); dims=1)
+xy1 = fc.singleXY(fs.cfg, fs.seqm, 3);
+argmax(fs.model(xy1[1]); dims=1)
 
 Input:
     SPY: O,H,L,C ./ prevC: log ret bins
@@ -39,13 +46,13 @@ Layers:
 function config()
     return (;
         inputWidth = 12,
-        inputLen = 30,
+        inputLen = 70,
         outputInds = [4],
-        castLen = 10,
-        binCnt = 50,
-        batchLen = 64,
-        batchCount = 10,
-        lossTarget = 1.0
+        castLen = 20,
+        binCnt = 40,
+        batchLen = 32,
+        batchCount = 100,
+        lossTarget = 0.001
     )
 end
 
@@ -66,8 +73,7 @@ function run(; skipTrain=false, skipTest=false)
 end
 
 function train()
-    global model, loss = makeModel(cfg)
-    global seqm = makeSeqm(cfg)
+    global cfg = config()
     Forecast.train!(model, loss, cfg, seqm)
     Forecast.test(cfg, loss, seqm)
     return
@@ -78,7 +84,7 @@ function makeSeqm(cfg)
     spy = filter!(x -> x.date > Date(2000,1,1), reverse(dataDaily("SPY")))
     vix = filter!(x -> x.date > Date(2000,1,1), reverse(dataDaily("VIX")))
     @assert length(spy) == length(vix)
-    seqm = Array{N}(undef, cfg.inputWidth, length(spy)-1)
+    seqm = Array{N1}(undef, cfg.inputWidth, length(spy)-1)
     for i in axes(spy, 1)[(begin+1):end]
         @assert spy[i].date == vix[i].date
         prevSpy = spy[i-1]
@@ -117,12 +123,13 @@ end
 function makeModel(cfg)
     model = Flux.Chain(
         Flux.flatten,
-        Flux.Dense(cfg.inputWidth * cfg.inputLen => 1024),
+        # Flux.Dense(cfg.inputWidth * cfg.inputLen => 1024),
+        Flux.LSTM(cfg.inputWidth * cfg.inputLen => 1024),
         Flux.Dense(1024 => cfg.binCnt * cfg.castLen),
         x -> reshape(x, (cfg.binCnt, cfg.castLen, size(x)[end])),
         x -> Flux.softmax(x; dims=1),
         # x -> map(x -> x[1] / cfg.binCnt, argmax(x; dims=1))
-    )
+    ) # |> gpu
     function loss(batch)
         x, y = batch
         # @assert size(x) == (cfg.inputWidth, cfg.inputLen, cfg.batchLen)

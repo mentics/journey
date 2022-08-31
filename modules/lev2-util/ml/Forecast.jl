@@ -1,5 +1,6 @@
 module Forecast
 import Flux #: Flux,Dense,ADAM,gradient,gpu
+# using CUDA
 # import Flux.Optimise: update!
 # import Transformers: Transformer,TransformerDecoder,todevice,enable_gpu
 
@@ -12,10 +13,11 @@ binCnt
 batchLen
 ==#
 
-const N = Float64
+const N1 = Float32
 
 #region TimeSeries
 function train!(model, loss, cfg, seqm; cb=nothing)
+    # batchIter = CuIterator(makeBatchIter(cfg, seqm))
     batchIter = makeBatchIter(cfg, seqm)
     # batchCheck = first(batchIter)
     tracker = trainProgress(() -> loss(first(batchIter)), cfg.lossTarget, 1.0; cb)
@@ -23,6 +25,7 @@ function train!(model, loss, cfg, seqm; cb=nothing)
     opt = Flux.Adam()
     for i in 1:1000
         for b in batchIter
+            Flux.reset!(model)
             grad = Flux.gradient(() -> loss(b), params)
             Flux.update!(opt, params, grad)
         end
@@ -53,8 +56,8 @@ end
 # fs.model(fc.singleXY(fs.cfg, fs.seqm, 1)[1])
 # fs.loss(fc.singleXY(fs.cfg, fs.seqm, 1))
 function singleXY(cfg, seqm, inputOffset)
-    bufX = Array{N}(undef, cfg.inputWidth, cfg.inputLen, 1)
-    bufY = Array{N}(undef, length(cfg.outputInds), cfg.castLen, 1)
+    bufX = Array{N1}(undef, cfg.inputWidth, cfg.inputLen, 1)
+    bufY = Array{N1}(undef, length(cfg.outputInds), cfg.castLen, 1)
     return toBatchXY!(bufX, bufY, cfg.outputInds, seqm, inputOffset)
     # outputOffset = inputOffset + cfg.inputLen
     # for i in 1:cfg.inputLen
@@ -67,8 +70,8 @@ function singleXY(cfg, seqm, inputOffset)
 end
 
 function makeBufXY(cfg)
-    bufX = Array{N}(undef, cfg.inputWidth, cfg.inputLen, cfg.batchLen)
-    bufY = Array{N}(undef, length(cfg.outputInds), cfg.castLen, cfg.batchLen)
+    bufX = Array{N1}(undef, cfg.inputWidth, cfg.inputLen, cfg.batchLen)
+    bufY = Array{N1}(undef, length(cfg.outputInds), cfg.castLen, cfg.batchLen)
     return (bufX, bufY)
 end
 
