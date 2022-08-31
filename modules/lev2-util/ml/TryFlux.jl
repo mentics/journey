@@ -15,6 +15,20 @@ BATCH_OUTPUT = TYPE_ARR{eltype(OUTPUT), max(1,ndims(OUTPUT))+1}
 
 actual(x::INPUT)::OUTPUT = 4x + 2
 
+# using TryFlux
+# TryFlux.test()
+
+using Flux
+function test()
+    model = Dense(1 => 1)
+    params = Flux.params(model)
+    function loss(x, y)
+        Flux.reset!(model)
+        Flux.Losses.mse(model(x), y)
+    end
+    Flux.train!(loss, params, [([1.0],[1.0])], Descent())
+end
+
 function run()
     model = makeModel()
     opt = Descent()
@@ -38,7 +52,10 @@ function makeModel()
     layer1 = Dense(INPUT_SIZE => OUTPUT_SIZE)
     exec = layer1
     params = Flux.params(layer1)
-    loss(x::Union{INPUT,BATCH_INPUT}, y::Union{OUTPUT,BATCH_OUTPUT}) = Flux.Losses.mse(exec(x), y)
+    loss(x::Union{INPUT,BATCH_INPUT}, y::Union{OUTPUT,BATCH_OUTPUT}) = begin
+        Flux.reset!(exec)
+        Flux.Losses.mse(exec(x), y)
+    end
     return (;exec, loss, params)
 end
 

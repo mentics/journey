@@ -73,6 +73,7 @@ end
 pretyble(tbl; kws...) = pretyble(stdout, tbl; kws...)
 spretyble(tbl; kws...)::String = (io = IOBuffer() ; pretyble(io, tbl; kws...) ; return String(take!(io)) )
 function pretyble(io, tbl; header=nothing, rowcol=false, widths=0, kws...)
+    Tables.isrowtable(tbl) || (tbl = collect(tbl))
     if isempty(tbl)
         println("No data")
     else

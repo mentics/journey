@@ -12,13 +12,13 @@ using CUDA
 # import CUDA:gpu
 
 #==
-full = includes both input and forecast
+# full = includes both input and forecast
 
-import Transformers:enable_gpu
-gpu_enabled = enable_gpu(true)
-using HistData
-using Series ; s = Series
-s.runRet([d.close for d in dataDaily()]);
+# import Transformers:enable_gpu
+# gpu_enabled = enable_gpu(true)
+# using HistData
+# using Series ; s = Series
+# s.runRet([d.close for d in dataDaily()]);
 ==#
 
 function config()
@@ -51,7 +51,6 @@ function retRunTrain(data, cfg=config(); reset=false)
     train!(cfg, model, data[1])
     return (cfg, model, data)
 end
-what() = isdefined(@__MODULE__, :model)
 
 function retRunTest(model, data, cfg=config())
     test(cfg, model, data[2])

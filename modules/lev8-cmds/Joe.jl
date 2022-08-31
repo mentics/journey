@@ -166,16 +166,14 @@ function joe(ctx, tctx, ret)
     #     error("met.mx $(met.mx) <= $(-adjusted)")
     # end
     # TODO: is ev > 0 too restrictive? and why can kelly be > 0 when ev < 0?
-    if all || (met.mx >= MinMx && met.mn > MaxLoss[] && met.prob >= 0.75 && met.ev >= 0.0)
+    if all || (met.mx >= MinMx && met.mn >= MaxLoss[] && met.prob >= 0.75 && met.ev >= 0.0 && ret.vals[1] > 0.0 && ret.vals[end] > 0.0)
         kelly = ckel(ctx.prob, ret)
         if kelly > 0.0
             Rets.addRetVals!(tctx.retBuf2, ctx.posRet.vals, ret.vals)  # combineTo(Ret, vcat(ctx.posLms, lms...), ctx.curp)
             valsb = tctx.retBuf2
             # metb = calcMetrics(prob, retb)
             minb = minimum(valsb)
-            # @info "check" minb ctx.posMin MaxLossExpr[]
             if all || (minb >= ctx.posMin || minb > MaxLossExpr[])
-                # TODO: consider using ev or evr or ? in rate calc
                 rateEv = ctx.timult * met.ev / (-met.mn)
                 rate = ctx.timult * met.profit / (-met.mn)
                 roi = rate * kelly

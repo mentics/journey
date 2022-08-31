@@ -37,8 +37,12 @@ xlms(ex::Int, add::Coll{LegMeta})::Vector{LegMeta} = concat(xlms(ex), add)
 xret(ex::Int, curp::Currency=market().curp)::Ret = cret(xlms(ex), curp)
 xret(ex::Int, add::Coll{LegMeta}, curp::Currency=market().curp)::Ret = cret(xlms(ex, add), curp)
 
-xmet(ex::Int)::NamedTuple = CalcUtil.calcMetrics(xprob(ex), xret(ex))
-xmet(ex::Int, add::Coll{LegMeta})::NamedTuple = CalcUtil.calcMetrics(xprob(ex), xret(ex, add))
+xmet(ex::Int, curp::Currency=market().curp)::NamedTuple = cmet(xprob(ex), xret(ex, curp))
+function xmet(ex::Int, add::Coll{LegMeta}, curp::Currency=market().curp)
+    prob = xprob(ex)
+    return (merge((;type=z[1]), z[2]) for z in zip((:from, :add, :both),
+        (xmet(ex, curp), cmet(prob, cret(add, curp)), cmet(prob, xret(ex, add, curp)))))
+end
 
 xkel(ex::Int, curp::Currency=market().curp)::Float64 = ckel(xprob(ex), xret(ex, curp))
 xkel(ex::Int, add::Coll{LegMeta}, curp::Currency=market().curp)::Float64 = ckel(xprob(ex), xret(ex, add, curp))
@@ -64,16 +68,20 @@ function xdr(ex::Int, add::Union{Nothing,Coll{LegMeta}}=nothing, curp::Currency=
     # TODO: read from cache
     # TODO: this is inefficient because it converts to lms multiple times
     tod = tradesToClose(expr)
-    trade = tod[1]
-    DrawStrat.drawRet(SH.to(Ret, trade, curp); probs=(xprob(ex),), curp, label="t$(SH.getId(trade))")
-    for i in 2:length(tod)
-        trade = tod[i]
-        DrawStrat.drawRet!(SH.to(Ret, trade, curp); label="t$(SH.getId(trade))")
+    if isempty(tod)
+        DrawStrat.drawRet(SH.combineTo(Ret, add, curp); probs=(xprob(ex),), curp, label="add")
+    else
+        trade = tod[1]
+        DrawStrat.drawRet(SH.to(Ret, trade, curp); probs=(xprob(ex),), curp, label="t$(SH.getId(trade))")
+        for i in 2:length(tod)
+            trade = tod[i]
+            DrawStrat.drawRet!(SH.to(Ret, trade, curp); label="t$(SH.getId(trade))")
+        end
+        isnothing(add) || DrawStrat.drawRet!(SH.combineTo(Ret, add, curp); label="add")
+        polms = SH.combineTo(Vector{LegMeta}, tod)
+        lmsAll::Vector{LegMeta} = isnothing(add) ? polms : vcat(polms, collect(add))
+        DrawStrat.drawRet!(SH.combineTo(Ret, lmsAll, curp); label="all")
     end
-    isnothing(add) || DrawStrat.drawRet!(SH.combineTo(Ret, add, curp); label="add")
-    polms = SH.combineTo(Vector{LegMeta}, tod)
-    lmsAll::Vector{LegMeta} = isnothing(add) ? polms : vcat(polms, collect(add))
-    DrawStrat.drawRet!(SH.combineTo(Ret, lmsAll, curp); label="all")
 end
 
 end
