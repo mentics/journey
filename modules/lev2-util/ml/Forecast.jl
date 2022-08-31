@@ -9,34 +9,74 @@ inputLen
 inputWidth
 castLen
 binCnt
-batchSize
+batchLen
 ==#
 
 const N = Float64
 
 #region TimeSeries
-function train!(model, loss, cfg, seqm)
+function train!(model, loss, cfg, seqm; cb=nothing)
     batchIter = makeBatchIter(cfg, seqm)
+    # batchCheck = first(batchIter)
+    tracker = trainProgress(() -> loss(first(batchIter)), cfg.lossTarget, 1.0; cb)
     params = Flux.params(model)
     opt = Flux.Adam()
-    for b in batchIter
-        grad = Flux.gradient(() -> loss(b), params)
-        update!(opt, params, grad)
-        cb()
+    for i in 1:1000
+        for b in batchIter
+            grad = Flux.gradient(() -> loss(b), params)
+            Flux.update!(opt, params, grad)
+        end
+        if tracker(i)
+            break
+        end
     end
 end
 
+function trainProgress(loss, lossTarget, seconds; cb=nothing)
+    return Flux.throttle(seconds; leading=true, trailing=true) do i
+        los = loss()
+        println("Progress $(i): loss = ", los)
+        isnothing(cb) || cb()
+        return los < lossTarget
+    end
+end
+
+function test(cfg, loss, seqm)
+    seqmTest = @view seqm[:, (cfg.batchLen + cfg.inputLen + cfg.castLen):end]
+    batchIter = makeBatchIter(cfg, seqmTest)
+    # batchTest = first(batchIter)
+    for batch in batchIter
+        println("Test loss: ", loss(batch))
+    end
+end
+
+# fs.model(fc.singleXY(fs.cfg, fs.seqm, 1)[1])
+# fs.loss(fc.singleXY(fs.cfg, fs.seqm, 1))
+function singleXY(cfg, seqm, inputOffset)
+    bufX = Array{N}(undef, cfg.inputWidth, cfg.inputLen, 1)
+    bufY = Array{N}(undef, length(cfg.outputInds), cfg.castLen, 1)
+    return toBatchXY!(bufX, bufY, cfg.outputInds, seqm, inputOffset)
+    # outputOffset = inputOffset + cfg.inputLen
+    # for i in 1:cfg.inputLen
+    #     bufX[:,i] .= seqm[:, inputOffset + i]
+    # end
+    # for i in 1:length(cfg.outputInds)
+    #     bufY[:,i] .= seqm[cfg.outputInds, outputOffset + i]
+    # end
+    # return (bufX, bufY)
+end
+
 function makeBufXY(cfg)
-    bufX = Array{N}(undef, cfg.inputWidth, cfg.inputLen, cfg.batchSize)
-    bufY = Array{N}(undef, length(cfg.outputInds), cfg.castLen, cfg.batchSize)
+    bufX = Array{N}(undef, cfg.inputWidth, cfg.inputLen, cfg.batchLen)
+    bufY = Array{N}(undef, length(cfg.outputInds), cfg.castLen, cfg.batchLen)
     return (bufX, bufY)
 end
 
 function toBatchXY!(bufX, bufY, outputInds, seqm, inputOffset)
-    _, inputLen, batchSize = size(bufX)
+    _, inputLen, batchLen = size(bufX)
     outputLen = size(bufY)[2]
     outputOffset = inputOffset + inputLen
-    for b in 1:batchSize
+    for b in 1:batchLen
         for i in 1:inputLen
             bufX[:,i,b] .= seqm[:,inputOffset + b + i]
         end
@@ -49,7 +89,7 @@ end
 
 function makeBatchIter(cfg, seqm)
     bufX, bufY = makeBufXY(cfg)
-    return (toBatchXY!(bufX, bufY, cfg.outputInds, seqm, i) for i in 1:cfg.batchCount)
+    return (toBatchXY!(bufX, bufY, cfg.outputInds, seqm, i * cfg.batchLen) for i in 1:cfg.batchCount)
 end
 #endregion
 
