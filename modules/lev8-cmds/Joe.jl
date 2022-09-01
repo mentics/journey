@@ -15,19 +15,31 @@ function jorn(exs; kws...)
     # rs = Dict{Int,NamedTuple}()
     global ress = Vector{Vector{NamedTuple}}(undef,maximum(exs))
     global ctxs = Vector{NamedTuple}(undef,maximum(exs))
-    global rs1 = NamedTuple[]
+    # global rs1 = NamedTuple[]
     for i in exs
         r, ctx = runJorn(expir(i); kws...)
         !isempty(r) || continue
         ress[i] = r
         ctxs[i] = ctx
-        push!(rs1, merge((;i), r[1]))
+        # push!(rs1, merge((;i), r[1]))
     end
     disp()
     return
 end
 function disp()
-    pretyble(delete.(rs1, :lms, :met))
+    res = NamedTuple[]
+    for i in eachindex(ress)
+        isassigned(ress, i) || continue
+        r = ress[i][1]
+        ctx = ctxs[i]
+        push!(res, (;
+            ex=i,
+            delete(r, :lms, :met, :metb)...,
+            evr="$(rd3(ctx.posMet.evr))-$(rd3(r.met.evr))-$(rd3(r.metb.evr))",
+            prob="$(rd3(ctx.posMet.prob))-$(rd3(r.met.prob))-$(rd3(r.metb.prob))"
+        ))
+    end
+    pretyble(res)
 end
 
 function runJorn(expr::Date; nopos=false, all=false)
@@ -110,9 +122,11 @@ function makeCtx(expr::Date; nopos, all)::NamedTuple
     curp = market().curp
     tex = calcTex(start, expr)
     timult = 1 / texToYear(tex)
+    vix = market().vix
+    prob = probKde(F(curp), tex, F(vix))
     posLms = nopos ? LegMeta[] : xlms(expr)
     posRet = combineTo(Ret, posLms, curp)
-    vix = market().vix
+    posMet = calcMetrics(prob, posRet)
     threads = [(;
         retBuf1 = Bins.empty(),
         retBuf2 = Bins.empty()
@@ -120,10 +134,11 @@ function makeCtx(expr::Date; nopos, all)::NamedTuple
     return (;
         all,
         curp,
-        prob=probKde(F(curp), tex, F(vix)),
+        prob,
         timult,
         posLms,
         posRet,
+        posMet,
         posMin=minimum(posRet.vals),
         threads
     )
@@ -171,7 +186,6 @@ function joe(ctx, tctx, ret)
         if kelly > 0.0
             Rets.addRetVals!(tctx.retBuf2, ctx.posRet.vals, ret.vals)  # combineTo(Ret, vcat(ctx.posLms, lms...), ctx.curp)
             valsb = tctx.retBuf2
-            # metb = calcMetrics(prob, retb)
             minb = minimum(valsb)
             if all || (minb >= ctx.posMin || minb > MaxLossExpr[])
                 rateEv = ctx.timult * met.ev / (-met.mn)
@@ -179,7 +193,9 @@ function joe(ctx, tctx, ret)
                 roi = rate * kelly
                 roiEv = rateEv * kelly
                 # rate = ctx.timult * met.mx / (-met.mn)
-                return (;roi, roiEv, rate, rateEv, kelly, met)
+                retb = Ret(tctx.retBuf2, ctx.curp, ctx.posRet.numLegs + 4)
+                metb = calcMetrics(ctx.prob, retb)
+                return (;roi, roiEv, rate, rateEv, kelly, met, metb)
             else
                 runSync(lockMsg) do
                     Msgs[:MaxLossExpr] = ["Hit MLE", minb, ctx.posMin, MaxLossExpr[]]

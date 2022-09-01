@@ -7,7 +7,7 @@ using DateUtil, FileUtil, DictUtil
 ActiveSyms = [] # ["BHC","BLUE","CLNN","CLOV","CTIC","INVZ","NKLA","NNVC","NVTA","PAYO","SENS","TSP","WVE","FSR","WKHS","WTI","DNMR"]
 
 BadPricing = []#"BAX", "OLN"]
-Ignore = ["SNDL","YANG","MUX","QD","RIOT","GOTU","TAL","ACB","HUT","IQ","JMIA","ABEV","JDST"]
+Ignore = ["SNDL","YANG","MUX","QD","RIOT","GOTU","TAL","ACB","HUT","IQ","JMIA","ABEV","JDST","SOXS","FAZ","SQQQ","SPXU","QID","SDOW","TWM","NINE","TECS","DUST","SPXS","SRTY","ZSL","DRV"]
 IgnoreTemp = []#"CORZ","CLSK"]
 isGlobalIgnore(sym) = sym in vcat(BadPricing, Ignore, IgnoreTemp, ActiveSyms)
 

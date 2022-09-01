@@ -6,7 +6,7 @@ jorn(1:4)
 i = 1
 r = j.ress[i][1]
 xdr(i, r.lms)
-xmet(i, r.lms)
+pretyble(xmet(i, r.lms))
 xkel(i, r.lms)
 so(r.lms)
 solr(r.lms, primitDir)

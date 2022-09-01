@@ -9,6 +9,12 @@ using DateUtil
 export confirm
 export pretty, pretyble, spretyble, niceShow, sho
 export PRI, SEC
+export r2, r3, rd2, rd3
+
+r2(x) = round(x; sigdigits=2)
+r3(x) = round(x; sigdigits=3)
+rd2(x) = round(x; digits=2)
+rd3(x) = round(x; digits=3)
 
 function confirm()
     print("Are you sure? (N/y)")
