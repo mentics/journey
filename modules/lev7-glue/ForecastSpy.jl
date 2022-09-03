@@ -15,6 +15,7 @@ fs.run(;skipTrain=true, skipTest=true)
 batchIter = fc.makeBatchIter(fs.cfg, fs.seqm)
 b1 = first(batchIter)
 grad = Flux.gradient(() -> fs.loss(b1), fs.params)
+Flux.update!(fs.opt, fs.params, grad)
 fs.run()
 
 i = 2
@@ -56,7 +57,8 @@ function config()
         batchLen = 128,
         testHoldOut = .3,
         lossTarget = 0.001,
-        maxIter = 10000
+        maxIter = 4,
+        useCpu = true
     )
 end
 
@@ -75,7 +77,7 @@ function run(; skipTrain=false, skipTest=false)
     # end
     seqTrain, seqTest = Forecast.makeViews(seqm, cfg.testHoldOut)
     skipTrain || Forecast.train!(model, opt, loss, cfg, seqTrain)
-    skipTest || Forecast.test(cfg, loss, seqTest)
+    skipTest || Forecast.test(cfg, model, loss, seqTest)
     return
 end
 
@@ -136,13 +138,14 @@ end
 function makeModel(cfg)
     model = Flux.Chain(
         Flux.flatten,
-        # Flux.Dense(cfg.inputWidth * cfg.inputLen => 1024),
-        Flux.LSTM(cfg.inputWidth * cfg.inputLen => 4096),
-        Flux.Dense(4096 => cfg.binCnt * cfg.castLen),
+        Flux.Dense(cfg.inputWidth * cfg.inputLen => 4),
+        # Flux.LSTM(cfg.inputWidth * cfg.inputLen => 4096),
+        Flux.Dense(4 => cfg.binCnt * cfg.castLen),
         x -> reshape(x, (cfg.binCnt, cfg.castLen, size(x)[end])),
         x -> Flux.softmax(x; dims=1),
         # x -> map(x -> x[1] / cfg.binCnt, argmax(x; dims=1))
-    )  |> gpu
+    )
+    cfg.useCpu || (model = model |> gpu)
     function loss(batch)
         x, y = batch
         # @assert size(x) == (cfg.inputWidth, cfg.inputLen, cfg.batchLen)
@@ -150,14 +153,35 @@ function makeModel(cfg)
         # @show "x" typeof(x) size(x)
         # @show "y" typeof(y) size(y)
 
-        # pred = model(x)
+        pred = model(x)
         # y = round.(Int, (y .* cfg.binCnt))
         # yoh = reshape(Flux.onehotbatch(y, 1:cfg.binCnt), (cfg.binCnt, cfg.castLen, cfg.batchLen))
         # return Flux.crossentropy(pred, yoh)
 
         # return Flux.crossentropy(model(x), yoh(cfg, y))
-        # return Flux.crossentropy(model(x), y)
-        return calcDiff(model(x), y)
+        # r = Flux.crossentropy(model(x), y)
+        # @show r
+        # return r
+        # return Flux.Losses.mse(pred, y)
+
+
+        # w, len, batchLen = size(m1)
+        # mid = cfg.binCnt ÷ 2 + 1
+        # res = Vector{Float32}(undef, batchLen)
+        for b in 1:cfg.batchLen
+            for i in 1:cfg.inputLen
+                x1 = argmax(pred[:,i,b])
+                x2 = argmax(y[:,i,b])
+                @show typeof(x1) typeof(x2) size(x1) size(x2)
+                s += x2 - x1
+                # s += err2d(mid, x1, x2)
+            end
+            # res[b] = s / len
+        end
+        # @show res len batchLen (res / (len * batchLen))
+        return s / (len * batchLen)
+
+        # return calcDiff(pred, y)
     end
     return (;model, loss)
 end
@@ -203,15 +227,23 @@ end
 # end
 
 function calcDiff(m1, m2)
-    w, len = size(m1)
+    # @show "m1" typeof(m1) size(m1)
+    # @show "m2" typeof(m2) size(m2)
+    w, len, batchLen = size(m1)
     mid = w ÷ 2 + 1
-    res = 0.0
-    for i in 1:len
-        x1 = argmax(m1[:,i])
-        x2 = argmax(m2[:,i])
-        res += err2d(mid, x1, x2)
+    # res = Vector{Float32}(undef, batchLen)
+    s = 0.0
+    for b in 1:batchLen
+        for i in 1:len
+            x1 = argmax(m1[:,i,b])
+            x2 = argmax(m2[:,i,b])
+            s += err2d(mid, x1, x2)
+        end
+        # res[b] = s / len
     end
-    return res / len
+    # @show res len batchLen (res / (len * batchLen))
+    return s / (len * batchLen)
+    # return sum(res)
 end
 
 function err2d(mid, x1, x2)
@@ -251,6 +283,47 @@ function testCalcDiff()
     end
     avg /= 100
     println("Average match loss: $(avg)")
+end
+
+
+function testgrad()
+    width = 5
+    len = 6
+    batchLen = 7
+
+    model = Flux.Chain(
+        Flux.flatten,
+        Flux.Dense(width * len => width * len),
+        x -> reshape(x, (width, len, batchLen))
+    )
+    ps = Flux.params(model)
+
+    function loss(batch)
+        x, y = batch
+        pred = model(x)
+        s = 0.0
+        for b in 1:batchLen
+            for i in 1:len
+                x1 = argmax(pred[:,i,b])
+                x2 = argmax(y[:,i,b])
+                s += x2 - x1
+            end
+        end
+        return s / (len * batchLen)
+    end
+
+    x = rand(width, len, batchLen)
+    y = rand(width, len, batchLen)
+    xtest1 = rand(width, len, batchLen)
+    xtest2 = rand(width, len, batchLen)
+
+    grad = Flux.gradient(() -> loss((x,y)), ps)
+
+    opt = Flux.Optimise.Adam()
+    grad, params = testgrad()
+    Flux.Optimise.update!(opt, params, grad)
+
+    return (grad, params)
 end
 
 end

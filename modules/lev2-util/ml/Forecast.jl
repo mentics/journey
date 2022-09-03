@@ -1,7 +1,7 @@
 module Forecast
 import Flux:Flux,gpu #: Flux,Dense,ADAM,gradient,gpu
 # import CUDA:CuIterator
-# import Flux.Optimise: update!
+import Flux.Optimise
 # import Transformers: Transformer,TransformerDecoder,todevice,enable_gpu
 
 #==
@@ -20,14 +20,18 @@ function train!(model, opt, loss, cfg, seqm; cb=nothing)
     # batchIter = CuIterator(makeBatchIter(cfg, seqm))
     # batchIter = makeBatchIter(cfg, seqm)
     # batchCheck = first(batchIter)
-    batchIter = materialize(makeBatchIter(cfg, seqm)) |> gpu
+    batchIter = materialize(makeBatchIter(cfg, seqm))
+    cfg.useCpu || (batchIter = batchIter |> gpu)
     tracker = trainProgress(() -> loss(first(batchIter)), cfg.lossTarget, 1.0; cb)
     params = Flux.params(model)
     for i in 1:cfg.maxIter
         for b in batchIter
             Flux.reset!(model)
             grad = Flux.gradient(() -> loss(b), params)
-            Flux.update!(opt, params, grad)
+            for p in params
+                @assert p in grad.params
+            end
+            Flux.Optimise.update!(opt, params, grad)
         end
         if tracker(i)
             break
@@ -36,7 +40,7 @@ function train!(model, opt, loss, cfg, seqm; cb=nothing)
 
     for b in batchIter
         Flux.reset!(model)
-        println("Train loss: ", loss(batch))
+        println("Train loss: ", loss(b))
     end
 end
 
@@ -51,7 +55,8 @@ end
 
 function test(cfg, model, loss, seq)
     # batchIter = makeBatchIter(cfg, seqmTest)
-    batchIter = CuIterator(makeBatchIter(cfg, seq))
+    batchIter = makeBatchIter(cfg, seq)
+    cfg.useCpu || (batchIter = CuIterator(batchIter))
     for batch in batchIter
         Flux.reset!(model)
         println("Test loss: ", loss(batch))
