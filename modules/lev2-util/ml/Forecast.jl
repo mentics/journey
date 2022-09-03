@@ -1,6 +1,6 @@
 module Forecast
-import Flux #: Flux,Dense,ADAM,gradient,gpu
-# using CUDA
+import Flux:Flux,gpu #: Flux,Dense,ADAM,gradient,gpu
+# import CUDA:CuIterator
 # import Flux.Optimise: update!
 # import Transformers: Transformer,TransformerDecoder,todevice,enable_gpu
 
@@ -13,16 +13,17 @@ binCnt
 batchLen
 ==#
 
-const N1 = Float32
+const N = Float32
 
 #region TimeSeries
 function train!(model, opt, loss, cfg, seqm; cb=nothing)
-    batchIter = CuIterator(makeBatchIter(cfg, seqm))
+    # batchIter = CuIterator(makeBatchIter(cfg, seqm))
     # batchIter = makeBatchIter(cfg, seqm)
     # batchCheck = first(batchIter)
+    batchIter = materialize(makeBatchIter(cfg, seqm)) |> gpu
     tracker = trainProgress(() -> loss(first(batchIter)), cfg.lossTarget, 1.0; cb)
     params = Flux.params(model)
-    for i in 1:100
+    for i in 1:cfg.maxIter
         for b in batchIter
             Flux.reset!(model)
             grad = Flux.gradient(() -> loss(b), params)
@@ -31,6 +32,11 @@ function train!(model, opt, loss, cfg, seqm; cb=nothing)
         if tracker(i)
             break
         end
+    end
+
+    for b in batchIter
+        Flux.reset!(model)
+        println("Train loss: ", loss(batch))
     end
 end
 
@@ -43,21 +49,28 @@ function trainProgress(loss, lossTarget, seconds; cb=nothing)
     end
 end
 
-function test(cfg, loss, seqm)
-    seqmTest = @view seqm[:, (cfg.batchLen + cfg.inputLen + cfg.castLen):end]
+function test(cfg, model, loss, seq)
     # batchIter = makeBatchIter(cfg, seqmTest)
-    batchIter = CuIterator(makeBatchIter(cfg, seqmTest))
-    # batchTest = first(batchIter)
+    batchIter = CuIterator(makeBatchIter(cfg, seq))
     for batch in batchIter
+        Flux.reset!(model)
         println("Test loss: ", loss(batch))
     end
+end
+
+function makeViews(seq, testHoldOut)
+    _, len = size(seq)
+    split = round(Int, (1 - testHoldOut) * len)
+    # batchCount = (1 - cfg.testHoldOut) * length(seq) / cfg.batchLen
+    # seqmTest = @view seq[:, (cfg.batchLen * cfg.batchCount + cfg.inputLen + cfg.castLen):end]
+    return ((@view seq[:,1:split]), (@view seq[:,(split+1):len]))
 end
 
 # fs.model(fc.singleXY(fs.cfg, fs.seqm, 1)[1])
 # fs.loss(fc.singleXY(fs.cfg, fs.seqm, 1))
 function singleXY(cfg, seqm, inputOffset)
-    bufX = Array{N1}(undef, cfg.inputWidth, cfg.inputLen, 1)
-    bufY = Array{N1}(undef, length(cfg.outputInds), cfg.castLen, 1)
+    bufX = Array{N}(undef, cfg.inputWidth, cfg.inputLen, 1)
+    bufY = Array{N}(undef, length(cfg.outputInds), cfg.castLen, 1)
     return toBatchXY!(bufX, bufY, cfg, seqm, inputOffset)
     # outputOffset = inputOffset + cfg.inputLen
     # for i in 1:cfg.inputLen
@@ -70,8 +83,8 @@ function singleXY(cfg, seqm, inputOffset)
 end
 
 function makeBufXY(cfg)
-    bufX = Array{N1}(undef, cfg.inputWidth, cfg.inputLen, cfg.batchLen)
-    bufY = Array{N1}(undef, cfg.binCnt, cfg.castLen, cfg.batchLen)
+    bufX = Array{N}(undef, cfg.inputWidth, cfg.inputLen, cfg.batchLen)
+    bufY = Array{N}(undef, cfg.binCnt, cfg.castLen, cfg.batchLen)
     return (bufX, bufY)
 end
 
@@ -82,18 +95,20 @@ function toBatchXY!(bufX, bufY, cfg, seqm, inputOffset)
     outputOffset = inputOffset + inputLen
     for b in 1:batchLen
         for i in 1:inputLen
-            bufX[:,i,b] .= seqm[:, inputOffset + b + i - 2]
+            bufX[:,i,b] .= seqm[:, inputOffset + b + i - 1]
         end
         for i in 1:outputLen
-            bufY[:,i,b] .= toh(binDef, seqm[cfg.outputInds, outputOffset + b + i - 2])
+            bufY[:,i,b] .= toh(binDef, seqm[cfg.outputInds, outputOffset + b + i - 1])
         end
     end
     return (bufX, bufY)
 end
 
-function makeBatchIter(cfg, seqm)
+function makeBatchIter(cfg, seq)
     bufX, bufY = makeBufXY(cfg)
-    return (toBatchXY!(bufX, bufY, cfg, seqm, i * cfg.batchLen) for i in 1:cfg.batchCount)
+    batchCount = size(seq)[2] ÷ cfg.batchLen - 1
+    # @show  batchCount cfg.batchLen
+    return (toBatchXY!(bufX, bufY, cfg, seq, (i-1) * cfg.batchLen) for i in 1:batchCount)
 end
 #endregion
 
@@ -101,12 +116,12 @@ function BinDef(num)
     left = -0.15
     right = 0.15
     span = right - left
-    binWidth = span / num
+    binWidth = span / (num-2)
     return (; left, right, span, num, binWidth)
 end
 
 function toBin(def, val)::Int
-    max(1, min(def.num, (val - def.left) ÷ def.binWidth))
+    max(1, min(def.num, 1 + round(Int, (val - def.left) / def.binWidth, RoundUp)))
 end
 
 function toh(def, val)
@@ -141,6 +156,14 @@ function findBin(bins, val::Float64)
         end
     end
     return length(bins) + 1
+end
+
+function materialize(iter)
+    res = typeof(first(iter))[]
+    for batch in iter
+        push!(res, deepcopy(batch)) # must copy because iter reuses buffers
+    end
+    return res
 end
 
 end

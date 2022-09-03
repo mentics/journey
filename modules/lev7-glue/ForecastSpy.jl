@@ -2,7 +2,7 @@ module ForecastSpy
 import Dates:Dates,Date
 import Flux:Flux, gpu
 using BaseTypes
-import Forecast:Forecast,N1
+import Forecast:Forecast,N
 
 # enable_gpu
 
@@ -11,10 +11,11 @@ import Forecast:Forecast,N1
 
 using Forecast ; fc = Forecast ; using ForecastSpy ; fs = ForecastSpy
 import Flux
+fs.run(;skipTrain=true, skipTest=true)
 batchIter = fc.makeBatchIter(fs.cfg, fs.seqm)
 b1 = first(batchIter)
-fs.run()
 grad = Flux.gradient(() -> fs.loss(b1), fs.params)
+fs.run()
 
 i = 2
 xy1 = fc.singleXY(fs.cfg, fs.seqm, i)
@@ -48,13 +49,14 @@ Layers:
 function config()
     return (;
         inputWidth = 12,
-        inputLen = 70,
+        inputLen = 50,
         outputInds = [4],
-        castLen = 20,
-        binCnt = 20,
+        castLen = 10,
+        binCnt = 21,
         batchLen = 128,
-        batchCount = 32,
-        lossTarget = 0.001
+        testHoldOut = .3,
+        lossTarget = 0.001,
+        maxIter = 10000
     )
 end
 
@@ -71,16 +73,23 @@ function run(; skipTrain=false, skipTest=false)
     #     display(surface(model(b1[1])[:,:,1]; colormap=:blues))
     #     surface!(ytoit(cfg, b1[2])[:,:,1]; colormap=:greens)
     # end
-    skipTrain || Forecast.train!(model, opt, loss, cfg, seqm)
-    skipTest || Forecast.test(cfg, loss, seqm)
+    seqTrain, seqTest = Forecast.makeViews(seqm, cfg.testHoldOut)
+    skipTrain || Forecast.train!(model, opt, loss, cfg, seqTrain)
+    skipTest || Forecast.test(cfg, loss, seqTest)
     return
 end
 
 function train()
     # global cfg = config()
-    Forecast.train!(model, opt, loss, cfg, seqm)
-    Forecast.test(cfg, loss, seqm)
+    seqTrain, seqTest = Forecast.makeViews(seqm, cfg.testHoldOut)
+    Forecast.train!(model, opt, loss, cfg, seqTrain)
+    test()
     return
+end
+
+function test()
+    seqTrain, seqTest = Forecast.makeViews(seqm, cfg.testHoldOut)
+    Forecast.test(cfg, model, loss, seqTest)
 end
 
 using HistData
@@ -88,7 +97,7 @@ function makeSeqm(cfg)
     spy = filter!(x -> x.date > Date(2000,1,1), reverse(dataDaily("SPY")))
     vix = filter!(x -> x.date > Date(2000,1,1), reverse(dataDaily("VIX")))
     @assert length(spy) == length(vix)
-    seqm = Array{N1}(undef, cfg.inputWidth, length(spy)-1)
+    seqm = Array{N}(undef, cfg.inputWidth, length(spy)-1)
     for i in axes(spy, 1)[(begin+1):end]
         @assert spy[i].date == vix[i].date
         prevSpy = spy[i-1]
@@ -128,8 +137,8 @@ function makeModel(cfg)
     model = Flux.Chain(
         Flux.flatten,
         # Flux.Dense(cfg.inputWidth * cfg.inputLen => 1024),
-        Flux.LSTM(cfg.inputWidth * cfg.inputLen => 1024),
-        Flux.Dense(1024 => cfg.binCnt * cfg.castLen),
+        Flux.LSTM(cfg.inputWidth * cfg.inputLen => 4096),
+        Flux.Dense(4096 => cfg.binCnt * cfg.castLen),
         x -> reshape(x, (cfg.binCnt, cfg.castLen, size(x)[end])),
         x -> Flux.softmax(x; dims=1),
         # x -> map(x -> x[1] / cfg.binCnt, argmax(x; dims=1))
@@ -138,6 +147,8 @@ function makeModel(cfg)
         x, y = batch
         # @assert size(x) == (cfg.inputWidth, cfg.inputLen, cfg.batchLen)
         # @assert size(y) == (length(cfg.outputInds), cfg.castLen, cfg.batchLen) "size(y) == $(size(y))"
+        # @show "x" typeof(x) size(x)
+        # @show "y" typeof(y) size(y)
 
         # pred = model(x)
         # y = round.(Int, (y .* cfg.binCnt))
@@ -145,7 +156,8 @@ function makeModel(cfg)
         # return Flux.crossentropy(pred, yoh)
 
         # return Flux.crossentropy(model(x), yoh(cfg, y))
-        return Flux.crossentropy(model(x), y)
+        # return Flux.crossentropy(model(x), y)
+        return calcDiff(model(x), y)
     end
     return (;model, loss)
 end
@@ -181,6 +193,64 @@ function ytoit(cfg, y)
     y1 = round.(Int, (y .* cfg.binCnt))
     yoh = reshape(Flux.onehotbatch(y1, 1:cfg.binCnt), (cfg.binCnt, cfg.castLen, cfg.batchLen))
     return yoh
+end
+
+# function worstMatch()
+#     y = Flux.onehotbatch(fill(cfg.binCnt-1,cfg.batchLen), 1:cfg.binCnt)
+#     r = zeros(cfg.binCnt-1, cfg.batchLen)
+#     r = vcat(r, fill(1, cfg.batchLen)')
+#     Flux.crossentropy(r, y)
+# end
+
+function calcDiff(m1, m2)
+    w, len = size(m1)
+    mid = w ÷ 2 + 1
+    res = 0.0
+    for i in 1:len
+        x1 = argmax(m1[:,i])
+        x2 = argmax(m2[:,i])
+        res += err2d(mid, x1, x2)
+    end
+    return res / len
+end
+
+function err2d(mid, x1, x2)
+    x1 -= mid
+    x2 -= mid
+    diff = abs(x1 - x2)
+    if x1 * x2 < 0.0
+        return diff^2
+    else
+        return diff
+    end
+end
+
+function randM()
+    def = Forecast.BinDef(cfg.binCnt)
+    return Flux.onehotbatch([Forecast.toBin(def, randn() ./ 20) for _ in 1:cfg.batchLen], 1:cfg.binCnt)
+end
+
+function testCalcDiff()
+    avg = 0.0
+    for _ in 1:100
+        # m1 = reduce(hcat, [rand(10) for i in 1:cfg.batchLen])
+        # m2 = reduce(hcat, [rand(10) for i in 1:cfg.batchLen])
+        m1 = randM()
+        m2 = randM()
+        avg += calcDiff(m1, m2)
+    end
+    avg /= 100
+    println("Average random loss: $(avg)")
+
+    avg = 0.0
+    for _ in 1:100
+        # m1 = reduce(hcat, [rand(10) for i in 1:cfg.batchLen])
+        m1 = randM()
+        m2 = deepcopy(m1)
+        avg += calcDiff(m1, m2)
+    end
+    avg /= 100
+    println("Average match loss: $(avg)")
 end
 
 end
