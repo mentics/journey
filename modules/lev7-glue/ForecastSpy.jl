@@ -4,6 +4,7 @@ import Flux:Flux, gpu
 using BaseTypes
 import Forecast:Forecast,N
 import Statistics
+import ForecastUtil ; FC = ForecastUtil
 
 # enable_gpu
 
@@ -13,24 +14,24 @@ import Statistics
 using Forecast ; fc = Forecast ; using ForecastSpy ; fs = ForecastSpy
 import Flux
 fs.run(;skipTrain=true, skipTest=true)
-batchIter = fc.makeBatchIter(fs.cfg, fs.seqm)
+batchIter = fc.makeBatchIter(fs.cfg, fs.seq)
 b1 = first(batchIter)
 grad = Flux.gradient(() -> fs.loss(b1), fs.params)
 Flux.update!(fs.opt, fs.params, grad)
 fs.run()
 
 i = 2
-xy1 = fc.singleXY(fs.cfg, fs.seqm, i)
+xy1 = fc.singleXY(fs.cfg, fs.seq, i)
 fs.loss(xy1)
 
 argmax(fs.model(xy1[1]); dims=1)
 argmax(fs.yoh(fs.cfg, xy1[2]); dims=1)
 
-xy1 = fc.singleXY(fs.cfg, fs.seqm, 1);
+xy1 = fc.singleXY(fs.cfg, fs.seq, 1);
 argmax(fs.model(xy1[1]); dims=1)
-xy1 = fc.singleXY(fs.cfg, fs.seqm, 2);
+xy1 = fc.singleXY(fs.cfg, fs.seq, 2);
 argmax(fs.model(xy1[1]); dims=1)
-xy1 = fc.singleXY(fs.cfg, fs.seqm, 3);
+xy1 = fc.singleXY(fs.cfg, fs.seq, 3);
 argmax(fs.model(xy1[1]); dims=1)
 
 Input:
@@ -60,88 +61,24 @@ function config()
         testHoldOut = .3,
         lossTarget = 0.001,
         maxIter = 100,
-        useCpu = true
+        useCpu = false
     )
 end
 
-import GLMakie:surface,surface!
-function run(; skipTrain=false, skipTest=false)
+# import GLMakie:surface,surface!
+# function cb()
+#     display(surface(model(b1[1])[:,:,1]; colormap=:blues))
+#     surface!(ytoit(cfg, b1[2])[:,:,1]; colormap=:greens)
+# end
+
+function init()
     global cfg = config()
-    global model, loss = makeModel(cfg)
-    global params = Flux.params(model)
-    global seqm = makeSeqm(cfg)
-    global opt = Flux.Adam()
-
-    # b1 = first(Forecast.makeBatchIter(cfg, seqm))
-    # function cb()
-    #     display(surface(model(b1[1])[:,:,1]; colormap=:blues))
-    #     surface!(ytoit(cfg, b1[2])[:,:,1]; colormap=:greens)
-    # end
-    seqTrain, seqTest = Forecast.makeViews(seqm, cfg.testHoldOut)
-    skipTrain || Forecast.train!(model, opt, loss, cfg, seqTrain)
-    skipTest || Forecast.test(cfg, model, loss, seqTest)
+    global mod = makeModel(cfg)
+    global seq = FC.makeSeq(cfg)
     return
 end
-
-function train()
-    # global cfg = config()
-    seqTrain, seqTest = Forecast.makeViews(seqm, cfg.testHoldOut)
-    Forecast.train!(model, opt, loss, cfg, seqTrain)
-    test()
-    return
-end
-
-function test()
-    seqTrain, seqTest = Forecast.makeViews(seqm, cfg.testHoldOut)
-    Forecast.test(cfg, model, loss, seqTest)
-end
-
-using HistData
-function makeSeqm(cfg)
-    spy = filter!(x -> x.date > Date(2000,1,1), reverse(dataDaily("SPY")))
-    vix = filter!(x -> x.date > Date(2000,1,1), reverse(dataDaily("VIX")))
-    @assert length(spy) == length(vix)
-    seqm = Array{N}(undef, cfg.inputWidth, length(spy)-1)
-    for i in axes(spy, 1)[(begin+1):end]
-        @assert spy[i].date == vix[i].date
-        prevSpy = spy[i-1]
-        prevSpyClose = prevSpy.close
-        prevVixClose = vix[i-1].close
-        s = spy[i]
-        v = vix[i]
-        seqm[:,i-1] .= (
-            prep1(s.open, prevSpyClose),
-            prep1(s.high, prevSpyClose),
-            prep1(s.low, prevSpyClose),
-            prep1(s.close, prevSpyClose),
-            prep1(v.open, prevVixClose),
-            prep1(v.high, prevVixClose),
-            prep1(v.low, prevVixClose),
-            prep1(v.close, prevVixClose),
-            (s.date - prevSpy.date).value / 10, # TODO: embed these day and duration values
-            Dates.dayofweek(s.date) / 7,
-            Dates.dayofmonth(s.date) / Dates.daysinmonth(s.date),
-            Dates.dayofquarter(s.date) / daysinquarter(s.date)
-        )
-    end
-    # binsSpy = Forecast.binLog(cfg.binCnt, seqm[4,:])
-    # binsVix = Forecast.binLog(cfg.binCnt, seqm[8,:])
-    # for j in axes(seqm, 2)
-    #     for i in 1:4
-    #         seqm[i,j] = Forecast.findBin(binsSpy, seqm[i,j]) / cfg.binCnt
-    #     end
-    #     for i in 5:8
-    #         seqm[i,j] = Forecast.findBin(binsVix, seqm[i,j]) / cfg.binCnt
-    #     end
-    # end
-    return seqm
-end
-
-randomInput(cfg) = rand(cfg.inputWidth, cfg.inputLen, cfg.batchLen)
-randomOutput(cfg) = Flux.onehotbatch([Forecast.toBin(cfg.binDef, randn() ./ 20) for _ in 1:cfg.castLen, _ in 1:cfg.batchLen], 1:cfg.binCnt)
-randomLoss(cfg, los) = Statistics.mean(1:100) do _
-    los((randomInput(cfg), randomOutput(cfg)))
-end
+train() = FC.trainModel(cfg, mod, seq)
+test() = FC.testModel(cfg, mod, seq)
 
 function makeModel(cfg)
     hiddenSize = 512
@@ -184,7 +121,9 @@ function makeModel(cfg)
 
         # # return calcDiff(pred, y)
     end
-    return (;model, loss)
+
+    opt = Flux.Adam()
+    return (;model, loss, opt)
 end
 
 # function BinDef(num)
@@ -284,12 +223,12 @@ end
 #     println("Average match loss: $(avg)")
 # end
 
-
 # function testgrad()
 #     width = 5
 #     len = 6
 #     batchLen = 7
 
+#     opt = Flux.Optimise.Adam()
 #     model = Flux.Chain(
 #         Flux.flatten,
 #         Flux.Dense(width * len => width * len),
@@ -305,27 +244,33 @@ end
 #             for i in 1:len
 #                 x1 = argmax(pred[:,i,b])
 #                 x2 = argmax(y[:,i,b])
-#                 s += x2 - x1
+#                 # NOTE: Replacing the above two lines with the below two lines results in non-zero gradient.
+#                 # x1 = sum(pred[:,i,b]) / len
+#                 # x2 = sum(y[:,i,b]) / len
+#                 s += abs(x2 - x1)
 #             end
 #         end
-#         return s / (len * batchLen)
+#         return s / batchLen
 #     end
 
 #     x = rand(width, len, batchLen)
 #     y = rand(width, len, batchLen)
 #     xtest1 = rand(width, len, batchLen)
-#     xtest2 = rand(width, len, batchLen)
+#     ytest1 = rand(width, len, batchLen)
 
+#     println("loss: ", loss((xtest1, ytest1)))
 #     grad = Flux.gradient(() -> loss((x,y)), ps)
+#     Flux.Optimise.update!(opt, ps, grad)
+#     println("loss: ", loss((xtest1, ytest1)))
+#     grad = Flux.gradient(() -> loss((x,y)), ps)
+#     Flux.Optimise.update!(opt, ps, grad)
+#     println("loss: ", loss((xtest1, ytest1)))
+#     grad = Flux.gradient(() -> loss((x,y)), ps)
+#     Flux.Optimise.update!(opt, ps, grad)
+#     println("loss: ", loss((xtest1, ytest1)))
+#     println(values(grad.grads))
 
-#     opt = Flux.Optimise.Adam()
-#     grad, params = testgrad()
-#     Flux.Optimise.update!(opt, params, grad)
-
-#     return (grad, params)
+#     return (grad, ps)
 # end
-
-prep1(x, xp) = (x - xp) / xp
-daysinquarter(d) = ( q1 = Dates.firstdayofquarter(d) ; (q1 + Dates.Month(3) - q1).value )
 
 end
