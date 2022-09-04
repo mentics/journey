@@ -94,7 +94,6 @@ function makeBufXY(cfg)
 end
 
 function toBatchXY!(bufX, bufY, cfg, seqm, inputOffset)
-    binDef = BinDef(cfg.binCnt)
     _, inputLen, batchLen = size(bufX)
     outputLen = size(bufY)[2]
     outputOffset = inputOffset + inputLen
@@ -103,7 +102,7 @@ function toBatchXY!(bufX, bufY, cfg, seqm, inputOffset)
             bufX[:,i,b] .= seqm[:, inputOffset + b + i - 1]
         end
         for i in 1:outputLen
-            bufY[:,i,b] .= toh(binDef, seqm[cfg.outputInds, outputOffset + b + i - 1])
+            bufY[:,i,b] .= toh(cfg.binDef, seqm[cfg.outputInds, outputOffset + b + i - 1])
         end
     end
     return (bufX, bufY)
