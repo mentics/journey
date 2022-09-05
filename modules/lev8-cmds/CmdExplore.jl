@@ -515,6 +515,7 @@ function bbToClose()
     isnothing(snap()) || error("Can't show bbToClose when snapped")
     return filter(sort!(findTrades(Filled); by=getTargetDate)) do trade
         targ = getTargetDate(trade)
+        !isempty(chain(targ)) || return false
         targ >= Date(2022,8,19) || return false
         ur = TradeInfo.urpnl(trade)
         mn, mx = TradeInfo.minMaxPnl(trade)

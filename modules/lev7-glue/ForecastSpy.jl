@@ -1,18 +1,17 @@
 module ForecastSpy
 import Dates:Dates,Date
-import Flux:Flux, gpu
+import Flux:Flux, gpu, cpu
 using BaseTypes
 import Forecast:Forecast,N
 import Statistics
-import ForecastUtil ; FC = ForecastUtil
+import ForecastUtil
+const FC = ForecastUtil
 
 # enable_gpu
 
 #==
-# TODO: can't make equal sized bins: too much future info and maybe not as useful for low prob outliers
-
-using Forecast ; fc = Forecast ; using ForecastSpy ; fs = ForecastSpy
-import Flux
+# using Forecast ; fc = Forecast ; using ForecastSpy ; fs = ForecastSpy
+# import Flux
 fs.run(;skipTrain=true, skipTest=true)
 batchIter = fc.makeBatchIter(fs.cfg, fs.seq)
 b1 = first(batchIter)
@@ -23,16 +22,6 @@ fs.run()
 i = 2
 xy1 = fc.singleXY(fs.cfg, fs.seq, i)
 fs.loss(xy1)
-
-argmax(fs.model(xy1[1]); dims=1)
-argmax(fs.yoh(fs.cfg, xy1[2]); dims=1)
-
-xy1 = fc.singleXY(fs.cfg, fs.seq, 1);
-argmax(fs.model(xy1[1]); dims=1)
-xy1 = fc.singleXY(fs.cfg, fs.seq, 2);
-argmax(fs.model(xy1[1]); dims=1)
-xy1 = fc.singleXY(fs.cfg, fs.seq, 3);
-argmax(fs.model(xy1[1]); dims=1)
 
 Input:
     SPY: O,H,L,C ./ prevC: log ret bins
@@ -70,7 +59,11 @@ end
 #     display(surface(model(b1[1])[:,:,1]; colormap=:blues))
 #     surface!(ytoit(cfg, b1[2])[:,:,1]; colormap=:greens)
 # end
-
+function run()
+    init()
+    train()
+    test()
+end
 function init()
     global cfg = config()
     global mod = makeModel(cfg)
@@ -79,6 +72,23 @@ function init()
 end
 train() = FC.trainModel(cfg, mod, seq)
 test() = FC.testModel(cfg, mod, seq)
+
+import CUDA
+function forecasted(castOut)
+    model = mod.model
+    # xs = CuIterator(seq
+    starts = 1:(size(seq)[2] - cfg.inputLen - castOut)
+    yoff = cfg.inputLen + castOut
+    yinds = (starts.start + yoff):(starts.stop + yoff)
+    yvs = map(i -> seq[cfg.outputInds,i], yinds)
+    ys = map(x -> Forecast.toBin(cfg.binDef, x[1]), yvs)
+    xscpu = Iterators.map(Flux.unsqueeze(;dims=3), (seq[:,i:(i+cfg.inputLen-1)] for i in starts))
+    yhat = map(x -> cpu(model(gpu(x))[:,castOut]), xscpu)
+    misses = count(x -> x == 0, [yhat[i][ys[i]] for i in eachindex(ys)])
+    println("% miss: ", (misses/length(ys)))
+    return (yhat, ys)
+
+end
 
 function makeModel(cfg)
     hiddenSize = 512
@@ -184,16 +194,16 @@ end
 #     # return sum(res)
 # end
 
-# function err2d(mid, x1, x2)
-#     x1 -= mid
-#     x2 -= mid
-#     diff = abs(x1 - x2)
-#     if x1 * x2 < 0.0
-#         return diff^2
-#     else
-#         return diff
-#     end
-# end
+function err2d(mid, x1, x2)
+    x1 -= mid
+    x2 -= mid
+    diff = abs(x1 - x2)
+    if x1 * x2 < 0.0
+        return diff^2
+    else
+        return diff
+    end
+end
 
 # function randM()
 #     def = Forecast.BinDef(cfg.binCnt)

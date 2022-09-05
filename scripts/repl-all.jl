@@ -14,13 +14,12 @@ isrtd() = !intest() && !dev() && isMarketOpen() && tenv() == :prod && isnothing(
 devon();
 snap(5,24,0,0);
 
-bbres = xx.bball();
-
-an(1;maxRun=100000, scorer=scoreRand, lmsPos=Vector{LegMeta}());
-dr(1);
+# an(1;maxRun=100000, scorer=scoreRand, lmsPos=Vector{LegMeta}());
+# dr(1);
 drsh("s400p@1 / l402p@2 / l404c@2 / s406c@1", expirs()[1:3]);
 
 snop();
+@show market()
 
 useDbProd();
 display(todo());
@@ -36,3 +35,11 @@ Sched.start()
 
 bbres = xx.bball();
 xx.bbToClose();
+
+using Combos, SeekingAlpha, Joe ; c = Combos ; sa = SeekingAlpha ; j = Joe
+ll = c.lookAll()
+
+using Forecast ; fc = Forecast ; using ForecastSpy ; fs = ForecastSpy
+fs.run()
+
+println("repl-all done.")

@@ -7,6 +7,12 @@ import Statistics:median
 
 Base.IteratorSize(::Type{<:CuIterator{B}}) where B = Base.IteratorSize(B)
 Base.HasLength(::Type{<:CuIterator{B}}) where B = Base.HasLength(B)
+Base.HasShape{N}(::Type{<:CuIterator{B}}) where {B,N} = Base.HasShape{N}(B)
+Base.IteratorEltype(::Type{<:CuIterator{B}}) where B = Base.IteratorEltype(B)
+
+Base.size(itr::T) where T<:CuIterator = Base.size(itr.batches)
+Base.length(itr::T) where T<:CuIterator = Base.length(itr.batches)
+Base.eltype(itr::T) where T<:CuIterator = Base.eltype(itr.batches)
 
 #==
 Input params:
