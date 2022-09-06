@@ -1,5 +1,5 @@
 module ForecastUtil
-import Dates:Dates,Date
+import Dates:Dates,Date,Second
 import Flux
 import Forecast:Forecast,N
 import HistData
@@ -10,6 +10,18 @@ randomLoss(cfg, los) = Statistics.mean(1:100) do _
     los((randomInput(cfg), randomOutput(cfg)))
 end
 
+import MarketDurTypes:MarketDur
+durToLogits(seconds::Second)::N = N(sqrt(seconds.value/3600))
+durToLogits(dur::MarketDur) = durToLogits.((
+    dur.closed,
+    dur.pre,
+    dur.open,
+    dur.post,
+    dur.weekend,
+    dur.holiday
+))
+
+import Calendars
 function makeSeq(cfg)
     spy = filter!(x -> x.date > Date(2000,1,1), reverse(HistData.dataDaily("SPY")))
     vix = filter!(x -> x.date > Date(2000,1,1), reverse(HistData.dataDaily("VIX")))
@@ -22,19 +34,25 @@ function makeSeq(cfg)
         prevVixClose = vix[i-1].close
         s = spy[i]
         v = vix[i]
+            # (s.date - prevSpy.date).value / 10, # TODO: embed these day and duration values
+            durFrom = durToLogits(Calendars.calcDurCloses(prevSpy.date, s.date))
         seq[:,i-1] .= (
-            prep1(s.open, prevSpyClose),
-            prep1(s.high, prevSpyClose),
-            prep1(s.low, prevSpyClose),
-            prep1(s.close, prevSpyClose),
-            prep1(v.open, prevVixClose),
-            prep1(v.high, prevVixClose),
-            prep1(v.low, prevVixClose),
-            prep1(v.close, prevVixClose),
-            (s.date - prevSpy.date).value / 10, # TODO: embed these day and duration values
-            Dates.dayofweek(s.date) / 7,
-            Dates.dayofmonth(s.date) / Dates.daysinmonth(s.date),
-            Dates.dayofquarter(s.date) / daysinquarter(s.date)
+            (
+                prep1(s.open, prevSpyClose),
+                prep1(s.high, prevSpyClose),
+                prep1(s.low, prevSpyClose),
+                prep1(s.close, prevSpyClose),
+                prep1(v.open, prevVixClose),
+                prep1(v.high, prevVixClose),
+                prep1(v.low, prevVixClose),
+                prep1(v.close, prevVixClose)
+            ),
+            (
+                Dates.dayofweek(s.date) / 7,
+                Dates.dayofmonth(s.date) / Dates.daysinmonth(s.date),
+                Dates.dayofquarter(s.date) / daysinquarter(s.date)
+            ),
+            (durFrom...),
         )
     end
     # binsSpy = Forecast.binLog(cfg.binCnt, seqm[4,:])
@@ -47,7 +65,8 @@ function makeSeq(cfg)
     #         seqm[i,j] = Forecast.findBin(binsVix, seqm[i,j]) / cfg.binCnt
     #     end
     # end
-    return seq
+    encoder = Flux.Parallel(vcat, identity, Dense(3 => 6), Dense(6 => 2))
+    return (seq, encoder)
 end
 
 function trainModel(cfg, mod, seq)

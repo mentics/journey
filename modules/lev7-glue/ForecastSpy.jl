@@ -5,6 +5,7 @@ using BaseTypes
 import Forecast:Forecast,N
 import Statistics
 import ForecastUtil
+import CUDA
 const FC = ForecastUtil
 
 # enable_gpu
@@ -50,7 +51,7 @@ function config()
         testHoldOut = .3,
         lossTarget = 0.001,
         maxIter = 100,
-        useCpu = false
+        useCpu = (CUDA.version() == v"11.1.0")
     )
 end
 

@@ -49,6 +49,8 @@ function calcDurToExpr(tsFrom::DateTime, dateTo::Date)::MarketDur
     end
 end
 
+calcDurCloses(from::Date, to::Date)::MarketDur = calcDurToExpr(getMarketClose(from), to)
+
 #region Local
 mutable struct MarketState
     @atomic isOpen::Bool
