@@ -41,7 +41,8 @@ Layers:
 
 function config()
     return (;
-        inputWidth = 12,
+        inputWidth = 17,
+        encodedWidth = 16,
         inputLen = 50,
         outputInds = [4],
         castLen = 10,
@@ -67,8 +68,8 @@ function run()
 end
 function init()
     global cfg = config()
+    global seq, encoder = FC.makeSeq(cfg)
     global mod = makeModel(cfg)
-    global seq = FC.makeSeq(cfg)
     return
 end
 train() = FC.trainModel(cfg, mod, seq)
@@ -94,8 +95,9 @@ end
 function makeModel(cfg)
     hiddenSize = 512
     model = Flux.Chain(
+        encoder,
         Flux.flatten,
-        Flux.Dense(cfg.inputWidth * cfg.inputLen => hiddenSize),
+        Flux.Dense(cfg.encodedWidth * cfg.inputLen => hiddenSize),
         # Flux.LSTM(cfg.inputWidth * cfg.inputLen => 4096),
         Flux.Dense(hiddenSize => cfg.binCnt * cfg.castLen, Flux.relu),
         x -> reshape(x, (cfg.binCnt, cfg.castLen, size(x)[end])),

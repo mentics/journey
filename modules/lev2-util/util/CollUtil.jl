@@ -91,4 +91,7 @@ function mapRoll2(f, iter)
     end
 end
 
+# function tupsToVecs(tupVec::AVec)
+# end
+
 end
