@@ -7,7 +7,10 @@ using DateUtil, FileUtil, DictUtil
 ActiveSyms = [] # ["BHC","BLUE","CLNN","CLOV","CTIC","INVZ","NKLA","NNVC","NVTA","PAYO","SENS","TSP","WVE","FSR","WKHS","WTI","DNMR"]
 
 BadPricing = []#"BAX", "OLN"]
-Ignore = ["SNDL","YANG","MUX","QD","RIOT","GOTU","TAL","ACB","HUT","IQ","JMIA","ABEV","JDST","SOXS","FAZ","SQQQ","SPXU","QID","SDOW","TWM","NINE","TECS","DUST","SPXS","SRTY","ZSL","DRV"]
+Ignore = ["SNDL","YANG","MUX","QD","RIOT","GOTU","TAL","ACB","HUT","IQ","JMIA","ABEV","JDST","SOXS","FAZ",
+          "SQQQ","SPXU","QID","SDOW","TWM","NINE","TECS","DUST","SPXS","SRTY","ZSL","DRV","TZA","DIG","UNG",
+          "URA","EDZ"
+]
 IgnoreTemp = []#"CORZ","CLSK"]
 isGlobalIgnore(sym) = sym in vcat(BadPricing, Ignore, IgnoreTemp, ActiveSyms)
 
@@ -26,7 +29,7 @@ function totry()
     global res = filter(syms) do s
         bid = Quotes[s]["bid"]
         gs = tryKey(Data[:grades], s)
-        grade = isnothing(gs) || (checkGrade(gs, "value_category", 9) || checkGrade(gs, "profitability_category", 6)) # || checkGrade(gs, "growth_category", 6))
+        grade = isnothing(gs) || (checkGrade(gs, "value_category", 5) && checkGrade(gs, "profitability_category", 5) && checkGrade(gs, "growth_category", 9))
         return grade && !isnothing(bid) && bid >= 0.05 &&
                 DictUtil.safeKeys(Data, 0.0, :metrics, s, "quant_rating") > 3.5
                 # && Quotes[s]["prevclose"] < 57.0

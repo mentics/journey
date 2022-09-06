@@ -69,7 +69,11 @@ function xdr(ex::Int, add::Union{Nothing,Coll{LegMeta}}=nothing, curp::Currency=
     # TODO: this is inefficient because it converts to lms multiple times
     tod = tradesToClose(expr)
     if isempty(tod)
-        DrawStrat.drawRet(SH.combineTo(Ret, add, curp); probs=(xprob(ex),), curp, label="add")
+        if isnothing(add)
+            println("No positions nor adds for ", expr)
+        else
+            DrawStrat.drawRet(SH.combineTo(Ret, add, curp); probs=(xprob(ex),), curp, label="add")
+        end
     else
         trade = tod[1]
         DrawStrat.drawRet(SH.to(Ret, trade, curp); probs=(xprob(ex),), curp, label="t$(SH.getId(trade))")
