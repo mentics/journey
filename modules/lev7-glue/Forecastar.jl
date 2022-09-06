@@ -20,7 +20,7 @@ function config()
         batchLen = 128,
         testHoldOut = .3,
         lossTarget = 0.001,
-        maxIter = 100,
+        maxIter = 1000,
         useCpu = (CUDA.version() == v"11.1.0")
     )
 end
@@ -41,13 +41,15 @@ test() = ForecastUtil.testModel(cfg, mod, seq)
 
 function makeModel(cfg)
     hiddenSize = 512
-    model = Flux.Chain(
-        encoder,
-        Flux.flatten,
-        Flux.Dense(cfg.encodedWidth * cfg.inputLen => hiddenSize),
-        Flux.Dense(hiddenSize => hiddenSize),
-        Flux.Dense(hiddenSize => cfg.binCnt * cfg.castLen, Flux.relu),
-        x -> reshape(x, (cfg.binCnt, cfg.castLen, size(x)[end])),
+    model = Flux.Chain(;
+        enc=encoder,
+        flat=Flux.flatten,
+        d1=Flux.Dense(cfg.encodedWidth * cfg.inputLen => hiddenSize),
+        d2a=Flux.Dense(hiddenSize => hiddenSize),
+        d2b=Flux.Dense(hiddenSize => hiddenSize),
+        d2c=Flux.Dense(hiddenSize => hiddenSize),
+        d3=Flux.Dense(hiddenSize => cfg.binCnt * cfg.castLen, Flux.relu),
+        resh=x -> reshape(x, (cfg.binCnt, cfg.castLen, size(x)[end]))
     )
     cfg.useCpu || (model = model |> gpu)
     function loss(batch)
