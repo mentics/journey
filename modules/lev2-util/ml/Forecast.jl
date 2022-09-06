@@ -127,8 +127,8 @@ end
 #endregion
 
 function BinDef(num)
-    left = -0.15
-    right = 0.15
+    left = -0.1
+    right = 0.1
     span = right - left
     binWidth = span / (num-2)
     return (; left, right, span, num, binWidth)

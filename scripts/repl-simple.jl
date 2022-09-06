@@ -1,7 +1,6 @@
 include("repl-base.jl")
 
 using Calendars
-Calendars.init()
 
 using Dates
 import IterTools, NamedTupleTools

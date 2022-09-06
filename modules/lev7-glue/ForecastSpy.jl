@@ -68,29 +68,12 @@ function run()
 end
 function init()
     global cfg = config()
-    global seq, encoder = FC.makeSeq(cfg)
+    global seq, encoder = FC.makeSeq()
     global mod = makeModel(cfg)
     return
 end
 train() = FC.trainModel(cfg, mod, seq)
 test() = FC.testModel(cfg, mod, seq)
-
-import CUDA
-function forecasted(castOut)
-    model = mod.model
-    # xs = CuIterator(seq
-    starts = 1:(size(seq)[2] - cfg.inputLen - castOut)
-    yoff = cfg.inputLen + castOut
-    yinds = (starts.start + yoff):(starts.stop + yoff)
-    yvs = map(i -> seq[cfg.outputInds,i], yinds)
-    ys = map(x -> Forecast.toBin(cfg.binDef, x[1]), yvs)
-    xscpu = Iterators.map(Flux.unsqueeze(;dims=3), (seq[:,i:(i+cfg.inputLen-1)] for i in starts))
-    yhat = map(x -> cpu(model(gpu(x))[:,castOut]), xscpu)
-    misses = count(x -> x == 0, [yhat[i][ys[i]] for i in eachindex(ys)])
-    println("% miss: ", (misses/length(ys)))
-    return (yhat, ys)
-
-end
 
 function makeModel(cfg)
     hiddenSize = 512

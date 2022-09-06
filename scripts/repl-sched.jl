@@ -14,7 +14,6 @@ catch
 end
 
 using Calendars
-Calendars.init()
 
 using Globals
 using Markets

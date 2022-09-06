@@ -75,17 +75,13 @@ function init()
     loadCal()
     updateState()
 end
-const TestData = Dict()
 function __init__()
-    println("Running init")
-    @assert isempty(TestData)
-    TestData[1] = "1"
+    # println("Running init")
     if ccall(:jl_generating_output, Cint, ()) != 1
-        println("We are actual loading the module for runtime, not caching code to disk. TestData keys: ", keys(TestData))
-        TestData[2] = "2"
+        # println("We are actual loading the module for runtime, not caching code to disk. TestData keys: ", keys(TestData))
+        init()
     else
-        println("Hit the else. TestData keys: ", keys(TestData))
-        TestData[3] = "3"
+        # println("Hit the else. TestData keys: ", keys(TestData))
     end
 end
 
