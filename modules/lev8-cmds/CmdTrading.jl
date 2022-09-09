@@ -181,6 +181,7 @@ tot() = findTradeEntered(today())
 
 ct(trad::Trade{<:Closeable}; kws...) = closePos(trad; kws..., pre=true)
 ct(tid::Int; kws...) = ct(cacheTrades[tid]; kws...)
+# pre=true, legs=nothing, skipMin=false
 ctr(trad::Trade{<:Closeable}, primitDir::Real; kws...) = closePos(trad; kws..., pre=false, at=PriceT(primitDir))
 ctr(tid::Int, primitDir::Real; kws...) = ctr(cacheTrades[tid], primitDir; kws...)
 # ctrt(i::Int, at::Real; kws...) = closePos(trad; kws..., pre=false, at=PriceT(at))

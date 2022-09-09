@@ -4,12 +4,14 @@ using Dates, Tables, HTTP, JSON3
 using BaseTypes
 using DateUtil, FileUtil, DictUtil
 
+# Need covered calls: "CODX"
+
 ActiveSyms = [] # ["BHC","BLUE","CLNN","CLOV","CTIC","INVZ","NKLA","NNVC","NVTA","PAYO","SENS","TSP","WVE","FSR","WKHS","WTI","DNMR"]
 
 BadPricing = []#"BAX", "OLN"]
 Ignore = ["SNDL","YANG","MUX","QD","RIOT","GOTU","TAL","ACB","HUT","IQ","JMIA","ABEV","JDST","SOXS","FAZ",
           "SQQQ","SPXU","QID","SDOW","TWM","NINE","TECS","DUST","SPXS","SRTY","ZSL","DRV","TZA","DIG","UNG",
-          "URA","EDZ"
+          "URA","EDZ","EPV","BNO","IEZ","TBT","SDS","XME","TUR","DXD","ECH","TYO","VIXM"
 ]
 IgnoreTemp = []#"CORZ","CLSK"]
 isGlobalIgnore(sym) = sym in vcat(BadPricing, Ignore, IgnoreTemp, ActiveSyms)
@@ -31,7 +33,7 @@ function totry()
         gs = tryKey(Data[:grades], s)
         grade = isnothing(gs) || (checkGrade(gs, "value_category", 5) && checkGrade(gs, "profitability_category", 5) && checkGrade(gs, "growth_category", 9))
         return grade && !isnothing(bid) && bid >= 0.05 &&
-                DictUtil.safeKeys(Data, 0.0, :metrics, s, "quant_rating") > 3.5
+                DictUtil.safeKeys(Data, 0.0, :metrics, s, "quant_rating") > 4.1
                 # && Quotes[s]["prevclose"] < 57.0
         #
         # Grades[s]["momentum_category"] <= 9

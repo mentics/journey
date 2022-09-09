@@ -5,6 +5,7 @@ using DateUtil, DictUtil, OutputUtil
 using TradierData
 using Markets, Chains
 import SeekingAlpha
+sa = SeekingAlpha
 
 function lookAll(cands=SeekingAlpha.totry())
     global Looked = []
@@ -12,7 +13,7 @@ function lookAll(cands=SeekingAlpha.totry())
         append!(Looked, look(sym))
     end
     global LookedRaw = copy(Looked)
-    global Looked = clean(Looked)
+    clean(Looked)
     pretyble(sort(delete.(Looked, :oq); by=x -> x.rate))
     return Looked
 end
@@ -22,8 +23,8 @@ check(sym) = pretyble(delete.(look(sym; all=true), :oq))
 excludes(lll) = filter!(x -> !(x.sym in ActiveSyms) && !(x.sym in SeekingAlpha.BadPricing) && !(x.sym in TempIgnore) && !(x.sym in SeekingAlpha.Ignore) && x.strike <= 105.0, lll)
 function clean(lll)
     # excludes(lll)
-    # sort!(lll; rev=true, by=x->x.rate)
-    return sort!(map(g -> g[findmax(x -> x.rate, g)[2]], groupby(r -> r.sym, sort!(lll; by=x->x.sym))); rev=true, by=x->x.rate)
+    global Looked = sort!(lll; rev=true, by=x->x.rate)
+    # return sort!(map(g -> g[findmax(x -> x.rate, g)[2]], groupby(r -> r.sym, sort!(lll; by=x->x.sym))); rev=true, by=x->x.rate)
 end
 
 const ExpirMap = Dict{String,Vector{Date}}()
@@ -88,10 +89,12 @@ function look(sym; all=false)
         else
             # TODO: use IV to figure out how far out to go?
             # or could maybe get 52 week range
-            ratio = .94
+            # ratio = .94
+            ratio = .96
             startI = findfirst(oq -> getStrike(oq) > ratio * underBid, oqs)
             !isnothing(startI) || continue
-            range = (startI-5):(startI-1)
+            # range = (startI-5):(startI-1)
+            range = (startI-10):(startI-1)
         end
         for i in range
             i >= 1 || continue
@@ -102,7 +105,7 @@ function look(sym; all=false)
             rate = timult * (primitDir - .0065) / strike # .0065 is the trade commission for fidelity
             println("$(sym)[$(expr)]: $(underBid) -> $(strike) at $(primitDir) ($(getQuote(oq))) / $(strike) = $(rate)")
             if all || rate > 0.1
-                push!(res, (;sym, expr, underBid, strike, primitDir, rate, oq))
+                push!(res, (;sym, expr, mov=1.0 - strike/underBid, underBid, strike, primitDir, rate, div=getDividend(sym), oq))
             end
         end
     end
@@ -111,6 +114,17 @@ function look(sym; all=false)
         @error "look" sym
         rethrow(e)
     end
+end
+
+function getDividend(sym)
+    haskey(sa.Dividends, sym) || return nothing
+    div = sa.Dividends[sym]
+    length(div) > 0 || return nothing
+    d = filter(x -> Date(x["pay_date"]) >= today() - Year(1), values(sa.Dividends[sym]))
+    length(d) > 0 || return nothing
+    divTot = sum(x -> x["cash_amount"], d)
+    last = sa.Quotes[sym]["last"]
+    return divTot / last
 end
 
 function vol(sym)

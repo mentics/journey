@@ -8,7 +8,7 @@ export tosh
 
 # l448p@1 / s452p2@2 / s456c@2 / l458c2@1
 legsTosh(legs, exps) = join((legTosh(leg, exps) for leg in legs), " / ")
-tosh(legs::Vector, exps) = join((legTosh(leg, exps) for leg in legs), " / ")
+tosh(legs::Coll, exps) = join((legTosh(leg, exps) for leg in legs), " / ")
 
 legTosh(leg, exps) = string(toCode(getSide(leg)), round(getStrike(leg); digits=1), toCode(getStyle(leg)), '@', searchsortedfirst(exps, getExpiration(leg)))
 tosh(leg, exps) = string(toCode(getSide(leg)), round(getStrike(leg); digits=1), toCode(getStyle(leg)), '@', searchsortedfirst(exps, getExpiration(leg)))
