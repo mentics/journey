@@ -112,6 +112,7 @@ function tradierDividends(syms::Coll{<:AStr}=("SPY",))
 end
 
 export findExDate
+findExDate(::Nothing)::Date = DATE_FUTURE
 findExDate(res::Vector{<:Dict}, tod::Date=today())::Date =
         minimum(filter(x -> x > tod, map(x -> Date(x["ex_date"]), res)); init=DATE_FUTURE)
 
@@ -139,6 +140,7 @@ end
 
 const EARNINGS_TYPES = (7,8,9,10)
 export findEarnDate
+findEarnDate(::Nothing)::Date = DATE_FUTURE
 function findEarnDate(res::Vector{<:Dict}, tod::Date=today())::Date
     global earnings = filter(x -> x["event_type"] in EARNINGS_TYPES, res)
     global dates = filter(x -> x > tod, map(x -> Date(x["begin_date_time"]), earnings))

@@ -14,11 +14,11 @@ function lookAll(cands=SeekingAlpha.totry())
     end
     global LookedRaw = copy(Looked)
     clean(Looked)
-    pretyble(sort(delete.(Looked, :oq); by=x -> x.rate))
+    pretyble(sort!(delete.(Looked, :oq); by=x -> x.rate))
     return Looked
 end
-disp() = pretyble(sort(delete.(Looked, :oq); by=x -> x.rate))
-check(sym) = pretyble(delete.(look(sym; all=true), :oq))
+disp(minMove=0.0) = pretyble(filter!(x -> x.mov > minMove, sort!(delete.(Looked, :oq); by=x -> x.rate)))
+check(sym, minMove=0.0) = pretyble(filter!(x -> x.mov > minMove, sort!(delete.(look(sym; all=true), :oq); by=x -> x.rate)))
 
 excludes(lll) = filter!(x -> !(x.sym in ActiveSyms) && !(x.sym in SeekingAlpha.BadPricing) && !(x.sym in TempIgnore) && !(x.sym in SeekingAlpha.Ignore) && x.strike <= 105.0, lll)
 function clean(lll)
@@ -74,7 +74,7 @@ function look(sym; all=false)
     # about = SeekingAlpha.Data[:metrics]
     # maxDate = min(parseDate(about[:earningsUpcomingAnnounceDate]), parseDate(about[Symbol("dividendsEx-DivDate")]))
     # maxDate = min(parseDate(about, "earning_announce_date"), parseDate(about, "div_pay_date"))
-    maxDate = min(findExDate(sa.Dividends[sym]), findEarnDate(sa.Earnings[sym]))
+    maxDate = min(findExDate(tryKey(sa.Dividends, sym)), findEarnDate(tryKey(sa.Earnings,sym)))
     getChains(sym, maxDate)
     locUnder = Under[sym]
     chs = ChainMap[sym]
