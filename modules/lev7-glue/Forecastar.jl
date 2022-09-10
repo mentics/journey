@@ -1,26 +1,33 @@
 module Forecastar
 import Dates:Dates,Date
 import Flux:Flux, gpu
+import CUDA
 using BaseTypes
 import Forecast:Forecast,N
 import ForecastUtil
-import CUDA
+import MLUtil:MLUtil,BinDef
 
 # using Forecastar ; fr = Forecastar
 
 function config()
+    binCnt = 21
+    def = BinDef(binCnt)
+    binner = x -> MLUtil.toBin(def, x)
+    vdef = BinDef(binCnt, 10.0, 40.0)
+    binnerVix = x -> MLUtil.toBin(vdef, x)
     return (;
-        inputWidth = 17,
+        # inputWidths = (8, 12, 4),
         encodedWidth = 16,
         inputLen = 50,
         outputInds = [4],
         castLen = 10,
-        binCnt = 21,
-        binDef = Forecast.BinDef(21),
         batchLen = 128,
         testHoldOut = .3,
         lossTarget = 0.001,
-        maxIter = 1000,
+        maxIter = typemax(Int),
+        binCnt,
+        binner,
+        binnerVix,
         useCpu = (CUDA.version() == v"11.1.0")
     )
 end
@@ -32,7 +39,7 @@ function run()
 end
 function init()
     global cfg = config()
-    global seq, encoder = ForecastUtil.makeSeq()
+    global seq, batcher, encoder = ForecastUtil.makeSeq(cfg)
     global mod = makeModel(cfg)
     return
 end

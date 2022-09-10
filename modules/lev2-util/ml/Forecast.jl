@@ -3,6 +3,7 @@ import Flux:Flux,gpu #: Flux,Dense,ADAM,gradient,gpu
 import CUDA:CuIterator
 import Flux.Optimise
 import Statistics:median
+import MLUtil:N
 # import Transformers: Transformer,TransformerDecoder,todevice,enable_gpu
 
 Base.IteratorSize(::Type{<:CuIterator{B}}) where B = Base.IteratorSize(B)
@@ -22,8 +23,6 @@ castLen
 binCnt
 batchLen
 ==#
-
-const N = Float32
 
 #region TimeSeries
 function train(cfg, model, opt, loss, seq; cb=nothing)
@@ -73,14 +72,6 @@ function report(title, model, loss, batchIter)
     println("$(title) median loss: ", med)
 end
 
-function makeViews(seq, testHoldOut)
-    _, len = size(seq)
-    split = round(Int, (1 - testHoldOut) * len)
-    # batchCount = (1 - cfg.testHoldOut) * length(seq) / cfg.batchLen
-    # seqTest = @view seq[:, (cfg.batchLen * cfg.batchCount + cfg.inputLen + cfg.castLen):end]
-    return ((@view seq[:,1:split]), (@view seq[:,(split+1):len]))
-end
-
 # fs.model(fc.singleXY(fs.cfg, fs.seq, 1)[1])
 # fs.loss(fc.singleXY(fs.cfg, fs.seq, 1))
 function singleXY(cfg, seq, inputOffset)
@@ -126,18 +117,6 @@ function makeBatchIter(cfg, seq)
 end
 #endregion
 
-function BinDef(num)
-    left = -0.1
-    right = 0.1
-    span = right - left
-    binWidth = span / (num-2)
-    return (; left, right, span, num, binWidth)
-end
-
-function toBin(def, val)::Int
-    max(1, min(def.num, 1 + round(Int, (val - def.left) / def.binWidth, RoundUp)))
-end
-
 function toh(def, val)
     b = map(x -> toBin(def, x), val)
     return Flux.onehotbatch(b, 1:def.num)
@@ -148,29 +127,6 @@ end
 #     reshape(Flux.onehotbatch(map(x -> toBin(def, x), y), 1:cfg.binCnt), (cfg.binCnt, cfg.castLen, size(y)[end]))
 #     # reshape(Flux.onehotbatch(y, 1:cfg.binCnt), (cfg.binCnt, cfg.castLen, size(y)[end]))
 # end
-
-# TODO: move where?
-function binLog(binCnt, vals)
-    bins = Vector{Float64}(undef, binCnt - 1)
-    sorted = sort!(log.(vals))
-    binSize = length(sorted) ÷ binCnt
-    bin = 1
-    for i in binSize:binSize:(length(sorted) - binSize)
-        bins[bin] = sorted[i]
-        bin += 1
-    end
-    return bins
-end
-
-function findBin(bins, val::Float64)
-    valLog = log(val)
-    for i in eachindex(bins)
-        if valLog < bins[i]
-            return i
-        end
-    end
-    return length(bins) + 1
-end
 
 function materialize(iter)
     res = typeof(first(iter))[]
