@@ -1,15 +1,12 @@
 module Forecastar
 import Dates:Dates,Date
-import Flux:Flux, gpu
+import Flux
 import Transformers:Transformer,TransformerDecoder,Positionwise
 import CUDA
 using BaseTypes
 # import Forecast:Forecast,N
-import ForecastUtil
+import ForecastUtil:ForecastUtil,DEV
 import MLUtil:MLUtil,BinDef
-
-# TODO: use
-# dev = has_cuda() ? gpu : cpu
 
 # using Forecastar ; fr = Forecastar
 
@@ -32,8 +29,7 @@ function config()
         maxIter = typemax(Int),
         binCnt,
         binner,
-        binnerVix,
-        useCpu = (CUDA.version() == v"11.1.0")
+        binnerVix
     )
 end
 
@@ -44,7 +40,7 @@ function run()
 end
 function init()
     global cfg = config()
-    global seq, batcher, encoder, paramsEncoder = ForecastUtil.makeSeq(cfg)
+    global seq, batcher, encoder, paramsEncoder = makeSeqTest()
     global mod = makeModel(cfg)
     return
 end
@@ -58,14 +54,14 @@ function makeModel(cfg)
     decSize = cfg.binCnt * cfg.castLen
     castSize = 4 * cfg.castLen
 
-    global tenc1 = Transformer(tfSize,2,4,32) |> gpu
-    global tenc2 = Transformer(tfSize,2,4,32) |> gpu
-    global decin = Flux.Dense(tfSize, decSize) |> gpu
-    global decinCast = Flux.Dense(castSize, decSize) |> gpu
-    global tdec1 = TransformerDecoder(decSize,2,4,32) |> gpu
-    global tdec2 = TransformerDecoder(decSize,2,4,32) |> gpu
-    # global linout = Positionwise(Flux.Dense(decInSize, cfg.binCnt), Flux.softmax) |> gpu
-    global linout = Positionwise(Flux.Dense(cfg.binCnt, cfg.binCnt)) |> gpu
+    global tenc1 = Transformer(tfSize,2,4,32) |> DEV
+    global tenc2 = Transformer(tfSize,2,4,32) |> DEV
+    global decin = Flux.Dense(tfSize, decSize) |> DEV
+    global decinCast = Flux.Dense(castSize, decSize) |> DEV
+    global tdec1 = TransformerDecoder(decSize,2,4,32) |> DEV
+    global tdec2 = TransformerDecoder(decSize,2,4,32) |> DEV
+    # global linout = Positionwise(Flux.Dense(decInSize, cfg.binCnt), Flux.softmax) |> DEV
+    global linout = Positionwise(Flux.Dense(cfg.binCnt, cfg.binCnt)) |> DEV
     global exec = (x, cast) -> begin
         e = encoder(x)
         ef = Flux.flatten(e)
@@ -108,8 +104,7 @@ function makeModelStage1(cfg)
         d2=Flux.Dense(hiddenSize => hiddenSize),
         d3=Flux.Dense(hiddenSize => cfg.binCnt * cfg.castLen, Flux.relu),
         resh=x -> reshape(x, (cfg.binCnt, cfg.castLen, size(x)[end]))
-    )
-    cfg.useCpu || (model = model |> gpu)
+    ) |> DEV
     function loss(batch)
         x, y = batch
         global pred = model(x)
@@ -122,6 +117,47 @@ function makeModelStage1(cfg)
     params = Flux.params(model)
     opt = Flux.Adam()
     return (;model, params, loss, opt)
+end
+
+
+function configTest()
+    binCnt = 21
+    def = BinDef(binCnt, 0.0, 1.0)
+    binner = x -> MLUtil.toBin(def, x)
+    return (;
+        # inputWidths = (8, 12, 4),
+        inputLen = 50,
+        outputInds = [4],
+        castLen = 10,
+        batchLen = 128,
+        embedSize = 32,
+        testHoldOut = .3,
+        lossTarget = 0.001,
+        maxIter = typemax(Int),
+        binCnt,
+        binner
+    )
+end
+
+import CollUtil
+function makeSeqTest(cfg)
+    seqTup = map(1:1000) do i
+        s5 = (sin(2π*i/100))
+        s4 = (sin(2π*i/10))
+        s3 = sin((s5 > 0 ? -1 : 1) * 2π*i/200)
+        s2 = sin((s4 > 0 ? -1 : 1) * 2π*i/37)
+        s1 = s2 + s3
+        return ((cfg.binner(s1), cfg.binner(s2)), (s3, s4, s5))
+    end
+    seq = CollUtil.tupsToMat(seqTup)
+    println(typeof(seq))
+
+    enc1 = ForecastUtil.EncoderLayer(2, 16, cfg.binCnt, 4)
+    enc2 = Flux.Dense(3 => 2) |> DEV
+    encoder = Flux.Parallel((xs...) -> cat(xs...; dims=1), enc1, enc2) |> DEV
+    batcher = MLUtil.makeBatchIter
+    println("Encoded size: ", size(encoder(first(batcher(cfg, seq))[1] |> DEV)))
+    return (;seq, batcher, encoder)
 end
 
 end

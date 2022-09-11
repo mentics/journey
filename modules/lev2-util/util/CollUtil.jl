@@ -91,7 +91,18 @@ function mapRoll2(f, iter)
     end
 end
 
-# function tupsToVecs(tupVec::AVec)
-# end
+function tupsToMat(tupVec::T) where T<:AVec
+    return Tuple(forTupi(tupVec, i) for i in eachindex(tupVec[1]))
+end
+
+function forTupi(tupVec, tupi)
+    tup = tupVec[1][tupi]
+    numRows = length(tup)
+    mat = Array{eltype(tup)}(undef, numRows, length(tupVec))
+    for i in eachindex(tupVec)
+        mat[:,i] .= tupVec[i][tupi]
+    end
+    return mat
+end
 
 end
