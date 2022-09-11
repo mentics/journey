@@ -41,6 +41,20 @@ end
 #     return length(bins) + 1
 # end
 
+# subview(seq, split) = @view sub[:,1:split]
+
+function splitTrainTest(seq::Tuple, testHoldOut)
+    _, len = size(seq[1])
+    split = round(Int, (1 - testHoldOut) * len)
+    train = map(seq) do sub
+        @view sub[:,1:split]
+    end
+    test = map(seq) do sub
+        @view sub[:,(split+1):len]
+    end
+    return (train, test)
+end
+
 function splitTrainTest(seq, testHoldOut)
     _, len = size(seq)
     split = round(Int, (1 - testHoldOut) * len)
@@ -57,6 +71,7 @@ function makeBufs(cfg, seq::Tuple)
     return (bufsX, bufY)
 end
 
+import Flux:onehotbatch
 function toBatch!(bufsX, bufY, cfg, seq, inputOffset)
     # TODO: create views instead?
     for indBuf in eachindex(bufsX)
@@ -69,10 +84,10 @@ function toBatch!(bufsX, bufY, cfg, seq, inputOffset)
         end
     end
     outputLen = size(bufY)[2] # cfg.castLen?
-    outputOffset = inputOffset + inputLen
-    for b in 1:batchLen
+    outputOffset = inputOffset + cfg.inputLen
+    for b in 1:cfg.batchLen
         for i in 1:outputLen
-            bufY[:,i,b] .= toh(cfg.binDef, seq[cfg.outputInds, outputOffset + b + i - 1])
+            bufY[:,i,b] .= onehotbatch(seq[1][cfg.outputInds, outputOffset + b + i - 2 + 1], 1:cfg.binCnt)
         end
     end
     return (bufsX, bufY)

@@ -3,7 +3,7 @@ import Flux:Flux,gpu #: Flux,Dense,ADAM,gradient,gpu
 import CUDA:CuIterator
 import Flux.Optimise
 import Statistics:median
-import MLUtil:N
+import MLUtil:MLUtil,N
 # import Transformers: Transformer,TransformerDecoder,todevice,enable_gpu
 
 Base.IteratorSize(::Type{<:CuIterator{B}}) where B = Base.IteratorSize(B)
@@ -25,15 +25,16 @@ batchLen
 ==#
 
 #region TimeSeries
-function train(cfg, model, opt, loss, seq; cb=nothing)
-    batchIter = materialize(makeBatchIter(cfg, seq))
+function train(cfg, model, params, opt, loss, seq; cb=nothing)
+    batchIter = materialize(MLUtil.makeBatchIter(cfg, seq))
     cfg.useCpu || (batchIter = batchIter |> gpu)
+    # println("batchIter: ", typeof(batchIter))
     tracker = trainProgress(() -> loss(first(batchIter)), cfg.lossTarget, 1.0; cb)
-    params = Flux.params(model)
+    # params = Flux.params(model)
     for i in 1:cfg.maxIter
         for b in batchIter
             Flux.reset!(model)
-            grad = Flux.gradient(() -> loss(b), params)
+            global grad = Flux.gradient(() -> loss(b), params)
             # for p in params
             #     @assert p in grad.params
             # end
@@ -58,8 +59,8 @@ end
 
 function test(cfg, model, loss, seq)
     # batchIter = makeBatchIter(cfg, seqTest)
-    batchIter = makeBatchIter(cfg, seq)
-    cfg.useCpu || (batchIter = CuIterator(batchIter))
+    batchIter = MLUtil.makeBatchIter(cfg, seq)
+    # cfg.useCpu || (batchIter = CuIterator(batchIter))
     report("Test", model, loss, batchIter)
 end
 
@@ -67,7 +68,7 @@ function report(title, model, loss, batchIter)
     # global so = batchIter
     med = map(batchIter) do b
         Flux.reset!(model)
-        return loss(b)
+        return loss(b |> gpu)
     end |> median
     println("$(title) median loss: ", med)
 end
@@ -88,33 +89,33 @@ function singleXY(cfg, seq, inputOffset)
     # return (bufX, bufY)
 end
 
-function makeBufXY(cfg)
-    bufX = Array{N}(undef, cfg.inputWidth, cfg.inputLen, cfg.batchLen)
-    bufY = Array{N}(undef, cfg.binCnt, cfg.castLen, cfg.batchLen)
-    return (bufX, bufY)
-end
+# function makeBufXY(cfg)
+#     bufX = Array{N}(undef, cfg.inputWidth, cfg.inputLen, cfg.batchLen)
+#     bufY = Array{N}(undef, cfg.binCnt, cfg.castLen, cfg.batchLen)
+#     return (bufX, bufY)
+# end
 
-function toBatchXY!(bufX, bufY, cfg, seq, inputOffset)
-    _, inputLen, batchLen = size(bufX)
-    outputLen = size(bufY)[2]
-    outputOffset = inputOffset + inputLen
-    for b in 1:batchLen
-        for i in 1:inputLen
-            bufX[:,i,b] .= seq[:, inputOffset + b + i - 1]
-        end
-        for i in 1:outputLen
-            bufY[:,i,b] .= toh(cfg.binDef, seq[cfg.outputInds, outputOffset + b + i - 1])
-        end
-    end
-    return (bufX, bufY)
-end
+# function toBatchXY!(bufX, bufY, cfg, seq, inputOffset)
+#     _, inputLen, batchLen = size(bufX)
+#     outputLen = size(bufY)[2]
+#     outputOffset = inputOffset + inputLen
+#     for b in 1:batchLen
+#         for i in 1:inputLen
+#             bufX[:,i,b] .= seq[:, inputOffset + b + i - 1]
+#         end
+#         for i in 1:outputLen
+#             bufY[:,i,b] .= toh(cfg.binDef, seq[cfg.outputInds, outputOffset + b + i - 1])
+#         end
+#     end
+#     return (bufX, bufY)
+# end
 
-function makeBatchIter(cfg, seq)
-    bufX, bufY = makeBufXY(cfg)
-    batchCount = size(seq)[2] ÷ cfg.batchLen - 1
-    # @show  batchCount cfg.batchLen
-    return (toBatchXY!(bufX, bufY, cfg, seq, (i-1) * cfg.batchLen) for i in 1:batchCount)
-end
+# function makeBatchIter(cfg, seq)
+#     bufX, bufY = makeBufXY(cfg)
+#     batchCount = size(seq)[2] ÷ cfg.batchLen - 1
+#     # @show  batchCount cfg.batchLen
+#     return (toBatchXY!(bufX, bufY, cfg, seq, (i-1) * cfg.batchLen) for i in 1:batchCount)
+# end
 #endregion
 
 function toh(def, val)

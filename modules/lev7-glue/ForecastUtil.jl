@@ -2,6 +2,7 @@ module ForecastUtil
 import Dates:Dates,Date,Second
 import Flux:Flux,Parallel,gpu
 import Transformers.Basic:Embed,PositionEmbedding
+import Transformers:enable_gpu
 # import Forecast:Forecast,N
 import HistData
 import MLUtil:MLUtil,BinDef,N
@@ -12,6 +13,8 @@ import MLUtil:MLUtil,BinDef,N
 # randomLoss(cfg, los) = Statistics.mean(1:100) do _
 #     los((randomInput(cfg), randomOutput(cfg)))
 # end
+
+enable_gpu(true)
 
 import MarketDurTypes:MarketDur
 durToLogit(seconds::Second)::N = seconds.value/3600
@@ -62,19 +65,24 @@ function makeSeq(cfg)
             N(Dates.dayofyear(s.date) / daysinyear(s.date))
         )
     end
-    embedSize = 128
-    pe = PositionEmbedding(embedSize)
-    embed = Embed(embedSize, cfg.binCnt)
-    function encodeVals(x)
-        we = embed(x, inv(sqrt(embedSize)))
-        return we .+ pe(we)
+    global pe = PositionEmbedding(cfg.embedSize) |> gpu
+    global embed = Embed(cfg.embedSize, cfg.binCnt) |> gpu
+    global den = Flux.Dense(8 * cfg.embedSize => 16) |> gpu
+    global encodeVals = x -> begin
+        we = embed(x, inv(sqrt(cfg.embedSize)))
+        v = we .+ pe(we)
+        sz = size(v)
+        v2 = reshape(v, (sz[1]*sz[2], sz[3:end]...))
+        # println(sz)
+        return den(v2)
     end
-    encodeDur = Flux.Dense(12 => 2, Flux.relu)
-    encodeDates = Flux.Dense(4 => 6, Flux.relu)
+    global encodeDur = Flux.Dense(12 => 2, Flux.relu) |> gpu
+    global encodeDates = Flux.Dense(4 => 2, Flux.relu) |> gpu
     # encoder = SELayer((identity, 1:8), (encodeDates, 9:11), (encodeDur, 12:17))
-    encoder = Parallel(vcat, encodeVals, encodeDates, encodeDur)
+    encoder = Parallel((xs...) -> cat(xs...; dims=1), encodeVals, encodeDur, encodeDates) |> gpu
     batcher = MLUtil.makeBatchIter
-    return (seq, batcher, encoder)
+    println("Encoded size: ", size(encoder(first(batcher(cfg, seq))[1] |> gpu)))
+    return (;seq, batcher, encoder, params=Flux.params(embed, encodeDur, encodeDates, den))
 end
 
 function makeSeqSimple()
@@ -126,13 +134,20 @@ Flux.@functor SeqEncodeLayer
 (m::SeqEncodeLayer)(x::AbstractArray) = mapreduce((enc, inds) -> enc(x[inds,:,:]), vcat, m.encoders, m.inputs)
 Flux.trainable(sel::SeqEncodeLayer) = (sel.encoders,)
 
+# struct RepeatLayer{T}
+#     encoder::T
+# end
+# Flux.@functor RepeatLayer
+# (m::RepeatLayer)(x::AbstractArray) = mapreduce((enc, inds) -> enc(x[inds,:,:]), vcat, m.encoders, m.inputs)
+# Flux.trainable(sel::RepeatLayer) = (sel.encoder,)
+
 function trainModel(cfg, mod, seq)
-    seqTrain, _ = Forecast.makeViews(seq, cfg.testHoldOut)
-    Forecast.train(cfg, mod.model, mod.opt, mod.loss, seqTrain)
+    seqTrain, _ = MLUtil.splitTrainTest(seq, cfg.testHoldOut)
+    Forecast.train(cfg, mod.model, mod.params, mod.opt, mod.loss, seqTrain)
 end
 
 function testModel(cfg, mod, seq)
-    _, seqTest = Forecast.makeViews(seq, cfg.testHoldOut)
+    _, seqTest = MLUtil.splitTrainTest(seq, cfg.testHoldOut)
     Forecast.test(cfg, mod.model, mod.loss, seqTest)
 end
 
