@@ -67,12 +67,17 @@ function makeBufs(cfg, seq::Tuple)
     bufsX = map(seq) do ss
         Array{eltype(ss)}(undef, size(ss)[1], cfg.inputLen, cfg.batchLen)
     end
+    bufsCast = (
+        Array{N}(undef, size(seq[2])[1], cfg.castLen, cfg.batchLen),
+        Array{N}(undef, size(seq[3])[1], cfg.castLen, cfg.batchLen)
+    )
     bufY = Array{N}(undef, cfg.binCnt, cfg.castLen, cfg.batchLen)
-    return (bufsX, bufY)
+    return (;bufsX, bufsCast, bufY)
 end
 
 import Flux:onehotbatch
-function toBatch!(bufsX, bufY, cfg, seq, inputOffset)
+function toBatch!(bufs, cfg, seq, inputOffset)
+    bufsX, bufsCast, bufY = bufs
     # TODO: create views instead?
     for indBuf in eachindex(bufsX)
         bufX = bufsX[indBuf]
@@ -87,17 +92,20 @@ function toBatch!(bufsX, bufY, cfg, seq, inputOffset)
     outputOffset = inputOffset + cfg.inputLen
     for b in 1:cfg.batchLen
         for i in 1:outputLen
-            bufY[:,i,b] .= onehotbatch(seq[1][cfg.outputInds, outputOffset + b + i - 2 + 1], 1:cfg.binCnt)
+            ind = outputOffset + b + i - 2 + 1
+            bufY[:,i,b] .= onehotbatch(seq[1][cfg.outputInds, ind], 1:cfg.binCnt)
+            bufsCast[1][:,i,b] .= seq[2][:,ind]
+            bufsCast[2][:,i,b] .= seq[3][:,ind]
         end
     end
-    return (bufsX, bufY)
+    return (;bufsX, bufsCast, bufY)
 end
 
 function makeBatchIter(cfg, seq::Tuple)
-    bufsX, bufY = makeBufs(cfg, seq)
+    bufs = makeBufs(cfg, seq)
     batchCount = size(seq[1])[2] ÷ cfg.batchLen - 1
     # @show  batchCount cfg.batchLen
-    return (toBatch!(bufsX, bufY, cfg, seq, (i-1) * cfg.batchLen) for i in 1:batchCount)
+    return (toBatch!(bufs, cfg, seq, (i-1) * cfg.batchLen) for i in 1:batchCount)
 end
 
 end

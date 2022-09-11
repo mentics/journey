@@ -52,31 +52,46 @@ train() = ForecastUtil.trainModel(cfg, mod, seq)
 test() = ForecastUtil.testModel(cfg, mod, seq)
 
 function makeModel(cfg)
-    modEnc = Flux.Chain(;
-        tenc1=Transformer(16,2,4,32),
-        tenc2=Transformer(16,2,4,32),
-    ) |> gpu
-    tdec1 = TransformerDecoder(16,2,4,32) |> gpu
-    tdec2 = TransformerDecoder(16,2,4,32) |> gpu
-    linout = Positionwise(Flux.Dense(16, cfg.binCnt), Flux.softmax) |> gpu
+    encSize = (20, 50, 128)
+    tfSize = encSize[1] * encSize[2]
+
+    decSize = cfg.binCnt * cfg.castLen
+    castSize = 4 * cfg.castLen
+
+    global tenc1 = Transformer(tfSize,2,4,32) |> gpu
+    global tenc2 = Transformer(tfSize,2,4,32) |> gpu
+    global decin = Flux.Dense(tfSize, decSize) |> gpu
+    global decinCast = Flux.Dense(castSize, decSize) |> gpu
+    global tdec1 = TransformerDecoder(decSize,2,4,32) |> gpu
+    global tdec2 = TransformerDecoder(decSize,2,4,32) |> gpu
+    # global linout = Positionwise(Flux.Dense(decInSize, cfg.binCnt), Flux.softmax) |> gpu
+    global linout = Positionwise(Flux.Dense(cfg.binCnt, cfg.binCnt)) |> gpu
     global exec = (x, cast) -> begin
         e = encoder(x)
-        stage1 = modEnc(e)
-        dec1 = tdec1(stage1, cast)
-        dec2 = tdec2(dec1, cast)
-        out = linout(dec2)
+        ef = Flux.flatten(e)
+        enc1 = tenc1(ef)
+        enc2 = tenc2(enc1)
+        enc2a = decin(enc2)
+
+        global castin1 = cat(ForecastUtil.encodeDur(cast[1]), ForecastUtil.encodeDates(cast[2]); dims=1)
+        global castin2 = decinCast(Flux.flatten(castin1))
+        global dec1 = tdec1(enc2a, castin2)
+        global dec2 = tdec2(dec1, castin2)
+        global dec3 = reshape(dec2, (cfg.binCnt, cfg.castLen, cfg.batchLen))
+        global out = linout(dec3)
         return out
     end
     # TODO: consider  Flux.Losses.label_smoothing(Flux.onehot(1, 1:10), .1)
     function loss(batch)
-        x, y = batch
-        global pred = model(x)
+        x, cast, y = batch
+        global pred = exec(x, cast)
         # NOTE: check if pred is all zeros anywhere along the way
         r = Flux.logitcrossentropy(pred, y)
         return r
     end
 
-    params = union(Flux.params(model), paramsEncoder)
+    model = Flux.Chain(; tenc1, tenc2, decin, decinCast, tdec1, tdec2, linout)
+    params = union(Flux.params(tenc1, tenc2, tdec1, tdec2, linout), paramsEncoder)
     # params = Flux.params(model)
     opt = Flux.Adam()
     return (;model, params, exec, loss, opt)
