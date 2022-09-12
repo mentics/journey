@@ -1,19 +1,18 @@
 module Forecast
-import Flux:Flux,gpu #: Flux,Dense,ADAM,gradient,gpu
-import CUDA:CuIterator
+import Flux
 import Flux.Optimise
 import Statistics:median
+import CudaUtil:DEV
 import MLUtil:MLUtil,N
-# import Transformers: Transformer,TransformerDecoder,todevice,enable_gpu
 
-Base.IteratorSize(::Type{<:CuIterator{B}}) where B = Base.IteratorSize(B)
-Base.HasLength(::Type{<:CuIterator{B}}) where B = Base.HasLength(B)
-Base.HasShape{N}(::Type{<:CuIterator{B}}) where {B,N} = Base.HasShape{N}(B)
-Base.IteratorEltype(::Type{<:CuIterator{B}}) where B = Base.IteratorEltype(B)
+# Base.IteratorSize(::Type{<:CuIterator{B}}) where B = Base.IteratorSize(B)
+# Base.HasLength(::Type{<:CuIterator{B}}) where B = Base.HasLength(B)
+# Base.HasShape{N}(::Type{<:CuIterator{B}}) where {B,N} = Base.HasShape{N}(B)
+# Base.IteratorEltype(::Type{<:CuIterator{B}}) where B = Base.IteratorEltype(B)
 
-Base.size(itr::T) where T<:CuIterator = Base.size(itr.batches)
-Base.length(itr::T) where T<:CuIterator = Base.length(itr.batches)
-Base.eltype(itr::T) where T<:CuIterator = Base.eltype(itr.batches)
+# Base.size(itr::T) where T<:CuIterator = Base.size(itr.batches)
+# Base.length(itr::T) where T<:CuIterator = Base.length(itr.batches)
+# Base.eltype(itr::T) where T<:CuIterator = Base.eltype(itr.batches)
 
 #==
 Input params:
@@ -26,8 +25,7 @@ batchLen
 
 #region TimeSeries
 function train(cfg, model, params, opt, loss, seq; cb=nothing)
-    batchIter = materialize(MLUtil.makeBatchIter(cfg, seq))
-    cfg.useCpu || (batchIter = batchIter |> gpu)
+    batchIter = materialize(MLUtil.makeBatchIter(cfg, seq)) |> DEV
     # println("batchIter: ", typeof(batchIter))
     tracker = trainProgress(() -> loss(first(batchIter)), cfg.lossTarget, 1.0; cb)
     # params = Flux.params(model)
@@ -68,7 +66,7 @@ function report(title, model, loss, batchIter)
     # global so = batchIter
     med = map(batchIter) do b
         Flux.reset!(model)
-        return loss(b |> gpu)
+        return loss(b |> DEV)
     end |> median
     println("$(title) median loss: ", med)
 end

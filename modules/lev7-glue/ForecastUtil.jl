@@ -3,31 +3,32 @@ import Dates:Dates,Date,Second
 import Flux:Flux,Parallel,Dense
 import Transformers.Basic:Embed,PositionEmbedding
 import Transformers:enable_gpu
-# import Forecast:Forecast,N
+import CudaUtil:DEV
 import HistData
 import MLUtil:MLUtil,BinDef,N
-import CUDA
-
-const DEV = CUDA.has_cuda() && (CUDA.version() >= v"11.2") ? Flux.gpu : Flux.cpu
+import Forecast
 
 struct EncoderLayer{PE<:PositionEmbedding,E<:Embed,D<:Dense}
     embed::E
     posEmbed::PE
     den::D
 end
-EncoderLayer(width, embedSize, binCnt, widthMult=8) = EncoderLayer(
-    Embed(embedSize, binCnt) |> DEV,
-    PositionEmbedding(embedSize) |> DEV,
-    Dense(width * embedSize => widthMult*width, Flux.relu) |> DEV
+EncoderLayer(embedSize, vocabSize, width, len, outSize) = EncoderLayer(
+    Embed(embedSize, vocabSize) |> DEV,
+    PositionEmbedding(embedSize, len) |> DEV,
+    Dense(width * embedSize => outSize, Flux.relu) |> DEV
 )
 Flux.@functor EncoderLayer
 Flux.trainable(layer::EncoderLayer) = (layer.embed, layer.den)
 function (m::EncoderLayer)(x::AbstractArray)
-    s1 = m.embed(x, inv(sqrt(m.posEmbed.size)))
+    # TODO: store embedSize
+    s1 = m.embed(x, inv(sqrt(size(m.embed.embedding)[1])))
     s2 = s1 .+ m.posEmbed(s1)
     sz = size(s2)
-    s3 = reshape(v, (sz[1]*sz[2], sz[3:end]...))
-    s4 = den(s3)
+    # println("enclay sz: ", sz)
+    s3 = reshape(s2, (sz[1]*sz[2], sz[3:end]...))
+    # println("enclay resh sz: ", size(s3))
+    s4 = m.den(s3)
     return s4
 end
 

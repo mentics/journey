@@ -63,15 +63,22 @@ function splitTrainTest(seq, testHoldOut)
     return ((@view seq[:,1:split]), (@view seq[:,(split+1):len]))
 end
 
-function makeBufs(cfg, seq::Tuple)
-    bufsX = map(seq) do ss
-        Array{eltype(ss)}(undef, size(ss)[1], cfg.inputLen, cfg.batchLen)
+function makeBufs(cfg, seq::Union{Tuple,NamedTuple})
+    sample = Tuple(selectdim(x, length(size(x)), 1) for x in seq)
+    # sizes = size.(sample)
+    bufsX = Tuple(Array{eltype(sc)}(undef, size(sc)..., cfg.inputLen, cfg.batchLen) for sc in sample)
+    cast = cfg.toCast(sample)
+    if cast isa Tuple
+        bufsCast = Tuple(Array{eltype(sc)}(undef, size(cast)..., cfg.castLen, cfg.batchLen) for sc in cast)
+    else
+        bufsCast = Array{eltype(cast)}(undef, size(cast)..., cfg.castLen, cfg.batchLen)
     end
-    bufsCast = (
-        Array{N}(undef, size(seq[2])[1], cfg.castLen, cfg.batchLen),
-        Array{N}(undef, size(seq[3])[1], cfg.castLen, cfg.batchLen)
-    )
-    bufY = Array{N}(undef, cfg.binCnt, cfg.castLen, cfg.batchLen)
+    y = cfg.toY(sample)
+    if length(y) > 1
+        bufY = Array{N}(undef, length(y), cfg.binCnt, cfg.castLen, cfg.batchLen)
+    else
+        bufY = Array{N}(undef, cfg.binCnt, cfg.castLen, cfg.batchLen)
+    end
     return (;bufsX, bufsCast, bufY)
 end
 
@@ -88,20 +95,38 @@ function toBatch!(bufs, cfg, seq, inputOffset)
             end
         end
     end
-    outputLen = size(bufY)[2] # cfg.castLen?
-    outputOffset = inputOffset + cfg.inputLen
+    # TODO: optimize with views?
     for b in 1:cfg.batchLen
-        for i in 1:outputLen
-            ind = outputOffset + b + i - 2 + 1
-            bufY[:,i,b] .= onehotbatch(seq[1][cfg.outputInds, ind], 1:cfg.binCnt)
-            bufsCast[1][:,i,b] .= seq[2][:,ind]
-            bufsCast[2][:,i,b] .= seq[3][:,ind]
+        ss = slice(seq, b:b+cfg.castLen)
+        if bufsCast isa Tuple
+            bufsCast .= cfg.toCast
+        else
+            bufsCast .= cfg.toCast
         end
     end
+
+    # outputLen = size(bufY)[2] # cfg.castLen?
+    # outputOffset = inputOffset + cfg.inputLen
+    # for b in 1:cfg.batchLen
+    #     for i in 1:outputLen
+    #         ind = outputOffset + b + i - 2 + 1
+    #         bufY[:,i,b] .= onehotbatch(seq[1][cfg.outputInds, ind], 1:cfg.binCnt)
+    #         if length(cfg.castInds) == 1
+    #             bufsCast[:,i,b] .= seq[cfg.castInds[1]][:,ind]
+    #         else
+    #             for castIndInd in eachindex(cfg.castInds)
+    #                 bufsCast[castIndInd][:,i,b] .= seq[cfg.castInds[castIndInd]][:,ind]
+    #             end
+    #         end
+    #     end
+    # end
     return (;bufsX, bufsCast, bufY)
 end
 
-function makeBatchIter(cfg, seq::Tuple)
+slice(seq::Tuple, inds) = Tuple(selectdim(c, ndims(c), inds) for c in seq)
+slice(seq, inds) = selectdim(seq, ndims(seq), inds)
+
+function makeBatchIter(cfg, seq::Union{Tuple,NamedTuple})
     bufs = makeBufs(cfg, seq)
     batchCount = size(seq[1])[2] ÷ cfg.batchLen - 1
     # @show  batchCount cfg.batchLen

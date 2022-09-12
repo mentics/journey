@@ -4,9 +4,8 @@ import Flux
 import Transformers:Transformer,TransformerDecoder,Positionwise
 import CUDA
 using BaseTypes
-# import Forecast:Forecast,N
 import ForecastUtil:ForecastUtil,DEV
-import MLUtil:MLUtil,BinDef
+import MLUtil:MLUtil,BinDef,N
 
 # using Forecastar ; fr = Forecastar
 
@@ -39,8 +38,7 @@ function run()
     test()
 end
 function init()
-    global cfg = config()
-    global seq, batcher, encoder, paramsEncoder = makeSeqTest()
+    global cfg, seq, batcher, encoder, encoderCast = makeSeqTest(configTest())
     global mod = makeModel(cfg)
     return
 end
@@ -48,11 +46,10 @@ train() = ForecastUtil.trainModel(cfg, mod, seq)
 test() = ForecastUtil.testModel(cfg, mod, seq)
 
 function makeModel(cfg)
-    encSize = (20, 50, 128)
-    tfSize = encSize[1] * encSize[2]
+    tfSize = cfg.encSize[1] * cfg.encSize[2]
 
     decSize = cfg.binCnt * cfg.castLen
-    castSize = 4 * cfg.castLen
+    castSize = cfg.castWidth * cfg.castLen
 
     global tenc1 = Transformer(tfSize,2,4,32) |> DEV
     global tenc2 = Transformer(tfSize,2,4,32) |> DEV
@@ -63,13 +60,18 @@ function makeModel(cfg)
     # global linout = Positionwise(Flux.Dense(decInSize, cfg.binCnt), Flux.softmax) |> DEV
     global linout = Positionwise(Flux.Dense(cfg.binCnt, cfg.binCnt)) |> DEV
     global exec = (x, cast) -> begin
+        global checkX = x
+        global checkCast = cast
+        println("typeof(cast) ", typeof(cast))
         e = encoder(x)
+        @assert size(e) == encSize "Size mismatch $(size(e)) $(encSize)"
         ef = Flux.flatten(e)
+        @assert size(ef) == (tfSize, cfg.batchLen)
         enc1 = tenc1(ef)
         enc2 = tenc2(enc1)
         enc2a = decin(enc2)
 
-        global castin1 = cat(ForecastUtil.encodeDur(cast[1]), ForecastUtil.encodeDates(cast[2]); dims=1)
+        global castin1 = encoderCast(cast) # cat(ForecastUtil.encodeDur(cast[1]), ForecastUtil.encodeDates(cast[2]); dims=1)
         global castin2 = decinCast(Flux.flatten(castin1))
         global dec1 = tdec1(enc2a, castin2)
         global dec2 = tdec2(dec1, castin2)
@@ -86,9 +88,9 @@ function makeModel(cfg)
         return r
     end
 
-    model = Flux.Chain(; tenc1, tenc2, decin, decinCast, tdec1, tdec2, linout)
-    params = union(Flux.params(tenc1, tenc2, tdec1, tdec2, linout), paramsEncoder)
-    # params = Flux.params(model)
+    model = Flux.Chain(; encoder, tenc1, tenc2, decin, decinCast, tdec1, tdec2, linout)
+    # params = union(Flux.params(tenc1, tenc2, tdec1, tdec2, linout), paramsEncoder)
+    params = Flux.params(model)
     opt = Flux.Adam()
     return (;model, params, exec, loss, opt)
 end
@@ -127,10 +129,10 @@ function configTest()
     return (;
         # inputWidths = (8, 12, 4),
         inputLen = 50,
-        outputInds = [4],
         castLen = 10,
         batchLen = 128,
         embedSize = 32,
+
         testHoldOut = .3,
         lossTarget = 0.001,
         maxIter = typemax(Int),
@@ -140,24 +142,32 @@ function configTest()
 end
 
 import CollUtil
-function makeSeqTest(cfg)
+function makeSeqTest(baseCfg)
+    outWidths = (2,2)
+
     seqTup = map(1:1000) do i
         s5 = (sin(2π*i/100))
         s4 = (sin(2π*i/10))
         s3 = sin((s5 > 0 ? -1 : 1) * 2π*i/200)
         s2 = sin((s4 > 0 ? -1 : 1) * 2π*i/37)
         s1 = s2 + s3
-        return ((cfg.binner(s1), cfg.binner(s2)), (s3, s4, s5))
+        return (UInt8.((baseCfg.binner(s1), baseCfg.binner(s2))), N.((s3, s4, s5)))
     end
-    seq = CollUtil.tupsToMat(seqTup)
-    println(typeof(seq))
+    global seq = CollUtil.tupsToMat(seqTup)
 
-    enc1 = ForecastUtil.EncoderLayer(2, 16, cfg.binCnt, 4)
-    enc2 = Flux.Dense(3 => 2) |> DEV
-    encoder = Flux.Parallel((xs...) -> cat(xs...; dims=1), enc1, enc2) |> DEV
+    inputSize = (length.(seq), baseCfg.inputLen)
+
+    global enc1 = ForecastUtil.EncoderLayer(baseCfg.embedSize, baseCfg.binCnt, 2, baseCfg.inputLen, outWidths[1])
+    enc2 = Flux.Dense(3 => outWidths[2]) |> DEV
+    global encoder = Flux.Parallel((xs...) -> cat(xs...; dims=1); enc1, enc2) |> DEV
+    global encoderCast = enc2 # Flux.Parallel((_, x) -> x; enc1=identity, enc2) |> DEV
     batcher = MLUtil.makeBatchIter
-    println("Encoded size: ", size(encoder(first(batcher(cfg, seq))[1] |> DEV)))
-    return (;seq, batcher, encoder)
+    # encSize = size(encoder(first(batcher(baseCfg, seq))[1] |> DEV))
+    # println("Encoded size: ", encSize)
+    toY = x -> selectdim(x[1], 1, 1)
+    toCast = x -> x[2]
+    cfg = merge(baseCfg, (;inputSize, encSize=(sum(outWidths), baseCfg.inputLen, baseCfg.batchLen), castWidth=outWidths[2], toY, toCast))
+    return (;cfg, seq, batcher, encoder, encoderCast)
 end
 
 end
