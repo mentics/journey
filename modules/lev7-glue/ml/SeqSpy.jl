@@ -37,6 +37,10 @@ function make()
     @assert length(spy) == length(vix)
     seqLen = length(spy) - 1
     seq = (Array{UInt8}(undef, 8, seqLen), Array{N}(undef, 12, seqLen), Array{N}(undef, 4, seqLen))
+
+    seqTup = map(eachindex(spy)) do i
+    end
+
     for i in axes(spy, 1)[2:end]
         @assert spy[i].date == vix[i].date
         prevSpy = spy[i-1]
@@ -64,24 +68,42 @@ function make()
         )
     end
 
-    posEmb = PositionEmbedding(baseCfg.embedSize) |> DEV
-    embed = Embed(baseCfg.embedSize, baseCfg.binCnt) |> DEV
-    den = Flux.Dense(8 * baseCfg.embedSize => 16) |> DEV
-    encodeVals = x -> begin
-        we = embed(x, inv(sqrt(baseCfg.embedSize)))
-        v = we .+ posEmb(we)
-        sz = size(v)
-        v2 = reshape(v, (sz[1]*sz[2], sz[3:end]...))
-        # println(sz)
-        return den(v2)
-    end
-    encodeDur = Flux.Dense(12 => 2, Flux.relu) |> DEV
-    encodeDates = Flux.Dense(4 => 2, Flux.relu) |> DEV
-    # encoder = SELayer((identity, 1:8), (encodeDates, 9:11), (encodeDur, 12:17))
-    encoder = Parallel((xs...) -> cat(xs...; dims=1), encodeVals, encodeDur, encodeDates) |> DEV
+
+    seq = CollUtil.tupsToMat(seqTup)
+
+    inputSize = (length.(seq), baseCfg.inputLen)
+
+    enc1 = EncoderLayer(baseCfg.embedSize, baseCfg.binCnt, 2, baseCfg.inputLen, outWidths[1])
+    enc2 = Flux.Dense(3 => outWidths[2])
+    encoder = Flux.Parallel((xs...) -> cat(xs...; dims=1); enc1, enc2)
+    encoderCast = enc2 # Flux.Parallel((_, x) -> x; enc1=identity, enc2)
     batcher = MLUtil.makeBatchIter
-    println("Encoded size: ", size(encoder(first(batcher(baseCfg, seq))[1] |> DEV)))
-    return (;seq, batcher, encoder, params=Flux.params(embed, encodeDur, encodeDates, den))
+    # encSize = size(encoder(first(batcher(baseCfg, seq))[1]))
+    # println("Encoded size: ", encSize)
+    toCast = x -> (x[2],)
+    toY = x -> (Flux.onehotbatch(selectdim(x[1], 1, 1), 1:cfg.binCnt),)
+    cfg = merge(baseCfg, (;inputSize, encSize=(sum(outWidths), baseCfg.inputLen, baseCfg.batchLen), castWidth=outWidths[2], encoder, encoderCast, toY, toCast))
+    return (;cfg, seq, batcher)
+
+
+    # posEmb = PositionEmbedding(baseCfg.embedSize) |> DEV
+    # embed = Embed(baseCfg.embedSize, baseCfg.binCnt) |> DEV
+    # den = Flux.Dense(8 * baseCfg.embedSize => 16) |> DEV
+    # encodeVals = x -> begin
+    #     we = embed(x, inv(sqrt(baseCfg.embedSize)))
+    #     v = we .+ posEmb(we)
+    #     sz = size(v)
+    #     v2 = reshape(v, (sz[1]*sz[2], sz[3:end]...))
+    #     # println(sz)
+    #     return den(v2)
+    # end
+    # encodeDur = Flux.Dense(12 => 2, Flux.relu) |> DEV
+    # encodeDates = Flux.Dense(4 => 2, Flux.relu) |> DEV
+    # # encoder = SELayer((identity, 1:8), (encodeDates, 9:11), (encodeDur, 12:17))
+    # encoder = Parallel((xs...) -> cat(xs...; dims=1), encodeVals, encodeDur, encodeDates) |> DEV
+    # batcher = MLUtil.makeBatchIter
+    # println("Encoded size: ", size(encoder(first(batcher(baseCfg, seq))[1] |> DEV)))
+    # return (;seq, batcher, encoder, params=Flux.params(embed, encodeDur, encodeDates, den))
 end
 
 durToLogit(seconds::Second)::N = seconds.value/3600
