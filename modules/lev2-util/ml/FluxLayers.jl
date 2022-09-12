@@ -26,4 +26,20 @@ function (m::EncoderLayer)(x::AbstractArray)
     return s4
 end
 
+# struct SeqEncodeLayer{T,P}
+#     encoders::T
+#     inputs::P
+# end
+# SELayer(encIns::Tuple...) = SeqEncodeLayer(first.(encIns), last.(encIns))
+# Flux.@functor SeqEncodeLayer
+# (m::SeqEncodeLayer)(x::AbstractArray) = mapreduce((enc, inds) -> enc(x[inds,:,:]), vcat, m.encoders, m.inputs)
+# Flux.trainable(sel::SeqEncodeLayer) = (sel.encoders,)
+
+# struct RepeatLayer{T}
+#     encoder::T
+# end
+# Flux.@functor RepeatLayer
+# (m::RepeatLayer)(x::AbstractArray) = mapreduce((enc, inds) -> enc(x[inds,:,:]), vcat, m.encoders, m.inputs)
+# Flux.trainable(sel::RepeatLayer) = (sel.encoder,)
+
 end
