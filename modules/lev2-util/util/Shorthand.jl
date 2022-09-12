@@ -1,6 +1,6 @@
 module Shorthand
 using Dates
-using SH, SmallTypes
+using BaseTypes, SH, SmallTypes
 
 export legsTosh, shLeg, shLegs
 # TODO: just use tosh
