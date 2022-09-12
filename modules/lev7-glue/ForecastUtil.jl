@@ -1,36 +1,10 @@
 module ForecastUtil
 import Dates:Dates,Date,Second
-import Flux:Flux,Parallel,Dense
-import Transformers.Basic:Embed,PositionEmbedding
-import Transformers:enable_gpu
+# import Flux
 import CudaUtil:DEV
 import HistData
 import MLUtil:MLUtil,BinDef,N
 import Forecast
-
-struct EncoderLayer{PE<:PositionEmbedding,E<:Embed,D<:Dense}
-    embed::E
-    posEmbed::PE
-    den::D
-end
-EncoderLayer(embedSize, vocabSize, width, len, outSize) = EncoderLayer(
-    Embed(embedSize, vocabSize) |> DEV,
-    PositionEmbedding(embedSize, len) |> DEV,
-    Dense(width * embedSize => outSize, Flux.relu) |> DEV
-)
-Flux.@functor EncoderLayer
-Flux.trainable(layer::EncoderLayer) = (layer.embed, layer.den)
-function (m::EncoderLayer)(x::AbstractArray)
-    # TODO: store embedSize
-    s1 = m.embed(x, inv(sqrt(size(m.embed.embedding)[1])))
-    s2 = s1 .+ m.posEmbed(s1)
-    sz = size(s2)
-    # println("enclay sz: ", sz)
-    s3 = reshape(s2, (sz[1]*sz[2], sz[3:end]...))
-    # println("enclay resh sz: ", size(s3))
-    s4 = m.den(s3)
-    return s4
-end
 
 # randomInput(cfg) = rand(cfg.inputWidth, cfg.inputLen, cfg.batchLen)
 # randomOutput(cfg) = Flux.onehotbatch([Forecast.toBin(cfg.binDef, randn() ./ 20) for _ in 1:cfg.castLen, _ in 1:cfg.batchLen], 1:cfg.binCnt)

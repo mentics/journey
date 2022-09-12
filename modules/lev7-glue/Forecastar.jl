@@ -2,10 +2,10 @@ module Forecastar
 import Dates:Dates,Date
 import Flux
 import Transformers:Transformer,TransformerDecoder,Positionwise
-import CUDA
 using BaseTypes
 import ForecastUtil:ForecastUtil,DEV
 import MLUtil:MLUtil,BinDef,N
+import FluxLayers:EncoderLayer
 
 # using Forecastar ; fr = Forecastar
 
@@ -38,7 +38,7 @@ function run()
     test()
 end
 function init()
-    global cfg, seq, batcher, encoder, encoderCast = makeSeqTest(configTest())
+    global cfg, seq, batcher = makeSeqTest(configTest())
     global mod = makeModel(cfg)
     return
 end
@@ -51,40 +51,43 @@ function makeModel(cfg)
     decSize = cfg.binCnt * cfg.castLen
     castSize = cfg.castWidth * cfg.castLen
 
-    global tenc1 = Transformer(tfSize,2,4,32) |> DEV
-    global tenc2 = Transformer(tfSize,2,4,32) |> DEV
-    global decin = Flux.Dense(tfSize, decSize) |> DEV
-    global decinCast = Flux.Dense(castSize, decSize) |> DEV
-    global tdec1 = TransformerDecoder(decSize,2,4,32) |> DEV
-    global tdec2 = TransformerDecoder(decSize,2,4,32) |> DEV
-    # global linout = Positionwise(Flux.Dense(decInSize, cfg.binCnt), Flux.softmax) |> DEV
-    global linout = Positionwise(Flux.Dense(cfg.binCnt, cfg.binCnt)) |> DEV
-    global exec = (x, cast) -> begin
-        global checkX = x
-        global checkCast = cast
-        println("typeof(cast) ", typeof(cast))
-        e = encoder(x)
-        @assert size(e) == encSize "Size mismatch $(size(e)) $(encSize)"
+    encer = cfg.encoder |> DEV
+    encerCast = cfg.encoderCast |> DEV
+
+    tenc1 = Transformer(tfSize,2,4,32) |> DEV
+    tenc2 = Transformer(tfSize,2,4,32) |> DEV
+    decin = Flux.Dense(tfSize, decSize) |> DEV
+    decinCast = Flux.Dense(castSize, decSize) |> DEV
+    tdec1 = TransformerDecoder(decSize,2,4,32) |> DEV
+    tdec2 = TransformerDecoder(decSize,2,4,32) |> DEV
+    # linout = Positionwise(Flux.Dense(decInSize, cfg.binCnt), Flux.softmax) |> DEV
+    linout = Positionwise(Flux.Dense(cfg.binCnt, cfg.binCnt)) |> DEV
+    exec = (x, cast) -> begin
+        checkX = x
+        checkCast = cast
+        # println("typeof(cast) ", typeof(cast))
+        e = encer(x)
+        @assert size(e) == cfg.encSize "Size mismatch $(size(e)) $(cfg.encSize)"
         ef = Flux.flatten(e)
         @assert size(ef) == (tfSize, cfg.batchLen)
         enc1 = tenc1(ef)
         enc2 = tenc2(enc1)
         enc2a = decin(enc2)
 
-        global castin1 = encoderCast(cast) # cat(ForecastUtil.encodeDur(cast[1]), ForecastUtil.encodeDates(cast[2]); dims=1)
-        global castin2 = decinCast(Flux.flatten(castin1))
-        global dec1 = tdec1(enc2a, castin2)
-        global dec2 = tdec2(dec1, castin2)
-        global dec3 = reshape(dec2, (cfg.binCnt, cfg.castLen, cfg.batchLen))
-        global out = linout(dec3)
+        castin1 = encerCast(cast...) # cat(ForecastUtil.encodeDur(cast[1]), ForecastUtil.encodeDates(cast[2]); dims=1)
+        castin2 = decinCast(Flux.flatten(castin1))
+        dec1 = tdec1(enc2a, castin2)
+        dec2 = tdec2(dec1, castin2)
+        dec3 = reshape(dec2, (cfg.binCnt, cfg.castLen, cfg.batchLen))
+        out = linout(dec3)
         return out
     end
     # TODO: consider  Flux.Losses.label_smoothing(Flux.onehot(1, 1:10), .1)
     function loss(batch)
         x, cast, y = batch
-        global pred = exec(x, cast)
+        pred = exec(x, cast)
         # NOTE: check if pred is all zeros anywhere along the way
-        r = Flux.logitcrossentropy(pred, y)
+        r = Flux.logitcrossentropy(pred, y[1])
         return r
     end
 
@@ -109,7 +112,7 @@ function makeModelStage1(cfg)
     ) |> DEV
     function loss(batch)
         x, y = batch
-        global pred = model(x)
+        pred = model(x)
         # NOTE: check if pred is all zeros anywhere along the way
         r = Flux.logitcrossentropy(pred, y)
         return r
@@ -153,21 +156,21 @@ function makeSeqTest(baseCfg)
         s1 = s2 + s3
         return (UInt8.((baseCfg.binner(s1), baseCfg.binner(s2))), N.((s3, s4, s5)))
     end
-    global seq = CollUtil.tupsToMat(seqTup)
+    seq = CollUtil.tupsToMat(seqTup)
 
     inputSize = (length.(seq), baseCfg.inputLen)
 
-    global enc1 = ForecastUtil.EncoderLayer(baseCfg.embedSize, baseCfg.binCnt, 2, baseCfg.inputLen, outWidths[1])
-    enc2 = Flux.Dense(3 => outWidths[2]) |> DEV
-    global encoder = Flux.Parallel((xs...) -> cat(xs...; dims=1); enc1, enc2) |> DEV
-    global encoderCast = enc2 # Flux.Parallel((_, x) -> x; enc1=identity, enc2) |> DEV
+    enc1 = EncoderLayer(baseCfg.embedSize, baseCfg.binCnt, 2, baseCfg.inputLen, outWidths[1])
+    enc2 = Flux.Dense(3 => outWidths[2])
+    encoder = Flux.Parallel((xs...) -> cat(xs...; dims=1); enc1, enc2)
+    encoderCast = enc2 # Flux.Parallel((_, x) -> x; enc1=identity, enc2)
     batcher = MLUtil.makeBatchIter
-    # encSize = size(encoder(first(batcher(baseCfg, seq))[1] |> DEV))
+    # encSize = size(encoder(first(batcher(baseCfg, seq))[1]))
     # println("Encoded size: ", encSize)
-    toY = x -> selectdim(x[1], 1, 1)
-    toCast = x -> x[2]
-    cfg = merge(baseCfg, (;inputSize, encSize=(sum(outWidths), baseCfg.inputLen, baseCfg.batchLen), castWidth=outWidths[2], toY, toCast))
-    return (;cfg, seq, batcher, encoder, encoderCast)
+    toCast = x -> (x[2],)
+    toY = x -> (Flux.onehotbatch(selectdim(x[1], 1, 1), 1:cfg.binCnt),)
+    cfg = merge(baseCfg, (;inputSize, encSize=(sum(outWidths), baseCfg.inputLen, baseCfg.batchLen), castWidth=outWidths[2], encoder, encoderCast, toY, toCast))
+    return (;cfg, seq, batcher)
 end
 
 end
