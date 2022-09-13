@@ -33,7 +33,7 @@ function makeModel(cfg)
     tfSize = cfg.encSize[1] * cfg.encSize[2]
 
     decSize = cfg.binCnt * cfg.castLen
-    castSize = reduce(*, cfg.castWidths) * cfg.castLen
+    castSize = sum(cfg.castWidths) * cfg.castLen
 
     encer = cfg.encoder |> DEV
     encerCast = cfg.encoderCast |> DEV
@@ -59,8 +59,8 @@ function makeModel(cfg)
         enc2a = decin(enc2)
 
         castin1 = encerCast(cast...) # cat(ForecastUtil.encodeDur(cast[1]), ForecastUtil.encodeDates(cast[2]); dims=1)
-        @assert size(castin1) ==
-        println(size(castin1))
+        @assert size(castin1) == (sum(cfg.castWidths), cfg.castLen, cfg.batchLen)
+        # println(size(castin1))
         castin2 = decinCast(Flux.flatten(castin1))
         dec1 = tdec1(enc2a, castin2)
         dec2 = tdec2(dec1, castin2)
