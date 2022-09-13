@@ -1,4 +1,5 @@
 module SeqSpy
+import Dates:Dates,Date,Second
 import Flux
 import CollUtil
 import MLUtil:MLUtil,N,BinDef
@@ -11,7 +12,7 @@ function config()
     def = BinDef(binCnt, 0.0, 1.0)
     binner = x -> MLUtil.toBin(def, x)
     vdef = BinDef(binCnt, 10.0, 40.0)
-    binnerVix = x -> MLUtil.toBin(vdef, x)
+    binnerVix = x -> UInt8(MLUtil.toBin(vdef, x))
     return (;
         # inputWidths = (8, 12, 4),
         inputLen = 50,
@@ -30,7 +31,7 @@ end
 
 function make()
     baseCfg = config()
-    outWidths = (2,2)
+    outWidths = (16,2,2)
 
     spy = filter!(x -> x.date > Date(2000,1,1), reverse(HistData.dataDaily("SPY")))
     vix = filter!(x -> x.date > Date(2000,1,1), reverse(HistData.dataDaily("VIX")))
@@ -38,53 +39,50 @@ function make()
     seqLen = length(spy) - 1
     seq = (Array{UInt8}(undef, 8, seqLen), Array{N}(undef, 12, seqLen), Array{N}(undef, 4, seqLen))
 
-    seqTup = map(eachindex(spy)) do i
-    end
-
-    for i in axes(spy, 1)[2:end]
+    seqTup = map(axes(spy, 1)[2:end]) do i
         @assert spy[i].date == vix[i].date
         prevSpy = spy[i-1]
         prevSpyClose = prevSpy.close
         # prevVixClose = vix[i-1].close
         s = spy[i]
         v = vix[i]
-        durFrom = durToLogits(Calendars.calcDurCloses(prevSpy.date, s.date))
-        seq[1][:,i-1] .= (
-            prep2(s.open, prevSpyClose, baseCfg.binner),
-            prep2(s.high, prevSpyClose, baseCfg.binner),
-            prep2(s.low, prevSpyClose, baseCfg.binner),
-            prep2(s.close, prevSpyClose, baseCfg.binner),
-            baseCfg.binnerVix(v.open),
-            baseCfg.binnerVix(v.high),
-            baseCfg.binnerVix(v.low),
-            baseCfg.binnerVix(v.close)
-        )
-        seq[2][:,i-1] .= durFrom
-        seq[3][:,i-1] .= (
-            N(Dates.dayofweek(s.date) / 7),
-            N(Dates.dayofmonth(s.date) / Dates.daysinmonth(s.date)),
-            N(Dates.dayofquarter(s.date) / daysinquarter(s.date)),
-            N(Dates.dayofyear(s.date) / daysinyear(s.date))
+        dur = durToLogits(Calendars.calcDurCloses(prevSpy.date, s.date))
+        return (
+            (
+                prep2(s.open, prevSpyClose, baseCfg.binner),
+                prep2(s.high, prevSpyClose, baseCfg.binner),
+                prep2(s.low, prevSpyClose, baseCfg.binner),
+                prep2(s.close, prevSpyClose, baseCfg.binner),
+                baseCfg.binnerVix(v.open),
+                baseCfg.binnerVix(v.high),
+                baseCfg.binnerVix(v.low),
+                baseCfg.binnerVix(v.close)
+            ),
+            dur,
+            (
+                N(Dates.dayofweek(s.date) / 7),
+                N(Dates.dayofmonth(s.date) / Dates.daysinmonth(s.date)),
+                N(Dates.dayofquarter(s.date) / daysinquarter(s.date)),
+                N(Dates.dayofyear(s.date) / daysinyear(s.date))
+            )
         )
     end
-
-
     seq = CollUtil.tupsToMat(seqTup)
+    inputSizes = (size.(seq)..., baseCfg.inputLen)
+    @show inputSizes
 
-    inputSize = (length.(seq), baseCfg.inputLen)
-
-    enc1 = EncoderLayer(baseCfg.embedSize, baseCfg.binCnt, 2, baseCfg.inputLen, outWidths[1])
-    enc2 = Flux.Dense(3 => outWidths[2])
-    encoder = Flux.Parallel((xs...) -> cat(xs...; dims=1); enc1, enc2)
-    encoderCast = enc2 # Flux.Parallel((_, x) -> x; enc1=identity, enc2)
+    enc1 = EncoderLayer(baseCfg.embedSize, baseCfg.binCnt, inputSizes[1][1], baseCfg.inputLen, outWidths[1])
+    enc2 = Flux.Dense(inputSizes[2][1] => outWidths[2])
+    enc3 = Flux.Dense(inputSizes[3][1] => outWidths[3])
+    encoder = Flux.Parallel((xs...) -> cat(xs...; dims=1); enc1, enc2, enc3)
+    encoderCast = Flux.Parallel((xs...) -> cat(xs...; dims=1); enc2, enc3)
     batcher = MLUtil.makeBatchIter
     # encSize = size(encoder(first(batcher(baseCfg, seq))[1]))
     # println("Encoded size: ", encSize)
-    toCast = x -> (x[2],)
-    toY = x -> (Flux.onehotbatch(selectdim(x[1], 1, 1), 1:cfg.binCnt),)
-    cfg = merge(baseCfg, (;inputSize, encSize=(sum(outWidths), baseCfg.inputLen, baseCfg.batchLen), castWidth=outWidths[2], encoder, encoderCast, toY, toCast))
+    toCast = x -> (x[2],x[3])
+    toY = x -> (Flux.onehotbatch(selectdim(x[1], 1, 4), 1:cfg.binCnt),)
+    cfg = merge(baseCfg, (;inputSizes, encSize=(sum(outWidths), baseCfg.inputLen, baseCfg.batchLen), castWidth=outWidths[2], encoder, encoderCast, toY, toCast))
     return (;cfg, seq, batcher)
-
 
     # posEmb = PositionEmbedding(baseCfg.embedSize) |> DEV
     # embed = Embed(baseCfg.embedSize, baseCfg.binCnt) |> DEV
@@ -120,4 +118,98 @@ function durToLogits(dur::MarketDur)
     return N.((logits..., sqrt.(logits)...))
 end
 
+# prep1(x, xp)::N = (x - xp) / xp
+prep2(x, xp, binner)::UInt8 = binner((x - xp) / xp)
+daysinquarter(d)::UInt16 = ( q1 = Dates.firstdayofquarter(d) ; (q1 + Dates.Month(3) - q1).value )
+daysinyear(d)::UInt16 = ( q1 = Dates.firstdayofquarter(d) ; (q1 + Dates.Month(3) - q1).value )
+
 end
+
+
+# import Calendars
+# import SliceMap
+# function makeSeq(cfg)
+#     spy = filter!(x -> x.date > Date(2000,1,1), reverse(HistData.dataDaily("SPY")))
+#     vix = filter!(x -> x.date > Date(2000,1,1), reverse(HistData.dataDaily("VIX")))
+#     @assert length(spy) == length(vix)
+#     seqLen = length(spy) - 1
+#     seq = (Array{UInt8}(undef, 8, seqLen), Array{N}(undef, 12, seqLen), Array{N}(undef, 4, seqLen))
+#     for i in axes(spy, 1)[2:end]
+#         @assert spy[i].date == vix[i].date
+#         prevSpy = spy[i-1]
+#         prevSpyClose = prevSpy.close
+#         # prevVixClose = vix[i-1].close
+#         s = spy[i]
+#         v = vix[i]
+#         durFrom = durToLogits(Calendars.calcDurCloses(prevSpy.date, s.date))
+#         seq[1][:,i-1] .= (
+#             prep2(s.open, prevSpyClose, cfg.binner),
+#             prep2(s.high, prevSpyClose, cfg.binner),
+#             prep2(s.low, prevSpyClose, cfg.binner),
+#             prep2(s.close, prevSpyClose, cfg.binner),
+#             cfg.binnerVix(v.open),
+#             cfg.binnerVix(v.high),
+#             cfg.binnerVix(v.low),
+#             cfg.binnerVix(v.close)
+#         )
+#         seq[2][:,i-1] .= durFrom
+#         seq[3][:,i-1] .= (
+#             N(Dates.dayofweek(s.date) / 7),
+#             N(Dates.dayofmonth(s.date) / Dates.daysinmonth(s.date)),
+#             N(Dates.dayofquarter(s.date) / daysinquarter(s.date)),
+#             N(Dates.dayofyear(s.date) / daysinyear(s.date))
+#         )
+#     end
+#     global pe = PositionEmbedding(cfg.embedSize) |> DEV
+#     global embed = Embed(cfg.embedSize, cfg.binCnt) |> DEV
+#     global den = Flux.Dense(8 * cfg.embedSize => 16) |> DEV
+#     global encodeVals = x -> begin
+#         we = embed(x, inv(sqrt(cfg.embedSize)))
+#         v = we .+ pe(we)
+#         sz = size(v)
+#         v2 = reshape(v, (sz[1]*sz[2], sz[3:end]...))
+#         # println(sz)
+#         return den(v2)
+#     end
+#     global encodeDur = Flux.Dense(12 => 2, Flux.relu) |> DEV
+#     global encodeDates = Flux.Dense(4 => 2, Flux.relu) |> DEV
+#     # encoder = SELayer((identity, 1:8), (encodeDates, 9:11), (encodeDur, 12:17))
+#     encoder = Parallel((xs...) -> cat(xs...; dims=1), encodeVals, encodeDur, encodeDates) |> DEV
+#     batcher = MLUtil.makeBatchIter
+#     println("Encoded size: ", size(encoder(first(batcher(cfg, seq))[1] |> DEV)))
+#     return (;seq, batcher, encoder, params=Flux.params(embed, encodeDur, encodeDates, den))
+# end
+
+# function makeSeqSimple()
+#     spy = filter!(x -> x.date > Date(2000,1,1), reverse(HistData.dataDaily("SPY")))
+#     vix = filter!(x -> x.date > Date(2000,1,1), reverse(HistData.dataDaily("VIX")))
+#     @assert length(spy) == length(vix)
+#     seq = Array{N}(undef, 17, length(spy)-1)
+#     for i in axes(spy, 1)[2:end]
+#         @assert spy[i].date == vix[i].date
+#         prevSpy = spy[i-1]
+#         prevSpyClose = prevSpy.close
+#         prevVixClose = vix[i-1].close
+#         s = spy[i]
+#         v = vix[i]
+#         durFrom = durToLogits(Calendars.calcDurCloses(prevSpy.date, s.date))
+#         seq[:,i-1] .= (
+#             prep1(s.open, prevSpyClose),
+#             prep1(s.high, prevSpyClose),
+#             prep1(s.low, prevSpyClose),
+#             prep1(s.close, prevSpyClose),
+#             prep1(v.open, prevVixClose),
+#             prep1(v.high, prevVixClose),
+#             prep1(v.low, prevVixClose),
+#             prep1(v.close, prevVixClose),
+#             N(Dates.dayofweek(s.date) / 7),
+#             N(Dates.dayofmonth(s.date) / Dates.daysinmonth(s.date)),
+#             N(Dates.dayofquarter(s.date) / daysinquarter(s.date)),
+#             durFrom...
+#         )
+#     end
+#     encodeDates = Flux.Dense(3 => 6)
+#     encodeDur = Flux.Dense(6 => 2, Flux.relu)
+#     encoder = SELayer((identity, 1:8), (encodeDates, 9:11), (encodeDur, 12:17))
+#     return (seq, encoder)
+# end

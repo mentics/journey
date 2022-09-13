@@ -8,13 +8,13 @@ import MLUtil:MLUtil,BinDef,N
 
 # using Forecastar ; fr = Forecastar
 
-# import SeqSpy
-# config = SeqSpy.config
-# makeSeq = SeqSpy.make
+import SeqSpy
+config = SeqSpy.config
+makeSeq = SeqSpy.make
 
-import SeqGenned
-config = SeqGenned.config
-makeSeq = SeqGenned.make
+# import SeqGenned
+# config = SeqGenned.config
+# makeSeq = SeqGenned.make
 
 function run()
     init()

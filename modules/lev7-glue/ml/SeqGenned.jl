@@ -37,10 +37,10 @@ function make()
     end
     seq = CollUtil.tupsToMat(seqTup)
 
-    inputSize = (length.(seq), baseCfg.inputLen)
+    inputSizes = (size.(seq)..., baseCfg.inputLen)
 
-    enc1 = EncoderLayer(baseCfg.embedSize, baseCfg.binCnt, 2, baseCfg.inputLen, outWidths[1])
-    enc2 = Flux.Dense(3 => outWidths[2])
+    enc1 = EncoderLayer(baseCfg.embedSize, baseCfg.binCnt, inputSizes[1][1], baseCfg.inputLen, outWidths[1])
+    enc2 = Flux.Dense(inputSizes[2][1] => outWidths[2])
     encoder = Flux.Parallel((xs...) -> cat(xs...; dims=1); enc1, enc2)
     encoderCast = enc2 # Flux.Parallel((_, x) -> x; enc1=identity, enc2)
     batcher = MLUtil.makeBatchIter
@@ -48,7 +48,7 @@ function make()
     # println("Encoded size: ", encSize)
     toCast = x -> (x[2],)
     toY = x -> (Flux.onehotbatch(selectdim(x[1], 1, 1), 1:cfg.binCnt),)
-    cfg = merge(baseCfg, (;inputSize, encSize=(sum(outWidths), baseCfg.inputLen, baseCfg.batchLen), castWidth=outWidths[2], encoder, encoderCast, toY, toCast))
+    cfg = merge(baseCfg, (;inputSizes, encSize=(sum(outWidths), baseCfg.inputLen, baseCfg.batchLen), castWidth=outWidths[2], encoder, encoderCast, toY, toCast))
     return (;cfg, seq, batcher)
 end
 
