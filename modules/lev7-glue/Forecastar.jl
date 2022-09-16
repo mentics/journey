@@ -3,6 +3,7 @@ import Dates:Dates,Date
 import Flux
 import Transformers:Transformer,TransformerDecoder,Positionwise
 using BaseTypes
+import CudaUtil:DEV
 import Forecast
 import MLUtil:MLUtil,BinDef,N
 
@@ -22,24 +23,74 @@ function run()
     test()
 end
 function init()
-    global config, seq, batchers = makeSeq()
+    global config, seq, origY, batchers = makeSeq()
     global mod = makeModel(config)
+    checkSeq()
     return
 end
 train() = Forecast.train(config, mod, batchers.train)
 test() = Forecast.test(config, mod, batchers.test)
 
-using DrawUtil
-function disp(n=1)
-    origY = Int.(fr.seq[1][4,:])
+batchOffset(batchLen, i) = (i-1) * batchLen
 
-    for b in batchers.test
-        global yhat = mapslices(argmax, mod.exec(b.bufsX, b.bufsCast) |> Flux.cpu; dims=1)
-        global y = mapslices(argmax, b.bufsY[1] |> Flux.cpu; dims=1)
-        draw(y[]; color=:white)
-        draw!(yhat; color=:green)
-        break
+function checkSeq()
+    seqTrain, seqTest = MLUtil.splitTrainTest(seq, config.testHoldOut)
+    origYTrain, origYTest = MLUtil.splitTrainTest(origY, config.testHoldOut)
+    bufs = MLUtil.makeBufs(config, seq)
+    global checked = 0
+    checkSeq(bufs, seqTrain, origYTrain)
+    println("Train Y checked ", checked)
+    global checked = 0
+    checkSeq(bufs, seqTest, origYTest)
+    println("Test Y checked ", checked)
+end
+
+function checkSeq(bufs, cseq, oy)
+    for b in 1:MLUtil.batchCount(config, cseq)
+        batch = MLUtil.makeBatch!(bufs, config, cseq, b)
+        batchY = config.fromY(batch.bufsY)
+        for i in 1:config.batchLen
+            ic = MLUtil.indsCast(config, b, i)
+            orig = MLUtil.sliceLastDim(oy, ic)
+            made = MLUtil.sliceLastDim(batchY, i)
+            if orig != made
+                error("Found mismatch ", b, ' ', i)
+            end
+            # println(config.batchLen, ' ', i)
+            global checked += 1
+        end
     end
+end
+
+import CollUtil
+function stitchCasts(batcher, castInd)
+    yh = CollUtil.simEmpty(origY)
+    y = CollUtil.simEmpty(origY)
+    seqDim = ndims(origY)
+    for cbatch in batcher
+        batch = cbatch |> DEV
+        cyh = mapslices(argmax, mod.exec(batch.bufsX, batch.bufsCast) |> Flux.cpu; dims=1)
+        yh = hcat(yh, selectdim(cyh, seqDim, castInd))
+        cy = mapslices(argmax, batch.bufsY[1] |> Flux.cpu; dims=1)
+        y = hcat(y, selectdim(cy, seqDim, castInd))
+    end
+    return (yh, y)
+end
+
+using DrawUtil
+function disp(; castInd=1, batcher=batchers.test, count=typemax(Int))
+    yh, y = stitchCasts(batcher, castInd)
+    display(draw(first(dropdims(y; dims=1), count); color=:white))
+    draw!(first(dropdims(yh; dims=1), count); color=:green)
+    # origY = Int.(fr.seq[1][4,:])
+
+    # for b in batchers.test
+    #     global yhat = mapslices(argmax, mod.exec(b.bufsX, b.bufsCast) |> Flux.cpu; dims=1)
+    #     global y = mapslices(argmax, b.bufsY[1] |> Flux.cpu; dims=1)
+    #     draw(y[]; color=:white)
+    #     draw!(yhat; color=:green)
+    #     break
+    # end
 end
 
 function makeModel(cfg)
@@ -58,7 +109,7 @@ function makeModel(cfg)
     tdec1 = TransformerDecoder(decSize,2,4,32) |> DEV
     tdec2 = TransformerDecoder(decSize,2,4,32) |> DEV
     # linout = Positionwise(Flux.Dense(decInSize, cfg.binCnt), Flux.softmax) |> DEV
-    linout = Positionwise(Flux.Dense(cfg.binCnt, cfg.binCnt), Flux.softmax) |> DEV
+    linout = Positionwise(Flux.Dense(cfg.binCnt, cfg.binCnt), Flux.relu) |> DEV
     exec = (x, cast) -> begin
         # checkX = x
         # checkCast = cast
@@ -94,8 +145,8 @@ function makeModel(cfg)
     # params = union(Flux.params(tenc1, tenc2, tdec1, tdec2, linout), paramsEncoder)
     params = Flux.params(layers...)
     opt = Flux.Adam()
-    reset = () -> for layer in layers; Flux.reset!(layer) end
-    return (;layers, params, reset, exec, loss, opt)
+    # reset = () -> for layer in layers; Flux.reset!(layer) end
+    return (;layers, params, exec, loss, opt)
 end
 
 # function makeModelStage1(cfg)

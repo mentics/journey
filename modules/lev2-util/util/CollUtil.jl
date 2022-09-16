@@ -4,6 +4,9 @@ using BaseTypes
 export concat, find, findFrom, ensureVector, sortExp!, del!, prinsert!
 # uniqueSortTuple
 
+simEmpty(m) = similar(m, eltype(m), tupZeroLast(size(m)))
+tupZeroLast(tup::Tuple) = (tup[1:end-1]..., 0)
+
 (concat(a::AVec{T}, b::AVec{T})::Vector{T}) where T = vcat(a, b)
 # (concat(a::NTuple{N,T}, b::NTuple{N,T})::Vector{T}) where N,T = collect(Iterators.flatten((a, b)))
 (concat(a::Coll{T}, b::Coll{T})::Vector{T}) where T = collect(Iterators.flatten((a, b)))

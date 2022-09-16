@@ -14,15 +14,15 @@ import MLUtil:MLUtil,N
 # Base.length(itr::T) where T<:CuIterator = Base.length(itr.batches)
 # Base.eltype(itr::T) where T<:CuIterator = Base.eltype(itr.batches)
 
-train(cfg, mod, batcher) = train(cfg, mod.params, mod.loss, mod.reset, batcher, mod.opt)
-function train(cfg, params, loss, reset, batcher, opt; cb=nothing)
+train(cfg, mod, batcher) = train(cfg, mod.layers, mod.params, mod.loss, batcher, mod.opt)
+function train(cfg, layers, params, loss, batcher, opt; cb=nothing)
     batches = MLUtil.materialize(batcher) |> DEV
     # println("batchIter: ", typeof(batchIter))
     tracker = trainProgress(() -> loss(first(batches)), cfg.lossTarget, 1.0; cb)
     # params = Flux.params(model)
     for i in 1:cfg.maxIter
         for b in batches
-            reset()
+            Flux.reset!(layers)
             sleep(.001)
             grad = Flux.gradient(() -> loss(b), params)
             # for p in params
@@ -49,9 +49,9 @@ function trainProgress(loss, lossTarget, seconds; cb=nothing)
     end
 end
 
-test(mod, batcher) = test(mod.loss, mod.reset, batcher)
-function test(loss, reset, batcher)
-    report("Test", loss, reset, batcher)
+test(mod, batcher) = test(mod.layers, mod.loss, batcher)
+function test(layers, loss, batcher)
+    report("Test", layers, loss, batcher)
 end
 
 function report(title, loss, reset, batchIter)

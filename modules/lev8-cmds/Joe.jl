@@ -35,8 +35,8 @@ function disp()
         push!(res, (;
             ex=i,
             delete(r, :lms, :met, :metb)...,
-            evr="$(rd3(ctx.posMet.evr))-$(rd3(r.met.evr))-$(rd3(r.metb.evr))",
-            prob="$(rd3(ctx.posMet.prob))-$(rd3(r.met.prob))-$(rd3(r.metb.prob))"
+            evr="$(rd3(ctx.posMet.evr)):$(rd3(r.met.evr)):$(rd3(r.metb.evr))",
+            prob="$(rd3(ctx.posMet.prob)):$(rd3(r.met.prob)):$(rd3(r.metb.prob))"
         ))
     end
     pretyble(res)

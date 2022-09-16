@@ -52,24 +52,36 @@ end
 # subview(seq, split) = @view sub[:,1:split]
 
 function splitTrainTest(seq::Tuple, testHoldOut)
-    _, len = size(seq[1])
+    len = size(seq[1])[end]
     split = round(Int, (1 - testHoldOut) * len)
     train = map(seq) do sub
         @view sub[:,1:split]
     end
     test = map(seq) do sub
-        @view sub[:,(split+1):len]
+        @view sub[:,split+1:len]
     end
     return (train, test)
 end
 
-function splitTrainTest(seq, testHoldOut)
-    _, len = size(seq)
+function splitTrainTest(m, testHoldOut)
+    len = size(m)[end]
     split = round(Int, (1 - testHoldOut) * len)
-    # batchCount = (1 - cfg.testHoldOut) * length(seq) / cfg.batchLen
-    # seqTest = @view seq[:, (cfg.batchLen * cfg.batchCount + cfg.inputLen + cfg.castLen):end]
-    return ((@view seq[:,1:split]), (@view seq[:,(split+1):len]))
+    return ((@view m[:,1:split]), (@view m[:,split+1:len]))
 end
+
+# function seqInds(cfg, seq)
+#     len = size(seq[1])[end]
+#     split = round(Int, (1 - cfg.testHoldOut) * len) - cfg.inputLen
+#     return (1:split, split+1:len)
+# end
+
+# function splitTrainTest(seq, testHoldOut)
+#     _, len = size(seq)
+#     split = round(Int, (1 - testHoldOut) * len)
+#     # batchCount = (1 - cfg.testHoldOut) * length(seq) / cfg.batchLen
+#     # seqTest = @view seq[:, (cfg.batchLen * cfg.batchCount + cfg.inputLen + cfg.castLen):end]
+#     return ((@view seq[:,1:split]), (@view seq[:,(split+1):len]))
+# end
 
 function makeBufs(cfg, seq::Union{Tuple,NamedTuple})
     sample = Tuple(selectdim(x, length(size(x)), 1) for x in seq)
@@ -91,31 +103,38 @@ function makeBufs(cfg, seq::Union{Tuple,NamedTuple})
     return (;bufsX, bufsCast, bufsY)
 end
 
-import Flux:onehotbatch
-function batchAt!(bufs, cfg, seq, seqOffset)
+function makeBatch!(bufs, cfg, seq, batchNum)
     bufsX, bufsCast, bufsY = bufs
-    for b in 1:cfg.batchLen
-        start = seqOffset + b
-        slix = slice(seq, start+1:start+cfg.inputLen)
-        for i in eachindex(bufsX)
-            selectdim(bufsX[i], length(size(bufsX[i])), b) .= slix[i]
+    # for (b, start) in enumerate(batchStarts(cfg, batchNum))
+    for i in 1:cfg.batchLen
+        # slix = slice(seq, start+1:start+cfg.inputLen)
+        slix = sliceLastDim(seq, indsX(cfg, batchNum, i))
+        for tupi in eachindex(bufsX)
+            # ???: input length dim is always the last dim (before batch dim)
+            selectdim(bufsX[tupi], ndims(bufsX[tupi]), i) .= slix[tupi]
         end
-        cstart = start+cfg.inputLen
-        slic = slice(seq, cstart:(cstart-1)+cfg.castLen)
+        # cstart = start+cfg.inputLen
+        # slic = slice(seq, cstart:(cstart-1)+cfg.castLen)
+        slic = sliceLastDim(seq, indsCast(cfg, batchNum, i))
         cast = cfg.toCast(slic)
-        for i in eachindex(bufsCast)
-            selectdim(bufsCast[i], length(size(bufsCast[i])), b) .= cast[i]
+        for tupi in eachindex(bufsCast)
+            selectdim(bufsCast[tupi], ndims(bufsCast[tupi]), i) .= cast[tupi]
         end
         # println(size(cfg.toY(slic)[1]))
         # println(typeof(bufsY))
         # println(size(bufsY))
         y = cfg.toY(slic)
-        for i in eachindex(bufsY)
-            selectdim(bufsY[i], length(size(bufsY[i])), b) .= y[i]
+        for tupi in eachindex(bufsY)
+            selectdim(bufsY[tupi], ndims(bufsY[tupi]), i) .= y[tupi]
         end
     end
     return (;bufsX, bufsCast, bufsY)
 end
+
+batchCount(cfg, seq) = length(indsBatch(cfg, seq))
+indsBatch(cfg, seq) = (1:cfg.batchLen:(size(seq[1])[end]-cfg.inputLen-cfg.castLen))[1:end-1]
+indsX(cfg, b, i) = (1:cfg.inputLen) .+ (cfg.batchLen*(b-1)+i-1)
+indsCast(cfg, b, i) = (1:cfg.castLen) .+ (cfg.batchLen*(b-1)+i-1+cfg.inputLen)
 
 # function toBatch!(bufs, cfg, seq, inputOffset)
 #     bufsX, bufsCast, bufsY = bufs
@@ -146,11 +165,10 @@ end
 #     return (;bufsX, bufsCast, bufsY)
 # end
 
-function makeBatchIter(cfg, seq::Union{Tuple,NamedTuple})
+import Random
+function makeBatcher(cfg, seq::Union{Tuple,NamedTuple})
     bufs = makeBufs(cfg, seq)
-    batchCount = size(seq[1])[2] ÷ cfg.batchLen - 1
-    # @show  batchCount cfg.batchLen
-    return (batchAt!(bufs, cfg, seq, (i-1) * cfg.batchLen) for i in 1:batchCount)
+    return (makeBatch!(bufs, cfg, seq, b) for b in Random.shuffle(1:length(indsBatch(cfg, seq))))
 end
 
 # function makeBatchIterOld(cfg, seq::Union{Tuple,NamedTuple})
@@ -160,7 +178,8 @@ end
 #     return (toBatch!(bufs, cfg, seq, (i-1) * cfg.batchLen) for i in 1:batchCount)
 # end
 
-slice(seq::Tuple, inds) = Tuple(selectdim(c, ndims(c), inds) for c in seq)
-slice(seq, inds) = selectdim(seq, ndims(seq), inds)
+# slice(seq::Tuple, inds) = Tuple(selectdim(c, ndims(c), inds) for c in seq)
+sliceLastDim(seq::Tuple, inds) = Tuple(sliceLastDim(c, inds) for c in seq)
+sliceLastDim(seq, inds) = selectdim(seq, ndims(seq), inds)
 
 end
