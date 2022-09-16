@@ -10,20 +10,10 @@ import Forecast
 #     los((randomInput(cfg), randomOutput(cfg)))
 # end
 
-function trainModel(cfg, mod, seq)
-    seqTrain, _ = MLUtil.splitTrainTest(seq, cfg.testHoldOut)
-    Forecast.train(cfg, mod.model, mod.params, mod.opt, mod.loss, seqTrain)
-end
-
-function testModel(cfg, mod, seq)
-    _, seqTest = MLUtil.splitTrainTest(seq, cfg.testHoldOut)
-    Forecast.test(cfg, mod.model, mod.loss, seqTest)
-end
-
 function forecasted(cfg, model, seq)
     res = []
     for castOut in 1:cfg.castLen
-        starts = 1:(size(seq)[2] - cfg.inputLen - castOut)
+        starts = 1:(size(seq)[end-1] - cfg.inputLen - castOut)
         yoff = cfg.inputLen + castOut
         yinds = (starts.start + yoff):(starts.stop + yoff)
         yvs = map(i -> seq[cfg.outputInds,i], yinds)

@@ -14,26 +14,30 @@ import MLUtil:MLUtil,N
 # Base.length(itr::T) where T<:CuIterator = Base.length(itr.batches)
 # Base.eltype(itr::T) where T<:CuIterator = Base.eltype(itr.batches)
 
-function train(cfg, model, params, opt, loss, seq; cb=nothing)
-    batches = MLUtil.materialize(MLUtil.makeBatchIter(cfg, seq)) |> DEV
+train(cfg, mod, batcher) = train(cfg, mod.params, mod.loss, mod.reset, batcher, mod.opt)
+function train(cfg, params, loss, reset, batcher, opt; cb=nothing)
+    batches = MLUtil.materialize(batcher) |> DEV
     # println("batchIter: ", typeof(batchIter))
     tracker = trainProgress(() -> loss(first(batches)), cfg.lossTarget, 1.0; cb)
     # params = Flux.params(model)
     for i in 1:cfg.maxIter
         for b in batches
-            Flux.reset!(model)
-            global grad = Flux.gradient(() -> loss(b), params)
+            reset()
+            sleep(.001)
+            grad = Flux.gradient(() -> loss(b), params)
             # for p in params
             #     @assert p in grad.params
             # end
+            sleep(.001)
             Flux.Optimise.update!(opt, params, grad)
+            sleep(.1)
         end
         if tracker(i)
             break
         end
     end
 
-    report("Train", model, loss, batches)
+    report("Train", loss, reset, batches)
 end
 
 function trainProgress(loss, lossTarget, seconds; cb=nothing)
@@ -45,17 +49,14 @@ function trainProgress(loss, lossTarget, seconds; cb=nothing)
     end
 end
 
-function test(cfg, model, loss, seq)
-    # batchIter = makeBatchIter(cfg, seqTest)
-    batchIter = MLUtil.makeBatchIter(cfg, seq)
-    # cfg.useCpu || (batchIter = CuIterator(batchIter))
-    report("Test", model, loss, batchIter)
+test(mod, batcher) = test(mod.loss, mod.reset, batcher)
+function test(loss, reset, batcher)
+    report("Test", loss, reset, batcher)
 end
 
-function report(title, model, loss, batchIter)
-    # global so = batchIter
+function report(title, loss, reset, batchIter)
     med = map(batchIter) do b
-        Flux.reset!(model)
+        reset()
         return loss(b |> DEV)
     end |> median
     println("$(title) median loss: ", med)

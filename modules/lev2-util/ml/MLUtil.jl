@@ -117,37 +117,34 @@ function batchAt!(bufs, cfg, seq, seqOffset)
     return (;bufsX, bufsCast, bufsY)
 end
 
-function toBatch!(bufs, cfg, seq, inputOffset)
-    bufsX, bufsCast, bufsY = bufs
-    for indBuf in eachindex(bufsX)
-        bufX = bufsX[indBuf]
-        ss = seq[indBuf]
-        for b in 1:cfg.batchLen
-            for i in 1:cfg.inputLen
-                bufX[:,i,b] .= ss[:, inputOffset + b + i - 1]
-            end
-        end
-    end
-    outputLen = size(bufsY)[2] # cfg.castLen?
-    outputOffset = inputOffset + cfg.inputLen
-    for b in 1:cfg.batchLen
-        for i in 1:outputLen
-            ind = outputOffset + b + i - 2 + 1
-            bufsY[:,i,b] .= onehotbatch(seq[1][cfg.outputInds, ind], 1:cfg.binCnt)
-            if length(cfg.castInds) == 1
-                bufsCast[:,i,b] .= seq[cfg.castInds[1]][:,ind]
-            else
-                for castIndInd in eachindex(cfg.castInds)
-                    bufsCast[castIndInd][:,i,b] .= seq[cfg.castInds[castIndInd]][:,ind]
-                end
-            end
-        end
-    end
-    return (;bufsX, bufsCast, bufsY)
-end
-
-slice(seq::Tuple, inds) = Tuple(selectdim(c, ndims(c), inds) for c in seq)
-slice(seq, inds) = selectdim(seq, ndims(seq), inds)
+# function toBatch!(bufs, cfg, seq, inputOffset)
+#     bufsX, bufsCast, bufsY = bufs
+#     for indBuf in eachindex(bufsX)
+#         bufX = bufsX[indBuf]
+#         ss = seq[indBuf]
+#         for b in 1:cfg.batchLen
+#             for i in 1:cfg.inputLen
+#                 bufX[:,i,b] .= ss[:, inputOffset + b + i - 1]
+#             end
+#         end
+#     end
+#     outputLen = size(bufsY)[2] # cfg.castLen?
+#     outputOffset = inputOffset + cfg.inputLen
+#     for b in 1:cfg.batchLen
+#         for i in 1:outputLen
+#             ind = outputOffset + b + i - 2 + 1
+#             bufsY[:,i,b] .= onehotbatch(seq[1][cfg.outputInds, ind], 1:cfg.binCnt)
+#             if length(cfg.castInds) == 1
+#                 bufsCast[:,i,b] .= seq[cfg.castInds[1]][:,ind]
+#             else
+#                 for castIndInd in eachindex(cfg.castInds)
+#                     bufsCast[castIndInd][:,i,b] .= seq[cfg.castInds[castIndInd]][:,ind]
+#                 end
+#             end
+#         end
+#     end
+#     return (;bufsX, bufsCast, bufsY)
+# end
 
 function makeBatchIter(cfg, seq::Union{Tuple,NamedTuple})
     bufs = makeBufs(cfg, seq)
@@ -156,11 +153,14 @@ function makeBatchIter(cfg, seq::Union{Tuple,NamedTuple})
     return (batchAt!(bufs, cfg, seq, (i-1) * cfg.batchLen) for i in 1:batchCount)
 end
 
-function makeBatchIterOld(cfg, seq::Union{Tuple,NamedTuple})
-    bufs = makeBufs(cfg, seq)
-    batchCount = size(seq[1])[2] ÷ cfg.batchLen - 1
-    # @show  batchCount cfg.batchLen
-    return (toBatch!(bufs, cfg, seq, (i-1) * cfg.batchLen) for i in 1:batchCount)
-end
+# function makeBatchIterOld(cfg, seq::Union{Tuple,NamedTuple})
+#     bufs = makeBufs(cfg, seq)
+#     batchCount = size(seq[1])[2] ÷ cfg.batchLen - 1
+#     # @show  batchCount cfg.batchLen
+#     return (toBatch!(bufs, cfg, seq, (i-1) * cfg.batchLen) for i in 1:batchCount)
+# end
+
+slice(seq::Tuple, inds) = Tuple(selectdim(c, ndims(c), inds) for c in seq)
+slice(seq, inds) = selectdim(seq, ndims(seq), inds)
 
 end

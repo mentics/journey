@@ -9,7 +9,7 @@ import Calendars, HistData
 
 function config()
     binCnt = 21
-    def = BinDef(binCnt, 0.0, 1.0)
+    def = BinDef(binCnt, -.1, .1)
     binner = x -> MLUtil.toBin(def, x)
     vdef = BinDef(binCnt, 10.0, 40.0)
     binnerVix = x -> UInt8(MLUtil.toBin(vdef, x))
@@ -77,13 +77,15 @@ function make()
     enc3 = Flux.Dense(inputSizes[3][1] => outWidths[3])
     encoder = Flux.Parallel((xs...) -> cat(xs...; dims=1); enc1, enc2, enc3)
     encoderCast = Flux.Parallel((xs...) -> cat(xs...; dims=1); enc2, enc3)
-    batcher = MLUtil.makeBatchIter
     # encSize = size(encoder(first(batcher(baseCfg, seq))[1]))
     # println("Encoded size: ", encSize)
     toCast = x -> (x[2],x[3])
     toY = x -> (Flux.onehotbatch(selectdim(x[1], 1, 4), 1:cfg.binCnt),)
     cfg = merge(baseCfg, (;inputSizes, encSize=(sum(outWidths), baseCfg.inputLen, baseCfg.batchLen), castWidths=outWidths[2:3], encoder, encoderCast, toY, toCast))
-    return (;cfg, seq, batcher)
+    seqTrain, seqTest = MLUtil.splitTrainTest(seq, cfg.testHoldOut)
+    batcherTrain = MLUtil.makeBatchIter(cfg, seqTrain)
+    batcherTest = MLUtil.makeBatchIter(cfg, seqTest)
+    return (;cfg, seq, batchers=(;train=batcherTrain, test=batcherTest))
 
     # posEmb = PositionEmbedding(baseCfg.embedSize) |> DEV
     # embed = Embed(baseCfg.embedSize, baseCfg.binCnt) |> DEV

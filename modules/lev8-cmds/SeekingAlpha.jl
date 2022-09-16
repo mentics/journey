@@ -4,16 +4,17 @@ using Dates, Tables, HTTP, JSON3
 using BaseTypes
 using DateUtil, FileUtil, DictUtil
 
-# Need covered calls: "CODX"
+# Collab: Need covered calls: "CODX"
+# TestStrat: Need covered calls: "TSP"
 
 ActiveSyms = [] # ["BHC","BLUE","CLNN","CLOV","CTIC","INVZ","NKLA","NNVC","NVTA","PAYO","SENS","TSP","WVE","FSR","WKHS","WTI","DNMR"]
 
 BadPricing = []#"BAX", "OLN"]
 Ignore = ["SNDL","YANG","MUX","QD","RIOT","GOTU","TAL","ACB","HUT","IQ","JMIA","ABEV","JDST","SOXS","FAZ",
           "SQQQ","SPXU","QID","SDOW","TWM","NINE","TECS","DUST","SPXS","SRTY","ZSL","DRV","TZA","DIG","UNG",
-          "URA","EDZ","EPV","BNO","IEZ","TBT","SDS","XME","TUR","DXD","ECH","TYO","VIXM",
+          "URA","EDZ","EPV","BNO","IEZ","TBT","SDS","XME","TUR","DXD","ECH","TYO","VIXM","ERX",
 
-          "AFRM"
+          "AFRM","CAN","SRAD"
 ]
 # Early stage clinical: "AVIR"
 IgnoreTemp = []#"CORZ","CLSK"]

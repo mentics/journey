@@ -22,12 +22,23 @@ function run()
     test()
 end
 function init()
-    global config, seq, batcher = makeSeq()
+    global config, seq, batchers = makeSeq()
     global mod = makeModel(config)
     return
 end
-train() = ForecastUtil.trainModel(config, mod, seq)
-test() = ForecastUtil.testModel(config, mod, seq)
+train() = Forecast.train(config, mod, batchers.train)
+test() = Forecast.test(config, mod, batchers.test)
+
+using DrawUtil
+function disp()
+    for b in batcher
+        yhat = mapslices(argmax, mod.exec(b.bufsX, b.bufsCast) |> Flux.cpu; dims=1)
+        y = mapslices(argmax, b.bufsY[1] |> Flux.cpu; dims=1)
+        draw(y; color=white)
+        draw!(yhat; color=green)
+        break
+    end
+end
 
 function makeModel(cfg)
     tfSize = cfg.encSize[1] * cfg.encSize[2]
@@ -45,7 +56,7 @@ function makeModel(cfg)
     tdec1 = TransformerDecoder(decSize,2,4,32) |> DEV
     tdec2 = TransformerDecoder(decSize,2,4,32) |> DEV
     # linout = Positionwise(Flux.Dense(decInSize, cfg.binCnt), Flux.softmax) |> DEV
-    linout = Positionwise(Flux.Dense(cfg.binCnt, cfg.binCnt)) |> DEV
+    linout = Positionwise(Flux.Dense(cfg.binCnt, cfg.binCnt), Flux.softmax) |> DEV
     exec = (x, cast) -> begin
         # checkX = x
         # checkCast = cast
@@ -77,11 +88,12 @@ function makeModel(cfg)
         return r
     end
 
-    model = Flux.Chain(; cfg.encoder, tenc1, tenc2, decin, decinCast, tdec1, tdec2, linout)
+    layers = (;encer, tenc1, tenc2, decin, encerCast, decinCast, tdec1, tdec2, linout)
     # params = union(Flux.params(tenc1, tenc2, tdec1, tdec2, linout), paramsEncoder)
-    params = Flux.params(model)
+    params = Flux.params(layers...)
     opt = Flux.Adam()
-    return (;model, params, exec, loss, opt)
+    reset = () -> for layer in layers; Flux.reset!(layer) end
+    return (;layers, params, reset, exec, loss, opt)
 end
 
 # function makeModelStage1(cfg)
