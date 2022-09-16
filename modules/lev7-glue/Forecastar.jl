@@ -3,7 +3,7 @@ import Dates:Dates,Date
 import Flux
 import Transformers:Transformer,TransformerDecoder,Positionwise
 using BaseTypes
-import ForecastUtil:ForecastUtil,DEV
+import Forecast
 import MLUtil:MLUtil,BinDef,N
 
 # using Forecastar ; fr = Forecastar
@@ -30,12 +30,14 @@ train() = Forecast.train(config, mod, batchers.train)
 test() = Forecast.test(config, mod, batchers.test)
 
 using DrawUtil
-function disp()
-    for b in batcher
-        yhat = mapslices(argmax, mod.exec(b.bufsX, b.bufsCast) |> Flux.cpu; dims=1)
-        y = mapslices(argmax, b.bufsY[1] |> Flux.cpu; dims=1)
-        draw(y; color=white)
-        draw!(yhat; color=green)
+function disp(n=1)
+    origY = Int.(fr.seq[1][4,:])
+
+    for b in batchers.test
+        global yhat = mapslices(argmax, mod.exec(b.bufsX, b.bufsCast) |> Flux.cpu; dims=1)
+        global y = mapslices(argmax, b.bufsY[1] |> Flux.cpu; dims=1)
+        draw(y[]; color=:white)
+        draw!(yhat; color=:green)
         break
     end
 end
