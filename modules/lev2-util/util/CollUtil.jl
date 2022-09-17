@@ -5,7 +5,9 @@ export concat, find, findFrom, ensureVector, sortExp!, del!, prinsert!
 # uniqueSortTuple
 
 simEmpty(m) = similar(m, eltype(m), tupZeroLast(size(m)))
-tupZeroLast(tup::Tuple) = (tup[1:end-1]..., 0)
+# tupZeroLast(tup::Tuple) = (tup[1:end-1]..., 0)
+tupSetLast(tup::Tuple, val) = (tup[1:end-1]..., val)
+tupSetFirst(tup::Tuple, val) = (val, tup[2:end]...)
 
 (concat(a::AVec{T}, b::AVec{T})::Vector{T}) where T = vcat(a, b)
 # (concat(a::NTuple{N,T}, b::NTuple{N,T})::Vector{T}) where N,T = collect(Iterators.flatten((a, b)))

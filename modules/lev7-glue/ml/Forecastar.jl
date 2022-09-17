@@ -94,7 +94,10 @@ function disp(; castInd=1, batcher=batchers.test, count=typemax(Int))
 end
 
 function makeModel(cfg)
-    tfSize = cfg.encSize[1] * cfg.encSize[2]
+    tfSize = cfg.encSize[1] # * cfg.encSize[2]
+    numHeads = 8
+    neurPerHead = 64
+    hidSize = 2048
 
     decSize = cfg.binCnt * cfg.castLen
     castSize = sum(cfg.castWidths) * cfg.castLen
@@ -102,28 +105,29 @@ function makeModel(cfg)
     encer = cfg.encoder |> DEV
     encerCast = cfg.encoderCast |> DEV
 
-    tenc1 = Transformer(tfSize,2,4,32) |> DEV
-    tenc2 = Transformer(tfSize,2,4,32) |> DEV
-    decin = Flux.Dense(tfSize, decSize) |> DEV
-    decinCast = Flux.Dense(castSize, decSize) |> DEV
-    tdec1 = TransformerDecoder(decSize,2,4,32) |> DEV
-    tdec2 = TransformerDecoder(decSize,2,4,32) |> DEV
-    # linout = Positionwise(Flux.Dense(decInSize, cfg.binCnt), Flux.softmax) |> DEV
-    linout = Positionwise(Flux.Dense(cfg.binCnt, cfg.binCnt), Flux.relu) |> DEV
+    tenc1 = Transformer(tfSize,numHeads,neurPerHead,hidSize; pdrop=0.0) |> DEV
+    tenc2 = Transformer(tfSize,numHeads,neurPerHead,hidSize; pdrop=0.0) |> DEV
+    decin = Flux.Dense(tfSize => decSize) |> DEV
+    decinCast = Flux.Dense(castSize => decSize) |> DEV
+    tdec1 = TransformerDecoder(decSize,numHeads,neurPerHead,hidSize; pdrop=0.0) |> DEV
+    tdec2 = TransformerDecoder(decSize,numHeads,neurPerHead,hidSize; pdrop=0.0) |> DEV
+    linout = Positionwise(Flux.Dense(cfg.binCnt => cfg.binCnt), logsoftmax) |> DEV
+    # linout = Positionwise(Flux.Dense(cfg.binCnt, cfg.binCnt), Flux.softmax) |> DEV
+    # linout = Positionwise(Flux.Dense(cfg.binCnt, cfg.binCnt), Flux.relu) |> DEV
     exec = (x, cast) -> begin
         # checkX = x
         # checkCast = cast
         # println("typeof(cast) ", typeof(cast))
         e = encer(x)
-        @assert size(e) == cfg.encSize "Size mismatch $(size(e)) $(cfg.encSize)"
+        # @assert size(e) == cfg.encSize "Size mismatch $(size(e)) $(cfg.encSize)"
         ef = Flux.flatten(e)
-        @assert size(ef) == (tfSize, cfg.batchLen)
+        # @assert size(ef) == (tfSize, cfg.batchLen)
         enc1 = tenc1(ef)
         enc2 = tenc2(enc1)
         enc2a = decin(enc2)
 
         castin1 = encerCast(cast...) # cat(ForecastUtil.encodeDur(cast[1]), ForecastUtil.encodeDates(cast[2]); dims=1)
-        @assert size(castin1) == (sum(cfg.castWidths), cfg.castLen, cfg.batchLen)
+        # @assert size(castin1) == (sum(cfg.castWidths), cfg.castLen, cfg.batchLen)
         # println(size(castin1))
         castin2 = decinCast(Flux.flatten(castin1))
         dec1 = tdec1(enc2a, castin2)
