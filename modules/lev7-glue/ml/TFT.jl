@@ -1,6 +1,7 @@
 module TFT
-import Flux:Dropout,Dense,sigmoid
+import Flux:Dropout,Dense,sigmoid,LayerNorm,@functor
 import CollUtil
+import LayerUtil:LU
 
 # https://towardsdatascience.com/temporal-fusion-transformer-googles-model-for-interpretable-time-series-forecasting-5aa17beb621
 
@@ -14,17 +15,34 @@ struct GateAddNorm{GLU,AN}
     glu::GLU
     addNorm::AN
 end
-GateAddNorm(inputSize, hiddenSize, skipSize, dropOut) = GateAddNorm()
-function (m::GateAddNorm)(x)
-
+GateAddNorm(inputSize, hiddenSize, dropOut) = GateAddNorm(GatedLinearUnit(inputSize, hiddenSize, dropOut), AddNorm(hiddenSize))
+@functor GateAddNorm
+function (m::GateAddNorm)(x, skip)
+    @assert
+    x2 = m.glu(x)
+    out = m.addNorm(x2, skip)
+    return out
 end
+LU.getInputSize(m::GateAddNorm) = getInputSize(m.glu)
+LU.getOutputSize(m::GateAddNorm) = getOutputSize(m.addNorm)
 
-struct AddNorm{}
-
+# https://github.com/unit8co/darts/blob/master/darts/models/forecasting/tft_submodels.py#L241
+struct AddNorm{M,N}
+    mask::M
+    norm::N
 end
-AddNorm(inputSize, skipSize=inputSize, trainableAdd=true) = AddNorm()
-function (m::AddNorm)(x)
+# Other values not supported yet: , skipSize=inputSize, trainableAdd=true
+AddNorm(inputSize) = AddNorm(zeros(inputSize), LayerNorm(inputSize))
+@functor AddNorm
+function (m::AddNorm)(x, skip)
+    @assert size(x, 1) == size(m.mask, 1)
+    @assert size(skip, 1) == size(m.mask, 1)
+    skip2 = skip .* sigmoid.(m.mask) * 2.0
+    out = m.norm(x + skip2)
+    return out
 end
+LU.getInputSize(m::AddNorm) = ( sz = size(m.mask) ; (sz, sz) )
+LU.getOutputSize(m::AddNorm) = ( sz = size(m.mask) ; (sz, sz) )
 
 # Gated Linear Unit
 # https://github.com/Rishit-dagli/GLU/blob/main/glu_tf/glu.py
@@ -35,6 +53,7 @@ struct GatedLinearUnit{DROP,D}
 end
 # GatedLinearUnit: inputSize => hiddenSize
 GatedLinearUnit(dropRate, inputSize, hiddenSize) = GatedLinearUnit(Dropout(dropRate), Dense(inputSize, 2 * hiddenSize))
+@functor GatedLinearUnit
 function (m::GatedLinearUnit)(x)
     DoubleSize = CollUtil.tupSetFirst(size(x), length(m.dense.bias))
     println(DoubleSize)
@@ -55,6 +74,8 @@ function (m::GatedLinearUnit)(x)
     @assert size(x5) == OutputSize
     return x5
 end
+LU.getInputSize(m::GatedLinearUnit) = getInputSize(m.dense)
+LU.getOutputSize(m::GatedLinearUnit) = getOutputSize(m.dense)
 function testGlu()
     glu = TFT.GatedLinearUnit(0.0, 8, 12)
     glu(rand(8))

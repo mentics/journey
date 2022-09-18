@@ -1,7 +1,8 @@
 module MLUtil
 
-export BinDef
+export MU, BinDef
 
+const MU = @__MODULE__
 const N = Float32
 
 function materialize(iter)
