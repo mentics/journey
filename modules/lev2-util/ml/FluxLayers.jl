@@ -2,6 +2,8 @@ module FluxLayers
 import Flux:Flux,Parallel,Dense
 import Transformers.Basic:Embed,PositionEmbedding
 
+cat1(xs...) = cat(xs...; dims=1)
+
 struct EncoderLayer{PE<:PositionEmbedding,E<:Embed,D<:Dense}
     embed::E
     posEmbed::PE
@@ -24,6 +26,16 @@ function (m::EncoderLayer)(x::AbstractArray)
     # println("enclay resh sz: ", size(s3))
     s4 = m.den(s3)
     return s4
+end
+
+struct EmbedMulti{E,N}
+    embeds::NTuple{N,E}
+end
+EmbedMulti(xs::Pair{Int}...) = EmbedMulti(Tuple(Flux.Embedding(first(x), last(x)) for x in xs))
+Flux.@functor EmbedMulti
+function (m::EmbedMulti)(x::AbstractArray)
+    @assert size(x, 1) == length(m.embeds)
+    reduce(cat1, m.embeds[i](selectdim(x, 1, i)) for i in eachindex(m.embeds))
 end
 
 # struct SeqEncodeLayer{T,P}

@@ -9,6 +9,7 @@ import LayerUtil:LU
 struct GatedResidualNetwork{D1,D2,DROP}
 
 end
+GatedResidualNetwork(inputSize, hiddenSize, outputSize, dropout=0.1) = GatedResidualNetwork()
 
 # https://github.com/unit8co/darts/blob/master/darts/models/forecasting/tft_submodels.py#L276
 struct GateAddNorm{GLU,AN}

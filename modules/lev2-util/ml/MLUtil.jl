@@ -183,4 +183,10 @@ end
 sliceLastDim(seq::Tuple, inds) = Tuple(sliceLastDim(c, inds) for c in seq)
 sliceLastDim(seq, inds) = selectdim(seq, ndims(seq), inds)
 
+# https://github.com/mcreel/NeuralNetsForIndirectInference.jl/blob/c501362d083eae1ff239353eb185d20dd79b3472/SV/Train.jl#L7
+function QuantileRegressionLoss(yhat, y, quantile)
+    err = y .- yhat
+    return sum(max.(quantile .* err, (quantile .- 1.0) .* err)) # not sure about the q .- 1.0, not sure how quantile not being scalar would make sense in the other operations
+end
+
 end

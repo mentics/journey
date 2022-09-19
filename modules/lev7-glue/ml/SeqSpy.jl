@@ -123,7 +123,6 @@ function durToLogits(dur::MarketDur)
     return N.((logits..., sqrt.(logits)...))
 end
 
-# prep1(x, xp)::N = (x - xp) / xp
 prep2(x, xp, binner)::UInt8 = binner((x - xp) / xp)
 daysinquarter(d)::UInt16 = ( q1 = Dates.firstdayofquarter(d) ; (q1 + Dates.Month(3) - q1).value )
 daysinyear(d)::UInt16 = ( q1 = Dates.firstdayofquarter(d) ; (q1 + Dates.Month(3) - q1).value )

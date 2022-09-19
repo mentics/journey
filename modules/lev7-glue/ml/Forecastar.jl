@@ -31,7 +31,7 @@ end
 train() = Forecast.train(config, mod, batchers.train)
 test() = Forecast.test(config, mod, batchers.test)
 
-batchOffset(batchLen, i) = (i-1) * batchLen
+# batchOffset(batchLen, i) = (i-1) * batchLen
 
 function checkSeq()
     seqTrain, seqTest = MLUtil.splitTrainTest(seq, config.testHoldOut)

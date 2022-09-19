@@ -89,4 +89,7 @@ function incDictKey(d::Dict, k1, k2)
     d2[k2] = curval + 1
 end
 
+export toDict
+toDict(f, v) = Dict(f(x) => x for x in v)
+
 end
