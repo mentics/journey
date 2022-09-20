@@ -48,18 +48,19 @@ function make()
     end
     seq = CollUtil.tupsToMat(seqTup)
     inputWidths = getindex.(size.(seq), 1)
-    outputWidths = (size(seq[1],1), size(seq[2],1), length(dayData(false, Date(0))[1]) + sum(last.(embedDayData())))
-    @show size.(seq) inputWidths outputWidths
+    inputEncedWidths = (size(seq[1],1), size(seq[2],1), length(dayData(false, Date(0))[1]) + sum(last.(embedDayData())))
+    @show size.(seq) inputWidths inputEncedWidths
     origY = seq[1]
 
-    encoderDays = FluxLayers.EmbedMulti(embedDayData()...)
-    encoderKnown = Flux.Parallel(FluxLayers.cat1; bools=identity, days=encoderDays)
-    encoder = Flux.Parallel(FluxLayers.cat1; y=identity, unknown=identity, known1=identity, known2=encoderKnown) # TODO: could be optimized
-    encoderCast = encoderKnown
+    global encoderDays = FluxLayers.EmbedMulti(embedDayData()...)
+    global encoder = Flux.Parallel(FluxLayers.cat1; y=identity, unknown=identity, known1=identity, known2=encoderDays) # TODO: could be optimized
+    global encoderCast = Flux.Parallel(FluxLayers.cat1; bools=identity, days=encoderDays)
     toCast = x -> (x[3], x[4])
     toY = x -> x[1]
     fromY = bufsY -> mapslices(argmax, bufsY[1]; dims=1)
-    cfg = merge(baseCfg, (;inputWidths, encedSize=(sum(outputWidths), baseCfg.inputLen, baseCfg.batchLen), castWidths=outputWidths[3], encoder, encoderCast, toY, toCast, fromY))
+    cfg = merge(baseCfg, (;inputWidths, inputEncedWidth=sum(inputEncedWidths),
+                           castWidths=inputWidths[3:4], castEncedWidth=inputEncedWidths[3],
+                           encoder, encoderCast, toY, toCast, fromY))
     seqTrain, seqTest = MLUtil.splitTrainTest(seq, cfg.testHoldOut)
     batcherTrain = MLUtil.makeBatcher(cfg, seqTrain)
     batcherTest = MLUtil.makeBatcher(cfg, seqTest)
