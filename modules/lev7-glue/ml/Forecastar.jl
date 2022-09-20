@@ -62,37 +62,6 @@ function checkSeq(bufs, cseq, oy)
     end
 end
 
-import CollUtil
-function stitchCasts(batcher, castInd)
-    yh = CollUtil.simEmpty(origY)
-    y = CollUtil.simEmpty(origY)
-    seqDim = ndims(origY)
-    for cbatch in batcher
-        batch = cbatch |> DEV
-        cyh = mapslices(argmax, mod.exec(batch.bufsX, batch.bufsCast) |> Flux.cpu; dims=1)
-        yh = hcat(yh, selectdim(cyh, seqDim, castInd))
-        cy = mapslices(argmax, batch.bufsY[1] |> Flux.cpu; dims=1)
-        y = hcat(y, selectdim(cy, seqDim, castInd))
-    end
-    return (yh, y)
-end
-
-using DrawUtil
-function disp(; castInd=1, batcher=batchers.test, count=typemax(Int))
-    yh, y = stitchCasts(batcher, castInd)
-    display(draw(first(dropdims(y; dims=1), count); color=:white))
-    draw!(first(dropdims(yh; dims=1), count); color=:green)
-    # origY = Int.(fr.seq[1][4,:])
-
-    # for b in batchers.test
-    #     global yhat = mapslices(argmax, mod.exec(b.bufsX, b.bufsCast) |> Flux.cpu; dims=1)
-    #     global y = mapslices(argmax, b.bufsY[1] |> Flux.cpu; dims=1)
-    #     draw(y[]; color=:white)
-    #     draw!(yhat; color=:green)
-    #     break
-    # end
-end
-
 function makeModel(cfg)
     tfSize = cfg.encSize[1] # * cfg.encSize[2]
     numHeads = 8

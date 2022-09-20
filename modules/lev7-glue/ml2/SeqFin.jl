@@ -25,13 +25,14 @@ function make()
     # spy = filter!(x -> x.date > Date(2000,1,1), reverse(HistData.dataDaily("SPY")))
     # vix = filter!(x -> x.date > Date(2000,1,1), reverse(HistData.dataDaily("VIX")))
     dateFrom = Date(2000,1,1)
-    spy = toDict(dateFor, filter!(x -> x.date >= dateFrom, HistData.dataDaily("SPY")))
-    vix = toDict(dateFor, filter!(x -> x.date >= dateFrom, HistData.dataDaily("VIX")))
+    global spy = toDict(dateFor, filter!(x -> x.date >= dateFrom, HistData.dataDaily("SPY")))
+    global vix = toDict(dateFor, filter!(x -> x.date >= dateFrom, HistData.dataDaily("VIX")))
     @assert length(spy) == length(vix)
     dateTo = maximum(keys(spy))
     seqLen = Dates.value(dateTo - dateFrom) + 1
     seq = (Array{N}(undef, 8, seqLen), Array{N}(undef, 12, seqLen), Array{Int16}(undef, 4, seqLen))
 
+    global dates = dateFrom:Day(1):dateTo
     seqTup = map(dateFrom:Day(1):dateTo) do date
         if haskey(spy, date)
             s = spy[date]
@@ -49,8 +50,7 @@ function make()
     seq = CollUtil.tupsToMat(seqTup)
     inputWidths = getindex.(size.(seq), 1)
     inputEncedWidths = (size(seq[1],1), size(seq[2],1), length(dayData(false, Date(0))[1]) + sum(last.(embedDayData())))
-    @show size.(seq) inputWidths inputEncedWidths
-    origY = seq[1]
+    # @show size.(seq) inputWidths inputEncedWidths
 
     global encoderDays = FluxLayers.EmbedMulti(embedDayData()...)
     global encoder = Flux.Parallel(FluxLayers.cat1; y=identity, unknown=identity, known1=identity, known2=encoderDays) # TODO: could be optimized
@@ -64,7 +64,7 @@ function make()
     seqTrain, seqTest = MLUtil.splitTrainTest(seq, cfg.testHoldOut)
     batcherTrain = MLUtil.makeBatcher(cfg, seqTrain)
     batcherTest = MLUtil.makeBatcher(cfg, seqTest)
-    return (;cfg, seq, origY, batchers=(;train=batcherTrain, test=batcherTest))
+    return (;cfg, seq, seqTrain, seqTest, batchers=(;train=batcherTrain, test=batcherTest))
 end
 
 embedDayData() = (7 => 4, 31 => 4, 92 => 4, 366 => 4)

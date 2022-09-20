@@ -4,9 +4,10 @@ using Dates, Tables, HTTP, JSON3
 using BaseTypes
 using DateUtil, FileUtil, DictUtil
 
-# Collab: Need covered calls: CODX(7), ASRT(3)
-# TestStrat: Need covered calls: TSP(10)
-# 401k: Need covered calls: CBIO(2.5)
+# Covered Calls:
+# Collab: CODX(7), ASRT(3)
+# TestStrat: NNVC(2.5), FSR(9)-9/23, TSP(10)-10/21
+# 401k: CBIO(2.5)
 # TODO: Sell ASRT call mistakenly bought in collab
 
 ActiveSyms = [] # ["BHC","BLUE","CLNN","CLOV","CTIC","INVZ","NKLA","NNVC","NVTA","PAYO","SENS","TSP","WVE","FSR","WKHS","WTI","DNMR"]

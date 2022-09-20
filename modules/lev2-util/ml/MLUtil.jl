@@ -167,9 +167,10 @@ indsCast(cfg, b, i) = (1:cfg.castLen) .+ (cfg.batchLen*(b-1)+i-1+cfg.inputLen)
 # end
 
 import Random
-function makeBatcher(cfg, seq::Union{Tuple,NamedTuple})
+function makeBatcher(cfg, seq::Union{Tuple,NamedTuple}, shuffle=true)
     bufs = makeBufs(cfg, seq)
-    return (makeBatch!(bufs, cfg, seq, b) for b in Random.shuffle(1:length(indsBatch(cfg, seq))))
+    return shuffle ? (makeBatch!(bufs, cfg, seq, b) for b in Random.shuffle(1:length(indsBatch(cfg, seq)))) :
+                     (makeBatch!(bufs, cfg, seq, b) for b in 1:length(indsBatch(cfg, seq)))
 end
 
 # function makeBatchIterOld(cfg, seq::Union{Tuple,NamedTuple})
@@ -183,10 +184,10 @@ end
 sliceLastDim(seq::Tuple, inds) = Tuple(sliceLastDim(c, inds) for c in seq)
 sliceLastDim(seq, inds) = selectdim(seq, ndims(seq), inds)
 
-# https://github.com/mcreel/NeuralNetsForIndirectInference.jl/blob/c501362d083eae1ff239353eb185d20dd79b3472/SV/Train.jl#L7
-function QuantileRegressionLoss(yhat, y, quantile)
-    err = y .- yhat
-    return sum(max.(quantile .* err, (quantile .- 1.0) .* err)) # not sure about the q .- 1.0, not sure how quantile not being scalar would make sense in the other operations
-end
+# # https://github.com/mcreel/NeuralNetsForIndirectInference.jl/blob/c501362d083eae1ff239353eb185d20dd79b3472/SV/Train.jl#L7
+# function QuantileRegressionLoss(yhat, y, quantile)
+#     err = y .- yhat
+#     return sum(max.(quantile .* err, (quantile .- 1.0) .* err)) # not sure about the q .- 1.0, not sure how quantile not being scalar would make sense in the other operations
+# end
 
 end

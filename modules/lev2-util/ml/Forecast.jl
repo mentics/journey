@@ -22,7 +22,7 @@ function train(cfg, layers, params, loss, batcher, opt; cb=nothing)
     # params = Flux.params(model)
     for i in 1:cfg.maxIter
         for b in batches
-            Flux.reset!(layers)
+            # Flux.reset!(layers)
             sleep(.001)
             grad = Flux.gradient(() -> loss(b), params)
             # for p in params
@@ -88,5 +88,22 @@ end
 #     reshape(Flux.onehotbatch(map(x -> toBin(def, x), y), 1:cfg.binCnt), (cfg.binCnt, cfg.castLen, size(y)[end]))
 #     # reshape(Flux.onehotbatch(y, 1:cfg.binCnt), (cfg.binCnt, cfg.castLen, size(y)[end]))
 # end
+
+import CollUtil
+function stitchCasts(batcher, exec, toYhat, castInd)
+    b1 = first(batcher) |> DEV
+    yh1 = toYhat(exec(b1.bufsX, b1.bufsCast) |> Flux.cpu)
+    yh = Array{eltype(yh1)}(undef, size(yh1)[1:end-2]..., 0)
+    y = similar(yh)
+    seqDim = ndims(yh1)-1
+    for cbatch in batcher
+        batch = cbatch |> DEV
+        cyh = toYhat(exec(batch.bufsX, batch.bufsCast) |> Flux.cpu)
+        yh = hcat(yh, selectdim(cyh, seqDim, castInd))
+        cy = batch.bufsY[1] |> Flux.cpu
+        y = hcat(y, selectdim(cy, seqDim, castInd))
+    end
+    return (yh, y)
+end
 
 end

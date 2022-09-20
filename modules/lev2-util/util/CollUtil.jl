@@ -4,7 +4,7 @@ using BaseTypes
 export concat, find, findFrom, ensureVector, sortExp!, del!, prinsert!
 # uniqueSortTuple
 
-simEmpty(m) = similar(m, eltype(m), tupZeroLast(size(m)))
+simEmpty(m) = similar(m, eltype(m), tupSetLast(size(m), 0))
 # tupZeroLast(tup::Tuple) = (tup[1:end-1]..., 0)
 tupSetLast(tup::Tuple, val) = (tup[1:end-1]..., val)
 tupSetFirst(tup::Tuple, val) = (val, tup[2:end]...)
