@@ -56,7 +56,7 @@ function make()
     global encoder = Flux.Parallel(FluxLayers.cat1; y=identity, unknown=identity, known1=identity, known2=encoderDays) # TODO: could be optimized
     global encoderCast = Flux.Parallel(FluxLayers.cat1; bools=identity, days=encoderDays)
     toCast = x -> (x[3], x[4])
-    toY = x -> x[1]
+    toY = x -> (x[1],)
     fromY = bufsY -> mapslices(argmax, bufsY[1]; dims=1)
     cfg = merge(baseCfg, (;inputWidths, inputEncedWidth=sum(inputEncedWidths),
                            castWidths=inputWidths[3:4], castEncedWidth=inputEncedWidths[3],
