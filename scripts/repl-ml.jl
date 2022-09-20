@@ -7,4 +7,5 @@ ntt = NamedTupleTools
 using BaseTypes, OutputUtil
 
 using Flux
-using Forecastar ; fr = Forecastar
+import Far ; far = Far
+# using Forecastar ; fr = Forecastar

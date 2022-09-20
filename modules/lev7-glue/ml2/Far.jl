@@ -1,4 +1,5 @@
 module Far
+import SliceMap:slicemap
 import CudaUtil:DEV
 import Flux
 import Forecast
@@ -63,14 +64,19 @@ function makeModel(cfg)
     # Consider passing in previous value so we can check if we matched above or below
     function loss(batch)
         x, cast, y = batch
-        @assert size(y[1]) == (1, cfg.castLen, cfg.batchLen) string(size(y[1]), ' ', (1, cfg.castLen, cfg.batchLen))
+        # @assert size(y[1]) == (1, cfg.castLen, cfg.batchLen) string(size(y[1]), ' ', (1, cfg.castLen, cfg.batchLen))
         yy = dropdims(y[1]; dims=1)
         global yhat = exec(x, cast)
-        @assert size(yhat) == (outWidth, cfg.castLen, cfg.batchLen)
+        # @assert size(yhat) == (outWidth, cfg.castLen, cfg.batchLen)
         # y is actual value for each castLen and batchLen
         # yhat is outWidth number of predicted guesses of y
-        @assert eltype(y[1]) == eltype(yhat) string(eltype(y[1]), ' ', eltype(yhat))
-        err = sum(mapslices(yh -> Flux.Losses.mse(yh, yy), yhat; dims=[2,3]))
+        # @assert eltype(y[1]) == eltype(yhat) string(eltype(y[1]), ' ', eltype(yhat))
+        # err = sum(mapslices(yh -> Flux.Losses.mse(yh, yy), yhat; dims=[2,3]))
+        # err = sum(slicemap(yh -> Flux.Losses.mse(yh, yy), yhat; dims=[2,3]))
+        err = 0.0
+        for yh in (yhat[i,:,:] for i in axes(yhat, 1))
+            err += Flux.Losses.mse(yh, yy)
+        end
         return err
     end
 
