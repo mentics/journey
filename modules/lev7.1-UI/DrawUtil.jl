@@ -68,7 +68,14 @@ function updateLegend()
 end
 
 export drawProb
-function drawProb(ax, prob, colorIndex, scale)
+function drawProb(center, vals, colorIndex=1)
+    colors = (GLMakie.RGBA(0.5, 0.5, 1.0, 0.5), GLMakie.RGBA(0.0, 0.5, 0.5, 0.5), GLMakie.RGBA(0.5, 0.5, 0.5, 0.5))
+    p = barplot(center .* Bins.xs(), .01 * vals ./ Bins.width(); gap=0.0, width=center * Bins.width(), inspectable=false, color=colors[colorIndex])
+    return p
+end
+
+export drawProb!
+function drawProb!(ax, prob, colorIndex, scale)
     closeWin()
 
     if hasproperty(Main, :save) && haskey(Main.save, :drawExtentHalf)
@@ -88,9 +95,7 @@ function drawProb(ax, prob, colorIndex, scale)
     return p
 end
 
-export drawProb!
-function drawProb!(center, vals)
-    colorIndex = 1
+function drawProb!(center, vals, colorIndex=1)
     colors = (GLMakie.RGBA(0.5, 0.5, 1.0, 0.5), GLMakie.RGBA(0.0, 0.5, 0.5, 0.5), GLMakie.RGBA(0.5, 0.5, 0.5, 0.5))
     p = barplot!(center .* Bins.xs(), .01 * vals ./ Bins.width(); gap=0.0, inspectable=false, color=colors[colorIndex])
     return p

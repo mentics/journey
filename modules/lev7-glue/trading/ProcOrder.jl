@@ -58,6 +58,10 @@ function procOrderRaw(tord::Dict{String,Any})::Bool
     end
 
     tid = extractTid(tord)
+    if isnothing(tid)
+        @error "Doing nothing for order because no tag/tid"
+        return false
+    end
     if status in ("expired", "canceled", "rejected")
         # TODO: Need to do something different when we support > 4 legged trades
         tnumLegs = queryNumLegs(tid)
@@ -136,10 +140,11 @@ function procAssigned(tid::Int, lidAssigned::Int, lidCombo::Int, tord::Dict{Stri
     matchOrders(tid)
 end
 
-function extractTid(tord::Dict{String,Any})::Int
+function extractTid(tord::Dict{String,Any})::Union{Nothing,Int}
     if !haskey(tord, "tag")
         # TODO: This happens when enter order via web site
         @error "No tag for order" tord
+        return
     end
     tag = tord["tag"]
     parse(Int, SubString(tag, 3)) # pull off the initial op/cl
