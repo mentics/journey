@@ -5,10 +5,9 @@ using BaseTypes
 using DateUtil, FileUtil, DictUtil
 
 # Covered Calls:
-# Collab: CODX(7), ASRT(3)
-# TestStrat: NNVC(2.5), FSR(9)-9/23, TSP(10)-10/21
+# Collab: CODX(7), ASRT(3), OPEN(5)
+# TestStrat: NNVC(2.5), FSR(9)-9/30, TSP(10)-10/21
 # 401k: CBIO(2.5)
-OPEN220930P5
 
 ActiveSyms = [] # ["BHC","BLUE","CLNN","CLOV","CTIC","INVZ","NKLA","NNVC","NVTA","PAYO","SENS","TSP","WVE","FSR","WKHS","WTI","DNMR"]
 
@@ -16,9 +15,9 @@ BadPricing = []#"BAX", "OLN"]
 Ignore = ["SNDL","YANG","MUX","QD","RIOT","GOTU","TAL","ACB","HUT","IQ","JMIA","ABEV","JDST","SOXS","FAZ",
           "SQQQ","SPXU","QID","SDOW","TWM","NINE","TECS","DUST","SPXS","SRTY","ZSL","DRV","TZA","DIG","UNG",
           "URA","EDZ","EPV","BNO","IEZ","TBT","SDS","XME","TUR","DXD","ECH","TYO","VIXM","ERX","IAU","WEAT",
-          "EWZ","FLBR","FCG","AMLP","BKLN",
+          "EWZ","FLBR","FCG","AMLP","BKLN","LABD","SRS","DBO","IYE",
 
-          "AFRM","CAN","SRAD","SYF", # don't like company
+          "AFRM","CAN","SRAD","SYF","PRPH", # don't like company
           "GRPH" # clinical stage
 ]
 # Early stage clinical: "AVIR"

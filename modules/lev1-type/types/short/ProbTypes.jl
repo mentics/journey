@@ -26,8 +26,8 @@ function combine(p1::Prob, p2::Prob)
     leftNew = 0.0
     rightNew = 0.0
     for x in Bin.xs()
-        x1 = x * p1.center
-         <= Bins.XLEFT
+        # x1 = x * p1.center
+        #  <= Bins.XLEFT
     end
     isleft = x -> x <= xsNew[1]
     isright = x -> x >= xsNew[end]
