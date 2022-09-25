@@ -4,6 +4,10 @@ import CudaUtil:DEV
 import Flux
 import Statistics:median,mean
 import Forecast
+using FluxLayers
+
+export far
+const far = @__MODULE__
 
 import SeqFin
 config = SeqFin.config
@@ -24,6 +28,94 @@ train() = Forecast.train(config, mod, batchers.train)
 test() = Forecast.test(config, mod, batchers.test)
 
 function makeModel(cfg)
+    stage1Width = 8
+    combLen = 3
+    stage1CombWidth = 16
+    stage1OutWidth = 256
+    castWidth = 4
+    castCombWidth = 8
+    castOutWidth = 128
+    outWidth = 1
+    outSize = (outWidth, cfg.castLen, cfg.batchLen)
+    inputBatchSize = (cfg.inputLen, cfg.batchLen)
+
+    encer = cfg.encoder |> DEV
+    encerCast = cfg.encoderCast |> DEV
+
+    densePerInput = Flux.Dense(cfg.inputEncedWidth => stage1Width) |> DEV
+    combInput = fl.SeqCombLayer((cfg.inputEncedWidth, combLen) => stage1CombWidth) |> DEV
+    denseStage1Out = Flux.Dense(stage1Width * cfg.inputLen + stage1CombWidth * (cfg.inputLen - (combLen-1)) => stage1OutWidth) |> DEV
+
+    densePerCast = Flux.Dense(cfg.castEncedWidth => castWidth) |> DEV
+    combCast = fl.SeqCombLayer((cfg.castEncedWidth, combLen) => castCombWidth) |> DEV
+    castMidWidth = castWidth * cfg.castLen + castCombWidth * (cfg.castLen - (combLen-1))
+    denseCastOut = Flux.Dense(castMidWidth => castOutWidth) |> DEV
+
+    combine = Flux.Dense(stage1OutWidth + castOutWidth => outWidth * cfg.castLen) |> DEV
+
+    exec = (x, cast) -> begin
+        # proc x alone
+        @assert size.(x, 1) == cfg.inputWidths string(size.(x, 1), ' ', cfg.inputWidths)
+        global x1 = encer(x)
+        @assert size(x1) == (cfg.inputEncedWidth, inputBatchSize...) string(size(x1), ' ', (cfg.inputEncedWidth, inputBatchSize...))
+        global x2 = densePerInput(x1)
+        @assert size(x2) == (stage1Width, inputBatchSize...) string(size(x2), ' ', (stage1Width, inputBatchSize...))
+        global x3 = combInput(x1)
+        @assert size(x3) == (stage1CombWidth, cfg.inputLen - (combLen-1), cfg.batchLen) string(size(x3), ' ', (stage1Width, cfg.inputLen - (combLen-1), cfg.batchLen))
+        x4 = cat(Flux.flatten(x2), Flux.flatten(x3); dims=1)
+        stage1Out = denseStage1Out(x4)
+        @assert size(stage1Out) == (stage1OutWidth, cfg.batchLen) string(size(stage1Out), ' ', (stage1OutWidth, cfg.batchLen))
+
+        # proc cast alone
+        @assert size.(cast, 1) == cfg.castWidths string(size.(cast, 1), ' ', cfg.castWidths)
+        cast1 = encerCast(cast)
+        @assert size(cast1) == (cfg.castEncedWidth, cfg.castLen, cfg.batchLen)
+        cast2 = densePerCast(cast1)
+        @assert size(cast2) == (castWidth, cfg.castLen, cfg.batchLen)
+        cast3 = combCast(cast1)
+        @assert size(cast3) == (castCombWidth, cfg.castLen - (combLen-1), cfg.batchLen) string(size(cast3), ' ', (castCombWidth, cfg.castLen - (combLen-1), cfg.batchLen))
+        cast4 = cat(Flux.flatten(cast2), Flux.flatten(cast3); dims=1)
+        @assert size(cast4) == (castMidWidth, cfg.batchLen)
+        castOut = denseCastOut(cast4)
+        @assert size(castOut) == (castOutWidth, cfg.batchLen) string(size(castOut), ' ', (castOutWidth, cfg.batchLen))
+
+        # combine x and cast
+        stage2In = cat(stage1Out, castOut; dims=1)
+        @assert size(stage2In) == (stage1OutWidth + castOutWidth, cfg.batchLen)
+        stage2Out = combine(stage2In)
+        @assert size(stage2Out) == (outWidth * cfg.castLen, cfg.batchLen)
+        out1 = reshape(stage2Out, outSize)
+        out2 = out1 .* cast[1][1:1,:,:] # TODO: generalize, this masks it to only days when the market was open
+        @assert size(out2) == outSize
+        return out2
+    end
+
+    # Consider passing in previous value so we can check if we matched above or below
+    function loss(batch)
+        x, cast, y = batch
+        @assert size(y[1]) == (1, cfg.castLen, cfg.batchLen) string(size(y[1]), ' ', (1, cfg.castLen, cfg.batchLen))
+        yy = dropdims(y[1]; dims=1)
+        global yhat = exec(x, cast)
+        @assert size(yhat) == (outWidth, cfg.castLen, cfg.batchLen)
+        # y is actual value for each castLen and batchLen
+        # yhat is outWidth number of predicted guesses of y
+        @assert eltype(y[1]) == eltype(yhat) string(eltype(y[1]), ' ', eltype(yhat))
+
+        err = 0.0
+        for yh in (yhat[i,:,:] for i in axes(yhat, 1))
+            err += Flux.Losses.mse(yh, yy)
+        end
+        return err
+    end
+
+    layers = (;encer, encerCast, densePerInput, combInput, denseStage1Out, densePerCast, combCast, denseCastOut, combine)
+    params = Flux.params(layers...)
+    println("num params: ", sum(length.(params)))
+    opt = Flux.Adam()
+    return (;layers, params, exec, loss, opt)
+end
+
+function makeModelOld(cfg)
     stage1WidthOut = 2048
     castHidden = 1024
     stage2Hidden = 2048

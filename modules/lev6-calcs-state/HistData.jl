@@ -94,7 +94,7 @@ function updateDaily(sym)::DailyType
                 if length(newDaily) > 0 && haskey(newDaily[1], "date")
                     appendCsv(path, newDaily; keys=string.(header))
                 else
-                    throw("Unexpected hist daily response: " * string(newDaily))
+                    @error "Unexpected hist daily response" sym lastLine lastDate lastExpected newDaily
                 end
             end
         end
