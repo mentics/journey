@@ -28,7 +28,7 @@ function make()
     global spy = toDict(dateFor, filter!(x -> x.date >= dateFrom, HistData.dataDaily("SPY")))
     global vix = toDict(dateFor, filter!(x -> x.date >= dateFrom, HistData.dataDaily("VIX")))
     # TODO: remove when vix data is working
-    delete!(spy, Date(2022,9,23))
+    # delete!(spy, Date(2022,9,23))
     @assert length(spy) == length(vix)
     dateTo = maximum(keys(spy))
     seqLen = Dates.value(dateTo - dateFrom) + 1

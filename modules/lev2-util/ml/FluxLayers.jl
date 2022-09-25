@@ -58,23 +58,79 @@ function (m::SeqCombLayer)(x::AbstractArray)
     sz = size(x)
     lenOut = length(m.layer.bias)
     szOut = (lenOut, sz[2:(dim-1)]..., 1, sz[dim+1:end]...)
-    mapreduce(
+    return mapreduce(
         i -> reshape(m.layer(Flux.flatten(selectdim(x, dim, i:i+m.plus))), szOut),
         (x1, x2) -> cat(x1, x2; dims=dim),
         1:(size(x, dim)-m.plus)
     )
 end
 
-    # reduce(
-    #     (x1, x2) -> cat(x1, x2; dims=dim),
-    #     reshape(m.layer(Flux.flatten(selectdim(x, dim, i:i+m.plus))), szOut) for i in 1:(size(x, dim)-m.plus)
-    # )
+struct SeqComb{INT,T}
+    window::INT
+    outWidth::INT
+    layer::T
+    function SeqComb(pair::Pair; σ=identity)
+        window = last(first(pair))
+        outWidth = last(pair)
+        den = Dense((*)(first(pair)...) => outWidth, σ)
+        new{typeof(window),typeof(den)}(window, outWidth, den)
+    end
+    SeqComb(window::Integer, outWidth::Integer, layer; σ=identity) = new{typeof(window),typeof(layer)}(window, outWidth, layer)
+end
+Flux.@functor SeqComb
+function (m::SeqComb)(x::AbstractArray)
+    _, seriesCount, batchCount = size(x)
+    seriesCombined, extra = divrem(seriesCount, m.window)
+    len1 = seriesCount - ((extra + 0) % m.window)
+    len2 = seriesCount - ((extra + 1) % m.window)
+    len3 = seriesCount - ((extra + 2) % m.window)
+    @show seriesCount batchCount seriesCombined extra len1 len2 len3
+    return hcat(
+        m.layer(reshape(x[:, 1:m.window:len1, :], :, len1 ÷ 3, batchCount)),
+        m.layer(reshape(x[:, 2:m.window:len2, :], :, len2 ÷ 3, batchCount)),
+        m.layer(reshape(x[:, 3:m.window:len3, :], :, len3 ÷ 3, batchCount)),
+    );
+end
 
+function test()
+    x = [i + j / 10 + 1000 * b for i in 1:10, j in 1:20, b in 1:5]
+    layer1 = fl.SeqCombLayer((10, 3) => 4)
+    layer2 = fl.SeqComb((10, 3) => 4)
+    copyto!(layer1.layer.weight, layer2.layer.weight) # same weights for testing equality
+    out1 = layer1(x)
+    out2 = layer2(x)
+    return out2 ≈ hcat(out1[:, 1:3:end, :], out1[:, 2:3:end, :], out1[:, 3:3:end, :])
+end
+
+function test2()
+    x = [i + j / 10 + 1000 * b for i in 1:27, j in 1:70, b in 1:128]
+    layer1 = fl.SeqCombLayer((27, 3) => 8)
+    layer2 = fl.SeqComb((27, 3) => 8)
+    copyto!(layer1.layer.weight, layer2.layer.weight) # same weights for testing equality
+    out1 = layer1(x)
+    out2 = layer2(x)
+    return out2 ≈ hcat(out1[:, 1:3:end, :], out1[:, 2:3:end, :], out1[:, 3:3:end, :])
+end
+
+
+# function seqComb(den, x, window)
+#     featureCount, seriesCount, batchCount = size(x)
+#     seriesCombined, extra = divrem(seriesCount, window)
+#     len = seriesCombined * window
+#     hcat(
+#         den(reshape(x[:, 1:len, :], :, seriesCombined, batchCount)),
+#         den(reshape(x[:, 2:len+1, :], :, seriesCombined, batchCount)),
+#         den(reshape(x[:, 3:len+2, :], :, seriesCombined, batchCount)),
+#     );
+# end
 
 #=
-layer = fl.SeqCombLayer((8, 5) => 7)
-out = layer(rand(8, 100, 12))
-@assert size(out) == (7, 96, 12)
+    # replace!(x -> 1.0, layer.layer.weight)
+
+
+
+
+@assert size(out) == (4, 18, 5)
 
 using Flux, CUDA
 CUDA.allowscalar(false)

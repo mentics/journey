@@ -43,11 +43,11 @@ function makeModel(cfg)
     encerCast = cfg.encoderCast |> DEV
 
     densePerInput = Flux.Dense(cfg.inputEncedWidth => stage1Width) |> DEV
-    combInput = fl.SeqCombLayer((cfg.inputEncedWidth, combLen) => stage1CombWidth) |> DEV
+    combInput = fl.SeqComb((cfg.inputEncedWidth, combLen) => stage1CombWidth) |> DEV
     denseStage1Out = Flux.Dense(stage1Width * cfg.inputLen + stage1CombWidth * (cfg.inputLen - (combLen-1)) => stage1OutWidth) |> DEV
 
     densePerCast = Flux.Dense(cfg.castEncedWidth => castWidth) |> DEV
-    combCast = fl.SeqCombLayer((cfg.castEncedWidth, combLen) => castCombWidth) |> DEV
+    combCast = fl.SeqComb((cfg.castEncedWidth, combLen) => castCombWidth) |> DEV
     castMidWidth = castWidth * cfg.castLen + castCombWidth * (cfg.castLen - (combLen-1))
     denseCastOut = Flux.Dense(castMidWidth => castOutWidth) |> DEV
 
