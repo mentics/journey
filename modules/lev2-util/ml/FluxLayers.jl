@@ -58,18 +58,24 @@ function (m::SeqCombLayer)(x::AbstractArray)
     sz = size(x)
     lenOut = length(m.layer.bias)
     szOut = (lenOut, sz[2:(dim-1)]..., 1, sz[dim+1:end]...)
-    # @show dim sz lenOut szOut
     mapreduce(
         i -> reshape(m.layer(Flux.flatten(selectdim(x, dim, i:i+m.plus))), szOut),
         (x1, x2) -> cat(x1, x2; dims=dim),
         1:(size(x, dim)-m.plus)
     )
+end
+
     # reduce(
     #     (x1, x2) -> cat(x1, x2; dims=dim),
     #     reshape(m.layer(Flux.flatten(selectdim(x, dim, i:i+m.plus))), szOut) for i in 1:(size(x, dim)-m.plus)
     # )
-end
+
+
 #=
+layer = fl.SeqCombLayer((8, 5) => 7)
+out = layer(rand(8, 100, 12))
+@assert size(out) == (7, 96, 12)
+
 using Flux, CUDA
 CUDA.allowscalar(false)
 den = Flux.Dense(30 => 4) |> gpu
