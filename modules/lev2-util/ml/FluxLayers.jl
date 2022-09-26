@@ -81,14 +81,14 @@ Flux.@functor SeqComb
 function (m::SeqComb)(x::AbstractArray)
     _, seriesCount, batchCount = size(x)
     seriesCombined, extra = divrem(seriesCount, m.window)
-    len1 = seriesCount - ((extra + 0) % m.window)
-    len2 = seriesCount - ((extra + 1) % m.window)
-    len3 = seriesCount - ((extra + 2) % m.window)
-    @show seriesCount batchCount seriesCombined extra len1 len2 len3
+    len1 = seriesCombined * m.window
+    len2 = len1 + (1 > extra ? 1 - m.window : 1)
+    len3 = len1 + (2 > extra ? 2 - m.window : 2)
+    # @show seriesCount batchCount seriesCombined extra len1 len2 len3
     return hcat(
-        m.layer(reshape(x[:, 1:m.window:len1, :], :, len1 ÷ 3, batchCount)),
-        m.layer(reshape(x[:, 2:m.window:len2, :], :, len2 ÷ 3, batchCount)),
-        m.layer(reshape(x[:, 3:m.window:len3, :], :, len3 ÷ 3, batchCount)),
+        m.layer(reshape(x[:, 1:len1, :], :, len1 ÷ m.window, batchCount)),
+        m.layer(reshape(x[:, 2:len2, :], :, len2 ÷ m.window, batchCount)),
+        m.layer(reshape(x[:, 3:len3, :], :, len3 ÷ m.window, batchCount))
     );
 end
 
@@ -111,7 +111,6 @@ function test2()
     out2 = layer2(x)
     return out2 ≈ hcat(out1[:, 1:3:end, :], out1[:, 2:3:end, :], out1[:, 3:3:end, :])
 end
-
 
 # function seqComb(den, x, window)
 #     featureCount, seriesCount, batchCount = size(x)

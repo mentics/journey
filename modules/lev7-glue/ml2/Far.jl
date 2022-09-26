@@ -28,13 +28,14 @@ train() = Forecast.train(config, mod, batchers.train)
 test() = Forecast.test(config, mod, batchers.test)
 
 function makeModel(cfg)
-    stage1Width = 8
+    stage1Width = 16
     combLen = 3
-    stage1CombWidth = 16
-    stage1OutWidth = 256
+    stage1CombWidth = 64
+    stage1OutWidth = 4096
     castWidth = 4
-    castCombWidth = 8
+    castCombWidth = 4
     castOutWidth = 128
+    outHidden = 2048
     outWidth = 1
     outSize = (outWidth, cfg.castLen, cfg.batchLen)
     inputBatchSize = (cfg.inputLen, cfg.batchLen)
@@ -51,7 +52,8 @@ function makeModel(cfg)
     castMidWidth = castWidth * cfg.castLen + castCombWidth * (cfg.castLen - (combLen-1))
     denseCastOut = Flux.Dense(castMidWidth => castOutWidth) |> DEV
 
-    combine = Flux.Dense(stage1OutWidth + castOutWidth => outWidth * cfg.castLen) |> DEV
+    combine = Flux.Dense(stage1OutWidth + castOutWidth => outHidden) |> DEV
+    last = Flux.Dense(outHidden => outWidth * cfg.castLen) |> DEV
 
     exec = (x, cast) -> begin
         # proc x alone
@@ -82,7 +84,9 @@ function makeModel(cfg)
         # combine x and cast
         stage2In = cat(stage1Out, castOut; dims=1)
         @assert size(stage2In) == (stage1OutWidth + castOutWidth, cfg.batchLen)
-        stage2Out = combine(stage2In)
+        stage2Mid = combine(stage2In)
+        @assert size(stage2Mid) == (outHidden, cfg.batchLen)
+        stage2Out = last(stage2Mid)
         @assert size(stage2Out) == (outWidth * cfg.castLen, cfg.batchLen)
         out1 = reshape(stage2Out, outSize)
         out2 = out1 .* cast[1][1:1,:,:] # TODO: generalize, this masks it to only days when the market was open
