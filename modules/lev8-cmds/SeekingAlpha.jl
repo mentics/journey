@@ -28,6 +28,64 @@ const BaseDir = mkpath(joinpath("C:/Users/joel/Downloads", "journey"))
 const BaseDirData = mkpath(joinpath(BaseDir, "data"))
 const BaseDirStatic = mkpath(joinpath(BaseDir, "static"))
 
+import OutputUtil
+function disp(syms)
+    OutputUtil.pretyble(Iterators.map(syms) do s
+        (;sym=s, rating=getRating(s), range=rangeRatio(Quotes[s]))
+    end)
+end
+
+function forNeutral()
+    loadWeeklys()
+    loadPennys()
+    syms = intersect(keys(Weeklys), keys(Pennys))
+    println("weekly, penny count: ", length(syms))
+    loadQuotes(syms)
+    syms = filter(filterNeutral, syms)
+    println("weekly, penny, quoted, filtered count: ", length(syms))
+    getMetrics(syms)
+
+    global NeutLong = filter(syms) do s
+        q = Quotes[s]
+        rating = getRating(s)
+        return !isnothing(rating) && rating > 4.5 # && rangeRatio(q) < 0.5
+    end
+    global NeutShort = filter(syms) do s
+        q = Quotes[s]
+        rating = getRating(s)
+        return !isnothing(rating) && rating < 1.5 # && rangeRatio(q) > 0.5
+    end
+    return (NeutLong, NeutShort)
+end
+
+NoPriceFor = String[]
+function filterNeutral(s)
+    haskey(Quotes, s) || ( println("No quote for ", s, ", skipping.") ; return false )
+    q = Quotes[s]
+    p = toPrice(q)
+    if isnothing(p)
+        println("No price for ", s, ", skipping.")
+        push!(NoPriceFor)
+        return false
+    else
+        return q["type"] == "stock" && q["average_volume"] > 100000
+    end
+end
+
+toPrice(q) = q["last"]
+function rangeRatio(q)
+    hi = q["week_52_high"]
+    lo = q["week_52_low"]
+    return (toPrice(q) - lo) / (hi - lo)
+end
+function getRating(s)
+    m = Data[:metrics]
+    haskey(m, s) || ( println("WARN: no metrics for ", s) ; return )
+    d = m[s]
+    haskey(d, "quant_rating") || ( println("no quant rating for ", s) ; return )
+    return d["quant_rating"]
+end
+
 function totry()
     quoteAll()
     global syms = filter(filt1, keys(Quotes))
