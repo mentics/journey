@@ -7,4 +7,5 @@ ntt = NamedTupleTools
 using BaseTypes, OutputUtil
 
 using Flux
-using Far
+using Far ; far = Far;
+# far.run(4)

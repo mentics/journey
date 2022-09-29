@@ -167,7 +167,7 @@ indsCast(cfg, b, i) = (1:cfg.castLen) .+ (cfg.batchLen*(b-1)+i-1+cfg.inputLen)
 # end
 
 import Random
-function makeBatcher(cfg, seq::Union{Tuple,NamedTuple}, shuffle=true)
+function makeBatcher(cfg, seq::Union{Tuple,NamedTuple}, shuffle=false)
     bufs = makeBufs(cfg, seq)
     return shuffle ? (makeBatch!(bufs, cfg, seq, b) for b in Random.shuffle(1:length(indsBatch(cfg, seq)))) :
                      (makeBatch!(bufs, cfg, seq, b) for b in 1:length(indsBatch(cfg, seq)))

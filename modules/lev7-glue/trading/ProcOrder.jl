@@ -42,7 +42,7 @@ function procOrderRaw(tord::Dict{String,Any})::Bool
     isnothing(snap()) || error("Do not procOrders when snapped")
     logOrderRaw(tord)
     if tord["class"] == "combo"
-        global comboOrder = tord
+        # global comboOrder = tord
         @error "TODO: Combo order still not handled, skipping"
         return false
     end

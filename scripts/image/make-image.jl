@@ -37,7 +37,7 @@ for (root, dirs, files) in walkdir("modules")
     end
 end
 unique!(usings)
-ignore = ["Base","Base.Threads"]
+ignore = ["Base","Base.Threads","Random"]
 filter!(us -> length(us) > 0 && !(us in mods) && !(us in ignore), usings)
 
 precomp = "C:/data/tmp/precomp-journey.jl"

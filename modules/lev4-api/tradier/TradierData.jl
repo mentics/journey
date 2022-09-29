@@ -97,12 +97,12 @@ function tradierClock()
 end
 
 function tradierDividends(syms::Coll{<:AStr}=("SPY",))
-    global raw = tradierGet("https://api.tradier.com/beta/markets/fundamentals/dividends?symbols=$(join(syms, ','))", CallVec(nameof(var"#self#")))
+    raw = tradierGet("https://api.tradier.com/beta/markets/fundamentals/dividends?symbols=$(join(syms, ','))", CallVec(nameof(var"#self#")))
     res = Dict{String,Any}()
     for symd in raw
-        global found = Dict[]
+        found = Dict[]
         for d2 in symd["results"]
-            global dl = d2["tables"]["cash_dividends"]
+            dl = d2["tables"]["cash_dividends"]
             !isnothing(dl) || continue
             typeof(dl) <: AVec ? append!(found, dl) : push!(found, dl)
         end
@@ -117,7 +117,7 @@ findExDate(res::Vector{<:Dict}, tod::Date=today())::Date =
         minimum(filter(x -> x > tod, map(x -> Date(x["ex_date"]), res)); init=DATE_FUTURE)
 
 function tradierCorpCal(syms::Coll{<:AStr}=("SPY",))
-    global raw = tradierGet("https://api.tradier.com/beta/markets/fundamentals/calendars?symbols=$(join(syms, ','))", CallVec(nameof(var"#self#")))
+    raw = tradierGet("https://api.tradier.com/beta/markets/fundamentals/calendars?symbols=$(join(syms, ','))", CallVec(nameof(var"#self#")))
     res = Dict{String,Any}()
     for symd in raw
         found = Dict[]
@@ -142,8 +142,8 @@ const EARNINGS_TYPES = (7,8,9,10)
 export findEarnDate
 findEarnDate(::Nothing)::Date = DATE_FUTURE
 function findEarnDate(res::Vector{<:Dict}, tod::Date=today())::Date
-    global earnings = filter(x -> x["event_type"] in EARNINGS_TYPES, res)
-    global dates = filter(x -> x > tod, map(x -> Date(x["begin_date_time"]), earnings))
+    earnings = filter(x -> x["event_type"] in EARNINGS_TYPES, res)
+    dates = filter(x -> x > tod, map(x -> Date(x["begin_date_time"]), earnings))
     return minimum(dates; init=DATE_FUTURE)
 end
 

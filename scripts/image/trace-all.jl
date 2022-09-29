@@ -1,5 +1,6 @@
-@assert Threads.nthreads() == 12
+@assert Threads.nthreads() >= 12
 using Pkg
 Pkg.activate(".")
-include("../repl-all.jl")
+include("../repl-ml.jl")
+include("../repl-trade.jl")
 exit()

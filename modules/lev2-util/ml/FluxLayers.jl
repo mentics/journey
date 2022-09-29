@@ -69,13 +69,13 @@ struct SeqComb{INT,T}
     window::INT
     outWidth::INT
     layer::T
-    function SeqComb(pair::Pair; σ=identity)
+    function SeqComb(pair::Pair, σ=identity)
         window = last(first(pair))
         outWidth = last(pair)
         den = Dense((*)(first(pair)...) => outWidth, σ)
         new{typeof(window),typeof(den)}(window, outWidth, den)
     end
-    SeqComb(window::Integer, outWidth::Integer, layer; σ=identity) = new{typeof(window),typeof(layer)}(window, outWidth, layer)
+    SeqComb(window::Integer, outWidth::Integer, layer) = new{typeof(window),typeof(layer)}(window, outWidth, layer)
 end
 Flux.@functor SeqComb
 function (m::SeqComb)(x::AbstractArray)
