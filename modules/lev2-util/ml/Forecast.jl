@@ -20,7 +20,8 @@ function train(cfg, mod, batcher; maxIter=0, cb=nothing)::Nothing
     (;name, layers, loss, opt, dev) = mod
     params = Flux.params(layers)
     batches = MLUtil.materialize(batcher) |> dev
-    tracker = trainProgress(() -> mean(loss.(sample(batches, 10; replace=false))), cfg.lossTarget, 1.0; cb)
+    println("Number of batches: ", length(batches))
+    tracker = trainProgress(() -> mean(loss.(sample(batches, 20; replace=false))), cfg.lossTarget, 1.0; cb)
     saver = Flux.throttle(i -> running[] && save(mod, name, i), 120; leading=false, trailing=true)
     try
         for i in 1:(maxIter != 0 ? maxIter : cfg.maxIter)
