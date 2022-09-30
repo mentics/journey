@@ -5,9 +5,9 @@ using BaseTypes
 using DateUtil, FileUtil, DictUtil
 
 # Covered Calls:
-# Collab: ASRT(3), CODX(7)-alert, OPEN(5)-alert
-# TestStrat: NNVC(2.5), FSR(9)-9/30, TSP(10)-10/21
-# 401k: CBIO(2.5)-alert
+# Collab: ASRT(3)-11/18, CODX(7)-alert, OPEN(5)-11/18
+# TestStrat: FSR(9)-10/7, TSP(10)-10/21, NNVC(2.5)-10/21
+# 401k: AHT(9/30/2022,9)-10/14, CBIO(2.5)-alert
 
 ActiveSyms = [] # ["BHC","BLUE","CLNN","CLOV","CTIC","INVZ","NKLA","NNVC","NVTA","PAYO","SENS","TSP","WVE","FSR","WKHS","WTI","DNMR"]
 

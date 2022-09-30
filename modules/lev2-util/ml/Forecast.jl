@@ -14,12 +14,13 @@ import MLUtil:MLUtil,N
 # Base.eltype(itr::T) where T<:CuIterator = Base.eltype(itr.batches)
 
 # train(cfg, mod, batcher; maxIter=0) = train(cfg, mod.layers, mod.params, mod.loss, batcher, mod.opt; maxIter)
+import StatsBase:sample,mean
 function train(cfg, mod, batcher; maxIter=0, cb=nothing)::Nothing
     running = Ref(true)
     (;name, layers, loss, opt, dev) = mod
     params = Flux.params(layers)
     batches = MLUtil.materialize(batcher) |> dev
-    tracker = trainProgress(() -> loss(first(batches)), cfg.lossTarget, 1.0; cb)
+    tracker = trainProgress(() -> mean(loss.(sample(batches, 10; replace=false))), cfg.lossTarget, 1.0; cb)
     saver = Flux.throttle(i -> running[] && save(mod, name, i), 120; leading=false, trailing=true)
     try
         for i in 1:(maxIter != 0 ? maxIter : cfg.maxIter)
@@ -27,9 +28,9 @@ function train(cfg, mod, batcher; maxIter=0, cb=nothing)::Nothing
                 # Flux.reset!(layers)
                 sleep(.001)
                 grad = Flux.gradient(() -> loss(b), params)
-                for p in params
-                    @assert p in grad.params
-                end
+                # for p in params
+                #     @assert p in grad.params
+                # end
                 sleep(.001)
                 Flux.Optimise.update!(opt, params, grad)
             end
@@ -116,17 +117,19 @@ end
 # end
 
 import CollUtil
-function stitchCasts(batcher, exec, toYhat, castInd, dev)
+function stitchCasts(batcher, exec, toOut, castInd, dev)
     b1 = first(batcher) |> dev
-    yh1 = toYhat(exec(b1.bufsX, b1.bufsCast) |> Flux.cpu)
+    yh1 = toOut(exec(b1.bufsX, b1.bufsCast) |> Flux.cpu)
+    # yh1 = exec(b1.bufsX, b1.bufsCast) |> Flux.cpu
     yh = Array{eltype(yh1)}(undef, size(yh1)[1:end-2]..., 0)
     y = similar(yh)
     seqDim = ndims(yh1)-1
     for cbatch in batcher
         batch = cbatch |> dev
-        cyh = toYhat(exec(batch.bufsX, batch.bufsCast) |> Flux.cpu)
+        cyh = toOut(exec(batch.bufsX, batch.bufsCast) |> Flux.cpu)
+        # cyh = exec(batch.bufsX, batch.bufsCast) |> Flux.cpu
         yh = hcat(yh, selectdim(cyh, seqDim, castInd))
-        cy = batch.bufsY[1] |> Flux.cpu
+        cy = toOut(batch.bufsY[1] |> Flux.cpu)
         y = hcat(y, selectdim(cy, seqDim, castInd))
     end
     return (yh, y)

@@ -1,4 +1,4 @@
-module Far
+module FarPrev
 # import SliceMap:slicemap
 import CudaUtil
 import Flux
@@ -58,14 +58,17 @@ end
 
 function makeModel(cfg)
     name = "Test1"
-    stage1Width = 24
+    stage1Width = 32
     combLen = 3
     stage1CombWidth = 128
     stage1OutWidth = 4096
     castWidth = 4
     castCombWidth = 8
     castOutWidth = 256
-    outHidden = 4096
+    outHidden = 8192
+    outWidth = 1
+    outSize = (outWidth, cfg.castLen, cfg.batchLen)
+    inputBatchSize = (cfg.inputLen, cfg.batchLen)
     castMidWidth = castWidth * cfg.castLen + castCombWidth * (cfg.castLen - (combLen-1))
 
     # TODO: introduce normalization layer
@@ -87,7 +90,7 @@ function makeModel(cfg)
     denseCastOut = Flux.Dense(castMidWidth => castOutWidth, act2)
 
     combine = Flux.Dense(stage1OutWidth + castOutWidth => outHidden, act2)
-    last = Flux.Dense(outHidden => cfg.yWidths[1] * cfg.castLen, act3)
+    last = Flux.Dense(outHidden => outWidth * cfg.castLen, act3)
 
     layers = (;encer, encerCast, densePerInput, combInput, denseStage1Out, densePerCast, combCast, denseCastOut, combine, last)
     params = Flux.params(layers...)
@@ -102,15 +105,16 @@ end
 function makeExec(cfg, layers)
     (;encer, encerCast, densePerInput, combInput, denseStage1Out, densePerCast, combCast, denseCastOut, combine, last) = layers
 
-    stage1Width = 24
+    stage1Width = 32
     combLen = 3
     stage1CombWidth = 128
     stage1OutWidth = 4096
     castWidth = 4
     castCombWidth = 8
     castOutWidth = 256
-    outHidden = 4096
-    outSize = (cfg.yWidths[1], cfg.castLen, cfg.batchLen)
+    outHidden = 8192
+    outWidth = 1
+    outSize = (outWidth, cfg.castLen, cfg.batchLen)
     inputBatchSize = (cfg.inputLen, cfg.batchLen)
     castMidWidth = castWidth * cfg.castLen + castCombWidth * (cfg.castLen - (combLen-1))
 
@@ -146,9 +150,12 @@ function makeExec(cfg, layers)
         stage2Mid = combine(stage2In)
         @assert size(stage2Mid) == (outHidden, cfg.batchLen)
         stage2Out = last(stage2Mid)
-        @assert size(stage2Out) == (cfg.yWidths[1] * cfg.castLen, cfg.batchLen)
+        @assert size(stage2Out) == (outWidth * cfg.castLen, cfg.batchLen)
         out1 = reshape(stage2Out, outSize)
-        # out1 = Flux.softmax(out1; dims=1)
+        # out .+= MU.N(1.0)
+        # out .*= cast[1][1:1,:,:] # TODO: generalize, this masks it to only days when the market was open
+        # out = out .+ MU.N(1.0)
+        # out = out .* MU.N(100.0)
         out2 = out1 .* cast[1][1:1,:,:] # TODO: generalize, this masks it to only days when the market was open
         @assert size(out2) == outSize
         return out2
@@ -157,42 +164,130 @@ end
 
 # TODO: Consider passing in previous value so we can check if we matched above or below
 function makeLoss(cfg, exec)
-    outSize = (cfg.yWidths[1], cfg.castLen, cfg.batchLen)
+    outWidth = 1
     return function(batch)
         x, cast, y = batch
-        @assert size(y[1]) == outSize string(size(y[1]), ' ', (1, cfg.castLen, cfg.batchLen))
-        # yy = dropdims(y[1]; dims=1)
+        @assert size(y[1]) == (1, cfg.castLen, cfg.batchLen) string(size(y[1]), ' ', (1, cfg.castLen, cfg.batchLen))
+        yy = dropdims(y[1]; dims=1)
+        # yy = yy .- MU.N(1.0)
         yhat = exec(x, cast)
-        @assert size(yhat) == outSize
-        # y is onehot encoded bin (7, castLen, batchLen)
-        # yhat is  outWidth number of predicted guesses of y
-        # @assert eltype(y[1]) == eltype(yhat) string(eltype(y[1]), ' ', eltype(yhat))
-        return Flux.logitcrossentropy(yhat, y[1])
+        @assert size(yhat) == (outWidth, cfg.castLen, cfg.batchLen)
+        # y is actual value for each castLen and batchLen
+        # yhat is outWidth number of predicted guesses of y
+        @assert eltype(y[1]) == eltype(yhat) string(eltype(y[1]), ' ', eltype(yhat))
+
+        err = 0.0
+        for yh in (yhat[i,:,:] for i in axes(yhat, 1))
+            err += Flux.Losses.mse(yh, yy)
+        end
+        return err
     end
 end
+
+# function makeModelOld(cfg)
+#     stage1WidthOut = 2048
+#     castHidden = 1024
+#     stage2Hidden = 2048
+#     outWidth = 1
+#     inputBatchSize = (cfg.inputLen, cfg.batchLen)
+#     outSize = (outWidth, cfg.castLen, cfg.batchLen)
+
+#     encer = cfg.encoder
+#     encerCast = cfg.encoderCast
+
+#     denseInput1 = Flux.Dense(cfg.inputEncedWidth * cfg.inputLen => stage1WidthOut)
+#     denseCast1 = Flux.Dense(cfg.castEncedWidth * cfg.castLen => castHidden)
+#     combine = Flux.Dense(stage1WidthOut + castHidden => stage2Hidden)
+#     denseStage2 = Flux.Dense(stage2Hidden => outWidth * cfg.castLen)
+
+#     exec = (x, cast) -> begin
+#         # proc x alone
+#         @assert size.(x, 1) == cfg.inputWidths string(size.(x, 1), ' ', cfg.inputWidths)
+#         x1 = encer(x)
+#         @assert size(x1) == (cfg.inputEncedWidth, inputBatchSize...) string(size(x1), ' ', (cfg.inputEncedWidth, inputBatchSize...))
+#         x2 = Flux.flatten(x1)
+#         @assert size(x2) == (cfg.inputEncedWidth * cfg.inputLen, cfg.batchLen)
+#         stage1out = denseInput1(x2)
+#         @assert size(stage1out) == (stage1WidthOut, cfg.batchLen)
+
+#         # proc cast alone
+#         @assert size.(cast, 1) == cfg.castWidths string(size.(cast, 1), ' ', cfg.castWidths)
+#         cast1 = encerCast(cast)
+#         @assert size(cast1) == (cfg.castEncedWidth, cfg.castLen, cfg.batchLen)
+#         cast2 = Flux.flatten(cast1)
+#         @assert size(cast2) == (cfg.castEncedWidth * cfg.castLen, cfg.batchLen)
+#         cast3 = denseCast1(cast2)
+#         @assert size(cast3) == (castHidden, cfg.batchLen)
+
+#         # combine x and cast
+#         stage2in = cat(stage1out, cast3; dims=1)
+#         @assert size(stage2in) == (stage1WidthOut + castHidden, cfg.batchLen)
+#         stage2mid = combine(stage2in)
+#         @assert size(stage2mid) == (stage2Hidden, cfg.batchLen)
+#         stage2out = denseStage2(stage2mid)
+#         @assert size(stage2out) == (outWidth * cfg.castLen, cfg.batchLen)
+#         out1 = reshape(stage2out, outSize)
+#         out2 = out1 .* cast[1][1:1,:,:] # TODO: generalize
+#         @assert size(out2) == outSize
+#         return out2
+#     end
+
+#     # Consider passing in previous value so we can check if we matched above or below
+#     function loss(batch)
+#         x, cast, y = batch
+#         # @assert size(y[1]) == (1, cfg.castLen, cfg.batchLen) string(size(y[1]), ' ', (1, cfg.castLen, cfg.batchLen))
+#         yy = dropdims(y[1]; dims=1)
+#         global yhat = exec(x, cast)
+#         # @assert size(yhat) == (outWidth, cfg.castLen, cfg.batchLen)
+#         # y is actual value for each castLen and batchLen
+#         # yhat is outWidth number of predicted guesses of y
+#         # @assert eltype(y[1]) == eltype(yhat) string(eltype(y[1]), ' ', eltype(yhat))
+#         # err = sum(mapslices(yh -> Flux.Losses.mse(yh, yy), yhat; dims=[2,3]))
+#         # err = sum(slicemap(yh -> Flux.Losses.mse(yh, yy), yhat; dims=[2,3]))
+
+#         err = 0.0
+#         for yh in (yhat[i,:,:] for i in axes(yhat, 1))
+#             err += Flux.Losses.mse(yh, yy)
+#         end
+
+#         # yh = slicemap(x -> [mean(x)], yhat; dims=1)
+#         # @assert size(yh) == size(yy) string(size(yh), ' ', size(yy))
+#         # err = Flux.Losses.mse(yh, yy)
+
+#         # err = 0.0
+#         # a = axes(yy)
+#         # for i in a[end-1], j in a[end]
+#         # # for i in CartesianIndices(yy)
+#         #     # med = median(yhat[:,i])
+#         #     # err += (med - yy[i])^2
+#         #     med = mean(yhat[:,i,j])
+#         #     err += (med - yy[i,j])^2
+#         # end
+#         return err
+#     end
+
+#     layers = (;encer, encerCast, denseInput1, denseCast1, combine, denseStage2)
+#     params = Flux.params(layers...)
+#     println("num params: ", sum(length.(params)))
+#     opt = Flux.Adam()
+#     return (;layers, params, exec, loss, opt)
+# end
 
 import MLUtil
 function stitch(sq=seq, castInd=1)
     batcher = MLUtil.makeBatcher(config, sq, false)
-    toOut = x -> MU.zargmax(x; dims=1)
-    res = Forecast.stitchCasts(batcher, mod.exec, toOut, castInd, Device[])
+    toYhat = x->mapslices(median, x; dims=1)
+    res = Forecast.stitchCasts(batcher, mod.exec, toYhat, castInd, Device[])
     return res
 end
 
 using DrawUtil
-import CUDA
 function disp(sq=seq, castInd=1, count=typemax(Int))::Nothing
     yh, y = stitch(sq, castInd)
-    # ys = filter(x -> abs(x) > 0.00001, first(dropdims(y; dims=1), count))
-    # yhs = filter(x -> abs(x) > 0.00001, first(dropdims(yh; dims=1), count))
-    ys = filter(x -> abs(x) > 0.00001, first(y, count))
-    yhs = filter(x -> abs(x) > 0.00001, first(yh, count))
-    CUDA.reclaim()
-    sleep(0.2)
+    ys = filter(x -> abs(x) > 0.00001, first(dropdims(y; dims=1), count))
+    yhs = filter(x -> abs(x) > 0.00001, first(dropdims(yh; dims=1), count))
     display(draw(ys; color=:white))
-    sleep(0.2)
     draw!(yhs; color=:green)
-    sleep(0.2)
     return
     # origY = Int.(fr.seq[1][4,:])
 
@@ -205,11 +300,6 @@ function disp(sq=seq, castInd=1, count=typemax(Int))::Nothing
     # end
 end
 
-function run1()
-    b = first(batchers.test) |> mod.dev
-    res = mod.exec(b.bufsX, b.bufsCast)
-    l = mod.loss(b)
-    return (res, l)
-end
+run1() = ( b = first(batchers.test) |> mod.dev ; mod.exec(b.bufsX, b.bufsCast))
 
 end

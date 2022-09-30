@@ -1,6 +1,6 @@
 module MLUtil
 
-export MU, BinDef
+export MU, N
 
 const MU = @__MODULE__
 const N = Float32
@@ -189,5 +189,22 @@ sliceLastDim(seq, inds) = selectdim(seq, ndims(seq), inds)
 #     err = y .- yhat
 #     return sum(max.(quantile .* err, (quantile .- 1.0) .* err)) # not sure about the q .- 1.0, not sure how quantile not being scalar would make sense in the other operations
 # end
+
+function argmax0(x)
+    mx, ind = findmax(x)
+    # if abs(mx) < eps(N)
+    return mx == 0 ? 0 : ind
+end
+
+function zargmax(x::AbstractArray; dims)
+    return mapslices(argmax0, x; dims)
+    # mx, ind = findmax(x; dims)
+    # # if abs(mx) < eps(N)
+    # return mx == 0 ? 0 : ind
+end
+
+import Flux
+onehot0(x, labels) = Flux.OneHotVector{UInt32,length(labels)}(something(findfirst(isequal(x), labels), 0))
+onehotbatch0(x, labels) = Flux.OneHotArray(UInt32[something(findfirst(isequal(i), labels), 0) for i in x], length(labels))
 
 end
