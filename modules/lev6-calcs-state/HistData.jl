@@ -2,6 +2,10 @@ module HistData
 using Dates, DelimitedFiles
 using Globals, BaseTypes, FileUtil, DateUtil, LogUtil
 using Caches, TradierData
+import DictUtil:toDict
+
+const hd = @__MODULE__
+export hd
 
 export dataDaily, dataDay
 export DailyType, DailyRowType, RetsItemType
@@ -15,6 +19,7 @@ const RetsItemType = NamedTuple{(:interval, :ret, :date, :dailyIndex), Tuple{Int
 dataDaily(sym::AStr="SPY"; up=false)::DailyType = cache!(() -> updateDaily(sym), DailyType, Symbol("daily-$(lowercase(sym))"), Hour(4); up)
 dataDaily(d::Date, sym::AStr="SPY")::DailyType = (daily = dataDaily(sym) ; daily[findfirst(r->r.date <= d, daily):end])
 dataDaily(from::Date, to::Date, sym::AStr="SPY")::DailyType = filter(r -> from <= r.date <= to, dataDaily(sym))
+dailyDict(from::Date, to::Date, sym::AStr="SPY")::Dict{Date,NamedTuple} = toDict(getDate, filter!(x -> from <= x.date <= to, dataDaily(sym)))
 
 priceOpen(d::Date)::Currency = dataDay(d).open
 dataDay(d::Date)::DailyRowType = (daily = dataDaily() ; daily[findfirst(r->r.date == d, daily)])

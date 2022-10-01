@@ -16,37 +16,22 @@ valRight(p::Prob) = p.vals[end]
 Base.:(+)(p1::Prob, p2::Prob) = ( @assert p1.center === p2.center ; Prob(p1.center, normalize!(p1.vals + p2.vals)) )
 
 import Bins
-function combine(p1::Prob, p2::Prob, w1::Number=0.5, w2::Number=1.0-w1)
+function combineProbs(p1::Prob, p2::Prob, w1::Number=0.5, w2::Number=1.0-w1)
+    @show p1.center p2.center
     @assert w1 + w2 ≈ 1.0
+    @assert p1.center > 0.0
+    @assert p2.center > 0.0
+    @assert isnothing(findfirst(x -> !isfinite(x), p1.vals))
+    @assert isnothing(findfirst(x -> !isfinite(x), p2.vals))
     p1prices = Bins.xs() .* p1.center
     p2prices = Bins.xs() .* p2.center
     p1coid = sum(p1prices .* p1.vals)
     p2coid = sum(p2prices .* p2.vals)
     newCenter = w1 * p1coid + w2 * p2coid
-
-    # nLeftVal = newCenter * Bins.left()
-    # nRightVal = newCenter * Bins.right()
-    @show p1coid p2coid newCenter
-    p1xs = (newCenter / p1.center) .* Bins.xs()
-    p2xs = (newCenter / p2.center) .* Bins.xs()
-    p1Left, p1Right = nLeftVal / p1.center, nRightVal / p1.center
-    p2Left, p2Right = nLeftVal / p2.center, nRightVal / p2.center
-    @show p1Left p1Right p2Left p2Right
-
-    left1Ind =
-    xsNew = Bins.xs() .* newCenter
-    leftNew = 0.0
-    rightNew = 0.0
-    for x in Bin.xs()
-        # x1 = x * p1.center
-        #  <= Bins.XLEFT
-    end
-    isleft = x -> x <= xsNew[1]
-    isright = x -> x >= xsNew[end]
-
-    leftVal = sum(filter(isleft, p1xs)) + sum(filter(isleft, p2prices))
-    rightVal = sum(filter(isright, p1xs)) + sum(filter(isright, p2prices))
-    valAt(p1, xsNew)
+    @assert isfinite(newCenter) string("isfinite(newCenter) ", newCenter, ' ', w1, ' ', w2)
+    p1n = shift(p1, newCenter)
+    p2n = shift(p2, newCenter)
+    return Prob(newCenter, p1n.vals .* w1 + p2n.vals * w2)
 end
 
 #=
@@ -93,11 +78,12 @@ The new center also changes the scale of the spread, so we can't just copy over 
 # end
 
 function shift(p1::Prob, newCenter)
+    @show "shift" p1.center newCenter
     valsNew = Bins.with(-Inf)
     Bins.iterBins() do i, left, right
         priLeft = left * newCenter
         priRight = right * newCenter
-        valsNew[i] = betweenPrices(p1, priLeft, priRight, i == 302)
+        valsNew[i] = betweenPrices(p1, priLeft, priRight)
         @assert valsNew[i] >= 0.0 string(i, ' ', valsNew[i])
     end
 
@@ -112,6 +98,7 @@ end
 
 function betweenPrices(p::Prob, left::Float64, right::Float64, show=false)::Float64
     vals = getVals(p)
+    @show left p.center
     ratL = Bins.ratio(left / p.center)
     ratR = Bins.ratio(right / p.center)
     show && (@show left right (left / p.center) (right / p.center) ratL ratR)
@@ -124,7 +111,7 @@ function betweenPrices(p::Prob, left::Float64, right::Float64, show=false)::Floa
     s = ratL.ratioRight * vals[ratL.ind]
     @assert s >= 0.0
     for i in ratL.ind+1:ratR.ind-1
-        println("adding middle ", i)
+        # println("adding middle ", i)
         s += vals[i]
     end
     @assert s >= 0.0

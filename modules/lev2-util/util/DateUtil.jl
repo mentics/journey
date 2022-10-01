@@ -14,7 +14,7 @@ export isNowWithinMarket
 
 #### new stuff
 
-export SECOND_ZERO, TIME_ZERO, DATE_ZERO, DATETIME_ZERO, INTERTIME_ZERO
+export SECOND_ZERO, TIME_ZERO, TIME_EOD, DATE_ZERO, DATETIME_ZERO, INTERTIME_ZERO
 export DATE_FUTURE
 export InterTime, timeIn
 
@@ -25,6 +25,7 @@ export nextLocalTime, nextMarketPeriod
 # export toDateLocal
 # export isAfterLocal
 export isweekend # reexport from BusinessDays
+export getDate
 
 const LOCALZONE = localzone()
 
@@ -32,6 +33,7 @@ const LOCALZONE = localzone()
 const SECOND_ZERO = Second(0)
 const SECOND_DAY = Second(Day(1))
 const TIME_ZERO = Time(0)
+const TIME_EOD = Time(23,59,59,999,999)
 const DATETIME_ZERO = DateTime(0)
 const DATE_ZERO = Date(0)
 
@@ -40,9 +42,12 @@ const DATE_FUTURE = today() + Year(100)
 const InterTime = Interval{Time,Closed,Closed}
 const INTERTIME_ZERO = Interval(TIME_ZERO, TIME_ZERO)
 
+getDate(x::NamedTuple) = x.date
+
 # TODO: maybe could simplify with Intervals
-timeIn(timeFrom::Time, in::InterTime)::Second = round(max(last(in), timeFrom) - max(first(in), timeFrom), Second)
-timeIn(timeFrom::Time, mn::Time)::Second = SECOND_DAY - round(max(mn, timeFrom).instant, Second)
+# timeIn(from::Time, in::InterTime)::Second = round(max(last(in), from) - max(first(in), from), Second)
+timeIn(from::Time, to::Time, in::InterTime)::Second = round(min(last(in), to) - max(first(in), from), Second)
+# timeIn(from::Time, to::Time, mn::Time)::Second = SECOND_DAY - round(max(mn, from).instant, Second)
 #endregion
 
 #region Conversions

@@ -8,9 +8,35 @@ using Caches, HistData, Markets, Calendars
 
 export probKde
 
-function probKde(center::Float64, tex::Float64, var::Float64; up=false)::Prob
+function probKde(center::Float64, var::Float64, tex::Float64; up=false)::Prob
+    @assert isfinite(center) && center > 0.0
+    @assert isfinite(var) && var > 0.0
+    @assert isfinite(tex) && tex > 0.0
     (up || Updated[] < now(UTC) - Hour(8)) && update()
     return Prob(Float64(center), makePdv(tex, var))
+end
+probKde(center::Float64, var::Float64, from::DateTime, to::DateTime)::Prob = probKde(center, var, calcTex(from, to))
+probOpenToOpen(center::Float64, var::Float64, from::Date, to::Date)::Prob = probKde(center, var, getMarketOpen(from), getMarketOpen(to))
+probOpenToClose(center::Float64, var::Float64, from::Date, to::Date)::Prob = probKde(center, var, getMarketOpen(from), getMarketClose(to))
+probNowToClose(center::Float64, var::Float64, from::DateTime, to::Date)::Prob = probKde(center, var, from, getMarketClose(to))
+probOpenToNow(center::Float64, var::Float64, from::Date, to::DateTime)::Prob = probKde(center, var, getMarketOpen(from), to)
+
+function comprob(from::Date, to::Date)
+    spy = hd.dailyDict(from, to, "SPY")
+    vix = hd.dailyDict(from, to, "VIX")
+    dates = sort!(collect(keys(spy)))
+    datesVix = sort!(collect(keys(spy)))
+    @assert dates == datesVix
+    @info "calcing prob" dates[1] dates[2]
+    prob = probOpenToOpen(spy[dates[1]].open, vix[dates[1]].open, dates[1], dates[2])
+    for i in 3:length(dates) # eachindex(dates)
+        date1 = dates[i-1]
+        date2 = dates[i]
+        @info "calcing prob" i
+        probNext = probOpenToOpen(spy[date1].open, vix[date1].open, date1, date2)
+        prob = pt.combineProbs(prob, probNext)
+    end
+    return prob
 end
 
 #region Local

@@ -24,8 +24,8 @@ end
 # calcTimeToClose(ts::DateTime, d::Date)::Period = ts - getMarketClose(d)
 
 # in hours
-function calcTex(tsFrom::DateTime, dateTo::Date)::Float64
-    dur = calcDurToExpr(tsFrom, dateTo)
+function calcTex(from::DateTime, to::DateTime)::Float64
+    dur = calcDur(from, to)
     closed = Dates.value(dur.closed)
     pre = Dates.value(dur.pre)
     open = Dates.value(dur.open)
@@ -34,20 +34,48 @@ function calcTex(tsFrom::DateTime, dateTo::Date)::Float64
     tex = (closed + pre + open + post + other)/3600.0
     return tex
 end
+# function calcTex(tsFrom::DateTime, dateTo::Date)::Float64
+#     dur = calcDurToExpr(tsFrom, dateTo)
+#     closed = Dates.value(dur.closed)
+#     pre = Dates.value(dur.pre)
+#     open = Dates.value(dur.open)
+#     post = Dates.value(dur.post)
+#     other = 0.3 * (Dates.value(dur.weekend) + Dates.value(dur.holiday)) # 0.3, and leaving the others at 1 was calculated by SpreadPricing.optTex()
+#     tex = (closed + pre + open + post + other)/3600.0
+#     return tex
+# end
 
-function calcDurToExpr(tsFrom::DateTime, dateTo::Date)::MarketDur
-    dateFrom = toDateMarket(tsFrom)
-    if dateFrom == dateTo
-        return calcDurToClose(toTimeMarket(tsFrom), getMarketTime(dateTo))
+function calcDur(from::DateTime, to::DateTime)::MarketDur
+    fromDate = toDateMarket(from)
+    fromTime = toTimeMarket(from)
+    toDate = toDateMarket(to)
+    toTime = toTimeMarket(to)
+    toMt = getMarketTime(toDate)
+    if fromDate == toDate
+        return calcDurInDay(toTime, toMt)
     else
-        dur = calcDurForDay(tsFrom, getMarketTime(dateFrom))
-        for date in (dateFrom + Day(1)):Day(1):(dateTo - Day(1))
+        dur = calcDurInDay(fromTime, TIME_EOD, getMarketTime(fromDate))
+        for date in (fromDate + Day(1)):Day(1):(toDate - Day(1))
             dur += marketDur(date)
         end
-        dur += calcDurToClose(TIME_ZERO, getMarketTime(dateTo))
+        dur += calcDurInDay(TIME_ZERO, toTime, toMt)
         return dur
     end
 end
+
+# function calcDurToExpr(tsFrom::DateTime, dateTo::Date)::MarketDur
+#     dateFrom = toDateMarket(tsFrom)
+#     if dateFrom == dateTo
+#         return calcDurToClose(toTimeMarket(tsFrom), getMarketTime(dateTo))
+#     else
+#         dur = calcDurForDay(tsFrom, getMarketTime(dateFrom))
+#         for date in (dateFrom + Day(1)):Day(1):(dateTo - Day(1))
+#             dur += marketDur(date)
+#         end
+#         dur += calcDurToClose(TIME_ZERO, getMarketTime(dateTo))
+#         return dur
+#     end
+# end
 
 calcDurCloses(from::Date, to::Date)::MarketDur = calcDurToExpr(getMarketClose(from), to)
 
