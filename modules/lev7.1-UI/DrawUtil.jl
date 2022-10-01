@@ -87,8 +87,9 @@ function drawProb!(ax, prob, colorIndex, scale)
     end
     xs = Bins.xs(extentHalf)
 
+    center = getCenter(prob)
     colors = (GLMakie.RGBA(0.5, 0.5, 1.0, 0.5), GLMakie.RGBA(0.0, 0.5, 0.5, 0.5), GLMakie.RGBA(0.5, 0.5, 0.5, 0.5))
-    p = barplot!(ax, getCenter(prob) .* xs, scale * 100.0 .* vals; color=colors[colorIndex], gap=0.0, inspectable=false)
+    p = barplot!(ax, center .* xs, scale * 100.0 .* vals; gap=0.0, width=center * Bins.width(), color=colors[colorIndex], inspectable=false)
     Main.save[:p] = p
     p.inspectable[] = false
     # display(p)
@@ -97,7 +98,7 @@ end
 
 function drawProb!(center, vals, colorIndex=1)
     colors = (GLMakie.RGBA(0.5, 0.5, 1.0, 0.5), GLMakie.RGBA(0.0, 0.5, 0.5, 0.5), GLMakie.RGBA(0.5, 0.5, 0.5, 0.5))
-    p = barplot!(center .* Bins.xs(), .01 * vals ./ Bins.width(); gap=0.0, inspectable=false, color=colors[colorIndex])
+    p = barplot!(center .* Bins.xs(), .01 * vals ./ Bins.width(); gap=0.0, width=center * Bins.width(), inspectable=false, color=colors[colorIndex])
     return p
 end
 
