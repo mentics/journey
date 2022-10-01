@@ -50,10 +50,25 @@ binds() = 2:(VNUM-1)
 binPercent() = 1.0 / VNUM # weird, just used in probkde
 
 # Averaging values further out causes problems when combining rets, so I removed that. Can widen bins if need more span.
-# valLeft(f, ctx) = f(ctx, XLEFT)
-# valRight(f, ctx) = f(ctx, XRIGHT)
+valLeft(f, ctx) = f(ctx, XLEFT)
+valRight(f, ctx) = f(ctx, XRIGHT)
 
-nearest(x::Float64)::Int = isLeft(x) ? 1 : isRight(x) ? VNUM : 2 + round(Int, (x - XLEFT) / WIDTH)
+nearest(x::Float64)::Int = isLeft(x) ? 1 : isRight(x) ? VNUM : 2 + round(Int, (x - XS[2]) / WIDTH)
+function testNearest()
+    for i in eachindex(XS)[2:end-1]
+        @assert nearest(XS[i]) == i string(i, ' ', XS[i])
+        @assert nearest(XS[i] + WIDTH/4) == i string(i, ' ', XS[i] + WIDTH/4)
+    end
+    for i in 1:10000
+        x = rand(XS[2:end-2]) + rand() - 0.5
+        x = clamp(x, XS[2], XS[end-1])
+        n = nearest(x)
+        c1 = abs(x - XS[n-1])
+        c2 = abs(x - XS[n])
+        c3 = abs(x - XS[n+1])
+        @assert c2 < c1 && c2 < c3 string(i, ' ', x, ' ', n, ' ', c1, ' ', c2, ' ', c3)
+    end
+end
 
 # TODO: fix these to be exact because estAt is going to use them
 leftOf(x::Float64)::Int = isRight(x) ? VNUM : max(1, 2 + floor(Int, (x - MFIRST) / WIDTH))
@@ -83,9 +98,12 @@ function ratio(x::Float64)
     width = rightX - leftX
     ratioLeft = (x - leftX) / width
     ratioRight = 1.0 - ratioLeft
+    # @show x ind leftX rightX width ratioLeft ratioRight
+    @assert 0.0 < ratioLeft < 1.0
+    @assert 0.0 < ratioRight < 1.0
     return (;ind, leftX, rightX, ratioLeft, ratioRight)
 end
-@assert ratio(XS[302]) == (leftI = 302, rightI = 303, leftX = 1.0, rightX = 1.0005, ratioLeft = 1.0, ratioRight = 0.0)
+# @assert ratio(XS[302]) == (ind = 302, leftX = 1.0, rightX = 1.0005, ratioLeft = 1.0, ratioRight = 0.0)
 # function valAt(vals, x::Float64)
 #     (;leftI, rightI, ratioLeft, ratioRight) = ratio(x)
 #     return vals[leftI] * ratioLeft + vals[rightI] * ratioRight

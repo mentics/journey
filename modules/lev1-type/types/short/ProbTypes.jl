@@ -98,6 +98,7 @@ function shift(p1::Prob, newCenter)
         priLeft = left * newCenter
         priRight = right * newCenter
         valsNew[i] = betweenPrices(p1, priLeft, priRight)
+        @assert valsNew[i] >= 0.0 string(i, ' ', valsNew[i])
     end
 
     # @assert sum(valsNew) ≈ 1.0 string(sum(valsNew), ' ', 1.0)
@@ -113,19 +114,23 @@ function betweenPrices(p::Prob, left::Float64, right::Float64)::Float64
     vals = getVals(p)
     ratL = Bins.ratio(left / p.center)
     ratR = Bins.ratio(right / p.center)
+    @show left right (left / p.center) (right / p.center) ratL ratR
+    @assert ratL.ratioLeft >= 0
     ratL.rightX != Inf || return vals[end] * (ratR.ratioLeft - ratL.ratioLeft)
-    ratR.leftX != 0.0 || return vals[1] * (ratR.ratioRight - ratL.ratioRight)
-    @show left right ratL ratR
+    ratR.leftX != 0.0 || return vals[1] * (ratR.ratioLeft - ratL.ratioLeft)
     s = ratL.ratioRight * vals[ratL.ind]
+    @assert s >= 0.0
+    # error("stop")
     # ratL.leftX != 0.0 ?
     #     s = ratL.ratioRight * vals[ratL.ind] : # ratL.ratioRight * vals[ratL.rightI] : # ratL.ratioLeft * vals[ratL.leftI] +
     #     s = ratL.ratioRight * vals[1]
     for i in ratL.ind+1:ratR.ind-1
-        println("adding middle")
         s += vals[i]
     end
+    @assert s >= 0.0
     # error("stop")
     s += ratR.ratioLeft * vals[ratR.ind]
+    @assert s >= 0.0
     # ratR.rightX != Inf ?
     #     s += ratR.ratioLeft * vals[ratR.ind] : # ratR.ratioLeft * vals[ratR.leftI] : # + ratR.ratioRight * vals[ratR.rightI]
     #     s += ratR.ratioLeft * vals[end]
