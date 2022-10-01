@@ -46,13 +46,14 @@ end
 # end
 
 function calcDur(from::DateTime, to::DateTime)::MarketDur
+    # TODO: make single call that returns date and time for market tz from DateTime
     fromDate = toDateMarket(from)
     fromTime = toTimeMarket(from)
     toDate = toDateMarket(to)
     toTime = toTimeMarket(to)
     toMt = getMarketTime(toDate)
     if fromDate == toDate
-        return calcDurInDay(toTime, toMt)
+        return calcDurInDay(fromTime, toTime, toMt)
     else
         dur = calcDurInDay(fromTime, TIME_EOD, getMarketTime(fromDate))
         for date in (fromDate + Day(1)):Day(1):(toDate - Day(1))

@@ -46,7 +46,7 @@ getDate(x::NamedTuple) = x.date
 
 # TODO: maybe could simplify with Intervals
 # timeIn(from::Time, in::InterTime)::Second = round(max(last(in), from) - max(first(in), from), Second)
-timeIn(from::Time, to::Time, in::InterTime)::Second = round(min(last(in), to) - max(first(in), from), Second)
+timeIn(from::Time, to::Time, in::InterTime)::Second = round(span(intersect(InterTime(from, to), in)), Second) # round(min(last(in), to) - max(first(in), from), Second)
 # timeIn(from::Time, to::Time, mn::Time)::Second = SECOND_DAY - round(max(mn, from).instant, Second)
 #endregion
 

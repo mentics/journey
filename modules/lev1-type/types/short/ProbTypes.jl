@@ -16,8 +16,7 @@ valRight(p::Prob) = p.vals[end]
 Base.:(+)(p1::Prob, p2::Prob) = ( @assert p1.center === p2.center ; Prob(p1.center, normalize!(p1.vals + p2.vals)) )
 
 import Bins
-function combineProbs(p1::Prob, p2::Prob, w1::Number=0.5, w2::Number=1.0-w1)
-    @show p1.center p2.center
+function combineProbs2(p1::Prob, p2::Prob, w1::Number=0.5, w2::Number=1.0-w1)
     @assert w1 + w2 ≈ 1.0
     @assert p1.center > 0.0
     @assert p2.center > 0.0
@@ -32,6 +31,23 @@ function combineProbs(p1::Prob, p2::Prob, w1::Number=0.5, w2::Number=1.0-w1)
     p1n = shift(p1, newCenter)
     p2n = shift(p2, newCenter)
     return Prob(newCenter, p1n.vals .* w1 + p2n.vals * w2)
+end
+function combineProbs(ps::Prob...)
+    coid = 0
+    for p in ps
+        @assert p.center > 0.0
+        @assert isnothing(findfirst(x -> !isfinite(x), p.vals))
+        prices = Bins.xs() .* p.center
+        coid += sum(prices .* p.vals)
+    end
+    newCenter = coid / length(ps)
+    @assert isfinite(newCenter) string("isfinite(newCenter) ", newCenter, ' ', w1, ' ', w2)
+    valsNew = Bins.with(0.0)
+    for p in ps
+        pn = shift(p, newCenter)
+        valsNew .+= pn.vals
+    end
+    return Prob(newCenter, normalize!(valsNew))
 end
 
 #=
@@ -78,7 +94,7 @@ The new center also changes the scale of the spread, so we can't just copy over 
 # end
 
 function shift(p1::Prob, newCenter)
-    @show "shift" p1.center newCenter
+    # @show "shift" p1.center newCenter
     valsNew = Bins.with(-Inf)
     Bins.iterBins() do i, left, right
         priLeft = left * newCenter
@@ -98,7 +114,6 @@ end
 
 function betweenPrices(p::Prob, left::Float64, right::Float64, show=false)::Float64
     vals = getVals(p)
-    @show left p.center
     ratL = Bins.ratio(left / p.center)
     ratR = Bins.ratio(right / p.center)
     show && (@show left right (left / p.center) (right / p.center) ratL ratR)

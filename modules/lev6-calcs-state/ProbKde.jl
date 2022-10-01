@@ -27,16 +27,19 @@ function comprob(from::Date, to::Date)
     dates = sort!(collect(keys(spy)))
     datesVix = sort!(collect(keys(spy)))
     @assert dates == datesVix
-    @info "calcing prob" dates[1] dates[2]
-    prob = probOpenToOpen(spy[dates[1]].open, vix[dates[1]].open, dates[1], dates[2])
+    # @info "calcing prob" dates[1] dates[2]
+    probs = Prob[]
+    push!(probs, probOpenToOpen(spy[dates[1]].open, vix[dates[1]].open, dates[1], dates[end]))
     for i in 3:length(dates) # eachindex(dates)
         date1 = dates[i-1]
-        date2 = dates[i]
-        @info "calcing prob" i
+        date2 = dates[end]
+        # probNext = probOpenToOpen(spy[date1].open, vix[date1].open, date1, date2)
         probNext = probOpenToOpen(spy[date1].open, vix[date1].open, date1, date2)
-        prob = pt.combineProbs(prob, probNext)
+        # prob = pt.combineProbs(prob, probNext)
+        push!(probs, probNext)
     end
-    return prob
+    prob = pt.combineProbs(probs...)
+    return (prob, probs)
 end
 
 #region Local
