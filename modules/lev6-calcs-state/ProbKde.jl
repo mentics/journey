@@ -1,12 +1,70 @@
 module ProbKde
 using Dates, KernelDensity
-using BaseTypes, Bins, ProbTypes
-using Globals, LogUtil, CollUtil, VectorCalcUtil, FileUtil
+using BaseTypes, Bins, ProbTypes, DateUtil
+using Globals, LogUtil, CollUtil, VectorCalcUtil, FileUtil, DictUtil
 using Caches, HistData, Markets, Calendars
 
 # TODO: consider adding tex=0, x=x data to force endpoint data
 
-export probKde
+# TODO: is it filtering for only expiration days for the "to" days when calculating and testing? should it?
+
+export probKde, pk
+const pk = @__MODULE__
+
+function testProb(bdaysTarget=10, bdaysBack=20)
+    forDate = today()
+    spy = toDict(getDate, dataDaily(forDate, "SPY"))
+    vix = toDict(getDate, dataDaily(forDate, "VIX"))
+    @assert length(spy) == length(vix)
+    dateFrom = bdaysAfter(minimum(x for x in keys(spy)), bdaysBack + 1)
+    dateTo = bdaysBefore(maximum(x for x in keys(spy)), bdaysTarget + 1)
+    dates = sort!(collect(filter(x -> dateFrom <= x <= dateTo, keys(spy))))
+    scoreNormal = 0.0
+    scoreNormalMax = 0.0
+    scoreNormalRatio = 0.0
+    scoreComp = 0.0
+    scoreCompMax = 0.0
+    scoreCompRatio = 0.0
+    for date in dates
+        dateTarget = bdaysAfter(date, bdaysTarget)
+        spyOpen = F(spy[date].open)
+        vixOpen = F(vix[date].open)
+        probNormal = probOpenToClose(spyOpen, vixOpen, date, dateTarget)
+        probComp, probs = kdeOpenToClose(spyOpen, vixOpen, date, dateTarget, bdaysBack)
+        @assert probNormal.center == probs[end].center
+        @assert probNormal.vals ≈ probs[end].vals
+
+        actual = spy[dateTarget].close / spyOpen
+        bin = Bins.nearest(actual)
+
+        normal = probNormal.vals[bin]
+        scoreNormal += normal
+        normalMax = maximum(probNormal.vals)
+        scoreNormalMax += normalMax
+        scoreNormalRatio += normal / normalMax
+
+        comp = probComp.vals[bin]
+        scoreComp += comp
+        compMax = maximum(probComp.vals)
+        scoreCompMax += compMax
+        scoreCompRatio += comp / compMax
+
+        Many comprob's in early times are showing almost all in left-most bin. maybe something wrong because probNormal and extra are not.
+        competeProbs(probNormal, probComp, probs[1], spy[dateTarget].close)
+        sleep(2.0)
+    end
+    @show (scoreNormal, scoreNormalMax, scoreNormalRatio) (scoreComp, scoreCompMax, scoreCompRatio)
+    return
+end
+
+function competeProbs(probNorm, probComp, extra, actual)
+    fig, ax = du.start()
+    du.drawProb!(probNorm.center, probNorm.vals; label="norm")
+    du.drawProb!(probComp.center, probComp.vals; label="comp")
+    du.drawProb!(extra.center, extra.vals; label="extra")
+    GLMakie.vlines!(actual; label="actual")
+    GLMakie.axislegend(ax)
+end
 
 function probKde(center::Float64, var::Float64, tex::Float64; up=false)::Prob
     @assert isfinite(center) && center > 0.0
@@ -15,11 +73,56 @@ function probKde(center::Float64, var::Float64, tex::Float64; up=false)::Prob
     (up || Updated[] < now(UTC) - Hour(8)) && update()
     return Prob(Float64(center), makePdv(tex, var))
 end
-probKde(center::Float64, var::Float64, from::DateTime, to::DateTime)::Prob = probKde(center, var, calcTex(from, to))
-probOpenToOpen(center::Float64, var::Float64, from::Date, to::Date)::Prob = probKde(center, var, getMarketOpen(from), getMarketOpen(to))
-probOpenToClose(center::Float64, var::Float64, from::Date, to::Date)::Prob = probKde(center, var, getMarketOpen(from), getMarketClose(to))
-probNowToClose(center::Float64, var::Float64, from::DateTime, to::Date)::Prob = probKde(center, var, from, getMarketClose(to))
-probOpenToNow(center::Float64, var::Float64, from::Date, to::DateTime)::Prob = probKde(center, var, getMarketOpen(from), to)
+probKde(center::Float64, var::Float64, from::DateTime, to::DateTime; up=false)::Prob = probKde(center, var, calcTex(from, to); up)
+probOpenToOpen(center::Float64, var::Float64, from::Date, to::Date; up=false)::Prob = probKde(center, var, getMarketOpen(from), getMarketOpen(to); up)
+probOpenToClose(center::Float64, var::Float64, from::Date, to::Date; up=false)::Prob = probKde(center, var, getMarketOpen(from), getMarketClose(to); up)
+probToClose(center::Float64, var::Float64, from::DateTime, to::Date; up=false)::Prob = probKde(center, var, from, getMarketClose(to); up)
+probFromOpen(center::Float64, var::Float64, from::Date, to::DateTime; up=false)::Prob = probKde(center, var, getMarketOpen(from), to; up)
+
+kdeOpenToClose(center::Float64, var::Float64, from::Date, target::Date, bdaysBack=20; kws...) = probKdeComp(center, var, getMarketOpen(from), getMarketClose(target), bdaysBack; kws...)
+# probKdeComp(center::Float64, var::Float64, from::DateTime, target::Date, bdaysBack=20; kws...) = probKdeComp(center, var, from, getMarketClose(target), bdaysBack; kws...)
+function probKdeComp(center::Float64, var::Float64, from::DateTime, to::DateTime, bdaysBack=20; up=false, weightBy=x->x^2)
+    @assert isfinite(center) && center > 0.0
+    @assert isfinite(var) && var > 0.0
+    @assert isBusDay(toDateMarket(to))
+    (up || Updated[] < now(UTC) - Hour(8)) && update()
+
+    toDate = toDateMarket(from)
+    @assert isBusDay(toDate)
+    fromDate = bdaysBefore(toDate, bdaysBack) # toDateMarket(from - Day(daysBack))
+    spy = hd.dailyDict(fromDate, toDate, "SPY")
+    vix = hd.dailyDict(fromDate, toDate, "VIX")
+    dates = sort!(collect(keys(spy)))
+    @assert dates == sort!(collect(keys(spy)))
+    # @info "calcing prob" dates[1] dates[2]
+    probs = Prob[]
+    probPrev = probFromOpen(spy[dates[1]].open, vix[dates[1]].open, dates[1], to)
+    push!(probs, probPrev)
+    for date in dates[2:end]
+        prob = probFromOpen(spy[date].open, vix[date].open, date, to)
+        push!(probs, prob)
+        probPrev = prob
+    end
+    prob = probKde(center, var, from, to)
+    push!(probs, prob)
+    comprob = pt.combineProbs(center, probs; ws=weightBy.(eachindex(probs)))
+    @assert isnothing(findfirst(x -> !isfinite(x), comprob.vals)) string(findfirst(x -> !isfinite(x), comprob.vals), ' ', first(comprob.vals, 10))
+    # compareProbs((probs..., comprob))
+    return (comprob, probs)
+end
+
+using DrawUtil
+import GLMakie
+function compareProbs(probs)
+    # display(du.drawProb(probs[1].center, probs[1].vals; label="1"))
+    fig, ax = du.start()
+    ind = 1
+    for prob in probs
+        du.drawProb!(prob.center, prob.vals; label=string(ind))
+        ind += 1
+    end
+    GLMakie.axislegend(ax)
+end
 
 function comprob(from::Date, to::Date)
     spy = hd.dailyDict(from, to, "SPY")
@@ -66,9 +169,10 @@ function update()
     forDate = market().startDay
     dailySpy = dataDaily(forDate, "SPY")
     dailyVix = dataDaily(forDate, "VIX")
+    @assert length(dailySpy) == length(dailyVix)
     @log debug "Calculating historical distributions for" forDate (forDate == today()) dailySpy[1] dailyVix[1]
-    global rets = calcRets(MaxDays, dailySpy, dailyVix)
-    global retsNtv = ntvFromVnt(rets)
+    rets = calcRets(MaxDays, dailySpy, dailyVix)
+    retsNtv = ntvFromVnt(rets)
     calcVarBins(retsNtv)
     calcKdes(retsNtv)
     Updated[] = now(UTC)
@@ -133,7 +237,7 @@ function calcVarBins(retsNtv::NamedTuple)
 end
 
 function calcKdes(retsNtv::NamedTuple)
-    global datas = [(Vector{Float64}(), Vector{Float64}()) for _ in 1:NumVarBins]
+    datas = [(Vector{Float64}(), Vector{Float64}()) for _ in 1:NumVarBins]
     var = retsNtv.var
     tex = retsNtv.tex
     ret = retsNtv.ret

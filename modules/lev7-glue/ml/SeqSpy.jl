@@ -33,8 +33,8 @@ function make()
     baseCfg = config()
     outWidths = (16,2,2)
 
-    spy = filter!(x -> x.date > Date(2000,1,1), reverse(HistData.dataDaily("SPY")))
-    vix = filter!(x -> x.date > Date(2000,1,1), reverse(HistData.dataDaily("VIX")))
+    spy = filter(x -> x.date > Date(2000,1,1), reverse(HistData.dataDaily("SPY")))
+    vix = filter(x -> x.date > Date(2000,1,1), reverse(HistData.dataDaily("VIX")))
     @assert length(spy) == length(vix)
     seqLen = length(spy) - 1
     seq = (Array{UInt8}(undef, 8, seqLen), Array{N}(undef, 12, seqLen), Array{N}(undef, 4, seqLen))

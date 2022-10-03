@@ -1,5 +1,5 @@
 module ProbTypes
-using SH, VectorCalcUtil
+using SH, BaseTypes, VectorCalcUtil
 
 export pt, Prob
 const pt = @__MODULE__
@@ -16,23 +16,43 @@ valRight(p::Prob) = p.vals[end]
 Base.:(+)(p1::Prob, p2::Prob) = ( @assert p1.center === p2.center ; Prob(p1.center, normalize!(p1.vals + p2.vals)) )
 
 import Bins
-function combineProbs2(p1::Prob, p2::Prob, w1::Number=0.5, w2::Number=1.0-w1)
-    @assert w1 + w2 ≈ 1.0
-    @assert p1.center > 0.0
-    @assert p2.center > 0.0
-    @assert isnothing(findfirst(x -> !isfinite(x), p1.vals))
-    @assert isnothing(findfirst(x -> !isfinite(x), p2.vals))
-    p1prices = Bins.xs() .* p1.center
-    p2prices = Bins.xs() .* p2.center
-    p1coid = sum(p1prices .* p1.vals)
-    p2coid = sum(p2prices .* p2.vals)
-    newCenter = w1 * p1coid + w2 * p2coid
-    @assert isfinite(newCenter) string("isfinite(newCenter) ", newCenter, ' ', w1, ' ', w2)
-    p1n = shift(p1, newCenter)
-    p2n = shift(p2, newCenter)
-    return Prob(newCenter, p1n.vals .* w1 + p2n.vals * w2)
+# function combineProbs2(p1::Prob, p2::Prob, w1::Number=0.5, w2::Number=1.0-w1)
+#     @assert w1 + w2 ≈ 1.0
+#     @assert p1.center > 0.0
+#     @assert p2.center > 0.0
+#     @assert isnothing(findfirst(x -> !isfinite(x), p1.vals))
+#     @assert isnothing(findfirst(x -> !isfinite(x), p2.vals))
+#     p1prices = Bins.xs() .* p1.center
+#     p2prices = Bins.xs() .* p2.center
+#     p1coid = sum(p1prices .* p1.vals)
+#     p2coid = sum(p2prices .* p2.vals)
+#     newCenter = w1 * p1coid + w2 * p2coid
+#     @assert isfinite(newCenter) string("isfinite(newCenter) ", newCenter, ' ', w1, ' ', w2)
+#     p1n = shift(p1, newCenter)
+#     p2n = shift(p2, newCenter)
+#     return Prob(newCenter, p1n.vals .* w1 + p2n.vals * w2)
+# end
+combineProbs(ps::Coll{Prob}; ws=fill(1.0, length(ps))) = combineProbs(calcCentroid(ps), ps; ws)
+# function combineProbs(centerNew, ps::Coll{Prob}; ws=fill(1.0, length(ps)))
+#     @assert isfinite(centerNew) string("isfinite(newCenter) ", centerNew, ' ', w1, ' ', w2)
+#     valsNew = Bins.with(0.0)
+#     for (i, p) in enumerate(ps)
+#         pn = shift(p, centerNew)
+#         valsNew .+= pn.vals .* ws[i]
+#     end
+#     return Prob(centerNew, normalize!(valsNew))
+# end
+function combineProbs(centerNew, ps::Coll{Prob}; ws=fill(1.0, length(ps)))
+    @assert isfinite(centerNew) string("isfinite(newCenter) ", centerNew, ' ', w1, ' ', w2)
+    valsNew = Bins.with(1.0)
+    for (i, p) in enumerate(ps)
+        pn = shift(p, centerNew)
+        valsNew .*= 1 .+ (pn.vals .* ws[i])
+    end
+    return Prob(centerNew, normalize!(valsNew))
 end
-function combineProbs(ps::Prob...)
+
+function calcCentroid(ps::Coll{Prob})
     coid = 0
     for p in ps
         @assert p.center > 0.0
@@ -40,14 +60,9 @@ function combineProbs(ps::Prob...)
         prices = Bins.xs() .* p.center
         coid += sum(prices .* p.vals)
     end
-    newCenter = coid / length(ps)
-    @assert isfinite(newCenter) string("isfinite(newCenter) ", newCenter, ' ', w1, ' ', w2)
-    valsNew = Bins.with(0.0)
-    for p in ps
-        pn = shift(p, newCenter)
-        valsNew .+= pn.vals
-    end
-    return Prob(newCenter, normalize!(valsNew))
+    centroid = coid / length(ps)
+    @assert isfinite(centroid) string("isfinite(newCenter) ", centroid, ' ', w1, ' ', w2)
+    return centroid
 end
 
 #=

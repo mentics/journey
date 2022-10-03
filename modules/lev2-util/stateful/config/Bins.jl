@@ -99,8 +99,8 @@ function ratio(x::Float64)
     ratioLeft = (x - leftX) / width
     ratioRight = 1.0 - ratioLeft
     # @show x ind leftX rightX width ratioLeft ratioRight
-    @assert 0.0 < ratioLeft < 1.0
-    @assert 0.0 < ratioRight < 1.0
+    @assert 0.0 <= ratioLeft <= 1.0 string(0.0, " <= ", ratioLeft, " <= ", 1.0)
+    @assert 0.0 <= ratioRight <= 1.0 string(0.0, " <= ", ratioRight, " <= ", 1.0)
     return (;ind, leftX, rightX, ratioLeft, ratioRight)
 end
 # @assert ratio(XS[302]) == (ind = 302, leftX = 1.0, rightX = 1.0005, ratioLeft = 1.0, ratioRight = 0.0)

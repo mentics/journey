@@ -16,10 +16,10 @@ const DailyType = Vector{DailyRowType}
 const RetsItemType = NamedTuple{(:interval, :ret, :date, :dailyIndex), Tuple{Int,Float64,Date,Int}}
 
 # In descending date order
-dataDaily(sym::AStr="SPY"; up=false)::DailyType = cache!(() -> updateDaily(sym), DailyType, Symbol("daily-$(lowercase(sym))"), Hour(4); up)
+dataDaily(sym::AStr="SPY"; up=false)::DailyType = ( res = cache!(() -> updateDaily(sym), DailyType, Symbol("daily-$(lowercase(sym))"), Hour(4); up) ; @assert length(res) > 5000 string("length(dataDaily(", sym, ")) ", length(res)) ; return res )
 dataDaily(d::Date, sym::AStr="SPY")::DailyType = (daily = dataDaily(sym) ; daily[findfirst(r->r.date <= d, daily):end])
 dataDaily(from::Date, to::Date, sym::AStr="SPY")::DailyType = filter(r -> from <= r.date <= to, dataDaily(sym))
-dailyDict(from::Date, to::Date, sym::AStr="SPY")::Dict{Date,NamedTuple} = toDict(getDate, filter!(x -> from <= x.date <= to, dataDaily(sym)))
+dailyDict(from::Date, to::Date, sym::AStr="SPY")::Dict{Date,NamedTuple} = toDict(getDate, filter(x -> from <= x.date <= to, dataDaily(sym)))
 
 priceOpen(d::Date)::Currency = dataDay(d).open
 dataDay(d::Date)::DailyRowType = (daily = dataDaily() ; daily[findfirst(r->r.date == d, daily)])
@@ -85,14 +85,15 @@ pathDaily(sym::AStr)::String = joinpath(dirData("hist", "daily"), "$(sym)-daily.
 
 function updateDaily(sym)::DailyType
     path = pathDaily(lowercase(sym))
+    lastExpected = min(lastTradingDay(Dates.today()), today() - Day(1))
     if !isfile(path)
         @log warn "Can't find file for $(sym): $(path)"
-        daily = getDataDaily(Date(2000,1,1), Dates.today()+Day(1), sym)
+        daily = getDataDaily(Date(2000,1,1), lastExpected, sym)
         writeCsv(path, daily; keys=string.(header))
     else
         lastLine = readLastLines(path)
         lastDate = Date(split(lastLine, ',')[1])
-        lastExpected = lastTradingDay(Dates.today() - Day(1))
+        # TODO: check if we get vix for friday during the weekend
         if lastDate < lastExpected
             newDaily = getDataDaily(lastDate+Day(1), lastExpected, sym)
             if !isnothing(newDaily)

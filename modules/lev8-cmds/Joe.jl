@@ -122,8 +122,10 @@ function makeCtx(expr::Date; nopos, all)::NamedTuple
     curp = market().curp
     tex = calcTex(start, expr)
     timult = 1 / texToYear(tex)
-    vix = market().vix
-    prob = probKde(F(curp), tex, F(vix))
+    # vix = market().vix
+    # prob = probKde(F(curp), tex, F(vix))
+    # prob, _ = pk.probKdeComp(F(curp), F(vix), start, expr)
+    prob = xprob(expr)
     posLms = nopos ? LegMeta[] : xlms(expr)
     posRet = combineTo(Ret, posLms, curp)
     posMet = calcMetrics(prob, posRet)

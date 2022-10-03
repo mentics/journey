@@ -11,7 +11,7 @@ import Calendars
 import Markets:market
 import Expirations:expir
 import CmdUtil:tradesToClose
-import ProbKde
+using ProbKde
 import Kelly
 
 export cret, cmet, ckel
@@ -21,14 +21,16 @@ cmet(prob::Prob, ret::Ret) = CalcUtil.calcMetrics(prob, ret)
 ckel(prob::Prob, ret::Ret) = Kelly.calc(prob.vals, ret.vals ./ (-minimum(ret.vals)))
 
 export xprob, xlms, xret, xmet, xkel, xdr, x3
-function xprob(ex::Int)
-    expr = expir(ex)
+xprob(ex::Int) = xprob(expir(ex))
+function xprob(expr::Date)
     mkt = market()
     curp = mkt.curp
     start = mkt.tsMarket
-    tex = Calendars.calcTex(start, expr)
+    # tex = Calendars.calcTex(start, expr)
     vix = mkt.vix
-    return ProbKde.probKde(F(curp), tex, F(vix))
+    # return ProbKde.probKde(F(curp), tex, F(vix))
+    prob, _ = pk.probKdeComp(F(curp), F(vix), start, expr)
+    return prob
 end
 xlms(expr::Date)::Vector{LegMeta} = SH.combineTo(Vector{LegMeta}, tradesToClose(expr))
 xlms(ex::Int)::Vector{LegMeta} = xlms(expir(ex))

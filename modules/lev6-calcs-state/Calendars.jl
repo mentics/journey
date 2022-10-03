@@ -24,6 +24,7 @@ end
 # calcTimeToClose(ts::DateTime, d::Date)::Period = ts - getMarketClose(d)
 
 # in hours
+calcTex(from::DateTime, to::Date)::Float64 = calcTex(from, getMarketClose(to))
 function calcTex(from::DateTime, to::DateTime)::Float64
     dur = calcDur(from, to)
     closed = Dates.value(dur.closed)

@@ -24,8 +24,8 @@ end
 function make()
     baseCfg = config()
     dateFrom = Date(2000,1,1)
-    spy = toDict(getDate, filter!(x -> x.date >= dateFrom, HistData.dataDaily("SPY")))
-    vix = toDict(getDate, filter!(x -> x.date >= dateFrom, HistData.dataDaily("VIX")))
+    spy = toDict(getDate, filter(x -> x.date >= dateFrom, HistData.dataDaily("SPY")))
+    vix = toDict(getDate, filter(x -> x.date >= dateFrom, HistData.dataDaily("VIX")))
     @assert length(spy) == length(vix)
     dateTo = maximum(keys(spy))
     seqLen = Dates.value(dateTo - dateFrom) + 1

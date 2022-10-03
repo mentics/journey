@@ -4,13 +4,23 @@ using SH, Bins
 
 export draw, draw!, newFig, ticksCentered, updateLegend, closeWin
 export drawDots, drawDots!
+export du
+const du = @__MODULE__
 
 closeWin() = GLMakie.closeall()
 # GLMakie.destroy!(GLMakie.current_figure().scene.current_screens[1])
 # GLMakie.destroy!(GLMakie.global_gl_screen())
 
+deffig() = Figure(;resolution = (1200, 1000))
+function start()
+    fig = deffig()
+    ax = Axis(fig[1,1])
+    display(fig)
+    return fig, ax
+end
+
 function newFig(f, (xticks, yticks), showLegend=true, newWin=false)
-    fig = Figure(resolution = (1200, 1000))
+    fig = deffig() # Figure(resolution = (1200, 1000))
     ax = Axis(fig[1,1])
     ax.xticks = xticks
     ax.yticks = yticks
@@ -67,15 +77,6 @@ function updateLegend()
     axislegend()
 end
 
-export drawProb
-function drawProb(center, vals, colorIndex=1)
-    colors = (GLMakie.RGBA(0.5, 0.5, 1.0, 0.5), GLMakie.RGBA(0.0, 0.5, 0.5, 0.5), GLMakie.RGBA(0.5, 0.5, 0.5, 0.5))
-    p = barplot(center .* Bins.xs(), .01 * vals ./ Bins.width(); gap=0.0, width=center * Bins.width(), inspectable=false, color=colors[colorIndex])
-    vlines!(center)
-    return p
-end
-
-export drawProb!
 function drawProb!(ax, prob, colorIndex, scale)
     closeWin()
 
@@ -97,9 +98,16 @@ function drawProb!(ax, prob, colorIndex, scale)
     return p
 end
 
-function drawProb!(center, vals, colorIndex=1)
-    colors = (GLMakie.RGBA(0.5, 0.5, 1.0, 0.5), GLMakie.RGBA(0.0, 0.5, 0.5, 0.5), GLMakie.RGBA(0.5, 0.5, 0.5, 0.5))
-    p = barplot!(center .* Bins.xs(), .01 * vals ./ Bins.width(); gap=0.0, width=center * Bins.width(), inspectable=false, color=colors[colorIndex])
+function drawProb(center, vals; kws...) #, colorIndex=1)
+    # colors = (GLMakie.RGBA(0.5, 0.5, 1.0, 0.5), GLMakie.RGBA(0.0, 0.5, 0.5, 0.5), GLMakie.RGBA(0.5, 0.5, 0.5, 0.5))
+    p = barplot(center .* Bins.xs(), .01 * vals ./ Bins.width(); gap=0.0, width=center * Bins.width(), inspectable=false, kws...) # , color=colors[colorIndex])
+    vlines!(center)
+    return p
+end
+
+function drawProb!(center, vals; kws...)
+    # colors = (GLMakie.RGBA(0.5, 0.5, 1.0, 0.5), GLMakie.RGBA(0.0, 0.5, 0.5, 0.5), GLMakie.RGBA(0.5, 0.5, 0.5, 0.5))
+    p = barplot!(center .* Bins.xs(), .01 * vals ./ Bins.width(); gap=0.0, width=center * Bins.width(), inspectable=false, kws...) #, color=colors[colorIndex])
     vlines!(center)
     return p
 end
