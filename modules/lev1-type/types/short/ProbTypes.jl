@@ -45,11 +45,19 @@ combineProbs(ps::Coll{Prob}; ws=fill(1.0, length(ps))) = combineProbs(calcCentro
 function combineProbs(centerNew, ps::Coll{Prob}; ws=fill(1.0, length(ps)))
     @assert isfinite(centerNew) string("isfinite(newCenter) ", centerNew, ' ', w1, ' ', w2)
     valsNew = Bins.with(1.0)
-    for (i, p) in enumerate(ps)
+    i = 1
+    for (p, w) in zip(ps, ws)
         pn = shift(p, centerNew)
-        valsNew .*= 1 .+ (pn.vals .* ws[i])
+        # valsNew .*= 1 .+ (pn.vals .* w)
+        # println("Adding $i with weight $w")
+        valsNew .+= (pn.vals .* w)
+        normalize!(valsNew)
+        i += 1
     end
     return Prob(centerNew, normalize!(valsNew))
+end
+function testCombineProbs()
+
 end
 
 function calcCentroid(ps::Coll{Prob})
@@ -124,7 +132,14 @@ function shift(p1::Prob, newCenter)
     # @assert mx ≈ mxNew string(mx, ' ', mxNew)
     # @assert Bins.xs()[mxi] * p1.center ≈ Bins.xs()[mxiNew] * newCenter string(Bins.xs()[mxi] * p1.center, ' ', Bins.xs()[mxiNew] * newCenter)
 
+    @assert isapprox(sum(valsNew), sum(p1.vals); atol=1e-2) string(sum(valsNew), ' ', sum(p1.vals))
     return Prob(newCenter, valsNew)
+end
+using VectorCalcUtil
+function testShift()
+    p1 = Prob(100.0, vcu.normalize!(Bins.with(1.0)))
+    shift(p1, 103.2)
+    shift(p1, 97.6)
 end
 
 function betweenPrices(p::Prob, left::Float64, right::Float64, show=false)::Float64

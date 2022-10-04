@@ -1,6 +1,9 @@
 module VectorCalcUtil
 using BaseTypes
 
+export vcu
+const vcu = @__MODULE__
+
 export avg, smooth, smooth!, fitIn01, fitIn01!
 export normalize, normalize!, normalizeI, normalizeI!, normalize1, normalize1I!
 

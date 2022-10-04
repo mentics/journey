@@ -11,7 +11,7 @@ using Caches, HistData, Markets, Calendars
 export probKde, pk
 const pk = @__MODULE__
 
-function testProb(bdaysTarget=10, bdaysBack=20)
+function testProb(bdaysTarget=10, bdaysBack=20; weightBy=x->1)
     forDate = today()
     spy = toDict(getDate, dataDaily(forDate, "SPY"))
     vix = toDict(getDate, dataDaily(forDate, "VIX"))
@@ -25,12 +25,13 @@ function testProb(bdaysTarget=10, bdaysBack=20)
     scoreComp = 0.0
     scoreCompMax = 0.0
     scoreCompRatio = 0.0
+    count = 0
     for date in dates
         dateTarget = bdaysAfter(date, bdaysTarget)
         spyOpen = F(spy[date].open)
         vixOpen = F(vix[date].open)
         probNormal = probOpenToClose(spyOpen, vixOpen, date, dateTarget)
-        probComp, probs = kdeOpenToClose(spyOpen, vixOpen, date, dateTarget, bdaysBack)
+        probComp, probs = kdeOpenToClose(spyOpen, vixOpen, date, dateTarget, bdaysBack; weightBy)
         @assert probNormal.center == probs[end].center
         @assert probNormal.vals ≈ probs[end].vals
 
@@ -49,21 +50,42 @@ function testProb(bdaysTarget=10, bdaysBack=20)
         scoreCompMax += compMax
         scoreCompRatio += comp / compMax
 
-        Many comprob's in early times are showing almost all in left-most bin. maybe something wrong because probNormal and extra are not.
-        competeProbs(probNormal, probComp, probs[1], spy[dateTarget].close)
-        sleep(2.0)
+        # TODO: Many comprob's in early times are showing almost all in left-most bin. maybe something wrong because probNormal and extra are not.
+        # if probComp.vals[1] == maximum(probComp.vals)
+        sv = sort(probComp.vals; rev=true)
+        if sv[1] > sv[2]*10
+            # println("WARN: left became max at ", date)
+            println("WARN: max became mult of second at ", date)
+            showProbs(probComp, probs, spy[dateTarget].close)
+            global check = (;probComp, probs)
+            break
+        end
+        # sleep(2.0)
+        count += 1
     end
-    @show (scoreNormal, scoreNormalMax, scoreNormalRatio) (scoreComp, scoreCompMax, scoreCompRatio)
+    @show (scoreNormal, scoreNormalMax, scoreNormalRatio) ./ count (scoreComp, scoreCompMax, scoreCompRatio) ./ count
     return
 end
 
-function competeProbs(probNorm, probComp, extra, actual)
+function showProbs(probComp, probs, actual=nothing)
     fig, ax = du.start()
-    du.drawProb!(probNorm.center, probNorm.vals; label="norm")
-    du.drawProb!(probComp.center, probComp.vals; label="comp")
-    du.drawProb!(extra.center, extra.vals; label="extra")
-    GLMakie.vlines!(actual; label="actual")
+    drawProbs((probs..., probComp); labels=Iterators.flatten((string.(eachindex(probs[end-1:-1:1])), ("norm", "comp"))))
+    isnothing(actual) || GLMakie.vlines!(actual; label="actual")
     GLMakie.axislegend(ax)
+end
+using DrawUtil
+import GLMakie
+# function compareProbs(probs)
+#     # display(du.drawProb(probs[1].center, probs[1].vals; label="1"))
+#     fig, ax = du.start()
+#     drawProbs(probs)
+#     GLMakie.axislegend(ax)
+# end
+function drawProbs(probs; labels=string.(eachindex(probs)))
+    for (prob, label) in zip(probs, labels)
+        # println("drawing ", label)
+        du.drawProb!(prob.center, prob.vals; label)
+    end
 end
 
 function probKde(center::Float64, var::Float64, tex::Float64; up=false)::Prob
@@ -81,47 +103,30 @@ probFromOpen(center::Float64, var::Float64, from::Date, to::DateTime; up=false):
 
 kdeOpenToClose(center::Float64, var::Float64, from::Date, target::Date, bdaysBack=20; kws...) = probKdeComp(center, var, getMarketOpen(from), getMarketClose(target), bdaysBack; kws...)
 # probKdeComp(center::Float64, var::Float64, from::DateTime, target::Date, bdaysBack=20; kws...) = probKdeComp(center, var, from, getMarketClose(target), bdaysBack; kws...)
-function probKdeComp(center::Float64, var::Float64, from::DateTime, to::DateTime, bdaysBack=20; up=false, weightBy=x->x^2)
+# Returns combined prob and list of all back probs plus actual prob for from instant
+function probKdeComp(center::Float64, var::Float64, from::DateTime, target::DateTime, bdaysBack=20; up=false, weightBy=x->(24*bdaysBack)/(1+x))
     @assert isfinite(center) && center > 0.0
     @assert isfinite(var) && var > 0.0
-    @assert isBusDay(toDateMarket(to))
+    fromDate = toDateMarket(from)
+    @assert isBusDay(fromDate)
+    @assert isBusDay(toDateMarket(target))
     (up || Updated[] < now(UTC) - Hour(8)) && update()
 
-    toDate = toDateMarket(from)
-    @assert isBusDay(toDate)
-    fromDate = bdaysBefore(toDate, bdaysBack) # toDateMarket(from - Day(daysBack))
-    spy = hd.dailyDict(fromDate, toDate, "SPY")
-    vix = hd.dailyDict(fromDate, toDate, "VIX")
+    backDate = bdaysBefore(fromDate, bdaysBack)
+    spy = hd.dailyDict(backDate, fromDate, "SPY")
+    vix = hd.dailyDict(backDate, fromDate, "VIX")
     dates = sort!(collect(keys(spy)))
-    @assert dates == sort!(collect(keys(spy)))
     # @info "calcing prob" dates[1] dates[2]
-    probs = Prob[]
-    probPrev = probFromOpen(spy[dates[1]].open, vix[dates[1]].open, dates[1], to)
-    push!(probs, probPrev)
-    for date in dates[2:end]
-        prob = probFromOpen(spy[date].open, vix[date].open, date, to)
-        push!(probs, prob)
-        probPrev = prob
+    probsTexes = map(dates) do date
+        (;prob=probFromOpen(spy[date].open, vix[date].open, date, target), tex=calcTex(getMarketOpen(date), target))
     end
-    prob = probKde(center, var, from, to)
-    push!(probs, prob)
-    comprob = pt.combineProbs(center, probs; ws=weightBy.(eachindex(probs)))
+    tex = calcTex(from, target)
+    push!(probsTexes, (;prob=probKde(center, var, from, target), tex))
+    probs = (x->x.prob).(probsTexes)
+    comprob = pt.combineProbs(center, probs; ws=map(x->weightBy(x.tex - tex), probsTexes))
     @assert isnothing(findfirst(x -> !isfinite(x), comprob.vals)) string(findfirst(x -> !isfinite(x), comprob.vals), ' ', first(comprob.vals, 10))
     # compareProbs((probs..., comprob))
     return (comprob, probs)
-end
-
-using DrawUtil
-import GLMakie
-function compareProbs(probs)
-    # display(du.drawProb(probs[1].center, probs[1].vals; label="1"))
-    fig, ax = du.start()
-    ind = 1
-    for prob in probs
-        du.drawProb!(prob.center, prob.vals; label=string(ind))
-        ind += 1
-    end
-    GLMakie.axislegend(ax)
 end
 
 function comprob(from::Date, to::Date)
