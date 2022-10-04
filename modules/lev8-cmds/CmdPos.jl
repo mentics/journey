@@ -29,7 +29,7 @@ function xprob(expr::Date)
     # tex = Calendars.calcTex(start, expr)
     vix = mkt.vix
     # return ProbKde.probKde(F(curp), tex, F(vix))
-    prob, _ = pk.probKdeComp(F(curp), F(vix), start, expr)
+    prob, _ = pk.kdeToClose(F(curp), F(vix), start, expr)
     return prob
 end
 xlms(expr::Date)::Vector{LegMeta} = SH.combineTo(Vector{LegMeta}, tradesToClose(expr))

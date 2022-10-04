@@ -102,9 +102,9 @@ probToClose(center::Float64, var::Float64, from::DateTime, to::Date; up=false)::
 probFromOpen(center::Float64, var::Float64, from::Date, to::DateTime; up=false)::Prob = probKde(center, var, getMarketOpen(from), to; up)
 
 kdeOpenToClose(center::Float64, var::Float64, from::Date, target::Date, bdaysBack=20; kws...) = probKdeComp(center, var, getMarketOpen(from), getMarketClose(target), bdaysBack; kws...)
-# probKdeComp(center::Float64, var::Float64, from::DateTime, target::Date, bdaysBack=20; kws...) = probKdeComp(center, var, from, getMarketClose(target), bdaysBack; kws...)
+kdeToClose(center::Float64, var::Float64, from::DateTime, target::Date, bdaysBack=20; kws...) = probKdeComp(center, var, from, getMarketClose(target), bdaysBack; kws...)
 # Returns combined prob and list of all back probs plus actual prob for from instant
-function probKdeComp(center::Float64, var::Float64, from::DateTime, target::DateTime, bdaysBack=20; up=false, weightBy=x->(24*bdaysBack)/(1+x))
+function probKdeComp(center::Float64, var::Float64, from::DateTime, target::DateTime, bdaysBack=20; up=false, weightBy=x->1) # weightBy=x->(24*bdaysBack)/(1+x))
     @assert isfinite(center) && center > 0.0
     @assert isfinite(var) && var > 0.0
     fromDate = toDateMarket(from)
