@@ -252,6 +252,7 @@ function calcKdes(retsNtv::NamedTuple)
         push!(datas[bin][2], ret[i])
     end
     for i in 1:NumVarBins
+        println("Calcing kde with length rets ", length(retsNtv.tex), " extrema(data[1])=$(extrema(datas[i][1])), extrema(data[2])=$(extrema(datas[i][2]))")
         Kdes[][i] = calcKde(datas[i])
         KdeInterps[][i] = InterpKDE(Kdes[][i])
     end
@@ -269,7 +270,6 @@ end
 function calcKde(data::NTuple{2,Vector{Float64}})::BivariateKDE
     bws = (1.0, Bins.width())
     bounds = (0.0, 1.1 * maximum(data[1])), (0.8, 1.1) .* extrema(data[2])
-    println("Calcing kde with length rets ", length(retsNtv.tex), " extrema(data[1])=$(extrema(data[1])), extrema(data[2])=$(extrema(data[2]))")
     println(bounds)
     return KernelDensity.kde(data; bandwidth=bws, boundary=bounds)
 end

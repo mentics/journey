@@ -24,7 +24,7 @@ function drawRet(r::Ret; probs=nothing, curp=nothing, label="", newWin=false)
         # TODO: draw on fig arg
         if !isnothing(probs)
             for (i, prob) in enumerate(probs)
-                drawProb!(ax, prob, i, 1.0)#(yMax - yMin)/2)
+                du.drawProb!(ax, prob, i, 1.0)#(yMax - yMin)/2)
             end
         end
         hlines!(ax, 0.0; inspectable=false)

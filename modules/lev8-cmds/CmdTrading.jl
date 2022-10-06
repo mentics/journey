@@ -84,6 +84,7 @@ function findTradesToClose()
         trade isa Trade{Filled} || continue
         ts = tsFilled(trade)
         ts < DateTime(today()) || continue
+        getTargetDate(trade) > today() || continue
         neto = getNetOpen(trade)
         qt = quoter(trade, Action.close)
         netc = bap(qt)
