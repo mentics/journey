@@ -15,7 +15,7 @@ BadPricing = []#"BAX", "OLN"]
 Ignore = ["SNDL","YANG","MUX","QD","RIOT","GOTU","TAL","ACB","HUT","IQ","JMIA","ABEV","JDST","SOXS","FAZ",
           "SQQQ","SPXU","QID","SDOW","TWM","NINE","TECS","DUST","SPXS","SRTY","ZSL","DRV","TZA","DIG","UNG",
           "URA","EDZ","EPV","BNO","IEZ","TBT","SDS","XME","TUR","DXD","ECH","TYO","VIXM","ERX","IAU","WEAT",
-          "EWZ","FLBR","FCG","AMLP","BKLN","LABD","SRS","DBO","IYE","USFR","ITB","COPX",
+          "EWZ","FLBR","FCG","AMLP","BKLN","LABD","SRS","DBO","IYE","USFR","ITB","COPX","UCO",
 
           "AFRM","CAN","SRAD","SYF","PRPH", # don't like company
           "GRPH" # clinical stage
@@ -129,7 +129,7 @@ function filt1(s::AStr)
         println("No prevclose for ", s, ", skipping.")
         return false
     else
-        return Quotes[s]["average_volume"] > 100000 && Quotes[s]["prevclose"] < 57.0
+        return Quotes[s]["type"] == "stock" && Quotes[s]["average_volume"] > 100000 && Quotes[s]["prevclose"] < 57.0
     end
 end
 

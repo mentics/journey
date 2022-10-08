@@ -67,11 +67,6 @@ extrinSub(style::Style.T, strike::Real, curp::Real)::Bool = xor(Style.call == st
 # ivToStdDev(iv::Float64, timeToExpY::Float64) = iv / sqrt(1.0/timeToExpY)
 # ivTexToStdDevOld(iv::Float64, tex::Float64) = iv / sqrt(1.0/(tex/24/365))
 ivTexToStdDev(iv::Float64, tex::Float64) = iv * sqrt(tex/texPerYear())
-texPerYear() = 6.5 * 252 + .3 * (8760 - 6.5 * 252)
-texToYear(tex) = tex / texPerYear()
-# 9:30 am - 4 pm = 6.5 hours / day
-# 252 days per year
-# 8760 hours per year
 
 legs2Extrema(legs::Coll) = spreadExtrema(longShort(legs[1], legs[2])...)
 legs2Levels(legs::Coll) = spreadLevels(longShort(legs[1], legs[2])...)

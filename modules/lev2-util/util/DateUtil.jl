@@ -64,7 +64,7 @@ formatLocal(dt::DateTime, format::DateFormat)::String = Dates.format(astimezone(
 #endregion
 
 #region Formatting
-strShort(d::Date)::String = Dates.format(d, DF_SHORT)
+strShort(d::Date; dateYear=false)::String = dateYear ? Dates.format(d, DF_SHORT_YEAR) : Dates.format(d, DF_SHORT)
 strShort(d1::Date, d2::Date)::String = strShort(d1) * '/' * strShort(d2) # "$(Dates.format(d1, DATEFORMAT_SHORT))/$(Dates.format(d2, DATEFORMAT_SHORT))"
 strShort(ts::DateTime)::String = Dates.format(ZonedDateTime(ts, LOCALZONE; from_utc=true), DTF_SHORT)
 #endregion
@@ -91,6 +91,7 @@ end
 
 #region Local
 const DF_SHORT = dateformat"mm-dd"
+const DF_SHORT_YEAR = dateformat"yy-mm-dd"
 const DTF_SHORT = dateformat"mm-dd HH:MM:SS Z"
 const MARKET_TZ = tz"America/New_York"
 #endregion

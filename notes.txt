@@ -19,6 +19,19 @@ CmdTrading.findTradesToClose()
 2) Look for short puts to buy with apr > .5
 ll = c.lookAll()
 
+==========
+
+compare probkde new thing with random guesses (from norm distrib or something)
+
+jorn needs to check for trades today to avoid day trading
+
+Schedule the call to findTradesToClose and send email if found
+include quick copy/paste call to close it (but it needs to handle worthless longs)
+
+findRoll should consider nearby strikes
+
+Adjust option quote asks based on the one nearer the money
+
 Need to move adjust back into calcutil.calcmetrics beacuse xmet and friends
 
 test multivariate transformer learning by adding another input that randomly switches between 1 and -1 and when -1 it changes the direction of the sine wave
@@ -67,8 +80,6 @@ or could get history and calc 99 percentile move
 implement MaxClose in trade printout
 
 **** I need to do my own implied volatility calculation based on tex and maybe the new fit formula
-
-==========
 
 Can we take simultaneous kelly bets?
 Do we need to consider open positions as adding to a single bet and so position sizing based on that?

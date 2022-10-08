@@ -4,6 +4,9 @@ using MarketDurTypes
 using Globals, DateUtil, LogUtil, ThreadUtil, MarketDurUtil, FileUtil
 using TradierData
 
+export cal
+const cal = @__MODULE__
+
 export isMarketOpen, nextMarketChange, getMarketOpen, getMarketClose, getMarketTime
 export calcTex, calcDurToExpr
 
@@ -24,6 +27,13 @@ end
 # calcTimeToClose(ts::DateTime, d::Date)::Period = ts - getMarketClose(d)
 
 # in hours
+# texPerYear() = 6.5 * 252 + .3 * (8760 - 6.5 * 252)
+texPerYear() = 6844.8 # calced with calcTex(now(UTC), now(UTC)+Year(1))
+texToYear(tex) = tex / texPerYear()
+# 9:30 am - 4 pm = 6.5 hours / day
+# 252 days per year
+# 8760 hours per year
+
 calcTex(from::DateTime, to::Date)::Float64 = calcTex(from, getMarketClose(to))
 function calcTex(from::DateTime, to::DateTime)::Float64
     dur = calcDur(from, to)

@@ -33,7 +33,7 @@ getExpirations(sym) = useKey(() -> tradierExpirations(sym), ExpirMap, sym)
 const RawChainMap = Dict{String,Dict{Date,Vector{Dict{String,Any}}}}()
 const ChainMap = Dict{String,ChainsType}()
 const Under = Dict{String,Dict{String,Any}}()
-function getChains(sym::String, maxDate::Date; up=false)
+function getChains(sym::String, maxDate::Date=DATE_FUTURE; up=false)
     up || !haskey(ChainMap, sym) || ( !isempty(ChainMap[sym]) && now(UTC) > unix2datetime(first(ChainMap[sym])[2].ts/1000) + Minute(1) ) || return # isempty(ChainMap[sym]) || return
     maxDate > today() || return # NOTE: If we ever trade today expr, would need to modify this
     println("Calling tradier for $(sym)")
@@ -142,6 +142,40 @@ function vol(sym)
         opintTot += opint
     end
     return opintTot
+end
+
+import Calendars
+function findRoll(sym, at, cost=0.0, style=Style.put)
+    res = NamedTuple[]
+    getChains(sym)
+    locUnder = Under[sym]
+    chs = ChainMap[sym]
+    for expr in sort!(collect(keys(chs)))
+        oqs = filter(x->getStyle(x) == style, chs[expr].chain)
+        # TODO: get Calendars further out
+        expr < Date(2025,1,1) || continue
+        # TODO: use tex instead of bdays?
+        tex = Calendars.calcTex(now(UTC), expr)
+        timult = 1 / Calendars.texToYear(tex)
+        # timult = 252 / bdays(today(), expr)
+        underBid = locUnder["bid"]
+        for oq in oqs
+            strike = getStrike(oq)
+            strike == at || continue
+            getBid(oq) > 0.0 || continue
+            primitDir = bap(oq, .4) - cost
+            @show primitDir cost
+            rate = timult * (primitDir - .0065) / strike # .0065 is the trade commission for fidelity / 100
+            # println("$(sym)[$(expr)]: $(underBid) -> $(strike) at $(primitDir) ($(getQuote(oq))) / $(strike) = $(rate)")
+            # if rate > 0.01
+                push!(res, (;sym, expr, mov=1.0 - strike/underBid, underBid, strike, primitDir, rate, div=getDividend(sym)))
+            # end
+        end
+    end
+    # pretyble(filter!(x -> x.mov > minMove, sort!(delete.(res, :oq); by=x -> x.rate)))
+    pretyble(sort!(res; by=x->x.rate); dateYear=true)
+    # return res
+    return
 end
 
 # using Combos

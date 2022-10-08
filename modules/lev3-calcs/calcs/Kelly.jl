@@ -41,8 +41,10 @@ function ded(prob, vals)
             xleft = xmid
         end
     end
-    @error "calc kelly" xleft xmid xright left mid right
-    error("could not solve")
+    @error "Could not solve for kelly" xleft xmid xright left mid right
+    return -Inf
+    # TODO: maybe it's concave up, check first?
+    # error("could not solve")
 end
 function ded(prob, vals, ratio)
     dee(prob, vals, .001)

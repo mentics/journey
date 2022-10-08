@@ -96,7 +96,7 @@ using Caches, TradierData
 const MaxLossExpr = Ref{Float64}(-3.0)
 const MaxLoss = Ref{Float64}(-2.0)
 
-calcRate(to::Date, ret, risk) = (ret / risk) * (1 / texToYear(calcTex(now(UTC), to)))
+calcRate(to::Date, ret, risk) = (ret / risk) * (1 / Calendars.texToYear(calcTex(now(UTC), to)))
 
 # export lms
 # import CmdExplore
@@ -121,7 +121,7 @@ function makeCtx(expr::Date; nopos, all)::NamedTuple
     start = market().tsMarket
     curp = market().curp
     tex = calcTex(start, expr)
-    timult = 1 / texToYear(tex)
+    timult = 1 / Calendars.texToYear(tex)
     # vix = market().vix
     # prob = probKde(F(curp), tex, F(vix))
     # prob, _ = pk.probKdeComp(F(curp), F(vix), start, expr)

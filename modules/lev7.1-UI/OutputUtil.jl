@@ -53,8 +53,8 @@ function niceShow(a)
 end
 
 # ppFormat(v, _, _) = v isa Float64 ? string(round(v; digits=3)) : v
-ppFormat(v, _, _) = sho(v)
-function sho(v)
+# ppFormat(v, _, _) = sho(v)
+function sho(v; dateYear=false, kws...)
     if eltype(v) === Float64
         return map(x -> round(x; digits=3), v)
     elseif eltype(v) === Currency
@@ -66,7 +66,7 @@ function sho(v)
     elseif v isa DateTime
         return strShort(v)
     elseif v isa Date
-        return strShort(v)
+        return strShort(v; dateYear)
     elseif v isa AbstractString || v isa Symbol
         return v
     # elseif !(eltype(v) isa AbstractString)
@@ -78,7 +78,7 @@ end
 
 pretyble(tbl; kws...) = pretyble(stdout, tbl; kws...)
 spretyble(tbl; kws...)::String = (io = IOBuffer() ; pretyble(io, tbl; kws...) ; return String(take!(io)) )
-function pretyble(io, tbl; header=nothing, rowcol=false, widths=0, kws...)
+function pretyble(io, tbl; header=nothing, rowcol=false, widths=0, dateYear=false, kws...)
     Tables.isrowtable(tbl) || (tbl = collect(tbl))
     if isempty(tbl)
         println("No data")
@@ -89,7 +89,7 @@ function pretyble(io, tbl; header=nothing, rowcol=false, widths=0, kws...)
         # TODO: consider showing title: pretyble(to.(NamedTuple, left); title="Lots of fun legs", title_crayon=crayon"blue bg:yellow bold", title_same_width_as_table=true, title_alignment=:c)
         # might want to do our own title formatting because pretty tables centered with background color crayon didn't work right
         # pretty_table(tbl; header, formatters=ppFormat, nosubheader=true, display_size=(100,1000), columns_width=[0,0,0,0,30,0,0,0,48,20], autowrap=true)
-        pretty_table(io, tbl; header, formatters=ppFormat, nosubheader=true, display_size=(100,1000), maximum_columns_width=widths, kws...)
+        pretty_table(io, tbl; header, formatters=(x,_,_)->sho(x; dateYear, kws...), nosubheader=true, display_size=(100,1000), maximum_columns_width=widths, kws...)
     end
 end
 
