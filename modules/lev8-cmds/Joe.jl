@@ -11,6 +11,11 @@ export jorn
 
 # rs = Vector(undef,20) ; [(i, (rs[i] = jorn(expir(i)); rs[i][1].roi)) for i in 1:1]
 
+function legsConflicting()
+    legs = vcat(getLeg.(positions()), getLeg.(queryLegOrders(today())))
+    return legs
+end
+
 function jorn(exs; kws...)
     # rs = Dict{Int,NamedTuple}()
     global ress = Vector{Vector{NamedTuple}}(undef,maximum(exs))

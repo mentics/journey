@@ -11,6 +11,9 @@ using Caches, HistData, Markets, Calendars
 export probKde, pk
 const pk = @__MODULE__
 
+using ProbUtil
+testAgainst(center, tex, iv=0.20) = probsNormDist(center, iv * sqrt(tex/cal.texPerYear()))
+
 function testProb(bdaysTarget=10, bdaysBack=20; weightBy=x->1)
     forDate = today()
     spy = toDict(getDate, dataDaily(forDate, "SPY"))
@@ -19,12 +22,25 @@ function testProb(bdaysTarget=10, bdaysBack=20; weightBy=x->1)
     dateFrom = bdaysAfter(minimum(x for x in keys(spy)), bdaysBack + 1)
     dateTo = bdaysBefore(maximum(x for x in keys(spy)), bdaysTarget + 1)
     dates = sort!(collect(filter(x -> dateFrom <= x <= dateTo, keys(spy))))
+
+    scoreBase = 0.0
+    scoreBaseMax = 0.0
+    scoreBaseRatio = 0.0
+    scoreBaseDist = 0.0
+    scoreBaseDistSquared = 0.0
+
     scoreNormal = 0.0
     scoreNormalMax = 0.0
     scoreNormalRatio = 0.0
+    scoreNormalDist = 0.0
+    scoreNormalDistSquared = 0.0
+
     scoreComp = 0.0
     scoreCompMax = 0.0
     scoreCompRatio = 0.0
+    scoreCompDist = 0.0
+    scoreCompDistSquared = 0.0
+
     count = 0
     for date in dates
         dateTarget = bdaysAfter(date, bdaysTarget)
@@ -38,17 +54,33 @@ function testProb(bdaysTarget=10, bdaysBack=20; weightBy=x->1)
         actual = spy[dateTarget].close / spyOpen
         bin = Bins.nearest(actual)
 
+        probBase = testAgainst(spyOpen, calcTexOpenToClose(date, dateTarget), vixOpen/100.0)
+        base = probBase.vals[bin]
+        scoreBase += base
+        # baseMax = maximum(probBase.vals)
+        baseMax, baseMaxInd = findmax(probBase.vals)
+        scoreBaseMax += baseMax
+        scoreBaseRatio += base / baseMax
+        scoreBaseDist = abs(baseMaxInd - bin)
+        scoreBaseDistSquared = (baseMaxInd - bin)^2
+
         normal = probNormal.vals[bin]
         scoreNormal += normal
-        normalMax = maximum(probNormal.vals)
+        # normalMax = maximum(probNormal.vals)
+        normalMax, normalMaxInd = findmax(probNormal.vals)
         scoreNormalMax += normalMax
         scoreNormalRatio += normal / normalMax
+        scoreNormalDist = abs(normalMaxInd - bin)
+        scoreNormalDistSquared = (normalMaxInd - bin)^2
 
         comp = probComp.vals[bin]
         scoreComp += comp
-        compMax = maximum(probComp.vals)
+        # compMax = maximum(probComp.vals)
+        compMax, compMaxInd = findmax(probComp.vals)
         scoreCompMax += compMax
         scoreCompRatio += comp / compMax
+        scoreCompDist = abs(compMaxInd - bin)
+        scoreCompDistSquared = (compMaxInd - bin)^2
 
         # TODO: Many comprob's in early times are showing almost all in left-most bin. maybe something wrong because probNormal and extra are not.
         # if probComp.vals[1] == maximum(probComp.vals)
@@ -63,7 +95,9 @@ function testProb(bdaysTarget=10, bdaysBack=20; weightBy=x->1)
         # sleep(2.0)
         count += 1
     end
-    @show (scoreNormal, scoreNormalMax, scoreNormalRatio) ./ count (scoreComp, scoreCompMax, scoreCompRatio) ./ count
+    @show (scoreNormal, scoreNormalMax, scoreNormalRatio, scoreNormalDist, scoreNormalDistSquared) ./ count
+    @show (scoreComp, scoreCompMax, scoreCompRatio, scoreCompDist, scoreCompDistSquared) ./ count
+    @show (scoreBase, scoreBaseMax, scoreBaseRatio, scoreBaseDist, scoreBaseDistSquared) ./ count
     return
 end
 
@@ -128,6 +162,8 @@ function probKdeComp(center::Float64, var::Float64, from::DateTime, target::Date
     # compareProbs((probs..., comprob))
     return (comprob, probs)
 end
+
+calcTexOpenToClose(from::Date, to::Date) = calcTex(getMarketOpen(from), getMarketClose(to))
 
 function comprob(from::Date, to::Date)
     spy = hd.dailyDict(from, to, "SPY")

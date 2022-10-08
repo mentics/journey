@@ -85,25 +85,29 @@ pathDaily(sym::AStr)::String = joinpath(dirData("hist", "daily"), "$(sym)-daily.
 
 function updateDaily(sym)::DailyType
     path = pathDaily(lowercase(sym))
-    lastExpected = min(lastTradingDay(Dates.today()), today() - Day(1))
-    if !isfile(path)
-        @log warn "Can't find file for $(sym): $(path)"
-        daily = getDataDaily(Date(2000,1,1), lastExpected, sym)
-        writeCsv(path, daily; keys=string.(header))
-    else
-        lastLine = readLastLines(path)
-        lastDate = Date(split(lastLine, ',')[1])
-        # TODO: check if we get vix for friday during the weekend
-        if lastDate < lastExpected
-            newDaily = getDataDaily(lastDate+Day(1), lastExpected, sym)
-            if !isnothing(newDaily)
-                if length(newDaily) > 0 && haskey(newDaily[1], "date")
-                    appendCsv(path, newDaily; keys=string.(header))
-                else
-                    @error "Unexpected hist daily response" sym lastLine lastDate lastExpected newDaily
+    try
+        lastExpected = min(lastTradingDay(Dates.today()), today() - Day(1))
+        if !isfile(path)
+            @log warn "Can't find file for $(sym): $(path)"
+            daily = getDataDaily(Date(2000,1,1), lastExpected, sym)
+            writeCsv(path, daily; keys=string.(header))
+        else
+            lastLine = readLastLines(path)
+            lastDate = Date(split(lastLine, ',')[1])
+            # TODO: check if we get vix for friday during the weekend
+            if lastDate < lastExpected
+                newDaily = getDataDaily(lastDate+Day(1), lastExpected, sym)
+                if !isnothing(newDaily)
+                    if length(newDaily) > 0 && haskey(newDaily[1], "date")
+                        appendCsv(path, newDaily; keys=string.(header))
+                    else
+                        @error "Unexpected hist daily response" sym lastLine lastDate lastExpected newDaily
+                    end
                 end
             end
         end
+    catch
+        @warn "Could not update HistData: " path
     end
     return load(path)
 end

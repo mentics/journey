@@ -7,6 +7,7 @@ using ChainTypes
 
 const MinSpreadMx = 0.01
 
+# TODO: consider including cash secured puts?
 function iterSingle(f::Function, oqss::Oqss, args...)
     for oq in oqss.call.long
         f([to(LegMeta, oq, Side.long)], args...)

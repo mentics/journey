@@ -33,6 +33,9 @@ texToYear(tex) = tex / texPerYear()
 # 9:30 am - 4 pm = 6.5 hours / day
 # 252 days per year
 # 8760 hours per year
+# ivToStdDev(iv::Float64, timeToExpY::Float64) = iv / sqrt(1.0/timeToExpY)
+# ivTexToStdDevOld(iv::Float64, tex::Float64) = iv / sqrt(1.0/(tex/24/365))
+ivTexToStdDev(iv::Float64, tex::Float64) = iv * sqrt(tex/texPerYear())
 
 calcTex(from::DateTime, to::Date)::Float64 = calcTex(from, getMarketClose(to))
 function calcTex(from::DateTime, to::DateTime)::Float64
@@ -147,9 +150,15 @@ end
 
 function updateState()
     ts = now(UTC)
-    isOpen, nextChange = today() != Date(2022,6,20) ? tradierClock() : (false, DateTime("2022-06-20T20:00:00")) # hard coded because the API missed this eStateay
-    @atomic MktState.isOpen = isOpen
-    @atomic MktState.nextChange = nextChange
+    try
+        isOpen, nextChange = today() != Date(2022,6,20) ? tradierClock() : (false, DateTime("2022-06-20T20:00:00")) # hard coded because the API missed this eStateay
+        @atomic MktState.isOpen = isOpen
+        @atomic MktState.nextChange = nextChange
+    catch
+        @warn "Could not Calendars.updateState()"
+        @atomic MktState.isOpen = false
+        @atomic MktState.nextChange = ts + Day(1)
+    end
     @atomic MktState.ts = ts
 end
 

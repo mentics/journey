@@ -64,10 +64,6 @@ end
 
 extrinSub(style::Style.T, strike::Real, curp::Real)::Bool = xor(Style.call == style, strike >= curp)
 
-# ivToStdDev(iv::Float64, timeToExpY::Float64) = iv / sqrt(1.0/timeToExpY)
-# ivTexToStdDevOld(iv::Float64, tex::Float64) = iv / sqrt(1.0/(tex/24/365))
-ivTexToStdDev(iv::Float64, tex::Float64) = iv * sqrt(tex/texPerYear())
-
 legs2Extrema(legs::Coll) = spreadExtrema(longShort(legs[1], legs[2])...)
 legs2Levels(legs::Coll) = spreadLevels(longShort(legs[1], legs[2])...)
 spreadExtrema(legLong, legShort) = minmax(spreadLevels(legLong, legShort)...)
