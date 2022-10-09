@@ -1,7 +1,7 @@
 module ProbKde
 using Dates, KernelDensity
 using BaseTypes, Bins, ProbTypes, DateUtil
-using Globals, LogUtil, CollUtil, VectorCalcUtil, FileUtil, DictUtil
+using Globals, LogUtil, CollUtil, VectorCalcUtil, FileUtil, DictUtil, OutputUtil
 using Caches, HistData, Markets, Calendars
 
 # TODO: consider adding tex=0, x=x data to force endpoint data
@@ -22,24 +22,25 @@ function testProb(bdaysTarget=10, bdaysBack=20; weightBy=x->1)
     dateFrom = bdaysAfter(minimum(x for x in keys(spy)), bdaysBack + 1)
     dateTo = bdaysBefore(maximum(x for x in keys(spy)), bdaysTarget + 1)
     dates = sort!(collect(filter(x -> dateFrom <= x <= dateTo, keys(spy))))
+    scoreBase = scoreNormal = scoreComp = scoreProb() # initialize to 0.0
 
-    scoreBase = 0.0
-    scoreBaseMax = 0.0
-    scoreBaseRatio = 0.0
-    scoreBaseDist = 0.0
-    scoreBaseDistSquared = 0.0
+    # scoreBase = 0.0
+    # scoreBaseMax = 0.0
+    # scoreBaseRatio = 0.0
+    # scoreBaseDist = 0.0
+    # scoreBaseDistSquared = 0.0
 
-    scoreNormal = 0.0
-    scoreNormalMax = 0.0
-    scoreNormalRatio = 0.0
-    scoreNormalDist = 0.0
-    scoreNormalDistSquared = 0.0
+    # scoreNormal = 0.0
+    # scoreNormalMax = 0.0
+    # scoreNormalRatio = 0.0
+    # scoreNormalDist = 0.0
+    # scoreNormalDistSquared = 0.0
 
-    scoreComp = 0.0
-    scoreCompMax = 0.0
-    scoreCompRatio = 0.0
-    scoreCompDist = 0.0
-    scoreCompDistSquared = 0.0
+    # scoreComp = 0.0
+    # scoreCompMax = 0.0
+    # scoreCompRatio = 0.0
+    # scoreCompDist = 0.0
+    # scoreCompDistSquared = 0.0
 
     count = 0
     for date in dates
@@ -52,35 +53,40 @@ function testProb(bdaysTarget=10, bdaysBack=20; weightBy=x->1)
         @assert probNormal.vals ≈ probs[end].vals
 
         actual = spy[dateTarget].close / spyOpen
-        bin = Bins.nearest(actual)
 
         probBase = testAgainst(spyOpen, calcTexOpenToClose(date, dateTarget), vixOpen/100.0)
-        base = probBase.vals[bin]
-        scoreBase += base
-        # baseMax = maximum(probBase.vals)
-        baseMax, baseMaxInd = findmax(probBase.vals)
-        scoreBaseMax += baseMax
-        scoreBaseRatio += base / baseMax
-        scoreBaseDist = abs(baseMaxInd - bin)
-        scoreBaseDistSquared = (baseMaxInd - bin)^2
 
-        normal = probNormal.vals[bin]
-        scoreNormal += normal
-        # normalMax = maximum(probNormal.vals)
-        normalMax, normalMaxInd = findmax(probNormal.vals)
-        scoreNormalMax += normalMax
-        scoreNormalRatio += normal / normalMax
-        scoreNormalDist = abs(normalMaxInd - bin)
-        scoreNormalDistSquared = (normalMaxInd - bin)^2
+        scoreBase = addScores(scoreBase, scoreProb(probBase, actual))
+        scoreNormal = addScores(scoreNormal, scoreProb(probNormal, actual))
+        scoreComp = addScores(scoreComp, scoreProb(probComp, actual))
 
-        comp = probComp.vals[bin]
-        scoreComp += comp
-        # compMax = maximum(probComp.vals)
-        compMax, compMaxInd = findmax(probComp.vals)
-        scoreCompMax += compMax
-        scoreCompRatio += comp / compMax
-        scoreCompDist = abs(compMaxInd - bin)
-        scoreCompDistSquared = (compMaxInd - bin)^2
+        # bin = Bins.nearest(actual)
+        # base = probBase.vals[bin]
+        # scoreBase += base
+        # # baseMax = maximum(probBase.vals)
+        # baseMax, baseMaxInd = findmax(probBase.vals)
+        # scoreBaseMax += baseMax
+        # scoreBaseRatio += base / baseMax
+        # scoreBaseDist = abs(baseMaxInd - bin)
+        # scoreBaseDistSquared = (baseMaxInd - bin)^2
+
+        # normal = probNormal.vals[bin]
+        # scoreNormal += normal
+        # # normalMax = maximum(probNormal.vals)
+        # normalMax, normalMaxInd = findmax(probNormal.vals)
+        # scoreNormalMax += normalMax
+        # scoreNormalRatio += normal / normalMax
+        # scoreNormalDist = abs(normalMaxInd - bin)
+        # scoreNormalDistSquared = (normalMaxInd - bin)^2
+
+        # comp = probComp.vals[bin]
+        # scoreComp += comp
+        # # compMax = maximum(probComp.vals)
+        # compMax, compMaxInd = findmax(probComp.vals)
+        # scoreCompMax += compMax
+        # scoreCompRatio += comp / compMax
+        # scoreCompDist = abs(compMaxInd - bin)
+        # scoreCompDistSquared = (compMaxInd - bin)^2
 
         # TODO: Many comprob's in early times are showing almost all in left-most bin. maybe something wrong because probNormal and extra are not.
         # if probComp.vals[1] == maximum(probComp.vals)
@@ -95,11 +101,23 @@ function testProb(bdaysTarget=10, bdaysBack=20; weightBy=x->1)
         # sleep(2.0)
         count += 1
     end
-    @show (scoreNormal, scoreNormalMax, scoreNormalRatio, scoreNormalDist, scoreNormalDistSquared) ./ count
-    @show (scoreComp, scoreCompMax, scoreCompRatio, scoreCompDist, scoreCompDistSquared) ./ count
-    @show (scoreBase, scoreBaseMax, scoreBaseRatio, scoreBaseDist, scoreBaseDistSquared) ./ count
+    # s1 = (scoreNormal, scoreNormalMax, scoreNormalRatio, scoreNormalDist, scoreNormalDistSquared) ./ count
+    # s2 = (scoreComp, scoreCompMax, scoreCompRatio, scoreCompDist, scoreCompDistSquared) ./ count
+    # s3 = (scoreBase, scoreBaseMax, scoreBaseRatio, scoreBaseDist, scoreBaseDistSquared) ./ count
+    pretyble([scoreBase, scoreNormal, scoreComp])
     return
 end
+
+scoreProb() = (;scoreProb=0.0, scoreMax=0.0, scoreRatio=0.0, scoreDist=0.0, scoreDistSquared=0.0)
+function scoreProb(prob, actual)
+    actualX = actual / prob.center
+    bin = Bins.nearest(actualX)
+    score = prob.vals[bin]
+    mx, mxi = findmax(prob.vals)
+    return (;score, scoreMax=mx, scoreRatio=score/mx, scoreDist=abs(mxi - bin), scoreDistSquared=(mxi - bin)^2)
+end
+
+addScores(s1, s2) = typeof(s1)(values(s1) .+ values(s2))
 
 function showProbs(probComp, probs, actual=nothing)
     fig, ax = du.start()
