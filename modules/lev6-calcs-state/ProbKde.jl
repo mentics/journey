@@ -43,7 +43,7 @@ function testProb(bdaysTarget=10, bdaysBack=20; weightBy=x->1)
     # scoreCompDistSquared = 0.0
 
     count = 0
-    for date in dates
+    for date in dates[1:10]
         dateTarget = bdaysAfter(date, bdaysTarget)
         spyOpen = F(spy[date].open)
         vixOpen = F(vix[date].open)
@@ -104,17 +104,23 @@ function testProb(bdaysTarget=10, bdaysBack=20; weightBy=x->1)
     # s1 = (scoreNormal, scoreNormalMax, scoreNormalRatio, scoreNormalDist, scoreNormalDistSquared) ./ count
     # s2 = (scoreComp, scoreCompMax, scoreCompRatio, scoreCompDist, scoreCompDistSquared) ./ count
     # s3 = (scoreBase, scoreBaseMax, scoreBaseRatio, scoreBaseDist, scoreBaseDistSquared) ./ count
-    pretyble([scoreBase, scoreNormal, scoreComp])
+    pretyble(map(fin(count), zip(("base", "norm", "comp"), [scoreBase, scoreNormal, scoreComp])))
     return
 end
 
-scoreProb() = (;scoreProb=0.0, scoreMax=0.0, scoreRatio=0.0, scoreDist=0.0, scoreDistSquared=0.0)
+fin(count) = ((name, nt),) -> merge((;name), map(x->x ./ count, nt))
+
+import StatsBase
+scoreProb() = (;scoreProb=0.0, scoreMax=0.0, scoreRatio=0.0, scoreDist=0.0, scoreDistSquared=0.0, scoreSide=0.0)
+    # , scoreMid=0.0, scoreMidDist=0.0)
 function scoreProb(prob, actual)
     actualX = actual / prob.center
     bin = Bins.nearest(actualX)
     score = prob.vals[bin]
     mx, mxi = findmax(prob.vals)
-    return (;score, scoreMax=mx, scoreRatio=score/mx, scoreDist=abs(mxi - bin), scoreDistSquared=(mxi - bin)^2)
+    scoreSide = StatsBase.mean(prob.vals[(mxi < Bins.center() ? (mxi:Bins.center()) : (Bins.center():mxi))])
+    return (;score, scoreMax=mx, scoreRatio=score/mx, scoreDist=abs(mxi - bin), scoreDistSquared=(mxi - bin)^2, scoreSide)
+    #, scoreMid=prob.vals[Bins.center()], scoreMidDist=abs(Bins.center() - bin))
 end
 
 addScores(s1, s2) = typeof(s1)(values(s1) .+ values(s2))
