@@ -20,7 +20,7 @@ function SH.calcOptQuote(lookup, leg::Union{Leg,LegMeta,LegTrade}, act::Action.T
     return isnothing(oq) ? nothing : OptionQuote(oq, act, getSide(leg))
 end
 
-function SH.calcQuote(lookup, lms::Union{Coll{LegMeta,4},AVec{<:LegTrade}}, act::Action.T=Action.open)::Quote
+function SH.calcQuote(lookup, lms::Union{Coll{LegMeta},AVec{<:LegTrade}}, act::Action.T=Action.open)::Quote
     sumQuotes(getQuote(calcOptQuote(lookup, lm, act)) for lm in lms)
 end
 

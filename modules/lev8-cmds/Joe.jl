@@ -11,8 +11,9 @@ export jorn
 
 # rs = Vector(undef,20) ; [(i, (rs[i] = jorn(expir(i)); rs[i][1].roi)) for i in 1:1]
 
+import Positions, StoreOrder, LegTypes
 function legsConflicting()
-    legs = vcat(getLeg.(positions()), getLeg.(queryLegOrders(today())))
+    legs = vcat(getLeg.(Positions.positions()), getLeg.(StoreOrder.queryLegOrders(today())))
     return legs
 end
 
@@ -21,8 +22,12 @@ function jorn(exs; kws...)
     global ress = Vector{Vector{NamedTuple}}(undef,maximum(exs))
     global ctxs = Vector{NamedTuple}(undef,maximum(exs))
     # global rs1 = NamedTuple[]
+    legsConflict = legsConflicting()
+    # isLegAllowed(opt, side) = LegTypes.isConflict(legsConflict)
+    isLegAllowed = !LegTypes.isConflict(legsConflict)
+
     for i in exs
-        r, ctx = runJorn(expir(i); kws...)
+        r, ctx = runJorn(expir(i), isLegAllowed; kws...)
         !isempty(r) || continue
         ress[i] = r
         ctxs[i] = ctx
@@ -47,7 +52,7 @@ function disp()
     pretyble(res)
 end
 
-function runJorn(expr::Date; nopos=false, all=false)
+function runJorn(expr::Date, isLegAllowed; nopos=false, all=false)
     maxSpreadWidth = C(8.0)
     ctx = makeCtx(expr; nopos, all)
     oqss = filtOqss(Chains.getOqss(expr, ctx.curp, xlms(expr))) do oq
@@ -62,23 +67,23 @@ function runJorn(expr::Date; nopos=false, all=false)
     #     end
     # end
 
-    # cnt = 0
-    # empty!(Msgs)
-    # GenCands.paraSpreads(oqss, maxSpreadWidth, ctx, ress) do lms, c, rs
-    #     cnt += 1
-    #     jr = joeSpread(c, lms)
-    #     if !isnothing(jr)
-    #         push!(rs[Threads.threadid()], jr)
-    #     end
-    #     return true
-    # end
-    # res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roi)
-    # println("proced $(cnt), results: $(length(res))")
-    # isempty(Msgs) || @info Msgs
+    cnt = 0
+    empty!(Msgs)
+    GenCands.paraSpreads(oqss, maxSpreadWidth, ctx, ress) do lms, c, rs
+        cnt += 1
+        jr = joeSpread(c, lms)
+        if !isnothing(jr)
+            push!(rs[Threads.threadid()], jr)
+        end
+        return true
+    end
+    res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roi)
+    println("proced $(cnt), results: $(length(res))")
+    isempty(Msgs) || @info Msgs
 
     cnt = 0
     empty!(Msgs)
-    GenCands.iterCondors(oqss, maxSpreadWidth, ctx.curp, ctx, ress) do cond, c, rs
+    GenCands.iterCondors(oqss, maxSpreadWidth, ctx.curp, isLegAllowed, ctx, ress) do cond, c, rs
         cnt += 1
         jr = joeCond(c, cond)
         if !isnothing(jr)
@@ -89,7 +94,8 @@ function runJorn(expr::Date; nopos=false, all=false)
     isempty(Msgs) || @info Msgs
 
     # res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roi)
-    res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roiEv)
+    # res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roiEv)
+    res = sort!(reduce(vcat, ress); rev=true, by=x -> x.met.evr)
     println("proced $(cnt), results: $(length(res))")
     return (res, ctx)
 end
@@ -188,7 +194,7 @@ function joe(ctx, tctx, ret)
     #     error("met.mx $(met.mx) <= $(-adjusted)")
     # end
     # TODO: is ev > 0 too restrictive? and why can kelly be > 0 when ev < 0?
-    if all || (met.mx >= MinMx && met.mn >= MaxLoss[] && met.prob >= 0.75 && met.ev >= 0.0 && ret.vals[1] > 0.0 && ret.vals[end] > 0.0)
+    if all || (met.mx >= MinMx && met.mn >= MaxLoss[] && met.prob >= 0.75 && met.ev >= 0.0) # && ret.vals[1] > 0.0 && ret.vals[end] > 0.0)
         kelly = ckel(ctx.prob, ret)
         if kelly > 0.0
             Rets.addRetVals!(tctx.retBuf2, ctx.posRet.vals, ret.vals)  # combineTo(Ret, vcat(ctx.posLms, lms...), ctx.curp)

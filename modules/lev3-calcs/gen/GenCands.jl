@@ -35,15 +35,16 @@ end
 # end
 
 using Rets, StratTypes
-function iterCondors(f::Function, oqss::Oqss, maxSpreadWidth::Currency, curp::Currency, args...)
+function iterCondors(f::Function, oqss::Oqss, maxSpreadWidth::Currency, curp::Currency, isLegAllowed, args...)
     # @warn "Still using left > 0.0 || continue"
-    global spreads = Vector{Spread}()
-    iterSpreads(oqss, maxSpreadWidth, args...) do (lm1, lm2), args...
+    spreads = Vector{Spread}()
+    iterSpreads(oqss, maxSpreadWidth, isLegAllowed, args...) do (lm1, lm2), args...
         ret1 = makeRet(lm1, bap(lm1), curp)
         ret2 = makeRet(lm2, bap(lm2), curp)
         push!(spreads, ((lm1, ret1), (lm2, ret2)))
         return true
     end
+    @assert length(spreads) > 4 string("Not enough spreads: ", length(spreads))
     # widths = strikeWidth.(map(x -> (x[1][1], x[2][1]), spreads))
     # @error "iterCondors" maxSpreadWidth curp
     # error(maximum(widths))
@@ -102,10 +103,12 @@ end
 #     return true
 # end
 
-function iterSpreads(f::Function, oqs::Sides{Vector{ChainTypes.OptionQuote}}, maxSpreadWidth::Currency, args...)::Bool
+function iterSpreads(f::Function, oqs::Sides{Vector{ChainTypes.OptionQuote}}, maxSpreadWidth::Currency, isLegAllowed, args...)::Bool
     for oq1 in oqs.long, oq2 in oqs.short
         strikeWidth(oq1, oq2) <= maxSpreadWidth || continue
         oq1 != oq2 || continue
+        # println("check ", isLegAllowed(oq1, Side.long))
+        (isLegAllowed(oq1, Side.long) && isLegAllowed(oq2, Side.short)) || continue
         legLong = to(LegMeta, oq1, Side.long)
         legShort = to(LegMeta, oq2, Side.short)
         _, mx = OptionUtil.spreadExtrema(legLong, legShort)
@@ -141,7 +144,7 @@ end
 #         oq1 != oq2 || continue
 #         legLong = to(LegMeta, oq1, Side.long)
 #         legShort = to(LegMeta, oq2, Side.short)
-#         # global lms = [legLong, legShort]
+#         # lms = [legLong, legShort]
 #         # netOpen = bap(leg1) + bap(leg2)
 #         # # strikeDiff = abs(getStrike(oq1) - getStrike(oq2)) + netOpen
 #         # left = netOpen

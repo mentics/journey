@@ -7,7 +7,7 @@ export newTrade, loadTrade, loadLegTrade, findTrades
 export queryLegStatus, queryNumLegs, queryLeftovers, queryEntered, queryLegsEntered
 export findTradeEntered
 
-function newTrade(primitDir::PriceT, legs::Coll{LegMeta,4}, underBid::Currency, underAsk::Currency)::Int
+function newTrade(primitDir::PriceT, legs::Coll{LegMeta}, underBid::Currency, underAsk::Currency)::Int
     @assert sum(getBid, legs) <= primitDir <= sum(getAsk, legs) "Invalid primitDir $(primitDir) $(sum(getBid, legs)) $(sum(getAsk, legs))\n$(legs)"
     exp = minimum(getExpiration, legs)
     tid = 0

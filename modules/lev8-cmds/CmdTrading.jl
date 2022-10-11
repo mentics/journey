@@ -15,9 +15,9 @@ using Trading
 sor(i::Int, at::Real; kws...) = so(i; kws..., pre=false, at=PriceT(at))
 sor(r::Strat, at::Real; kws...) = so(r; kws..., pre=false, at=PriceT(at))
 so(i::Int; kws...) = so(tos(LegMeta, ar(i)); kws...)
-so(r::Coll{LegRet,4}; kws...) = so(tos(LegMeta, r); kws...)
-solr(lms::Coll{LegMeta,4}, at::Real) = so(lms; at, pre=false)
-function so(lms::Coll{LegMeta,4}; ratio=nothing, at=nothing, pre=true, skipConfirm=false)::Int
+so(r::Coll{LegRet}; kws...) = so(tos(LegMeta, r); kws...)
+solr(lms::Coll{LegMeta}, at::Real) = so(lms; at, pre=false)
+function so(lms::Coll{LegMeta}; ratio=nothing, at=nothing, pre=true, skipConfirm=false)::Int
     canTrade(pre)
     Globals.set(:soRunLast, now(UTC))
 
