@@ -17,6 +17,11 @@ function legsConflicting()
     return legs
 end
 
+# export @u
+# macro u(i)
+#     # do i = 2 ; r = j.ress[i][1] ; xdr(i, r.lms) ; and disp passing in row to highlight
+# end
+
 function jorn(exs; kws...)
     # rs = Dict{Int,NamedTuple}()
     global ress = Vector{Vector{NamedTuple}}(undef,maximum(exs))
@@ -67,19 +72,19 @@ function runJorn(expr::Date, isLegAllowed; nopos=false, all=false)
     #     end
     # end
 
-    cnt = 0
-    empty!(Msgs)
-    GenCands.paraSpreads(oqss, maxSpreadWidth, ctx, ress) do lms, c, rs
-        cnt += 1
-        jr = joeSpread(c, lms)
-        if !isnothing(jr)
-            push!(rs[Threads.threadid()], jr)
-        end
-        return true
-    end
-    res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roi)
-    println("proced $(cnt), results: $(length(res))")
-    isempty(Msgs) || @info Msgs
+    # cnt = 0
+    # empty!(Msgs)
+    # GenCands.paraSpreads(oqss, maxSpreadWidth, ctx, ress) do lms, c, rs
+    #     cnt += 1
+    #     jr = joeSpread(c, lms)
+    #     if !isnothing(jr)
+    #         push!(rs[Threads.threadid()], jr)
+    #     end
+    #     return true
+    # end
+    # res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roi)
+    # println("proced $(cnt), results: $(length(res))")
+    # isempty(Msgs) || @info Msgs
 
     cnt = 0
     empty!(Msgs)
