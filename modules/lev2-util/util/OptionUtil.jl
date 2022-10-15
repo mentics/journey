@@ -64,7 +64,7 @@ end
 
 extrinSub(style::Style.T, strike::Real, curp::Real)::Bool = xor(Style.call == style, strike >= curp)
 
-legs2Extrema(legs::Coll) = spreadExtrema(longShort(legs[1], legs[2])...)
+legsExtrema(legs::CollN{2}) = spreadExtrema(longShort(legs[1], legs[2])...)
 legs2Levels(legs::Coll) = spreadLevels(longShort(legs[1], legs[2])...)
 spreadExtrema(legLong, legShort) = minmax(spreadLevels(legLong, legShort)...)
 function spreadLevels(legLong, legShort)
@@ -94,7 +94,7 @@ function spreadLevels(legLong, legShort)
     return (left, right)
 end
 
-function legs4Extrema(legs::Coll)
+function legsExtrema(legs::CollN{4})
     # @assert getStrike(cond[1][2]) <= getStrike(cond[2][1]) "$(getStrike.(cond[1])) $(getStrike.(cond[2]))" # issorted(legs; by=getStrike)
     @assert issorted(legs; by=getStrike)
     levLeft = spreadLevels(longShort(legs[1], legs[2])...)

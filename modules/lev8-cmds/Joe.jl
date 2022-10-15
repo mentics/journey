@@ -99,8 +99,8 @@ function runJorn(expr::Date, isLegAllowed; nopos=false, all=false)
     isempty(Msgs) || @info Msgs
 
     # res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roi)
-    # res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roiEv)
-    res = sort!(reduce(vcat, ress); rev=true, by=x -> x.met.evr)
+    res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roiEv)
+    # res = sort!(reduce(vcat, ress); rev=true, by=x -> x.met.evr)
     println("proced $(cnt), results: $(length(res))")
     return (res, ctx)
 end
@@ -199,7 +199,8 @@ function joe(ctx, tctx, ret)
     #     error("met.mx $(met.mx) <= $(-adjusted)")
     # end
     # TODO: is ev > 0 too restrictive? and why can kelly be > 0 when ev < 0?
-    if all || (met.mx >= MinMx && met.mn >= MaxLoss[] && met.prob >= 0.75 && met.ev >= 0.0) # && ret.vals[1] > 0.0 && ret.vals[end] > 0.0)
+    extra = ret.vals[1] > 0.0 && ret.vals[end] > 0.0
+    if all || (met.mx >= MinMx && met.mn >= MaxLoss[] && met.prob >= 0.75 && met.ev >= 0.0 && extra)
         kelly = ckel(ctx.prob, ret)
         if kelly > 0.0
             Rets.addRetVals!(tctx.retBuf2, ctx.posRet.vals, ret.vals)  # combineTo(Ret, vcat(ctx.posLms, lms...), ctx.curp)

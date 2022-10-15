@@ -91,8 +91,8 @@ function findTradesToClose()
         curVal = neto + netc
         if curVal > 0.0
             tex = calcTex(ts, today())
-            timult = 1 / texToYear(tex)
-            mn = min(OptionUtil.legs4Extrema(getLegs(trade))...)
+            timult = 1 / Calendars.texToYear(tex)
+            mn = min(OptionUtil.legsExtrema(getLegs(trade))...)
             rate = timult * curVal / (-mn)
             println("Trade ", getId(trade), " (", strShort(Date(ts)), " - ", strShort(getTargetDate(trade)), "): ", map(x -> sho(x), (;curVal, neto, netc, rate, mn, tex, timult)))
         end

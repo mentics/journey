@@ -56,7 +56,7 @@ function iterCondors(f::Function, oqss::Oqss, maxSpreadWidth::Currency, curp::Cu
                 s2 = spreads[j]
                 getStrike(s1[2]) <= getStrike(s2[1]) || continue
                 cond = (spreads[i], spreads[j])
-                left, mid, right = OptionUtil.legs4Extrema(map(x -> x[1], (cond[1]..., cond[2]...)))
+                left, mid, right = OptionUtil.legsExtrema(map(x -> x[1], (cond[1]..., cond[2]...)))
                 max(left, mid, right) > 0.02 || continue
                 # left > 0.0 || continue
 
