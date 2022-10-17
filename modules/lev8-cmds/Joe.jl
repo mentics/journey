@@ -58,7 +58,7 @@ function disp()
 end
 
 function runJorn(expr::Date, isLegAllowed; nopos=false, all=false)
-    maxSpreadWidth = C(8.0)
+    maxSpreadWidth = C(24.0)
     ctx = makeCtx(expr; nopos, all)
     oqss = filtOqss(Chains.getOqss(expr, ctx.curp, xlms(expr))) do oq
         abs(getStrike(oq) / ctx.curp - 1.0) < 0.1
@@ -99,8 +99,8 @@ function runJorn(expr::Date, isLegAllowed; nopos=false, all=false)
     isempty(Msgs) || @info Msgs
 
     # res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roi)
-    res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roiEv)
-    # res = sort!(reduce(vcat, ress); rev=true, by=x -> x.met.evr)
+    # res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roiEv)
+    res = sort!(reduce(vcat, ress); rev=true, by=x -> x.met.evr)
     println("proced $(cnt), results: $(length(res))")
     return (res, ctx)
 end
@@ -109,8 +109,8 @@ using Caches, TradierData
 
 #region Local
 # const lock = ReentrantLock()
-const MaxLossExpr = Ref{Float64}(-3.0)
-const MaxLoss = Ref{Float64}(-2.0)
+const MaxLossExpr = Ref{Float64}(-5.0)
+const MaxLoss = Ref{Float64}(-4.0)
 
 calcRate(to::Date, ret, risk) = (ret / risk) * (1 / Calendars.texToYear(calcTex(now(UTC), to)))
 
@@ -192,6 +192,7 @@ function joe(ctx, tctx, ret)
     # rateEv = -Inf
     # kelly = -Inf
     met = calcMetrics(ctx.prob, ret)
+    0.0 < met.prob < 1.0 || return nothing
     # if met.mx > -adjusted
     #     global lmsBad = lms
     #     global metBad = met
@@ -200,9 +201,11 @@ function joe(ctx, tctx, ret)
     # end
     # TODO: is ev > 0 too restrictive? and why can kelly be > 0 when ev < 0?
     extra = ret.vals[1] > 0.0 && ret.vals[end] > 0.0
-    if all || (met.mx >= MinMx && met.mn >= MaxLoss[] && met.prob >= 0.75 && met.ev >= 0.0 && extra)
+    # if all || (met.mx >= MinMx && met.mn >= MaxLoss[] && met.prob >= 0.75 && met.ev >= 0.0 && extra)
+    if true || extra # (met.mx >= MinMx && met.mn >= MaxLoss[] && met.prob >= 0.75 && met.ev >= 0.0 && extra)
         kelly = ckel(ctx.prob, ret)
-        if kelly > 0.0
+        if all || kelly > 0.0
+            kelly = max(kelly, 0.0)
             Rets.addRetVals!(tctx.retBuf2, ctx.posRet.vals, ret.vals)  # combineTo(Ret, vcat(ctx.posLms, lms...), ctx.curp)
             valsb = tctx.retBuf2
             minb = minimum(valsb)
