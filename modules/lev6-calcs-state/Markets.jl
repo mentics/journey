@@ -90,11 +90,13 @@ function newVal()::Market
     end
     @assert tqs[1]["symbol"] == "SPY"
     @assert tqs[2]["symbol"] == "VIX"
-    q = Quote(C(tryKey(tq, "bid", 0.0)), C(tryKey(tq, "ask", 0.0)))
+    # q = Quote(C(tryKey(tq, "bid", 0.0)), C(tryKey(tq, "ask", 0.0)))
+    q = Quote(C(get(tq, "bid", 0.0)), C(get(tq, "ask", 0.0)))
     vix = C(tqs[2]["last"]) # TODO: make sure this is the right field to use
     startDay = nextTradingDay(toDateMarket(tsMarket))
     m = C(0.5 * (q.bid + q.ask))
-    op = C(tryKey(tq, "open", m))
+    # op = C(tryKey(tq, "open", m))
+    op = C(get(tq, "open", m))
     sp = urp() ? m : op
     return Market(startDay, q, vix, m, sp, op, tsMarket, now(UTC))
 end

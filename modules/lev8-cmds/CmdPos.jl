@@ -18,7 +18,8 @@ export cret, cmet, ckel
 cret(lms::Coll{LegMeta}, curp::Currency=market().curp)::Ret = SH.combineTo(Ret, lms, curp)
 cret(lms::Coll{LegMeta}, add::Coll{LegMeta}, curp::Currency=market().curp)::Ret = cret(concat(lms, add), curp)
 cmet(prob::Prob, ret::Ret) = CalcUtil.calcMetrics(prob, ret)
-ckel(prob::Prob, ret::Ret) = Kelly.calc(prob.vals, ret.vals ./ (-minimum(ret.vals)))
+# ckel(prob::Prob, ret::Ret) = Kelly.calc(prob.vals, ret.vals ./ (-minimum(ret.vals)))
+# ckel!(buf, prob::Prob, ret::Ret, mn::Float64) = Kelly.ded!(buf, prob.vals, ret.vals, mn)
 
 export xprob, xlms, xret, xmet, xkel, xdr, x3
 xprob(ex::Int) = xprob(expir(ex))

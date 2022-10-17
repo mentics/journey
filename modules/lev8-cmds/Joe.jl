@@ -1,6 +1,6 @@
 module Joe
 using Dates, NamedTupleTools
-using SH, BaseTypes, Bins, LegMetaTypes, RetTypes, StratTypes
+using SH, BaseTypes, SmallTypes, Bins, LegMetaTypes, RetTypes, StratTypes
 using OptionUtil, CalcUtil, ThreadUtil, OutputUtil
 import GenCands
 using Calendars, Expirations, Chains, ProbKde, Markets
@@ -11,25 +11,77 @@ export jorn
 
 # rs = Vector(undef,20) ; [(i, (rs[i] = jorn(expir(i)); rs[i][1].roi)) for i in 1:1]
 
+flat(x...) = Iterators.flatten(x)
+flatmap(f, coll) = Iterators.flatten(Iterators.map(f, coll))
+
 import Positions, StoreOrder, LegTypes
-function legsConflicting()
-    legs = vcat(getLeg.(Positions.positions()), getLeg.(StoreOrder.queryLegOrders(today())))
-    return legs
+using TradierAccount, OrderTypes, OptionTypes
+function filterLegs()
+    println("filterLegs called")
+    ords = filter!(SH.isLive, tos(Order, ta.tradierOrders()))
+    legsPos = Iterators.map(getLeg, Positions.positions(; age=Second(10)))
+    legsOrds = Iterators.map(getLeg, flatmap(getLegs, ords))
+    # legs = collect(flat(legsPos, legsOrds))
+    # opts = map(getOption, legs)
+    # dupes = findDupes(opts)
+    # @assert isempty(dupes) "Conflicting options should be unique: $(join(dupes, '\n'))"
+    # legs = vcat(getLeg.(Positions.positions()), Iterators.flatten(getLegs.(ords)))
+    # getLeg.(StoreOrder.queryLegOrders(today())))
+    d = Dict{Option,Int}()
+    for leg in flat(legsPos, legsOrds)
+        opt = getOption(leg)
+        side = getSide(leg)
+        status = get(d, opt, 0)
+        d[opt] = status == 0 ? Int(side) : (status == side ? status : 2)
+    end
+    return function(opt, side::Side.T)
+        status = get(d, getOption(opt), 0)
+        return !(status != 0 && (status == 2 || status != Int(side)))
+    end
 end
+
+# function findDupes!(x::AbstractArray{T}) where T
+#     sort!(x)
+#     dupes = T[]
+#     for i = 2:length(x)
+#         if (isequal(x[i], x[i-1]) && (isempty(dupes) || !isequal(dupes[end], x[i])))
+#             push!(dupes,x[i])
+#         end
+#     end
+#     return dupes
+# end
+
+# function findDupes(x::AbstractArray{T}) where T
+#     status = Dict{T, Bool}()
+#     dupes = Vector{T}()
+#     for i in x
+#         if haskey(status, i)
+#             if status[i]
+#                 push!(dupes, i)
+#                 status[i] = false
+#             end
+#         else
+#             status[i] = true
+#         end
+#     end
+#     return dupes
+# end
 
 # export @u
 # macro u(i)
 #     # do i = 2 ; r = j.ress[i][1] ; xdr(i, r.lms) ; and disp passing in row to highlight
 # end
 
+import Profile
 function jorn(exs; kws...)
     # rs = Dict{Int,NamedTuple}()
     global ress = Vector{Vector{NamedTuple}}(undef,maximum(exs))
     global ctxs = Vector{NamedTuple}(undef,maximum(exs))
     # global rs1 = NamedTuple[]
-    legsConflict = legsConflicting()
+    # legsConflict = legsConflicting()
     # isLegAllowed(opt, side) = LegTypes.isConflict(legsConflict)
-    isLegAllowed = !LegTypes.isConflict(legsConflict)
+    # isLegAllowed = !LegTypes.isConflict(legsConflict)
+    isLegAllowed = filterLegs()
 
     for i in exs
         r, ctx = runJorn(expir(i), isLegAllowed; kws...)
@@ -58,6 +110,7 @@ function disp()
 end
 
 function runJorn(expr::Date, isLegAllowed; nopos=false, all=false)
+    println("Processing ", expr)
     maxSpreadWidth = C(24.0)
     ctx = makeCtx(expr; nopos, all)
     oqss = filtOqss(Chains.getOqss(expr, ctx.curp, xlms(expr))) do oq
@@ -86,8 +139,10 @@ function runJorn(expr::Date, isLegAllowed; nopos=false, all=false)
     # println("proced $(cnt), results: $(length(res))")
     # isempty(Msgs) || @info Msgs
 
+    println("Iterating over condors...")
     cnt = 0
     empty!(Msgs)
+    Profile.clear()
     GenCands.iterCondors(oqss, maxSpreadWidth, ctx.curp, isLegAllowed, ctx, ress) do cond, c, rs
         cnt += 1
         jr = joeCond(c, cond)
@@ -97,6 +152,7 @@ function runJorn(expr::Date, isLegAllowed; nopos=false, all=false)
         return true
     end
     isempty(Msgs) || @info Msgs
+    println("done.")
 
     # res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roi)
     # res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roiEv)
@@ -109,8 +165,8 @@ using Caches, TradierData
 
 #region Local
 # const lock = ReentrantLock()
-const MaxLossExpr = Ref{Float64}(-5.0)
-const MaxLoss = Ref{Float64}(-4.0)
+const MaxLossExpr = Ref{Float64}(-3.0)
+const MaxLoss = Ref{Float64}(-2.0)
 
 calcRate(to::Date, ret, risk) = (ret / risk) * (1 / Calendars.texToYear(calcTex(now(UTC), to)))
 
@@ -146,6 +202,8 @@ function makeCtx(expr::Date; nopos, all)::NamedTuple
     posRet = combineTo(Ret, posLms, curp)
     posMet = calcMetrics(prob, posRet)
     threads = [(;
+        kelBuf1 = Bins.empty(),
+        kelBuf2 = Bins.empty(),
         retBuf1 = Bins.empty(),
         retBuf2 = Bins.empty()
     ) for _ in 1:Threads.nthreads()]
@@ -202,8 +260,10 @@ function joe(ctx, tctx, ret)
     # TODO: is ev > 0 too restrictive? and why can kelly be > 0 when ev < 0?
     extra = ret.vals[1] > 0.0 && ret.vals[end] > 0.0
     # if all || (met.mx >= MinMx && met.mn >= MaxLoss[] && met.prob >= 0.75 && met.ev >= 0.0 && extra)
-    if true || extra # (met.mx >= MinMx && met.mn >= MaxLoss[] && met.prob >= 0.75 && met.ev >= 0.0 && extra)
-        kelly = ckel(ctx.prob, ret)
+    # if true || extra # (met.mx >= MinMx && met.mn >= MaxLoss[] && met.prob >= 0.75 && met.ev >= 0.0 && extra)
+    if (met.mx >= MinMx && met.mn >= MaxLoss[] && met.prob >= 0.75 && met.ev >= 0.0 && extra)
+        # kelly = ckel(ctx.prob, ret)
+        kelly = Kelly.ded!(tctx.kelBuf1, tctx.kelBuf2, ctx.prob.vals, ret.vals, -met.mn)
         if all || kelly > 0.0
             kelly = max(kelly, 0.0)
             Rets.addRetVals!(tctx.retBuf2, ctx.posRet.vals, ret.vals)  # combineTo(Ret, vcat(ctx.posLms, lms...), ctx.curp)

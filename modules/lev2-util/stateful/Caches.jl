@@ -6,7 +6,7 @@ export cache!, setCache!
 
 function (cache!(provider::Function, ::Type{T}, sym::Symbol, period::Period; up=false)::T) where T
     return runSync(Lock) do
-        prop = tryKey(Props, sym)
+        prop = get(Props, sym, nothing)
         if up || isnothing(prop) || prop.ts < (now(UTC) - period)
             prop = updateCache!(sym, provider())
         end

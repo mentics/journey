@@ -4,6 +4,9 @@ using BaseTypes, TradierConfig, TradierBase
 
 export tradierOrders, tradierOrder, tradierPositions, tradierBalances
 
+export ta
+const ta = @__MODULE__
+
 function tradierOrders()::TradierRespVec
     result = tradierGet("/accounts/$(getAccountId())/orders?includeTags=true", Call(nameof(var"#self#")))
     orders = result["orders"]

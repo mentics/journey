@@ -7,7 +7,7 @@ using Calendars, Markets, Expirations, Chains, StoreTrade
 using CmdStrats
 using OptionUtil
 
-export so, sor, solr, todo, ct, ctr, drpos, tot, drx
+export so, sor, solr, todo, ct, ctr, drpos, tot, drx, toc
 export cleg, clegr
 
 #region NewTrades
@@ -79,8 +79,10 @@ function tradeSize2(kelly::Float64, kellyRatio::Float64 = 0.5)
     println("$(kellyRatio) kelly trade size: ", kelly * kellyRatio * bal)
 end
 
+toc() = findTradesToClose()
 function findTradesToClose()
-    for trade in values(StoreTrade.tradesCached())
+    trades = sort!(collect(values(StoreTrade.tradesCached())); by=getTargetDate)
+    for trade in trades
         trade isa Trade{Filled} || continue
         ts = tsFilled(trade)
         ts < DateTime(today()) || continue
@@ -92,9 +94,10 @@ function findTradesToClose()
         if curVal > 0.0
             tex = calcTex(ts, today())
             timult = 1 / Calendars.texToYear(tex)
-            mn = min(OptionUtil.legsExtrema(getLegs(trade))...)
+            mn = min(OptionUtil.legsExtrema(getLegs(trade)...)...)
             rate = timult * curVal / (-mn)
-            println("Trade ", getId(trade), " (", strShort(Date(ts)), " - ", strShort(getTargetDate(trade)), "): ", map(x -> sho(x), (;curVal, neto, netc, rate, mn, tex, timult)))
+            expr = xp.whichExpir(getTargetDate(trade))
+            println(expr, ": Trade ", getId(trade), " (", strShort(Date(ts)), " - ", strShort(getTargetDate(trade)), "): ", map(x -> sho(x), (;curVal, neto, netc, rate, mn, tex, timult)))
         end
     end
 end

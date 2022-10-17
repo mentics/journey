@@ -53,17 +53,17 @@ function getQuantityDir() end
 function addQuantity() end
 
 # for Order
-export getId, getSymbol, getClass, getOrderType, getStatus, getPrimitDir, getPrillDir, tsCreated, tsFilled, tsClosed
+export getId, getSymbol, getClass, getOrderType, getPrimitDir, getPrillDir, tsCreated, tsFilled, tsClosed
 function getId() end
 function getClass() end
 function getSymbol() end
 function getOrderType() end
-function getStatus() end
 function getPrimitDir() end
 function getPrillDir() end
 function tsCreated() end
 function tsFilled() end
 function tsClosed() end
+function isLive() end
 
 # for Trade
 export getPrillDirOpen, getPrillDirClose

@@ -1,6 +1,6 @@
 module OrderTypes
 using EnumX, Dates
-using SH, BaseTypes, SmallTypes, StatusTypes, LegTypes
+using SH, BaseTypes, SmallTypes, StatusTypes, LegTypes, StatusTypes
 
 export Order
 export LegOrder
@@ -52,5 +52,7 @@ SH.getPrillDir(o::Order) = o.prillDir
 SH.getLegs(o::Order) = o.legs
 SH.tsCreated(o::Order) = o.tsCreated
 SH.tsFilled(o::Order) = o.tsFilled
+SH.isLive(o::Order{T}) where T <: st.NotLive = false
+SH.isLive(o::Order) = true
 
 end

@@ -64,7 +64,7 @@ end
 
 extrinSub(style::Style.T, strike::Real, curp::Real)::Bool = xor(Style.call == style, strike >= curp)
 
-legsExtrema(legs::CollN{2}) = spreadExtrema(longShort(legs[1], legs[2])...)
+legsExtrema(legs::NTuple{2}) = spreadExtrema(longShort(legs[1], legs[2])...)
 legs2Levels(legs::Coll) = spreadLevels(longShort(legs[1], legs[2])...)
 spreadExtrema(legLong, legShort) = minmax(spreadLevels(legLong, legShort)...)
 function spreadLevels(legLong, legShort)
@@ -94,7 +94,7 @@ function spreadLevels(legLong, legShort)
     return (left, right)
 end
 
-function legsExtrema(legs::CollN{4})
+function legsExtrema(legs::NTuple{4})
     # @assert getStrike(cond[1][2]) <= getStrike(cond[2][1]) "$(getStrike.(cond[1])) $(getStrike.(cond[2]))" # issorted(legs; by=getStrike)
     @assert issorted(legs; by=getStrike)
     levLeft = spreadLevels(longShort(legs[1], legs[2])...)
@@ -105,6 +105,8 @@ function legsExtrema(legs::CollN{4})
     # @info "condorExtrema" levLeft levRight left mid right
     return (left, mid, right)
 end
+legsExtrema(l1, l2) = legsExtrema((l1, l2))
+legsExtrema(l1, l2, l3, l4) = legsExtrema((l1, l2, l3, l4))
 
 longShort(leg1, leg2) = isLong(leg1) ? (leg1, leg2) : (leg2, leg1)
 

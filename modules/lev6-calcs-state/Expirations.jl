@@ -6,6 +6,9 @@ using DataHelper
 
 export expir, expirs
 
+export xp
+const xp = @__MODULE__
+
 expir(ex::Int=1)::Date = expirs()[ex] # (ex == 0 ? expirs(;td=true)[1] : (exps = expirs(;td); !td && market().startDay == exps[1] ? exps[ex+1] : exps[ex]))
 function expirs(; up=false)::OffsetArray{Date}
     _expirs = cache!(EXPIRS_TYPE, EXPIRS, Hour(12); up) do
@@ -15,6 +18,8 @@ function expirs(; up=false)::OffsetArray{Date}
     # return td || _expirs[1] != market().startDay ? _expirs : _expirs[2:end]
     return _expirs
 end
+
+whichExpir(d::Date) = searchsortedfirst(expirs(), d)
 
 #region Local
 const EXPIRS = :expirs

@@ -44,14 +44,17 @@ function iterCondors(f::Function, oqss::Oqss, maxSpreadWidth::Currency, curp::Cu
         push!(spreads, ((lm1, ret1), (lm2, ret2)))
         return true
     end
-    @assert length(spreads) > 4 string("Not enough spreads: ", length(spreads))
+    @assert length(spreads) > 4 string("Not enough spreads: ", length(spreads), ' ', getExpiration(oqss.call.long[1]))
     # widths = strikeWidth.(map(x -> (x[1][1], x[2][1]), spreads))
     # @error "iterCondors" maxSpreadWidth curp
     # error(maximum(widths))
+    println("Number of spreads: ", length(spreads))
+    MaxSpreads = 99999999
 
-    twith(ThreadPools.QueuePool(2, Threads.nthreads()-1)) do pool
-        @tthreads pool for i in 1:length(spreads)
-            for j in (i+1):length(spreads)
+    # twith(ThreadPools.QueuePool(2, Threads.nthreads()-1)) do pool
+    #     @tthreads pool
+        for i in 1:min(MaxSpreads, length(spreads))
+            for j in (i+1):min(MaxSpreads, length(spreads))
                 s1 = spreads[i]
                 s2 = spreads[j]
                 getStrike(s1[2]) <= getStrike(s2[1]) || continue
@@ -70,7 +73,7 @@ function iterCondors(f::Function, oqss::Oqss, maxSpreadWidth::Currency, curp::Cu
                 f(cond, args...) || return false
             end
         end
-    end
+    # end
     return true
 
     #         iterSpreads(oqss, maxSpreadWidth, args...) do (leg1, leg2), args...

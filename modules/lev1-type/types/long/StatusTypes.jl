@@ -4,6 +4,9 @@ export Status, Preview, Starting, Accepted, Filled, PartialClosed, Closing, Clos
 export WithBasic, WithFilled, WithAccepted, WithDone, OrderDone, Closeable
 export symToStatus, strToStatus, toStatus
 
+export st
+const st = @__MODULE__
+
 abstract type Status end
 abstract type Preview <: Status end
 abstract type Starting <: Status end
@@ -22,7 +25,7 @@ const WithAccepted = Union{Accepted,Canceled,Rejected,PartialFilled,WithFilled}
 const WithDone = Union{Closed,Expired,Canceled,Rejected}
 const OrderDone = Union{Filled,Expired,Canceled,Rejected}
 const StatusPending = Union{Starting,Accepted,PartialFilled}
-const StatusCanceled = Union{Canceled,Rejected}
+const NotLive = Union{Canceled,Rejected}
 const Closeable = Union{Filled,PartialClosed}
 # TODO: clean up unused of above after store simplification
 

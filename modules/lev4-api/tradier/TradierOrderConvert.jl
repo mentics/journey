@@ -25,7 +25,8 @@ function SH.to(::Type{LegOrder}, tleg::Dict{String,Any})::LegOrder
     action = Action.T(tierActionLeg(tleg)) # tleg["side"] in ("buy_to_open", "sell_to_open") ? Action.open : Action.close
     side = Side.T(tierSideLeg(tleg)) # tleg["side"] in ("buy_to_open", "buy_to_close") ? Side.long : Side.short
     prillDir = tierLegDir(tleg) * abs(tleg["avg_fill_price"])
-    @assert action == Action.close || !iszero(prillDir) "zero prillDir: $(action) $(prillDir) $(tleg["status"])"
+    # TODO: commented this assert out because started using this for conflict legs, but is that ok?
+    # @assert action == Action.close || !iszero(prillDir) "zero prillDir: $(action) $(prillDir) $(tleg["status"])"
     @assert checkDirOrder(side, prillDir) "checkDirOrder($(side), $(prillDir))"
     return LegOrder(tleg["id"], toStatus(tleg["status"]), action, C(prillDir),
                     Leg(tier.occToOpt(tleg["option_symbol"]), abs(tleg["quantity"]), side),

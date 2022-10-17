@@ -21,6 +21,8 @@ ll = c.lookAll()
 
 ==========
 
+Compare return rate via tex vs. cal days vs. business days
+
 Optimize getting chains for only the expir that is needed, don't get them all everytime.
 
 compare probkde new thing with random guesses (from norm distrib or something)

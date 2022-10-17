@@ -9,8 +9,9 @@ export walkKeys
 
 # validKV(d::Dict, k) = haskey(d, k) && (v = d[k] ; isSomething(v))
 
-(tryKey(d::Dict{K,T}, key::K)::Union{Nothing,T}) where {K,T} = haskey(d, key) && (dk = d[key]; !isnothing(dk)) ? dk : nothing
-(tryKey(d::Dict{K,V}, key::K, els::V2)::V2) where {K,V,V2<:V} = haskey(d, key) && (dk = d[key]; !isnothing(dk)) ? dk : els
+# TODO: use get(coll, key, def) for many things
+# (tryKey(d::Dict{K,T}, key::K)::Union{Nothing,T}) where {K,T} = haskey(d, key) && (dk = d[key]; !isnothing(dk)) ? dk : nothing
+# (tryKey(d::Dict{K,V}, key::K, els::V2)::V2) where {K,V,V2<:V} = haskey(d, key) && (dk = d[key]; !isnothing(dk)) ? dk : els
 # tryKeys(d::Dict{<:Any,<:Any}, els, keys...) = (val = find(!isnothing, map(k->tryKey(d,k), keys)); return isnothing(val) ? els : val)
 # function (useKey(finit::Function, d::Dict{K,V}, key::K)::V2) where {K,V,V2<:V}
 function useKey(finit::Union{Function,Type}, d::Dict, key)
@@ -91,5 +92,12 @@ end
 
 export toDict
 toDict(f, v) = Dict(f(x) => x for x in v)
+# function toDict(f, v)
+#     d = Dict()
+#     for x in v
+#         @assert !haskey(d, x) "Duplicate key found"
+#     end
+#     return d
+# end
 
 end

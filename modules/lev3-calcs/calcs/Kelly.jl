@@ -2,15 +2,44 @@ module Kelly
 using Roots
 using BaseTypes
 
-calc(pvals, vals) = ded(pvals, vals)
+# calc(pvals, vals) = ded(pvals, vals)
+calc!(pvals, vals) = ded(buf, pvals, vals)
 
 # const BINS_ONES = Bins.with(1.0)
 # logain(prob, vals, ratio) = prob .* log1p.(ratio .* vals)
-eee(prob, vals, ratio) = sum(prob .* log1p.(ratio .* vals))
-dee(prob, vals, ratio) = sum(prob .* vals ./ (1.0 .+ (ratio .* vals)))
-dee2(pv, vals, ratio) = sum(pv ./ (1.0 .+ (ratio .* vals)))
-function ded(prob, vals)
-    pv = prob .* vals
+# eee(prob, vals, ratio) = sum(prob .* log1p.(ratio .* vals))
+eee(pvals, vals, ratio) = sum(pvals[i] * log1p(ratio * vals[i]) for i in eachindex(pvals))
+
+deePrev(pvals, vals, ratio) = sum(pvals .* vals ./ (1.0 .+ (ratio .* vals)))
+dee(pvals, vals, ratio) = sum(pvals[i] * vals[i] / (1.0 + (ratio * vals[i])) for i in eachindex(pvals))
+dee2(pvals, vals, ratio) = sum(pvals[i] * vals[i] / (1.0 + (ratio * vals[i])) for i in 1:length(pvals))
+dee3(pvals, vals, ratio) = sum(pvals[i] * vals[i] / (1.0 + (ratio * vals[i])) for i in 1:603)
+deeDot(pvals, vals, ratio) = sum(@. (pvals * vals / (1.0 + (ratio * vals))))
+function deeFor(pvals, vals, ratio)
+    s = 0.0
+    for i in eachindex(pvals)
+        s += pvals[i] * vals[i] / (1.0 + (ratio * vals[i]))
+    end
+    return s
+end
+function deeBuf(buf, pvals, vals, ratio)
+    broadcast!(*, buf, ratio, vals)
+    buf .+= 1
+    broadcast!(bbb, buf, pvals, vals, buf)
+    return sum(buf)
+end
+bbb(pval, val, denom) = pval * val / denom
+
+dee1(pv, vals, ratio) = sum(pv ./ (1.0 .+ (ratio .* vals)))
+dee2(pv, vals, ratio) = sum(pv[i] / (1.0 + (ratio .* vals[i])) for i in eachindex(pv))
+# dee4(pv, vals, ratio) = sum(pv ./ (1.0 .+ (ratio .* vals)))
+# dee5(pv, vals, ratio) = sum(pv ./ (1.0 .+ (ratio .* vals)))
+function ded!(buf1, buf2, prob, origvals, risk)
+    broadcast!(/, buf2, origvals, risk)
+    vals = buf2
+    broadcast!(*, buf1, prob, vals)
+    pv = buf1
+    # pv = prob .* vals
     xleft = .001
     xright = .999
     xmid = 0.5
@@ -46,9 +75,9 @@ function ded(prob, vals)
     # TODO: maybe it's concave up, check first?
     # error("could not solve")
 end
-function ded(prob, vals, ratio)
-    dee(prob, vals, .001)
-end
+# function ded(prob, vals, ratio)
+#     dee(prob, vals, .001)
+# end
 # sum += prob * ret / (1.0 .+ ratio * ret)
 
 # export findZero, kellySimple, kellySimpleF, kellyTerm, dKellyTerm
