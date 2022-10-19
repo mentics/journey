@@ -10,24 +10,24 @@ calc!(pvals, vals) = ded(buf, pvals, vals)
 # eee(prob, vals, ratio) = sum(prob .* log1p.(ratio .* vals))
 eee(pvals, vals, ratio) = sum(pvals[i] * log1p(ratio * vals[i]) for i in eachindex(pvals))
 
-deePrev(pvals, vals, ratio) = sum(pvals .* vals ./ (1.0 .+ (ratio .* vals)))
-dee(pvals, vals, ratio) = sum(pvals[i] * vals[i] / (1.0 + (ratio * vals[i])) for i in eachindex(pvals))
-dee2(pvals, vals, ratio) = sum(pvals[i] * vals[i] / (1.0 + (ratio * vals[i])) for i in 1:length(pvals))
-dee3(pvals, vals, ratio) = sum(pvals[i] * vals[i] / (1.0 + (ratio * vals[i])) for i in 1:603)
-deeDot(pvals, vals, ratio) = sum(@. (pvals * vals / (1.0 + (ratio * vals))))
-function deeFor(pvals, vals, ratio)
-    s = 0.0
-    for i in eachindex(pvals)
-        s += pvals[i] * vals[i] / (1.0 + (ratio * vals[i]))
-    end
-    return s
-end
-function deeBuf(buf, pvals, vals, ratio)
-    broadcast!(*, buf, ratio, vals)
-    buf .+= 1
-    broadcast!(bbb, buf, pvals, vals, buf)
-    return sum(buf)
-end
+# deePrev(pvals, vals, ratio) = sum(pvals .* vals ./ (1.0 .+ (ratio .* vals)))
+# dee(pvals, vals, ratio) = sum(pvals[i] * vals[i] / (1.0 + (ratio * vals[i])) for i in eachindex(pvals))
+# dee2(pvals, vals, ratio) = sum(pvals[i] * vals[i] / (1.0 + (ratio * vals[i])) for i in 1:length(pvals))
+# dee3(pvals, vals, ratio) = sum(pvals[i] * vals[i] / (1.0 + (ratio * vals[i])) for i in 1:603)
+# deeDot(pvals, vals, ratio) = sum(@. (pvals * vals / (1.0 + (ratio * vals))))
+# function deeFor(pvals, vals, ratio)
+#     s = 0.0
+#     for i in eachindex(pvals)
+#         s += pvals[i] * vals[i] / (1.0 + (ratio * vals[i]))
+#     end
+#     return s
+# end
+# function deeBuf(buf, pvals, vals, ratio)
+#     broadcast!(*, buf, ratio, vals)
+#     buf .+= 1
+#     broadcast!(bbb, buf, pvals, vals, buf)
+#     return sum(buf)
+# end
 bbb(pval, val, denom) = pval * val / denom
 
 dee1(pv, vals, ratio) = sum(pv ./ (1.0 .+ (ratio .* vals)))
