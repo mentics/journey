@@ -26,7 +26,8 @@ function so(lms::Coll{LegMeta}; ratio=nothing, at=nothing, pre=true, skipConfirm
         pre ? (@error msg) : error(msg)
     end
 
-    isnothing(at) && isnothing(ratio) && (ratio = 0.25)
+    # isnothing(at) && isnothing(ratio) && (ratio = 0.25)
+    !isnothing(at) || ( at = bap(lms) )
     pr = priceUse(quoter(lms), sumQuotes(getQuote.(lms)); ratio, at)
 
     if !pre && !skipConfirm && !confirm()
@@ -240,7 +241,8 @@ using BaseTypes, QuoteTypes, OutputUtil
 function priceUse(qt, orig=nothing; ratio=nothing, at=nothing)
     if isnothing(at)
         # pr1 = improve(qt, ratio)
-        pr1 = improve(isnothing(orig) ? qt : orig, ratio)
+        # pr1 = improve(isnothing(orig) ? qt : orig, ratio)
+        pr1 = isnothing(orig) ? improve(qt, ratio) : orig
     else
         pr1 = at
     end

@@ -22,8 +22,11 @@ ll = c.lookAll()
 ==========
 
 Compare return rate via tex vs. cal days vs. business days
+Should use days because day trading means opportunities are limited to daily, though... if buying power increases after closing, maybe more?
 
 Optimize getting chains for only the expir that is needed, don't get them all everytime.
+
+maybe adjust max put height based on how far out it is so hopefully we close it early
 
 compare probkde new thing with random guesses (from norm distrib or something)
 

@@ -51,9 +51,8 @@ function iterCondors(f::Function, oqss::Oqss, maxSpreadWidth::Currency, curp::Cu
     println("Number of spreads: ", length(spreads))
     MaxSpreads = 99999999
 
-    # twith(ThreadPools.QueuePool(2, Threads.nthreads()-1)) do pool
-    #     @tthreads pool
-        for i in 1:min(MaxSpreads, length(spreads))
+    twith(ThreadPools.QueuePool(2, Threads.nthreads()-1)) do pool
+        @tthreads pool for i in 1:min(MaxSpreads, length(spreads))
             for j in (i+1):min(MaxSpreads, length(spreads))
                 s1 = spreads[i]
                 s2 = spreads[j]
@@ -73,7 +72,7 @@ function iterCondors(f::Function, oqss::Oqss, maxSpreadWidth::Currency, curp::Cu
                 f(cond, args...) || return false
             end
         end
-    # end
+    end
     return true
 
     #         iterSpreads(oqss, maxSpreadWidth, args...) do (leg1, leg2), args...

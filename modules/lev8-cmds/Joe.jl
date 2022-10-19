@@ -1,6 +1,6 @@
 module Joe
 using Dates, NamedTupleTools
-using SH, BaseTypes, SmallTypes, Bins, LegMetaTypes, RetTypes, StratTypes
+using Globals, SH, BaseTypes, SmallTypes, Bins, LegMetaTypes, RetTypes, StratTypes
 using OptionUtil, CalcUtil, ThreadUtil, OutputUtil
 import GenCands
 using Calendars, Expirations, Chains, ProbKde, Markets
@@ -10,6 +10,27 @@ using CmdPos
 export jorn
 
 # rs = Vector(undef,20) ; [(i, (rs[i] = jorn(expir(i)); rs[i][1].roi)) for i in 1:1]
+
+function defaultStrats()
+    cfg = Globals.get(:Strats)
+    cfg[:maxStrikeDist] = 28.0
+    cfg[:maxPutHeight] = 3.2
+    cfg[:maxCallHeight] = 22.0
+    return
+end
+
+function allStrats()
+    cfg = Globals.get(:Strats)
+    cfg[:maxStrikeDist] = 99999.0
+    cfg[:maxPutHeight] = 99999.0
+    cfg[:maxCallHeight] = 99999.0
+    return
+end
+
+ml1() = ( MaxLoss[] = -2.0 ; MaxLossExpr[] = -3.0 )
+ml2() = ( MaxLoss[] = -3.0 ; MaxLossExpr[] = -4.0 )
+ml3() = ( MaxLoss[] = -4.0 ; MaxLossExpr[] = -5.0 )
+mlx() = ( MaxLoss[] = -9999.0 ; MaxLossExpr[] = -9999.0 )
 
 flat(x...) = Iterators.flatten(x)
 flatmap(f, coll) = Iterators.flatten(Iterators.map(f, coll))
@@ -21,12 +42,6 @@ function filterLegs()
     ords = filter!(SH.isLive, tos(Order, ta.tradierOrders()))
     legsPos = Iterators.map(getLeg, Positions.positions(; age=Second(10)))
     legsOrds = Iterators.map(getLeg, flatmap(getLegs, ords))
-    # legs = collect(flat(legsPos, legsOrds))
-    # opts = map(getOption, legs)
-    # dupes = findDupes(opts)
-    # @assert isempty(dupes) "Conflicting options should be unique: $(join(dupes, '\n'))"
-    # legs = vcat(getLeg.(Positions.positions()), Iterators.flatten(getLegs.(ords)))
-    # getLeg.(StoreOrder.queryLegOrders(today())))
     d = Dict{Option,Int}()
     for leg in flat(legsPos, legsOrds)
         opt = getOption(leg)
@@ -111,7 +126,6 @@ end
 
 function runJorn(expr::Date, isLegAllowed; nopos=false, all=false)
     println("Processing ", expr)
-    maxSpreadWidth = C(24.0)
     ctx = makeCtx(expr; nopos, all)
     oqss = filtOqss(Chains.getOqss(expr, ctx.curp, xlms(expr))) do oq
         abs(getStrike(oq) / ctx.curp - 1.0) < 0.1
@@ -127,7 +141,7 @@ function runJorn(expr::Date, isLegAllowed; nopos=false, all=false)
 
     # cnt = 0
     # empty!(Msgs)
-    # GenCands.paraSpreads(oqss, maxSpreadWidth, ctx, ress) do lms, c, rs
+    # GenCands.paraSpreads(oqss, ctx.maxStrikeDist, ctx, ress) do lms, c, rs
     #     cnt += 1
     #     jr = joeSpread(c, lms)
     #     if !isnothing(jr)
@@ -143,7 +157,7 @@ function runJorn(expr::Date, isLegAllowed; nopos=false, all=false)
     cnt = 0
     empty!(Msgs)
     Profile.clear()
-    GenCands.iterCondors(oqss, maxSpreadWidth, ctx.curp, isLegAllowed, ctx, ress) do cond, c, rs
+    GenCands.iterCondors(oqss, ctx.maxStrikeDist, ctx.curp, isLegAllowed, ctx, ress) do cond, c, rs
         cnt += 1
         jr = joeCond(c, cond)
         if !isnothing(jr)
@@ -155,8 +169,8 @@ function runJorn(expr::Date, isLegAllowed; nopos=false, all=false)
     println("done.")
 
     # res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roi)
-    # res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roiEv)
-    res = sort!(reduce(vcat, ress); rev=true, by=x -> x.met.evr)
+    res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roiEv)
+    # res = sort!(reduce(vcat, ress); rev=true, by=x -> x.met.evr)
     println("proced $(cnt), results: $(length(res))")
     return (res, ctx)
 end
@@ -216,7 +230,10 @@ function makeCtx(expr::Date; nopos, all)::NamedTuple
         posRet,
         posMet,
         posMin=minimum(posRet.vals),
-        threads
+        threads,
+        maxStrikeDist = C(Globals.get(:Strats)[:maxStrikeDist])
+        # maxCallHeight = Globals.get(:Strats)[:maxCallHeight],
+        # maxPutHeight = Globals.get(:Strats)[:maxPutHeight]
     )
 end
 
@@ -244,11 +261,6 @@ end
 function joe(ctx, tctx, ret)
     MinMx = 0.04
     all = ctx.all
-    # roi = -Inf
-    # roiEv = -Inf
-    # rate = -Inf
-    # rateEv = -Inf
-    # kelly = -Inf
     met = calcMetrics(ctx.prob, ret)
     0.0 < met.prob < 1.0 || return nothing
     # if met.mx > -adjusted
