@@ -74,7 +74,8 @@ function look(sym; all=false)
     # about = SeekingAlpha.Data[:metrics]
     # maxDate = min(parseDate(about[:earningsUpcomingAnnounceDate]), parseDate(about[Symbol("dividendsEx-DivDate")]))
     # maxDate = min(parseDate(about, "earning_announce_date"), parseDate(about, "div_pay_date"))
-    maxDate = min(findExDate(tryKey(sa.Dividends, sym)), findEarnDate(tryKey(sa.Earnings,sym)))
+    # maxDate = min(findExDate(tryKey(sa.Dividends, sym)), findEarnDate(tryKey(sa.Earnings,sym)))
+    maxDate = min(findExDate(get(sa.Dividends, sym, nothing)), findEarnDate(get(sa.Earnings, sym, nothing)))
     getChains(sym, maxDate)
     locUnder = Under[sym]
     chs = ChainMap[sym]

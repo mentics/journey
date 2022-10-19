@@ -30,6 +30,8 @@ maybe adjust max put height based on how far out it is so hopefully we close it 
 
 compare probkde new thing with random guesses (from norm distrib or something)
 
+in toc(), show roi based on kelly or something and/or roiEv?
+
 jorn needs to check for trades today to avoid day trading
 
 Schedule the call to findTradesToClose and send email if found

@@ -97,7 +97,8 @@ function totry()
 
     global res = filter(syms) do s
         bid = Quotes[s]["bid"]
-        gs = tryKey(Data[:grades], s)
+        # gs = tryKey(Data[:grades], s)
+        gs = get(Data[:grades], s, nothing)
         grade = isnothing(gs) || (checkGrade(gs, "value_category", 5) && checkGrade(gs, "profitability_category", 5)) # && checkGrade(gs, "growth_category", 9))
         return grade && !isnothing(bid) && bid >= 0.05 &&
                 DictUtil.safeKeys(Data, 0.0, :metrics, s, "quant_rating") > 3.6
@@ -517,7 +518,7 @@ const Dividends = Dict{String,Any}()
 function loadDividends(src)
     symsAll = filter(x -> !haskey(Dividends, x) && !haskey(TradSymNotFound, x), src)
     println("Loading $(length(symsAll)) dividends")
-    for syms in Iterators.partition(symsAll, 150)
+    for syms in Iterators.partition(symsAll, 100)
         res = tradierDividends(syms)
         merge!(Dividends, res)
     end
@@ -527,7 +528,7 @@ const Earnings = Dict{String,Any}()
 function loadEarnings(src)
     symsAll = filter(x -> !haskey(Earnings, x) && !haskey(TradSymNotFound, x), src)
     println("Loading $(length(symsAll)) earnings")
-    for syms in Iterators.partition(symsAll, 150)
+    for syms in Iterators.partition(symsAll, 100)
         res = tradierCorpCal(syms)
         merge!(Earnings, res)
     end
