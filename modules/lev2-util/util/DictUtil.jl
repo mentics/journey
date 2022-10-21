@@ -2,7 +2,13 @@ module DictUtil
 using JSON3
 using BaseUtil, CollUtil
 
-export validKV, tryKey, tryKeys, useKey, getLastDict
+export getnn
+function getnn(d::Dict{K,V}, key::K, els) where K where V
+    val = get(d, key, els)
+    return isnothing(val) ? els : val
+end
+
+export validKV, tryKeys, useKey, getLastDict
 export toDict
 export parseJson, jsonToDict
 export walkKeys
@@ -14,6 +20,7 @@ export walkKeys
 # (tryKey(d::Dict{K,V}, key::K, els::V2)::V2) where {K,V,V2<:V} = haskey(d, key) && (dk = d[key]; !isnothing(dk)) ? dk : els
 # tryKeys(d::Dict{<:Any,<:Any}, els, keys...) = (val = find(!isnothing, map(k->tryKey(d,k), keys)); return isnothing(val) ? els : val)
 # function (useKey(finit::Function, d::Dict{K,V}, key::K)::V2) where {K,V,V2<:V}
+
 function useKey(finit::Union{Function,Type}, d::Dict, key)
     haskey(d, key) || (d[key] = finit())
     return d[key]

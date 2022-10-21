@@ -19,7 +19,7 @@ export isValid
 # export tsOpen, tsClose, getNetClose
 # export getMaxClose
 
-export to, tos, combineTo, mapFlattenTo
+export to, tos, tosnn, combineTo, mapFlattenTo
 
 const Vals = Vector{Float64}
 
@@ -95,6 +95,8 @@ function isValid() end
 # function mapFlattenTo(gen, ::Type{T}, itr)::Base.Generator where T; Iterators.map(x -> to(T, x), Iterators.flatten(Iterators.map(gen, itr))) end # TODO: is closure here optimum?
 function mapFlattenTo(gen, ::Type{T}, itr, args...)::Base.Generator where T; Iterators.map(x -> to(T, x, args...), Iterators.flatten(Iterators.map(gen, itr))) end # TODO: is closure here optimum?
 # tos(::Type{T}, itr) where T = map(x -> to(T, x), itr) # TODO: is closure here optimum?
+tosnn(::Type{T}, itr, args...) where T =
+        filter(!isnothing, map(x -> to(Union{Nothing,T}, x, args...), itr)) # TODO: is closure here optimum?
 tos(::Type{T}, itr, args...) where T = map(x -> to(T, x, args...), itr) # TODO: is closure here optimum?
 function combineTo() end
 # function combineTo(::Type{T}, itr, args...)::T where T end

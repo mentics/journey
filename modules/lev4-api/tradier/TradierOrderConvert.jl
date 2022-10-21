@@ -18,10 +18,14 @@ function SH.to(::Type{Order}, tord::Dict{String,Any})::Order
         !isnothing(prillDir) && (prillDir *= -1)
     end
 
-    return Order{toStatus(tord["status"])}(tord["id"], tord["symbol"], class, typ, primitDir, prillDir, tos(LegOrder, legs), tier.parseTs(tord["create_date"]), tier.parseTs(tord["transaction_date"]))
+    return Order{toStatus(tord["status"])}(tord["id"], tord["symbol"], class, typ, primitDir, prillDir, tosnn(LegOrder, legs), tier.parseTs(tord["create_date"]), tier.parseTs(tord["transaction_date"]))
 end
 
-function SH.to(::Type{LegOrder}, tleg::Dict{String,Any})::LegOrder
+function SH.to(::Type{Union{Nothing,LegOrder}}, tleg::Dict{String,Any})::Union{Nothing,LegOrder}
+    if tleg["class"] != "option"
+        @warn "Not converting non-option leg"
+        return
+    end
     action = Action.T(tierActionLeg(tleg)) # tleg["side"] in ("buy_to_open", "sell_to_open") ? Action.open : Action.close
     side = Side.T(tierSideLeg(tleg)) # tleg["side"] in ("buy_to_open", "buy_to_close") ? Side.long : Side.short
     prillDir = tierLegDir(tleg) * abs(tleg["avg_fill_price"])

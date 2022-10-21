@@ -96,7 +96,7 @@ function newVal()::Market
     startDay = nextTradingDay(toDateMarket(tsMarket))
     m = C(0.5 * (q.bid + q.ask))
     # op = C(tryKey(tq, "open", m))
-    op = C(get(tq, "open", m))
+    op = C(getnn(tq, "open", m))
     sp = urp() ? m : op
     return Market(startDay, q, vix, m, sp, op, tsMarket, now(UTC))
 end

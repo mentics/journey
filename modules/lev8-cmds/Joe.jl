@@ -87,7 +87,7 @@ end
 #     # do i = 2 ; r = j.ress[i][1] ; xdr(i, r.lms) ; and disp passing in row to highlight
 # end
 
-import Profile
+# import Profile
 function jorn(exs; kws...)
     # rs = Dict{Int,NamedTuple}()
     global ress = Vector{Vector{NamedTuple}}(undef,maximum(exs))
@@ -156,7 +156,7 @@ function runJorn(expr::Date, isLegAllowed; nopos=false, all=false)
     println("Iterating over condors...")
     cnt = 0
     empty!(Msgs)
-    Profile.clear()
+    # Profile.clear()
     GenCands.iterCondors(oqss, ctx.maxStrikeDist, ctx.curp, isLegAllowed, ctx, ress) do cond, c, rs
         cnt += 1
         jr = joeCond(c, cond)
