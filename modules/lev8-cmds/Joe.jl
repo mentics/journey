@@ -38,7 +38,6 @@ flatmap(f, coll) = Iterators.flatten(Iterators.map(f, coll))
 import Positions, StoreOrder, LegTypes
 using TradierAccount, OrderTypes, OptionTypes
 function filterLegs()
-    println("filterLegs called")
     ords = filter!(SH.isLive, tos(Order, ta.tradierOrders()))
     legsPos = Iterators.map(getLeg, Positions.positions(; age=Second(10)))
     legsOrds = Iterators.map(getLeg, flatmap(getLegs, ords))
@@ -270,8 +269,9 @@ function joe(ctx, tctx, ret)
     #     error("met.mx $(met.mx) <= $(-adjusted)")
     # end
     # TODO: is ev > 0 too restrictive? and why can kelly be > 0 when ev < 0?
-    must = (min(0, ret.vals[1]) + min(0, ret.vals[end])) > -3.0
-    extra = ret.vals[1] > 0.0 && ret.vals[end] > 0.0
+    # must = (min(0, ret.vals[1]) + min(0, ret.vals[end])) > -1.0
+    must = ret.vals[1] > -0.1 && ret.vals[end] > -0.1
+    extra = true # ret.vals[1] > 0.0 && ret.vals[end] > 0.0
     # if all || (met.mx >= MinMx && met.mn >= MaxLoss[] && met.prob >= 0.75 && met.ev >= 0.0 && extra)
     # if true || extra # (met.mx >= MinMx && met.mn >= MaxLoss[] && met.prob >= 0.75 && met.ev >= 0.0 && extra)
     if must && (all || (met.mx >= MinMx && met.mn >= MaxLoss[] && met.prob >= 0.75 && met.ev >= 0.0 && extra))

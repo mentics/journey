@@ -21,6 +21,8 @@ ll = c.lookAll()
 
 ==========
 
+look for unusually high theta decay candidates with intention to exit early
+
 Compare return rate via tex vs. cal days vs. business days
 Should use days because day trading means opportunities are limited to daily, though... if buying power increases after closing, maybe more?
 
