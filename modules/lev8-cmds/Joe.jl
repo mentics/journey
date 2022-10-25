@@ -168,10 +168,16 @@ function runJorn(expr::Date, isLegAllowed; nopos=false, all=false)
     println("done.")
 
     # res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roi)
-    res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roiEv)
-    # res = sort!(reduce(vcat, ress); rev=true, by=x -> x.met.evr)
+    # res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roiEv)
+    res = sort!(reduce(vcat, ress); rev=true, by=x -> x.met.evr)
     println("proced $(cnt), results: $(length(res))")
     return (res, ctx)
+end
+
+function sor(f)
+    for res in ress
+        sort!(res; rev=true, by=f)
+    end
 end
 
 using Caches, TradierData

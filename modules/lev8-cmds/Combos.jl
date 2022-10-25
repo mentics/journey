@@ -7,10 +7,10 @@ using Markets, Chains
 import SeekingAlpha
 sa = SeekingAlpha
 
-function lookAll(cands=SeekingAlpha.totry())
+function lookAll(cands=SeekingAlpha.totry(); ratio=.96)
     global Looked = []
     for sym in cands
-        append!(Looked, look(sym))
+        append!(Looked, look(sym; ratio))
     end
     global LookedRaw = copy(Looked)
     clean(Looked)
@@ -67,7 +67,7 @@ end
 sa = SeekingAlpha
 import TradierData:findEarnDate,findExDate
 using Between
-function look(sym; all=false)
+function look(sym; all=false, ratio)
     try
     res = []
     # about = SeekingAlpha.Cands[sym]
@@ -91,7 +91,7 @@ function look(sym; all=false)
             # TODO: use IV to figure out how far out to go?
             # or could maybe get 52 week range
             # ratio = .94
-            ratio = .96
+            # ratio = .96
             startI = findfirst(oq -> getStrike(oq) > ratio * underBid, oqs)
             !isnothing(startI) || continue
             # range = (startI-5):(startI-1)

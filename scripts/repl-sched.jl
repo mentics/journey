@@ -29,3 +29,6 @@ ss = SchedStrat
 
 using DateUtil
 using Snapshots
+
+using SystemUtil
+setAllowSuspend(false)
