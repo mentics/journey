@@ -13,12 +13,15 @@ function lookAll(cands=SeekingAlpha.getCandidates(); ratio=.96)
         append!(Looked, look(sym; ratio))
     end
     global LookedRaw = copy(Looked)
-    # clean(Looked)
-    prep(Looked)
-    pretyble(sort!(delete.(Looked, :oq); by=x -> x.rate))
-    return Looked
+    disp()
+    return nothing
 end
-disp(minMove=0.0) = pretyble(filter!(x -> x.mov > minMove, sort!(delete.(Looked, :oq); by=x -> x.rate)))
+function disp()
+    prep(copy(LookedRaw))
+    pretyble(delete.(Looked, :oq))
+end
+
+# disp(minMove=0.0) = pretyble(filter!(x -> x.mov > minMove, sort!(delete.(Looked, :oq); by=x -> x.rate)))
 check(sym, minMove=0.0) = pretyble(filter!(x -> x.mov > minMove, sort!(delete.(look(sym; all=true), :oq); by=x -> x.rate)))
 
 excludes(lll) = filter!(x -> !(x.sym in ActiveSyms) && !(x.sym in SeekingAlpha.BadPricing) && !(x.sym in TempIgnore) && !(x.sym in SeekingAlpha.Ignore) && x.strike <= 105.0, lll)
