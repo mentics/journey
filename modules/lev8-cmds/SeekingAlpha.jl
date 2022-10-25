@@ -18,7 +18,7 @@ Ignore = ["SNDL","YANG","MUX","QD","RIOT","GOTU","TAL","ACB","HUT","IQ","JMIA","
           "URA","EDZ","EPV","BNO","IEZ","TBT","SDS","XME","TUR","DXD","ECH","TYO","VIXM","ERX","IAU","WEAT",
           "EWZ","FLBR","FCG","AMLP","BKLN","LABD","SRS","DBO","IYE","USFR","ITB","COPX","UCO",
 
-          "AFRM","CAN","SRAD","SYF","PRPH", # don't like company
+          "AFRM","CAN","SRAD","SYF","PRPH","WB","BROS","YY","RLX", # don't like company
           "GRPH" # clinical stage
 ]
 # Early stage clinical: "AVIR"
@@ -87,24 +87,18 @@ function getRating(s)
     return d["quant_rating"]
 end
 
-function totry()
+function getCandidates()
     quoteAll()
-    global syms = filter(filt1, keys(Quotes))
+    global syms = filter(filterCandidateQuotes, keys(Quotes))
     getMetrics(syms)
     getGrades(syms)
     loadDividends(syms)
     loadEarnings(syms)
 
     global res = filter(syms) do s
-        bid = Quotes[s]["bid"]
-        # gs = tryKey(Data[:grades], s)
         gs = get(Data[:grades], s, nothing)
         grade = isnothing(gs) || (checkGrade(gs, "value_category", 5) && checkGrade(gs, "profitability_category", 5)) # && checkGrade(gs, "growth_category", 9))
-        return grade && !isnothing(bid) && bid >= 0.05 &&
-                DictUtil.safeKeys(Data, 0.0, :metrics, s, "quant_rating") > 3.6
-                # && Quotes[s]["prevclose"] < 57.0
-        #
-        # Grades[s]["momentum_category"] <= 9
+        return grade && DictUtil.safeKeys(Data, 0.0, :metrics, s, "quant_rating") > 2.6
     end
     return res
 end
@@ -126,12 +120,18 @@ end
 # end
 
 filtWeeklys(s::AStr) = haskey(Weeklys, s)
-function filt1(s::AStr)
+function filterCandidateQuotes(s::AStr)
     if isnothing(Quotes[s]["prevclose"])
         println("No prevclose for ", s, ", skipping.")
         return false
     else
-        return Quotes[s]["type"] == "stock" && Quotes[s]["average_volume"] > 100000 && Quotes[s]["prevclose"] < 57.0
+        q = Quotes[s]
+        bid = q["bid"]
+        return q["type"] == "stock" &&
+            !isnothing(bid) && bid >= 0.05 &&
+            q["average_volume"] > 100000 &&
+            q["prevclose"] < 57.0 &&
+            rangeRatio(q) <= .67
     end
 end
 

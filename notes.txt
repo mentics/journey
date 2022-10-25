@@ -11,6 +11,8 @@ xkel(i, r.lms)
 so(r.lms)
 solr(r.lms, primitDir)
 
+1b) use todup() and cancel(tid) to avoid multiple same target date trades in single day
+
 2) Look for trades to close early by running:
 using CmdTrading
 CmdTrading.findTradesToClose()
@@ -20,6 +22,12 @@ CmdTrading.findTradesToClose()
 ll = c.lookAll()
 
 ==========
+
+for combos, filter by:
+ - valuation and profitibility at least B
+ - 52 week range, below 67%
+ - how much of a discount am I getting? sell price / stock price
+group by symbol and only keep top N of each symbol
 
 look for unusually high theta decay candidates with intention to exit early
 

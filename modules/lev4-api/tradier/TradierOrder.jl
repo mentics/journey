@@ -1,7 +1,7 @@
 module TradierOrder
 using SH, BaseTypes, SmallTypes, DateUtil, TradierConfig, TradierBase, TradierUtil, PayloadUtil
 
-export submitOrder # , cancelOrder, modifyOrder
+export submitOrder, cancelOrder # , modifyOrder
 export toPayloadOpen, toPayloadClose, toPayloadCloseSingle, closeLegMarket
 
 function submitOrder(payload::String)
@@ -13,16 +13,23 @@ function submitOrder(payload::String)
     end
 end
 
-# function cancelOrder(orderId::Int, accountId::AbstractString=config.accountId)
-#     config.orderListener[] = OrderEventCancelPre(Events.cancel, orderId)
-#     result = tradierDelete(config, "/accounts/$(accountId)/orders/$(orderId)")
-#     if haskey(result, "errors")
-#         config.orderListener[] = OrderEventCancelFailed(Events.cancelFailure, orderId, result)
-#     else
-#         config.orderListener[] = OrderEventCancelled(Events.cancel, orderId, result)
-#     end
-#     return result
-# end
+function cancelOrder(orderId::Int)
+    res = tradierDelete("/accounts/$(getAccountId())/orders/$(orderId)", Call(nameof(var"#self#")))
+    if !haskey(res, "order")
+        error("No order key in cancelOrder response ", res)
+    else
+        return res["order"]
+    end
+
+    # config.orderListener[] = OrderEventCancelPre(Events.cancel, orderId)
+    # result = tradierDelete(config, "/accounts/$(accountId)/orders/$(orderId)")
+    # if haskey(result, "errors")
+    #     config.orderListener[] = OrderEventCancelFailed(Events.cancelFailure, orderId, result)
+    # else
+    #     config.orderListener[] = OrderEventCancelled(Events.cancel, orderId, result)
+    # end
+    # return result
+end
 
 # function modifyOrder(config::TradierConfig, accountId::AbstractString, orderId::Int, newPrice::Currency)
 #     config.orderListener[] = OrderEvent(Events.modify, orderId)

@@ -4,7 +4,7 @@ using DictUtil, LogUtil
 using TradierConfig
 
 export TradierException, HttpException
-export tradierGet, tradierPost, tradierPostVector
+export tradierGet, tradierPost, tradierPostVector, tradierDelete
 
 struct TradierException <: Exception
     url::String
@@ -59,13 +59,27 @@ end
 #     return handleResponse(url, HTTP.put(url, headers, payload))
 # end
 
-# function tradierDelete(config::TradierConfig, pathQuery::AbstractString)
-#     headers = (("Authorization", "Bearer $(config.apiKey)"),
-#                ("Accept", "application/json"))
-#                # ("Accept-Encoding", "gzip"))
-#     url = "$(config.baseUrl)$(pathQuery)"
-#     return handleResponse(url, HTTP.delete(url, headers))
-# end
+function tradierDelete(pathQuery::AbstractString, info::CallInfo{T}; retries=0)::T where T
+    call(pathQuery, info) do url
+        try
+            kws = retries == 0 ? (;) : (;retry=true, retries, retry_non_idempotent=true)
+            println("Using headers: ", TradierConfig.HEADERS_GET[])
+            resp = HTTP.delete(url, TradierConfig.HEADERS_GET[]; kws...)
+            # println("resp: ", resp)
+            @log tradier "tradierDelete:" url resp
+            return resp
+        catch e
+            @log error "HTTP error in tradierDelete:" url
+            rethrow()
+        end
+    end
+
+    # headers = (("Authorization", "Bearer $(config.apiKey)"),
+    #            ("Accept", "application/json"))
+    #            # ("Accept-Encoding", "gzip"))
+    # url = "$(config.baseUrl)$(pathQuery)"
+    # return handleResponse(url, HTTP.delete(url, headers))
+end
 
 #region Local
 function call(f, pathQuery::AbstractString, info::CallInfo{T})::T where T

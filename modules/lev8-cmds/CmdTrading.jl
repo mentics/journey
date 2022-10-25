@@ -1,13 +1,13 @@
 module CmdTrading
 using Dates, IterTools
 using Globals, BaseTypes, SH, SmallTypes, StratTypes, StatusTypes, TradeTypes, LegTradeTypes, LegMetaTypes
-using DateUtil, LogUtil
+using DateUtil, LogUtil, CollUtil
 using Trading, Quoting
 using Calendars, Markets, Expirations, Chains, StoreTrade
 using CmdStrats
 using OptionUtil
 
-export so, sor, solr, todo, ct, ctr, drpos, tot, drx, toc
+export so, sor, solr, cancel, todo, ct, ctr, drpos, tot, drx, toc, todup
 export cleg, clegr
 
 #region NewTrades
@@ -80,8 +80,7 @@ function tradeSize2(kelly::Float64, kellyRatio::Float64 = 0.5)
     println("$(kellyRatio) kelly trade size: ", kelly * kellyRatio * bal)
 end
 
-toc() = findTradesToClose()
-function findTradesToClose()
+function toc() # findTradesToClose
     trades = sort!(collect(values(StoreTrade.tradesCached())); by=getTargetDate)
     for trade in trades
         trade isa Trade{Filled} || continue
@@ -170,7 +169,29 @@ end
 # calcPosStrat(today(), market().startPrice, Globals.get(:vtyRatio))
 #endregion
 
-tot() = findTradeEntered(today())
+tierIsLive(tord) = !(tord["status"] in ["canceled", "rejected"])
+findTord(tords, tid) = find(x -> parse(Int, SubString(x["tag"], 3)) == tid, tords)
+
+using TradierAccount, OrderTypes
+function todup()
+    # TODO: need to show filled ones so we can cancel pending duplicates
+    tords = filter!(x -> tierIsLive(x) && startswith(x["tag"], "op"), ta.tradierOrders())
+    tt = findTradeEntered(today())
+    lup = Dict(getId(trade) => findTord(tords, getId(trade)) for trade in tt)
+    res = [(;xpr=xp.whichExpir(getTargetDate(trade)), tid=getId(trade), status=typeof(trade).parameters[1], oid=lup[getId(trade)]["id"]) for trade in cu.findDupes!(tt; by=getTargetDate)]
+    sort!(res; by=x -> 10000*x.xpr + x.tid)
+    pretyble(res)
+end
+
+import TradierOrder
+function cancel(tid)
+    tords = filter!(x -> tierIsLive(x) && startswith(x["tag"], "op"), ta.tradierOrders())
+    tt = findTradeEntered(today())
+    lup = Dict(getId(trade) => findTord(tords, getId(trade)) for trade in tt)
+    oid = lup[tid]["id"]
+    println("Cancelling oid ", oid)
+    TradierOrder.cancelOrder(oid)
+end
 
 #region Experiment
 # TODO: use this to examine once I have iv data for specific legs

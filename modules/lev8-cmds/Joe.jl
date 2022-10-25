@@ -54,33 +54,6 @@ function filterLegs()
     end
 end
 
-# function findDupes!(x::AbstractArray{T}) where T
-#     sort!(x)
-#     dupes = T[]
-#     for i = 2:length(x)
-#         if (isequal(x[i], x[i-1]) && (isempty(dupes) || !isequal(dupes[end], x[i])))
-#             push!(dupes,x[i])
-#         end
-#     end
-#     return dupes
-# end
-
-# function findDupes(x::AbstractArray{T}) where T
-#     status = Dict{T, Bool}()
-#     dupes = Vector{T}()
-#     for i in x
-#         if haskey(status, i)
-#             if status[i]
-#                 push!(dupes, i)
-#                 status[i] = false
-#             end
-#         else
-#             status[i] = true
-#         end
-#     end
-#     return dupes
-# end
-
 # export @u
 # macro u(i)
 #     # do i = 2 ; r = j.ress[i][1] ; xdr(i, r.lms) ; and disp passing in row to highlight
@@ -117,7 +90,8 @@ function disp()
             ex=i,
             delete(r, :lms, :met, :metb)...,
             evr="$(rd3(ctx.posMet.evr)):$(rd3(r.met.evr)):$(rd3(r.metb.evr))",
-            prob="$(rd3(ctx.posMet.prob)):$(rd3(r.met.prob)):$(rd3(r.metb.prob))"
+            prob="$(rd3(ctx.posMet.prob)):$(rd3(r.met.prob)):$(rd3(r.metb.prob))",
+            r.met.mx
         ))
     end
     pretyble(res)
@@ -168,15 +142,23 @@ function runJorn(expr::Date, isLegAllowed; nopos=false, all=false)
     println("done.")
 
     # res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roi)
-    # res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roiEv)
-    res = sort!(reduce(vcat, ress); rev=true, by=x -> x.met.evr)
+    res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roiEv)
+    # res = sort!(reduce(vcat, ress); rev=true, by=x -> x.met.evr)
     println("proced $(cnt), results: $(length(res))")
     return (res, ctx)
 end
 
+function sor(sym::Symbol)
+    for i in eachindex(ress)
+        isassigned(ress, i) || continue
+        sort!(ress[i]; rev=true, by=x-> haskey(x, sym) ? x[sym] : x.met[sym])
+    end
+end
+
 function sor(f)
-    for res in ress
-        sort!(res; rev=true, by=f)
+    for i in eachindex(ress)
+        isassigned(ress, i) || continue
+        sort!(ress[i]; rev=true, by=f)
     end
 end
 
@@ -264,9 +246,11 @@ function joeCond(ctx, cond::Condor)
     return isnothing(r) ? nothing : merge(r, (;lms=toLms(cond)))
 end
 function joe(ctx, tctx, ret)
-    MinMx = 0.04
+    MinMx = 0.11
     all = ctx.all
     met = calcMetrics(ctx.prob, ret)
+    rateEv = ctx.timult * met.ev / (-met.mn)
+    rate = ctx.timult * met.profit / (-met.mn)
     0.0 < met.prob < 1.0 || return nothing
     # if met.mx > -adjusted
     #     global lmsBad = lms
@@ -280,7 +264,7 @@ function joe(ctx, tctx, ret)
     extra = true # ret.vals[1] > 0.0 && ret.vals[end] > 0.0
     # if all || (met.mx >= MinMx && met.mn >= MaxLoss[] && met.prob >= 0.75 && met.ev >= 0.0 && extra)
     # if true || extra # (met.mx >= MinMx && met.mn >= MaxLoss[] && met.prob >= 0.75 && met.ev >= 0.0 && extra)
-    if must && (all || (met.mx >= MinMx && met.mn >= MaxLoss[] && met.prob >= 0.75 && met.ev >= 0.0 && extra))
+    if must && (all || (met.mx >= MinMx && met.mn >= MaxLoss[] && met.prob >= 0.85 && met.ev >= 0.01 && rateEv >= 0.5 && extra))
         # kelly = ckel(ctx.prob, ret)
         kelly = Kelly.ded!(tctx.kelBuf1, tctx.kelBuf2, ctx.prob.vals, ret.vals, -met.mn)
         if all || kelly > 0.0
@@ -289,8 +273,6 @@ function joe(ctx, tctx, ret)
             valsb = tctx.retBuf2
             minb = minimum(valsb)
             if all || (minb >= ctx.posMin || minb > MaxLossExpr[])
-                rateEv = ctx.timult * met.ev / (-met.mn)
-                rate = ctx.timult * met.profit / (-met.mn)
                 roi = rate * kelly
                 roiEv = rateEv * kelly
                 # rate = ctx.timult * met.mx / (-met.mn)

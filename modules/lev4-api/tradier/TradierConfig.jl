@@ -48,6 +48,7 @@ getDefaultSymbol()::String = cfg[:defaultSymbol]
 
 const HEADERS_GET = Ref{Vector{Pair}}()
 const HEADERS_POST = Ref{Vector{Pair}}()
+const HEADERS_DELETE = Ref{Vector{Pair}}()
 
 toTradierUrl(pathQuery::AStr) = cfg[:baseUrl] * pathQuery
 
@@ -82,6 +83,7 @@ function __init__()
     haskey(cfg, :defaultSymbol) || setDefaultConfig()
     HEADERS_GET[] = ["Authorization" => "Bearer $(cfg[:apiKey])", "Accept" => "application/json"]
     HEADERS_POST[] = vcat(HEADERS_GET[], "Content-Type" => "application/x-www-form-urlencoded")
+    HEADERS_DELETE[] = HEADERS_GET[] # vcat(HEADERS_GET[], "Content-Type" => "application/x-www-form-urlencoded")
 end
 function setDefaultConfig()
     tenv(:prod)

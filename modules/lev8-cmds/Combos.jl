@@ -7,13 +7,14 @@ using Markets, Chains
 import SeekingAlpha
 sa = SeekingAlpha
 
-function lookAll(cands=SeekingAlpha.totry(); ratio=.96)
+function lookAll(cands=SeekingAlpha.getCandidates(); ratio=.96)
     global Looked = []
     for sym in cands
         append!(Looked, look(sym; ratio))
     end
     global LookedRaw = copy(Looked)
-    clean(Looked)
+    # clean(Looked)
+    prep(Looked)
     pretyble(sort!(delete.(Looked, :oq); by=x -> x.rate))
     return Looked
 end
@@ -26,6 +27,17 @@ function clean(lll)
     global Looked = sort!(lll; rev=true, by=x->x.rate)
     # return sort!(map(g -> g[findmax(x -> x.rate, g)[2]], groupby(r -> r.sym, sort!(lll; by=x->x.sym))); rev=true, by=x->x.rate)
 end
+
+function prep(res)
+    grouped = groupby(r-> r.sym, res)
+    sort!.(grouped; rev=true, by=x->x.rate)
+    trunced = first.(grouped, 4)
+    sort!(trunced; by=x->bestRate(x))
+    global Looked = collect(Iterators.flatten(trunced))
+    return Looked
+end
+
+bestRate(v) = findmax(x -> x.rate, v)
 
 const ExpirMap = Dict{String,Vector{Date}}()
 getExpirations(sym) = useKey(() -> tradierExpirations(sym), ExpirMap, sym)
@@ -75,7 +87,7 @@ function look(sym; all=false, ratio)
     # maxDate = min(parseDate(about[:earningsUpcomingAnnounceDate]), parseDate(about[Symbol("dividendsEx-DivDate")]))
     # maxDate = min(parseDate(about, "earning_announce_date"), parseDate(about, "div_pay_date"))
     # maxDate = min(findExDate(tryKey(sa.Dividends, sym)), findEarnDate(tryKey(sa.Earnings,sym)))
-    maxDate = min(findExDate(get(sa.Dividends, sym, nothing)), findEarnDate(get(sa.Earnings, sym, nothing)))
+    maxDate = DATE_FUTURE # min(findExDate(get(sa.Dividends, sym, nothing)), findEarnDate(get(sa.Earnings, sym, nothing)))
     getChains(sym, maxDate)
     locUnder = Under[sym]
     chs = ChainMap[sym]

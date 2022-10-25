@@ -1,6 +1,9 @@
 module CollUtil
 using BaseTypes
 
+export cu
+const cu = @__MODULE__
+
 export concat, find, findFrom, ensureVector, sortExp!, del!, prinsert!
 # uniqueSortTuple
 
@@ -108,6 +111,19 @@ function forTupi(tupVec, tupi)
         mat[:,i] .= tupVec[i][tupi]
     end
     return mat
+end
+
+function findDupes!(x::AbstractArray{T}; by=identity) where T
+    sort!(x; by)
+    dupes = Set{T}()
+    for i in eachindex(x)[2:end]
+        # if (isequal(by(x[i]), by(x[i-1])) && (isempty(dupes) || !isequal(dupes[end], x[i])))
+        if isequal(by(x[i]), by(x[i-1]))
+            push!(dupes, x[i-1])
+            push!(dupes, x[i])
+        end
+    end
+    return dupes
 end
 
 end
