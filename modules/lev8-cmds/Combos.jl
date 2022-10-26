@@ -5,7 +5,6 @@ using DateUtil, DictUtil, OutputUtil
 using TradierData
 using Markets, Chains
 import SeekingAlpha
-sa = SeekingAlpha
 
 function lookAll(cands=SeekingAlpha.getCandidates(); ratio=.96)
     global Looked = []
@@ -32,10 +31,16 @@ function clean(lll)
 end
 
 function prep(res)
-    grouped = groupby(r-> r.sym, res)
-    sort!.(grouped; rev=true, by=x->x.rate)
-    trunced = first.(grouped, 4)
+    global grouped = collect(groupby(r-> r.sym, res))
+    # sort!.(grouped; rev=true, by=x->x.rate)
+    for group in grouped
+        sort!(group; rev=true, by=x->x.rate)
+    end
+    global trunced = first.(grouped, 4)
     sort!(trunced; by=x->bestRate(x))
+    for trunc in trunced
+        sort!(trunc; rev=false, by=x->x.rate)
+    end
     global Looked = collect(Iterators.flatten(trunced))
     return Looked
 end
@@ -183,9 +188,9 @@ function findRoll(sym, at, cost=0.0, style=Style.put)
             @show primitDir cost
             rate = timult * (primitDir - .0065) / strike # .0065 is the trade commission for fidelity / 100
             # println("$(sym)[$(expr)]: $(underBid) -> $(strike) at $(primitDir) ($(getQuote(oq))) / $(strike) = $(rate)")
-            # if rate > 0.01
+            if rate > 0.3
                 push!(res, (;sym, expr, mov=1.0 - strike/underBid, underBid, strike, primitDir, rate, div=getDividend(sym)))
-            # end
+            end
         end
     end
     # pretyble(filter!(x -> x.mov > minMove, sort!(delete.(res, :oq); by=x -> x.rate)))

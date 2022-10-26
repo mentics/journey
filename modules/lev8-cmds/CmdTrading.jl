@@ -92,7 +92,7 @@ function toc() # findTradesToClose
         netc = bap(qt)
         curVal = neto + netc
         if curVal > 0.0
-            tex = calcTex(ts, today())
+            tex = calcTex(ts, today() + Day(1))
             timult = 1 / Calendars.texToYear(tex)
             mn = min(OptionUtil.legsExtrema(getLegs(trade)...)...)
             rate = timult * curVal / (-mn)

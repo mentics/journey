@@ -4,11 +4,13 @@ using Dates, Tables, HTTP, JSON3
 using BaseTypes
 using DateUtil, FileUtil, DictUtil
 
+export sa
+const sa = @__MODULE__
+
 # Covered Calls:
 # Collab: ASRT(3)-11/18, CODX(7)-alert, OPEN(5)-11/18
 # TestStrat: WKHS(4)-1/20, CLOV(3)-alert, NVTA(5.5)-alert, FSR(9)-10/7, TSP(10)-10/21, NNVC(2.5)-10/21
 # 401k: AVIR(7.5)-12/16, AHT(9/30/2022,9)-10/14, CBIO(2.5)-alert
-
 
 ActiveSyms = [] # ["BHC","BLUE","CLNN","CLOV","CTIC","INVZ","NKLA","NNVC","NVTA","PAYO","SENS","TSP","WVE","FSR","WKHS","WTI","DNMR"]
 
@@ -19,7 +21,9 @@ Ignore = ["SNDL","YANG","MUX","QD","RIOT","GOTU","TAL","ACB","HUT","IQ","JMIA","
           "EWZ","FLBR","FCG","AMLP","BKLN","LABD","SRS","DBO","IYE","USFR","ITB","COPX","UCO",
 
           "AFRM","CAN","SRAD","SYF","PRPH","WB","BROS","YY","RLX", # don't like company
-          "GRPH" # clinical stage
+          "GRPH", # clinical stage
+
+          "RKT","BBW" # maybe reconsider someday
 ]
 # Early stage clinical: "AVIR"
 IgnoreTemp = []#"CORZ","CLSK"]
