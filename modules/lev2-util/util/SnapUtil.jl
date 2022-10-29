@@ -27,7 +27,7 @@ function snapNames()::Vector{String}
 end
 
 function snapExpirs()::Vector{Date}
-    return cache!(Vector{Date}, :snapExpirs, Hour(1)) do
+    return cache!(Vector{Date}, :snapExpirs, Hour(10)) do
         all = reduce(vcat, map(snapNames()) do nam
             snapExpirs(nam)
         end)
@@ -48,6 +48,8 @@ function lastSnap(date::Date)::Union{Nothing,String}
     !isempty(dts) || return nothing
     return snapName(dts[end])
 end
+
+snapExists(date::Date) = !isnothing(lastSnap(date))
 
 const SNAP_DATEFORMAT = dateformat"yyyy-mm-dd.HH-MM"
 

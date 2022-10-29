@@ -20,7 +20,7 @@ end
 urpon() = urp(true) ; urpoff() = urp(false)
 function urp(b::Bool)::Nothing
     Globals.set(USE_CURP, b)
-    market(;up=true)
+    market(;age=Second(0))
     return
 end
 urp() = Globals.get(USE_CURP)
@@ -40,10 +40,9 @@ marketSnap(snapName::String, revert=true) = useKey(MARKETS_SNAP, snapName) do
     end
 end
 
-function market(; up=false)::Market
-    cache!(MARKET_TYPE, MARKET, tooOld(PERIOD_UPDATE, isMarketOpen()); up) do
-        up || @log error "Market not up to date"
-        newVal()
+function market(; age=PERIOD_UPDATE2)::Market
+    return cache!(MARKET_TYPE, MARKET, age) do
+        return newVal()
     end
 end
 marketPrices() = (mkt = market() ; (mkt.startPrice, mkt.curp))
@@ -55,15 +54,16 @@ mktNumDays(d::Date)::Int = bdays(market().startDay, d)
 const MARKET = :market
 const MARKET_TYPE = Market
 const USE_CURP = :useCurp
-const PERIOD_UPDATE = Second(12)
+# const PERIOD_UPDATE = Second(12)
+const PERIOD_UPDATE2 = Minute(1)
 
 # function __init__()
 #     Globals.has(USE_CURP) || Globals.set(USE_CURP, false)
 # end
 
-whenUpdate(from::DateTime, isMktOpen::Bool, nextMktChange::DateTime) = whenMarket(from, isMktOpen, nextMktChange, PERIOD_UPDATE)
+whenUpdate(from::DateTime, isMktOpen::Bool, nextMktChange::DateTime) = whenMarket(from, isMktOpen, nextMktChange, PERIOD_UPDATE2)
 
-canTrade() = ( delta = now(UTC) - market().tsUpdate ; delta <= 2 * PERIOD_UPDATE || error("Don't trade when market data out of date: ", delta, " seconds") )
+canTrade() = ( delta = now(UTC) - market().tsUpdate ; delta <= PERIOD_UPDATE2 + Second(10) || error("Don't trade when market data out of date: ", delta, " seconds") )
 
 function update()::Nothing
     @log debug "updateMarket"
@@ -71,7 +71,7 @@ function update()::Nothing
     return
 end
 function newVal()::Market
-    tqs = tradierQuotes(("SPY", "VIX"))["quote"]
+    t1 = @timed tqs = tradierQuotes(("SPY", "VIX"))["quote"]
     tq = tqs[1]
     tsMarket = unix2datetime(max(tq["bid_date"], tq["ask_date"])/1000)
     # TODO: clean this up
@@ -98,6 +98,7 @@ function newVal()::Market
     # op = C(tryKey(tq, "open", m))
     op = C(getnn(tq, "open", m))
     sp = urp() ? m : op
+    @log info "Loaded market" Threads.threadid() t1.time
     return Market(startDay, q, vix, m, sp, op, tsMarket, now(UTC))
 end
 #endregion

@@ -13,20 +13,39 @@ solr(r.lms, primitDir)
 
 1b) use todup() and cancel(tid) to avoid multiple same target date trades in single day
 
-2) Look for trades to close early by running:
+1c) Look for trades to close early by running:
 using CmdTrading
-CmdTrading.findTradesToClose()
+CmdTrading.toc()
 
 #### Not sure doing short puts is worth the bother other than it's one of the few things we can do in the brokerage link account, which is about $100k we need to manage. ####
 2) Look for short puts to buy with apr > .5
 ll = c.lookAll()
 
+2b) use c.findRoll to find what to roll to
 ==========
+
+Calculate the prob that market will move enough each day between now and target date
+such that using blackscholes/greeks, we can make a binomial prob for each day that it
+will reach a target annualized return and so we can close it early.
+Then combine all those probs together and we can use that to rate candidates.
+
+for joe: high theta, and high abs(delta)?
+
+TODO: use this query for vtrade updates:
+select * from vtrade where tid in (
+select tid from LegTrade where lid in (
+	select lu.lid from LegUsed lu where olid in (
+		select olid from LegOrd where tsCreated >= (now() + '-2 hour') or tsFilled >= (now() + '-2 hour')
+	)
+)
+)
 
 for combos, filter by:
  - valuation and profitibility at least B
  - 52 week range, below 67%
  - how much of a discount am I getting? sell price / stock price
+ - Check next earnings estimate, must be positive
+ - number of years on the stock market
 group by symbol and only keep top N of each symbol
 
 look for unusually high theta decay candidates with intention to exit early

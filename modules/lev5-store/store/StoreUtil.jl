@@ -59,27 +59,21 @@ const LastCall = Ref{DateTime}(DateTime(0))
 dbUrl(dbName) = replace(DB_URL, "DBNAME" => dbName)
 
 function runSql(sql::AStr, args...)
-    checkConnection()
+    connection = @timed checkConnection()
     cnt = Ref(0)
     sql2 = replace(sql, "?" =>  s -> ( cnt[] += 1 ; "\$$(cnt[])" ) )
-    @log sql "runSql" sql2 args
-    res = execute(db[], sql2, procArgs(args))
+    @log debug "runSql" sql2 args
+    execution = @timed res = execute(db[], sql2, procArgs(args))
+    @log sql "runSql" "connection" connection.time execution.time sql2 args
     LastCall[] = now(UTC)
     return res
-    # stmt = prepare(db[], sql)
-    # return execute(stmt, procArgs(args))
 end
 
 procArgs(args) = map(procArg, args)
-# x -> x isa DataType ? string(x) : x
-procArg(a::Nothing) = missing
+procArg(::Nothing) = missing
 procArg(a::Union{AbstractString,Number,Date}) = a
 procArg(a::Enum) = Int(a)
 procArg(a::DataType) = string(a)
-# using Dates, DateUtil
-# procArg(a::Date) = dateToMs(a)
-# procArg(a::Union{Currency,PriceT}) = a isa Int ? error("what") : round(Int, a*1000)
-# procArg(a::Union{Currency,PriceT}) = a # round(Int, a*1000)
 procArg(a::DateTime) = a # string(a)
 # TODO: cleanup
 

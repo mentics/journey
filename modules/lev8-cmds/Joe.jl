@@ -1,7 +1,7 @@
 module Joe
 using Dates, NamedTupleTools
 using Globals, SH, BaseTypes, SmallTypes, Bins, LegMetaTypes, RetTypes, StratTypes
-using OptionUtil, CalcUtil, ThreadUtil, OutputUtil
+using DateUtil, OptionUtil, CalcUtil, ThreadUtil, OutputUtil, LogUtil
 import GenCands
 using Calendars, Expirations, Chains, ProbKde, Markets
 using CmdUtil
@@ -36,10 +36,10 @@ flat(x...) = Iterators.flatten(x)
 flatmap(f, coll) = Iterators.flatten(Iterators.map(f, coll))
 
 import Positions, StoreOrder, LegTypes
-using TradierAccount, OrderTypes, OptionTypes
+using TradierAccount, OrderTypes, OptionTypes, TradierOrderConvert
 function filterLegs()
     ords = filter!(SH.isLive, tos(Order, ta.tradierOrders()))
-    legsPos = Iterators.map(getLeg, Positions.positions(; age=Second(10)))
+    legsPos = Iterators.map(getLeg, Positions.positions(; age=Minute(1)))
     legsOrds = Iterators.map(getLeg, flatmap(getLegs, ords))
     d = Dict{Option,Int}()
     for leg in flat(legsPos, legsOrds)
@@ -91,18 +91,20 @@ function disp()
             delete(r, :lms, :met, :metb)...,
             evr="$(rd3(ctx.posMet.evr)):$(rd3(r.met.evr)):$(rd3(r.metb.evr))",
             prob="$(rd3(ctx.posMet.prob)):$(rd3(r.met.prob)):$(rd3(r.metb.prob))",
-            r.met.mx
+            r.met.mx,
+            thetaDir=getThetaDir(r.lms)
         ))
     end
     pretyble(res)
 end
 
-function runJorn(expr::Date, isLegAllowed; nopos=false, all=false)
-    println("Processing ", expr)
-    ctx = makeCtx(expr; nopos, all)
-    oqss = filtOqss(Chains.getOqss(expr, ctx.curp, xlms(expr))) do oq
+function runJorn(xpr::Date, isLegAllowed; nopos=false, all=false)
+    ctx = makeCtx(xpr; nopos, all)
+    oqssAll = Chains.getOqss(xpr, ctx.curp, xlms(xpr))
+    oqss = filtOqss(oqssAll) do oq
         abs(getStrike(oq) / ctx.curp - 1.0) < 0.1
     end
+    @log debug "jorn processing" xpr length(oqss) length(oqssAll) ctx.curp
     ress = [Vector{NamedTuple}() for _ in 1:Threads.nthreads()]
 
     # GenCands.iterSingle(oqss, ctx, res) do lms, c, r
@@ -126,7 +128,7 @@ function runJorn(expr::Date, isLegAllowed; nopos=false, all=false)
     # println("proced $(cnt), results: $(length(res))")
     # isempty(Msgs) || @info Msgs
 
-    println("Iterating over condors...")
+    # println("Iterating over condors...")
     cnt = 0
     empty!(Msgs)
     # Profile.clear()
@@ -139,12 +141,11 @@ function runJorn(expr::Date, isLegAllowed; nopos=false, all=false)
         return true
     end
     isempty(Msgs) || @info Msgs
-    println("done.")
 
     # res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roi)
     res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roiEv)
     # res = sort!(reduce(vcat, ress); rev=true, by=x -> x.met.evr)
-    println("proced $(cnt), results: $(length(res))")
+    @log debug "jorn proced results" cnt length(res)
     return (res, ctx)
 end
 
@@ -175,6 +176,7 @@ calcRate(to::Date, ret, risk) = (ret / risk) * (1 / Calendars.texToYear(calcTex(
 # import CmdExplore
 # toLms(condor::Condor) = map(x -> x[1], Iterators.flatten(condor))
 toLms(condor::Condor) = (condor[1][1][1], condor[1][2][1], condor[2][1][1], condor[2][2][1])
+condRets(condor::Condor) = (condor[1][1][2], condor[1][2][2], condor[2][1][2], condor[2][2][2])
 # SH.draw(condor::Condor) = CmdExplore.drlms(toLms(condor))
 # SH.draw!(condor::Condor) = CmdExplore.drlms!(toLms(condor))
 function drawKelly(r)
@@ -190,16 +192,17 @@ end
 #     end
 # end
 
-function makeCtx(expr::Date; nopos, all)::NamedTuple
-    start = market().tsMarket
+function makeCtx(xpir::Date; nopos, all)::NamedTuple
+    # start = market().tsMarket
     curp = market().curp
-    tex = calcTex(start, expr)
-    timult = 1 / Calendars.texToYear(tex)
+    # tex = calcTex(start, expr)
+    # timult = 1 / Calendars.texToYear(tex)
+    timult = 252 / (1 + bdays(market().startDay, xpir))
     # vix = market().vix
     # prob = probKde(F(curp), tex, F(vix))
     # prob, _ = pk.probKdeComp(F(curp), F(vix), start, expr)
-    prob = xprob(expr)
-    posLms = nopos ? LegMeta[] : xlms(expr)
+    prob = xprob(xpir)
+    posLms = nopos ? LegMeta[] : xlms(xpir)
     posRet = combineTo(Ret, posLms, curp)
     posMet = calcMetrics(prob, posRet)
     threads = [(;
@@ -225,33 +228,34 @@ function makeCtx(expr::Date; nopos, all)::NamedTuple
 end
 
 import Kelly
-condRets(condor) = (condor[1][1][2], condor[1][2][2], condor[2][1][2], condor[2][2][2])
 
 function joeSpread(ctx, lms::NTuple{2,LegMeta})
     tctx = ctx.threads[Threads.threadid()]
     ret = combineTo(Ret, lms, ctx.curp)
     # TODO: use thread buffer, tctx.retBuf1
     adjust!(ret.vals, ret.numLegs) # reduce for slippage and closing short cost
-    r = joe(ctx, tctx, ret)
+    r = joe(ctx, tctx, ret, lms)
     return isnothing(r) ? nothing : merge(r, (;lms))
 end
 using Rets
 function joeCond(ctx, cond::Condor)
     tctx = ctx.threads[Threads.threadid()]
+    lms = toLms(cond)
     combineRetVals!(tctx.retBuf1, condRets(cond))
     ret = Ret(tctx.retBuf1, ctx.curp, 4)
     adjust!(ret.vals, ret.numLegs) # reduce for slippage and closing short cost
     # ret.vals[end] > 0 || return nothing # TODO: remove?
-    r = joe(ctx, tctx, ret)
-    return isnothing(r) ? nothing : merge(r, (;lms=toLms(cond)))
+    r = joe(ctx, tctx, ret, lms)
+    return isnothing(r) ? nothing : merge(r, (;lms))
 end
-function joe(ctx, tctx, ret)
-    MinMx = 0.11
+function joe(ctx, tctx, ret, lms)::Union{Nothing,NamedTuple}
+    MinMx = 0.21
     all = ctx.all
     met = calcMetrics(ctx.prob, ret)
     rateEv = ctx.timult * met.ev / (-met.mn)
     rate = ctx.timult * met.profit / (-met.mn)
     0.0 < met.prob < 1.0 || return nothing
+    getThetaDir(lms) > 0.001 || return nothing
     # if met.mx > -adjusted
     #     global lmsBad = lms
     #     global metBad = met
@@ -261,7 +265,7 @@ function joe(ctx, tctx, ret)
     # TODO: is ev > 0 too restrictive? and why can kelly be > 0 when ev < 0?
     # must = (min(0, ret.vals[1]) + min(0, ret.vals[end])) > -1.0
     must = ret.vals[1] > -0.1 && ret.vals[end] > -0.1
-    extra = true # ret.vals[1] > 0.0 && ret.vals[end] > 0.0
+    extra = ret.vals[1] > MinMx && ret.vals[end] > MinMx
     # if all || (met.mx >= MinMx && met.mn >= MaxLoss[] && met.prob >= 0.75 && met.ev >= 0.0 && extra)
     # if true || extra # (met.mx >= MinMx && met.mn >= MaxLoss[] && met.prob >= 0.75 && met.ev >= 0.0 && extra)
     if must && (all || (met.mx >= MinMx && met.mn >= MaxLoss[] && met.prob >= 0.85 && met.ev >= 0.01 && rateEv >= 0.5 && extra))

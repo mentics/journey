@@ -9,34 +9,31 @@ export expir, expirs
 export xp
 const xp = @__MODULE__
 
-expir(ex::Int=1)::Date = expirs()[ex] # (ex == 0 ? expirs(;td=true)[1] : (exps = expirs(;td); !td && market().startDay == exps[1] ? exps[ex+1] : exps[ex]))
-function expirs(; up=false)::OffsetArray{Date}
-    _expirs = cache!(EXPIRS_TYPE, EXPIRS, Hour(12); up) do
-        up || @log error "Expirs not up to date"
-        newVal()
+expir(ex::Int=1, sym="SPY"; kws...)::Date = expirs(sym; kws...)[ex] # (ex == 0 ? expirs(;td=true)[1] : (exps = expirs(;td); !td && market().startDay == exps[1] ? exps[ex+1] : exps[ex]))
+function expirs(sym="SPY"; age=Hour(12))::OffsetArray{Date}
+    _expirs = cache!(EXPIRS_TYPE, Symbol("expirs", '-', sym), age) do
+        newVal(sym)
     end
-    # return td || _expirs[1] != market().startDay ? _expirs : _expirs[2:end]
     return _expirs
 end
 
 whichExpir(d::Date) = searchsortedfirst(expirs(), d)
 
 #region Local
-const EXPIRS = :expirs
 const EXPIRS_TYPE = OffsetArray{Date}
 
 whenUpdate(from::DateTime, isMktOpen::Bool, nextMktChange::DateTime) = nextMktChange + Second(77)
 
 function update()::Nothing
     @log debug "updateExpirs"
-    exps = newVal()
+    exps = newVal("SPY")
     setCache!(EXPIRS, exps)
     return
 end
 # TODO: clean this up
 using Globals, SnapUtil
-function newVal()::OffsetArray{Date}
-    exps = isnothing(snap()) ? tradierExpirations() : SnapUtil.snapExpirs(snap())
+function newVal(sym::String)::OffsetArray{Date}
+    exps = isnothing(snap()) ? tradierExpirations(sym) : SnapUtil.snapExpirs(snap())
     # num = isnothing(snap()) ? 20 : SnapUtil.countSnapExpirs()
     # println("num expirs: ", num)
     exps[1] == market().startDay || insert!(exps, 1, exps[1])

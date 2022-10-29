@@ -1,22 +1,39 @@
 module Combos
 using Dates, IterTools, NamedTupleTools
 using SH, BaseTypes, SmallTypes, ChainTypes
-using DateUtil, DictUtil, OutputUtil
+using Caches, DateUtil, DictUtil, OutputUtil, LogUtil
 using TradierData
-using Markets, Chains
+using Markets, Expirations, Chains
 import SeekingAlpha
 
-function lookAll(cands=SeekingAlpha.getCandidates(); ratio=.96)
-    global Looked = []
-    for sym in cands
-        append!(Looked, look(sym; ratio))
+export c
+const c = @__MODULE__
+
+maxDate() = today() + Year(1)
+minDate() = today() + Day(3)
+
+csa(sym) = checkSymAll(x -> x.mov >= 0.05 && x.rate >= 0.5, sym)
+checkSymAll(pred, sym) =  sort!([(;x.expr, x.mov, x.rate, x.strike, x.primitDir) for x in sort(filter(x-> x.sym == sym && pred(x), LookedRaw); by=x->x.rate)]; by=x->x.rate)
+
+using ThreadPools
+function lookAll(cands=SeekingAlpha.getCandidates(); ratio=.95)
+    prout("Start proc")
+    _, looked = logqbmap(cands) do sym
+        try
+            prout("Combos processing", sym)
+            return look(sym; ratio)
+        catch e
+            prerr(e)
+            return
+        end
     end
-    global LookedRaw = copy(Looked)
+    global LookedOrig = filter!(!isempty, looked)
     disp()
     return nothing
 end
 function disp()
-    prep(copy(LookedRaw))
+    global Looked = copy(LookedOrig)
+    prep(Looked)
     pretyble(delete.(Looked, :oq))
 end
 
@@ -30,8 +47,8 @@ function clean(lll)
     # return sort!(map(g -> g[findmax(x -> x.rate, g)[2]], groupby(r -> r.sym, sort!(lll; by=x->x.sym))); rev=true, by=x->x.rate)
 end
 
-function prep(res)
-    global grouped = collect(groupby(r-> r.sym, res))
+function prep(grouped)
+    # global grouped = collect(groupby(r-> r.sym, res))
     # sort!.(grouped; rev=true, by=x->x.rate)
     for group in grouped
         sort!(group; rev=true, by=x->x.rate)
@@ -47,41 +64,22 @@ end
 
 bestRate(v) = findmax(x -> x.rate, v)
 
-const ExpirMap = Dict{String,Vector{Date}}()
-getExpirations(sym) = useKey(() -> tradierExpirations(sym), ExpirMap, sym)
-
-const RawChainMap = Dict{String,Dict{Date,Vector{Dict{String,Any}}}}()
-const ChainMap = Dict{String,ChainsType}()
-const Under = Dict{String,Dict{String,Any}}()
-function getChains(sym::String, maxDate::Date=DATE_FUTURE; up=false)
-    up || !haskey(ChainMap, sym) || ( !isempty(ChainMap[sym]) && now(UTC) > unix2datetime(first(ChainMap[sym])[2].ts/1000) + Minute(1) ) || return # isempty(ChainMap[sym]) || return
-    maxDate > today() || return # NOTE: If we ever trade today expr, would need to modify this
-    println("Calling tradier for $(sym)")
-    expAll = getExpirations(sym)
-
-    ChainMap[sym] = ChainsType()
-    RawChainMap[sym] = Dict{Date,Dict{String,Any}}()
-    if isempty(expAll)
-        Under[sym] = Dict()
-        return
+function getChains(sym::String; age=Minute(10))::ChainsType
+    mnd, mxd = (minDate(), maxDate())
+    xprs = filter(x -> mnd <= x <= mxd, expirs(sym))
+    return CH.chains(xprs, (sym,); age)[sym]
+end
+function stock(sym::String; age=Minute(10))::Dict{String,Any}
+    return cache!(Dict{String,Any}, Symbol("stock-", sym), age) do
+        return tradierQuote(sym)
     end
-    Under[sym] = tradierQuote(sym)
-
-    # exprs = expAll[1] == today() ? expAll[2:min(11,length(expAll))] : expAll[1:min(10,length(expAll))]
-    exprs = filter(x -> x > today() && x < maxDate, expAll)
-    for expr in exprs
-        raw = tradierOptionChain(expr, sym)
-        RawChainMap[sym][expr] = raw # Dict(d["strike"] => d for d in raw)
-        ChainMap[sym][expr] = Chains.procChain(expr, raw)
-    end
-    return
 end
 
 const DF = dateformat"mm/dd/yyyy"
 parseDate(seconds::Int) = unix2datetime(seconds)
-parseDate(strDate::String) = strDate == "-" ? DATE_FUTURE : ( date = Date(strDate, DF) ; date >= today() ? date : DATE_FUTURE )
+parseDate(strDate::String) = strDate == "-" ? maxDate() : ( date = Date(strDate, DF) ; date >= today() ? date : maxDate() )
 function parseDate(d::Dict, k::String)
-    haskey(d, k) ? parseDate(d[k]) : return DATE_FUTURE
+    haskey(d, k) ? parseDate(d[k]) : return maxDate()
 end
 
 sa = SeekingAlpha
@@ -95,15 +93,15 @@ function look(sym; all=false, ratio)
     # maxDate = min(parseDate(about[:earningsUpcomingAnnounceDate]), parseDate(about[Symbol("dividendsEx-DivDate")]))
     # maxDate = min(parseDate(about, "earning_announce_date"), parseDate(about, "div_pay_date"))
     # maxDate = min(findExDate(tryKey(sa.Dividends, sym)), findEarnDate(tryKey(sa.Earnings,sym)))
-    maxDate = DATE_FUTURE # min(findExDate(get(sa.Dividends, sym, nothing)), findEarnDate(get(sa.Earnings, sym, nothing)))
-    getChains(sym, maxDate)
-    locUnder = Under[sym]
-    chs = ChainMap[sym]
+    # maxDate = maxDate() # min(findExDate(get(sa.Dividends, sym, nothing)), findEarnDate(get(sa.Earnings, sym, nothing)))
+    chs = getChains(sym)
+    # locUnder = Under[sym]
+    locUnder = stock(sym)
     for expr in sort!(collect(keys(chs)))
         # expr < maxDate || break # exprs sorted asc
         oqs = filter(isPut, chs[expr].chain)
         # TODO: use tex instead of bdays?
-        timult = 252 / bdays(today(), expr)
+        timult = 252 / (1 + bdays(today(), expr))
         underBid = locUnder["bid"]
         if all
             range = 1:length(oqs)
@@ -124,7 +122,7 @@ function look(sym; all=false, ratio)
             strike = getStrike(oq)
             primitDir = bap(oq)
             rate = timult * (primitDir - .0065) / strike # .0065 is the trade commission for fidelity
-            println("$(sym)[$(expr)]: $(underBid) -> $(strike) at $(primitDir) ($(getQuote(oq))) / $(strike) = $(rate)")
+            # println("$(sym)[$(expr)]: $(underBid) -> $(strike) at $(primitDir) ($(getQuote(oq))) / $(strike) = $(rate)")
             if all || rate > 0.1
                 push!(res, (;sym, expr, mov=1.0 - strike/underBid, underBid, strike, primitDir, rate, div=getDividend(sym), oq))
             end
@@ -169,8 +167,9 @@ import Calendars
 function findRoll(sym, at, cost=0.0, style=Style.put)
     res = NamedTuple[]
     getChains(sym)
-    locUnder = Under[sym]
-    chs = ChainMap[sym]
+    # locUnder = Under[sym]
+    locUnder = stock(sym)
+    chs = getChains(sym)
     for expr in sort!(collect(keys(chs)))
         oqs = filter(x->getStyle(x) == style, chs[expr].chain)
         # TODO: get Calendars further out

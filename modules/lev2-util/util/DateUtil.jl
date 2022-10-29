@@ -19,7 +19,7 @@ export DATE_FUTURE
 export InterTime, timeIn
 
 export fromMarketTZ, toDateMarket, toTimeMarket
-export fromLocal
+export fromLocal, toTimeLocal
 export formatLocal
 export nextLocalTime, nextMarketPeriod
 # export toDateLocal
@@ -56,6 +56,7 @@ fromMarketTZ(d::Date, t::Time)::DateTime = DateTime(ZonedDateTime(DateTime(d, t)
 toDateMarket(ts::DateTime)::Date = Date(ZonedDateTime(ts, MARKET_TZ; from_utc=true))
 # toDateLocal(ts::DateTime)::Date = Date(ZonedDateTime(ts, LOCALZONE; from_utc=true))
 toTimeMarket(ts::DateTime)::Time = Time(ZonedDateTime(ts, MARKET_TZ; from_utc=true))
+toTimeLocal(ts::DateTime)::Time = Time(ZonedDateTime(ts, LOCALZONE; from_utc=true))
 #endregion
 
 #region Parsing

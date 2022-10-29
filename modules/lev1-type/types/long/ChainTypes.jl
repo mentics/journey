@@ -3,7 +3,7 @@ import Dates
 using BaseTypes, SH, SmallTypes, OptionTypes, QuoteTypes, OptionMetaTypes, Bins
 
 export OptionQuote, OptionChain
-export ChainsType, Oqss
+export ChainsType, SymChainsType, Oqss
 
 struct OptionQuote
     option::Option
@@ -40,6 +40,7 @@ struct OptionChain
 end
 
 const ChainsType = Dict{Dates.Date,OptionChain}
+const SymChainsType = Dict{String,Dict{Dates.Date,OptionChain}}
 const Oqss = Styles{Sides{Vector{OptionQuote}}}
 
 end

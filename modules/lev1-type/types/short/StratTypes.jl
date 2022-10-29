@@ -40,4 +40,7 @@ SH.getSide(spr::Combi) = ( s1 = getSide(spr[1]) ; s2 = getSide(spr[4]) ; s1 == s
 # SmallTypes.isPut(c::Combi) = isnothing(findfirst(isCall, map(getStyle, c)))
 # SmallTypes.isLong(c::Combi) = getSide(c[1]) == Side.long && getSide(c[4]) == Side.long
 # SmallTypes.isShort(c::Combi) = getSide(c[1]) == Side.short && getSide(c[4]) == Side.short
+
+SH.getStrike(lr::LegRet) = getStrike(first(lr))
+
 end

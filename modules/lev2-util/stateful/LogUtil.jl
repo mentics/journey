@@ -3,9 +3,33 @@ using Dates
 #Crayons
 using ThreadUtil
 
-export nstr, @log, @logret, @logerr, resetLog
+export nstr, @log, @logret, @logerr, resetLog, @tail
+export prout, prerr
+
+function prout(args...)
+    runSync(lockPrint) do
+        println(args...)
+    end
+end
+
+function prerr(e)
+    runSync(lockPrint) do
+        showerror(stdout, e, catch_backtrace())
+    end
+end
 
 nstr(n::Real)::String = string(round(n; digits=4))
+
+macro tail(sym, n=10)
+    blk = Expr(:call, :tailit)
+    push!(blk.args, QuoteNode(sym), n)
+    return Expr(:block, blk)
+end
+
+function tailit(typ::Symbol, n::Integer)
+    prout.(last(eachline(pathOut(typ)), n))
+    return
+end
 
 macro log(exs...)
     prblk = Expr(:call, :logit)
@@ -15,12 +39,12 @@ end
 
 # function logexc(e)
 #     runSync(LOCK) do
-#         println(streamInfo[], "Error: [$(now(UTC))]")
+#         prout(streamInfo[], "Error: [$(now(UTC))]")
 #         showerror(stderr, e, catch_backtrace())
-#         println(streamInfo[])
+#         prout(streamInfo[])
 #         showerror(streamInfo[], e, catch_backtrace())
-#         println(streamInfo[])
-#         println(streamInfo[])
+#         prout(streamInfo[])
+#         prout(streamInfo[])
 #     end
 # end
 
@@ -46,6 +70,8 @@ mutable struct Outfile
     stream::IOStream
 end
 const Outs = Dict{Symbol,Outfile}()
+
+const lockPrint = ReentrantLock()
 
 # preloading the most likely keys to avoid needing to lock for multiple threads (ie. few/no changes to the dict keys)
 function init(basePath)
@@ -84,7 +110,7 @@ end
 
 function logboth(typ::Symbol, args...)
     content = formatArgs(args...)
-    println(content...)
+    prout(content...)
     loglog(typ, content)
 end
 
@@ -97,7 +123,7 @@ function loglog(typ::Symbol, content)
     out = Outs[typ]
     runSync(out.lock) do
         ensureOpen(out)
-        println(out.stream, content...)
+        prout(out.stream, content...)
         flush(out.stream)
     end
 end

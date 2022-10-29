@@ -13,6 +13,7 @@ import Expirations:expir
 import CmdUtil:tradesToClose
 using ProbKde
 import Kelly
+import Between
 
 export cret, cmet, ckel
 cret(lms::Coll{LegMeta}, curp::Currency=market().curp)::Ret = SH.combineTo(Ret, lms, curp)
@@ -27,10 +28,10 @@ function xprob(expr::Date)
     mkt = market()
     curp = mkt.curp
     start = mkt.tsMarket
-    tex = Calendars.calcTex(start, expr)
+    # tex = Calendars.calcTex(start, expr)
     vix = mkt.vix
-    return ProbKde.probKde(F(curp), F(vix), tex)
-    # prob, _ = pk.kdeToClose(F(curp), F(vix), start, expr)
+    # return ProbKde.probKde(F(curp), F(vix), tex)
+    prob, _ = pk.kdeToClose(F(curp), F(vix), start, expr)
     return prob
 end
 xlms(expr::Date)::Vector{LegMeta} = SH.combineTo(Vector{LegMeta}, tradesToClose(expr))

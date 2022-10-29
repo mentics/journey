@@ -63,8 +63,8 @@ function tradierDelete(pathQuery::AbstractString, info::CallInfo{T}; retries=0):
     call(pathQuery, info) do url
         try
             kws = retries == 0 ? (;) : (;retry=true, retries, retry_non_idempotent=true)
-            println("Using headers: ", TradierConfig.HEADERS_GET[])
-            resp = HTTP.delete(url, TradierConfig.HEADERS_GET[]; kws...)
+            # println("Using headers: ", TradierConfig.HEADERS_DELETE[])
+            resp = HTTP.delete(url, TradierConfig.HEADERS_DELETE[]; kws...)
             # println("resp: ", resp)
             @log tradier "tradierDelete:" url resp
             return resp

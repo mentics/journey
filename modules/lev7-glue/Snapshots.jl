@@ -11,6 +11,7 @@ Globals.snap(num::Int) = snap(findByIndex(num))
 Globals.snap(num1::Int, num2::Int, num::Int...) = snap(findByParts(num1, num2, num...))
 Globals.snap(nam::AbstractString) = useSnap(nam)
 Globals.snap(date::Date, i::Int) = snap(SnapUtil.snapName(date, i))
+Globals.snap(date::Date, hour::Int, minute::Int) = snap(findByParts(year(date), month(date), day(date), hour, minute))
 Globals.snap(dt::DateTime) = snap(SnapUtil.snapName(dt))
 snop() = stopSnap()
 snave() = saveSnap()
@@ -19,10 +20,10 @@ snave() = saveSnap()
 snapToTs(nam::AbstractString) = fromLocal(nam, SnapUtil.SNAP_DATEFORMAT)
 
 const toRecord = [
-    ()->market(; up=true),
-    ()->positions(; age=Millisecond(0)),
-    ()->expirs(; up=true),
-    ()->chains(; up=true)
+    ()->market(; age=Second(0)),
+    ()->positions(; age=Second(0)),
+    ()->expirs(; age=Second(0)),
+    ()->chains(expirs(); age=Second(0))
 ]
 
 function saveSnap()

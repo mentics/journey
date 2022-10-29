@@ -8,7 +8,6 @@ export calcExtrin, calcExtrins
 export calcNetLongExtrin, calcNetShortExtrin
 export ivTexToStdDev, texToYear
 
-
 calcWidth(oq1, oq2) = abs(getStrike(oq2) - getStrike(oq1))
 calcNetLong(oq1::OptionQuote, oq2::OptionQuote) = -max(0.01, getAsk(oq1)) + max(0., getBid(oq2))
 calcNetShort(oq1::OptionQuote, oq2::OptionQuote) = max(0., getBid(oq1)) - max(0.01, getAsk(oq2))

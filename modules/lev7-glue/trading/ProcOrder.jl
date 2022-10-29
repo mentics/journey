@@ -21,15 +21,15 @@ end
 
 function procOrders()::Bool
     isnothing(snap()) || error("Do not procOrders when snapped")
-    tords = tradierOrders()
-    @log debug "procOrders" length(tords)
+    t1 = @timed tords = tradierOrders()
     length(tords) > 0 || return false
     res = false
-    for tord in tords
+    t2 = @timed for tord in tords
         res |= procOrder(tord)
     end
-    StoreTrade.loadTradesUpdated()
-    Store.dbChecks()
+    t3 = @timed @sync StoreTrade.updateTradesCache()
+    t4 = @timed Store.dbChecks()
+    @log info "procOrders" length(tords) t1.time t2.time t3.time t4.time
     return res
 end
 

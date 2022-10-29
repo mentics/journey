@@ -153,8 +153,16 @@ Views() = [
 ]
 
 Inserts() =
-    ["""insert into Ord(oid, symbol, class, orderType, status, prillDir, tsCreated, tsFilled) values(100, 'ANY', 'option', 1, 'Expired', 0, cast(0 as timestamp), cast(0 as timestamp));""",
-     """insert into LegOrd(olid, oid, act, style, expiration, strike, side, quantity, prillDir, tsCreated, tsFilled) values (100, 100, -1, 0, cast(0 as date), 0, 0, 0, 0, cast(0 as timestamp), cast(0 as timestamp));"""]
+    [
+        """insert into Ord(oid, symbol, class, orderType, status, prillDir, tsCreated, tsFilled) values(100, 'ANY', 'option', 1, 'Expired', 0, cast(0 as timestamp), cast(0 as timestamp));""",
+        """insert into LegOrd(olid, oid, act, style, expiration, strike, side, quantity, prillDir, tsCreated, tsFilled) values (100, 100, -1, 0, cast(0 as date), 0, 0, 0, 0, cast(0 as timestamp), cast(0 as timestamp));""",
+        """CREATE INDEX ON LegOrd (tscreated) STORING (tsFilled);""",
+        """CREATE INDEX ON LegOrd (tsfilled) STORING (tsCreated);""",
+        """CREATE INDEX ON LegUsed (olid);"""
+     ]
+#      CREATE INDEX ON legtrade (tid) STORING (quantity);
+# CREATE INDEX ON legused (act, olid, lid) STORING (quantity);
+
 # # Then for each new one:
 # # update("insert into LegMatched (lid, olid, quantity, act) values (?, ?, ?, ?)", [lid, 10, qtyExp, -1])
 # #  -- Don't want to do this because primary key olid would require all new entries for every one and want tsTransact, but can use expiration for tsTransact

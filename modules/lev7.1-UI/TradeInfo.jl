@@ -24,6 +24,10 @@ minMaxPnl(trad::Trade)::Tuple{Currency,Currency} = C.(extrema(getVals(combineTo(
 
 Base.show(io::IO, trade::Trade{S}) where S = println(io, string(trade))
 
+canQuote(trade::Trade) = isnothing(findfirst(leg -> !CH.canQuoteXpr(getExpiration(leg)), getLegs(trade)))
+
+# haskey(chains(), getTargetDate(trad))
+
 function Base.string(trad::Trade{S}) where S
     # strBasic(trad::Trade) = "Trade $(getTid(trad)) $(shStatus(trad)) $(shortDate(dateOpen(trad), getTargetDate(trad)))"
     res = "Trade $(getId(trad)) $(shStatus(S)) $(strShort(toDateMarket(tsCreated(trad)), getTargetDate(trad)))"
@@ -33,7 +37,7 @@ function Base.string(trad::Trade{S}) where S
         pdc = getPrillDirClose(trad)
         # if isnothing(pdc)
         if S != Closed
-            if haskey(chains(), getTargetDate(trad)) # >= market().startDay
+            if canQuote(trad)
                 qt = quoter(trad, Action.close)
                 res *= " cl($(getBid(qt)), $(getAsk(qt)))/TODO:MAXCLOSE" # TODO: calc max close
                 res *= " urpnl:$(PRI(pdo + getBid(qt)))"

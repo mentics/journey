@@ -20,10 +20,10 @@ Ignore = ["SNDL","YANG","MUX","QD","RIOT","GOTU","TAL","ACB","HUT","IQ","JMIA","
           "URA","EDZ","EPV","BNO","IEZ","TBT","SDS","XME","TUR","DXD","ECH","TYO","VIXM","ERX","IAU","WEAT",
           "EWZ","FLBR","FCG","AMLP","BKLN","LABD","SRS","DBO","IYE","USFR","ITB","COPX","UCO",
 
-          "AFRM","CAN","SRAD","SYF","PRPH","WB","BROS","YY","RLX", # don't like company
-          "GRPH", # clinical stage
+          "AFRM","CAN","SRAD","SYF","PRPH","WB","BROS","YY","RLX","RUM","AMPL","PTLO", # don't like company
+          "GRPH","NKTX","RGNX", # clinical stage
 
-          "RKT","BBW" # maybe reconsider someday
+          "RKT","BBW","ACRX","REI","FRSH","GPRO" # maybe reconsider someday
 ]
 # Early stage clinical: "AVIR"
 IgnoreTemp = []#"CORZ","CLSK"]
@@ -132,9 +132,9 @@ function filterCandidateQuotes(s::AStr)
         q = Quotes[s]
         bid = q["bid"]
         return q["type"] == "stock" &&
-            !isnothing(bid) && bid >= 0.05 &&
+            !isnothing(bid) && 1.75 <= bid <= 57.0 &&
             q["average_volume"] > 100000 &&
-            q["prevclose"] < 57.0 &&
+            # q["prevclose"] < 57.0 &&
             rangeRatio(q) <= .67
     end
 end

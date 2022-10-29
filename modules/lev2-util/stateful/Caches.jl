@@ -28,7 +28,7 @@ const Props = Dict{Symbol,PROP_TYPE}()
 const Lock = ReentrantLock()
 
 function updateCache!(sym::Symbol, val)
-    @log debug "Updating $(sym) in Caches"
+    @log info "Updating $(sym) in Caches"
     Props[sym] = (;val, ts=now(UTC))
 end
 #endregion

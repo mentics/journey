@@ -14,7 +14,7 @@ function dbChecks()
     rows = select("select t.tid from Trade t where status='Starting' and tsCreated<?", now(UTC) - Hour(2))
     !isempty(rows) && report("Trade still starting after 2 hours", rows)
 
-    rows = select("select * from vlegtrade where expiration < current_date and status != 'Closed'")
+    rows = select("select lid from vlegtrade where expiration < current_date and status != 'Closed'")
     !isempty(rows) && report("LegTrade expired but not Closed", rows)
 
     rows = select("select t.tid, t.status, t.targetDate, lt.exp from Trade t join (select tid, max(expiration) as exp from LegTrade group by tid) lt on lt.tid=t.tid where status != 'Closed' and exp < current_date")
@@ -48,6 +48,8 @@ function dbChecks()
 
     unpos = findUnknownPositions()
     !isempty(unpos) && report("Unknown positions found", unpos)
+
+    return
 end
 
 report(msg, out::Vector{<:NamedTuple}) = ( pretyble(out; title=msg) ; (@log error spretyble(out; title=msg)) )

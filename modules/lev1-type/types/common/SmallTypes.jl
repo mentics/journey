@@ -15,6 +15,8 @@ struct Styles{T}
     call::T
     put::T
 end
+Base.length(s::Styles) = length(s.call) + length(s.put)
+iter(s::Styles) = Iterators.flatten((iter(s.call), iter(s.put)))
 
 @enumx Side long=1 short=-1
 SH.toOther(x::Side.T) = x === Side.long ? Side.short : Side.long
@@ -26,6 +28,9 @@ struct Sides{T}
     long::T
     short::T
 end
+Base.length(s::Sides) = length(s.long) + length(s.short)
+iter(s::Sides) = Iterators.flatten((iter(s.long), iter(s.short)))
+iter(other) = other
 
 @enumx Action open=1 close=-1
 SH.toOther(x::Action.T) = x === Action.open ? Action.close : Action.open

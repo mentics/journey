@@ -43,4 +43,11 @@ SH.getNetOpen(lm::LegMeta) = getQuantity(lm.leg) * bap(lm) # getBid(lm.quot)
 SH.addQuantity(lm::LegMeta, addend::Real) =
     LegMeta(Leg(lm.leg; quantity=getQuantity(lm.leg) + addend), lm.quot, lm.meta)
 
+# TODO: still not sure if abs is right here
+SH.to(OptionQuote, lm::LegMeta) = OptionQuote(getOption(lm), abs(getQuote(lm)), getMeta(lm), nothing)
+
+export getThetaDir
+getThetaDir(lm::LegMeta) = lm.meta.theta * getQuantityDir(getLeg(lm))
+getThetaDir(lms::Coll{LegMeta}) = sum(getThetaDir, lms)
+
 end

@@ -1,9 +1,10 @@
 module GenCands
 using ThreadPools
 using SH, BaseTypes, SmallTypes, LegMetaTypes
-using OptionUtil
+using OptionUtil, LogUtil
 import CalcUtil
 using ChainTypes
+using Rets, StratTypes
 
 const MinSpreadMx = 0.01
 
@@ -34,7 +35,6 @@ end
 #     return true
 # end
 
-using Rets, StratTypes
 function iterCondors(f::Function, oqss::Oqss, maxSpreadWidth::Currency, curp::Currency, isLegAllowed, args...)
     # @warn "Still using left > 0.0 || continue"
     spreads = Vector{Spread}()
@@ -44,11 +44,11 @@ function iterCondors(f::Function, oqss::Oqss, maxSpreadWidth::Currency, curp::Cu
         push!(spreads, ((lm1, ret1), (lm2, ret2)))
         return true
     end
-    @assert length(spreads) > 4 string("Not enough spreads: ", length(spreads), ' ', getExpiration(oqss.call.long[1]))
+    @assert length(spreads) > 4 string("Not enough spreads: ", length(spreads), ' ', getExpiration(first(SmallTypes.iter(oqss))))
     # widths = strikeWidth.(map(x -> (x[1][1], x[2][1]), spreads))
     # @error "iterCondors" maxSpreadWidth curp
     # error(maximum(widths))
-    println("Number of spreads: ", length(spreads))
+    @log debug "Number of spreads" length(spreads)
     MaxSpreads = 99999999
 
     twith(ThreadPools.QueuePool(2, Threads.nthreads()-1)) do pool

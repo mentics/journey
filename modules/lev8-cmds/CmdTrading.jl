@@ -18,6 +18,7 @@ so(i::Int; kws...) = so(tos(LegMeta, ar(i)); kws...)
 so(r::Coll{LegRet}; kws...) = so(tos(LegMeta, r); kws...)
 solr(lms::Coll{LegMeta}, at::Real) = so(lms; at, pre=false)
 function so(lms::Coll{LegMeta}; ratio=nothing, at=nothing, pre=true, skipConfirm=false)::Int
+    curQuot = market().curQuot
     canTrade(pre)
     Globals.set(:soRunLast, now(UTC))
 
@@ -35,7 +36,7 @@ function so(lms::Coll{LegMeta}; ratio=nothing, at=nothing, pre=true, skipConfirm
         return -1
     end
 
-    tid = pre ? submitPreview(lms, pr) : submitLive(lms, pr, market().curQuot)
+    tid = pre ? submitPreview(lms, pr) : submitLive(lms, pr, curQuot)
     return pre ? 0 : tid
 end
 
@@ -106,7 +107,7 @@ end
 #region CurrentPosition
 using CmdUtil
 # TODO: make it a const
-cacheTrades = Dict{Int,Trade}()
+# cacheTrades = Dict{Int,Trade}()
 function todo(ex=0)
     Globals.set(:todoRunLast, now(UTC))
     legOvers = queryLeftovers()
@@ -118,8 +119,10 @@ function todo(ex=0)
     #         @log warn msg
     #     end
     # end
-    println("Leftovers:")
-    pretyble(to.(NamedTuple, legOvers))
+    if !isempty(legOvers)
+        println("Leftovers:")
+        pretyble(to.(NamedTuple, legOvers))
+    end
     @info "Current price: $(market().curp)"
     trades = tradesToClose(ex)
     for trade in trades cacheTrades[getId(trade)] = trade end

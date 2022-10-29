@@ -1,7 +1,7 @@
 module StoreTrade
 using Dates
 using SH, BaseTypes, SmallTypes, OptionTypes, LegTypes, TradeTypes, LegTradeTypes, StatusTypes, LegMetaTypes
-using Globals, BaseUtil, DateUtil, StoreUtil, FileUtil
+using Globals, BaseUtil, DateUtil, StoreUtil, FileUtil, LogUtil
 
 export newTrade, loadTrade, loadLegTrade, findTrades
 export queryLegStatus, queryNumLegs, queryLeftovers, queryEntered, queryLegsEntered
@@ -23,28 +23,28 @@ function newTrade(primitDir::PriceT, legs::Coll{LegMeta}, underBid::Currency, un
                     lid, getBid(lq), getAsk(lq), getIv(lq))
         end
     end
-    loadTradesUpdated()
+    updateTradesCache()
     return tid
 end
 
-# TODO: implement cache for trade loading
-# TODO: implement updating just the fields that might change (eg. status) in bulk for the cache
-function loadTrade(tid::Int)
-    ts = select("select * from VTrade where tid=?", tid)
-    !isempty(ts) || error("Trade not found ", tid)
-    t = ts[1] # Search by primary key, can't be more than one.
-    # @info "loadTrade" t
-    # legs = loadLegTrade.(select("select * from VLegTrade where tid = ?", tid), t.tsCreated)
-    # return Trade{strToStatus(t.status)}(t.tid, dbToC(t.primitDir), dbToC(t.prillDirOpen), dbToC(t.prillDirClose),
-    #         legs, t.tsCreated, noth(t.tsFilled), noth(t.tsClosed), TradeMeta(t.underBid, t.underAsk))
-    legs = loadLegTrade.(select("select * from VLegTrade where tid=?", tid))
-    return Trade{strToStatus(t.status)}(t.tid, t.targetdate, dbdc(t.primitdir), dbdc(t.prilldiropen), dbdc(t.prilldirclose),
-            legs, t.tscreated, noth(t.tsfilled), noth(t.tsclosed), TradeMeta(dbdc(t.underbid), dbdc(t.underask)))
-end
+# # TODO: implement cache for trade loading
+# # TODO: implement updating just the fields that might change (eg. status) in bulk for the cache
+# function loadTrade(tid::Int)
+#     ts = select("select * from VTrade where tid=?", tid)
+#     !isempty(ts) || error("Trade not found ", tid)
+#     t = ts[1] # Search by primary key, can't be more than one.
+#     # @info "loadTrade" t
+#     # legs = loadLegTrade.(select("select * from VLegTrade where tid = ?", tid), t.tsCreated)
+#     # return Trade{strToStatus(t.status)}(t.tid, dbToC(t.primitDir), dbToC(t.prillDirOpen), dbToC(t.prillDirClose),
+#     #         legs, t.tsCreated, noth(t.tsFilled), noth(t.tsClosed), TradeMeta(t.underBid, t.underAsk))
+#     legs = loadLegTrade.(select("select * from VLegTrade where tid=?", tid))
+#     return Trade{strToStatus(t.status)}(t.tid, t.targetdate, dbdc(t.primitdir), dbdc(t.prilldiropen), dbdc(t.prilldirclose),
+#             legs, t.tscreated, noth(t.tsfilled), noth(t.tsclosed), TradeMeta(dbdc(t.underbid), dbdc(t.underask)))
+# end
 
-function loadLegTrade(lid::Int)
-    loadLegTrade(select("select * from VLegTrade where lid=?", lid)[1])
-end
+# function loadLegTrade(lid::Int)
+#     loadLegTrade(select("select * from VLegTrade where lid=?", lid)[1])
+# end
 
 qmarks(num) = "$(join(repeat(['?'], num), ','))"
 
@@ -62,19 +62,36 @@ function loadTrades(clauseIn::String, clauseArgs...)::Vector{Trade}
     end
 end
 
-const TradesCache = Dict{Int,Trade}() # tid => trade
+using Caches
 export tradesCached
-tradesCached() = isempty(TradesCache) ? loadTradesCache() : TradesCache
+const TRADES_CACHE = :trades
+function tradesCached(;age=Minute(10))
+    return cache!(Dict{Int,Trade}, TRADES_CACHE, age) do
+        return loadTradesCache()
+    end
+end
 function loadTradesCache()
-    trades = loadTrades("select tid from VTrade where status != ? or tsCreated >= now()+'-24 hour' or tsfilled >= now()+'-24 hour' or tsclosed >= now()+'-24 hour'", Closed)
-    empty!(TradesCache)
-    for trade in trades TradesCache[getId(trade)] = trade end
-    return TradesCache
+    # trades = loadTrades("select tid from VTrade where status != ? or tsCreated >= now()+'-24 hour' or tsfilled >= now()+'-24 hour' or tsclosed >= now()+'-24 hour'", Closed)
+    trades = loadTrades(
+    """
+    select tid from LegTrade where lid in (
+        select lu.lid from LegUsed lu where olid in (
+            select olid from LegOrd where tsCreated >= (now() + '-2 hour') or tsFilled >= (now() + '-2 hour')
+        )
+    ) and tid in (
+        select tid from Trade where status != ?
+    )
+    """, Closed)
+    return toDict(getId, trades)
 end
-function loadTradesUpdated()
-    trades = loadTrades("select tid from VTrade where tsfilled >= now()+'-2 hour' or tsclosed >= now()+'-2 hour'")
-    for trade in trades TradesCache[getId(trade)] = trade end
+function updateTradesCache()
+    Threads.@spawn tradesCached(;age=Second(0))
 end
+# function loadTradesUpdated()
+#     t1 = @timed trades = loadTrades("select tid from VTrade where tsfilled >= now()+'-2 hour' or tsclosed >= now()+'-2 hour'")
+#     t2 = @timed for trade in trades TradesCache[getId(trade)] = trade end
+#     @log debug "loadTradesUpdated" length(trades) t1.time t2.time
+# end
 
 dbdc(x) = isSomething(x) ? C(Float64(x)) : nothing
 noth(x) = ismissing(x) ? nothing : x
