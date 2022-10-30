@@ -83,6 +83,7 @@ end
 
 function toc() # findTradesToClose
     trades = sort!(collect(values(StoreTrade.tradesCached())); by=getTargetDate)
+    todayDate = market().startDay
     for trade in trades
         trade isa Trade{Filled} || continue
         ts = tsFilled(trade)
@@ -93,8 +94,9 @@ function toc() # findTradesToClose
         netc = bap(qt)
         curVal = neto + netc
         if curVal > 0.0
-            tex = calcTex(ts, today() + Day(1))
-            timult = 1 / Calendars.texToYear(tex)
+            # tex = calcTex(ts, today() + Day(1))
+            # timult = 1 / Calendars.texToYear(tex)
+            timult = 252 / (1 + bdays(toDateMarket(ts), todayDate))
             mn = min(OptionUtil.legsExtrema(getLegs(trade)...)...)
             rate = timult * curVal / (-mn)
             expr = xp.whichExpir(getTargetDate(trade))
