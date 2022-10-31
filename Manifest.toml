@@ -17,9 +17,9 @@ version = "0.3.4"
 
 [[deps.Accessors]]
 deps = ["Compat", "CompositionsBase", "ConstructionBase", "Dates", "InverseFunctions", "LinearAlgebra", "MacroTools", "Requires", "Test"]
-git-tree-sha1 = "ce67f55da3a937bb001a8d00559bdfa4dba6e4f5"
+git-tree-sha1 = "ff77abdacacad13fbdd2d0863fab1af5af819693"
 uuid = "7d9f7c33-5ae7-4f3b-8dc6-eff91059b697"
-version = "0.1.20"
+version = "0.1.21"
 
 [[deps.Adapt]]
 deps = ["LinearAlgebra"]
@@ -50,9 +50,9 @@ version = "6.0.23"
 
 [[deps.ArrayInterfaceCore]]
 deps = ["LinearAlgebra", "SparseArrays", "SuiteSparse"]
-git-tree-sha1 = "e6cba4aadba7e8a7574ab2ba2fcfb307b4c4b02a"
+git-tree-sha1 = "732cddf5c7a3d4e7d4829012042221a724a30674"
 uuid = "30b0a656-2188-435a-8636-2ec0e6a096e2"
-version = "0.1.23"
+version = "0.1.24"
 
 [[deps.Artifacts]]
 uuid = "56f22d72-fd6d-98f1-02f0-08ddc0907c33"
@@ -717,9 +717,9 @@ version = "0.3.1"
 
 [[deps.InlineStrings]]
 deps = ["Parsers"]
-git-tree-sha1 = "db619c421554e1e7e07491b85a8f4b96b3f04ca0"
+git-tree-sha1 = "a62189e59d33e1615feb7a48c0bea7c11e4dc61d"
 uuid = "842dd82b-1e85-43dc-bf29-5d0ee9dffc48"
-version = "1.2.2"
+version = "1.3.0"
 
 [[deps.IntelOpenMP_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
@@ -1171,9 +1171,9 @@ version = "1.2.0"
 
 [[deps.NeuralAttentionlib]]
 deps = ["Adapt", "CUDA", "ChainRulesCore", "GPUArraysCore", "LinearAlgebra", "NNlib", "NNlibCUDA", "Requires", "Static"]
-git-tree-sha1 = "0b18c1a48fe8d8cbfcbb3772a05c4fd8eeea4f91"
+git-tree-sha1 = "9e40c3a5751d03aacbd1f2a2195ceef58bd7d04e"
 uuid = "12afc1b8-fad6-47e1-9132-84abc478905f"
-version = "0.1.2"
+version = "0.1.3"
 
 [[deps.Observables]]
 git-tree-sha1 = "5a9ea4b9430d511980c01e9f7173739595bbd335"

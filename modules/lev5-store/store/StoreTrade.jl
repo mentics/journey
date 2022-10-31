@@ -3,6 +3,9 @@ using Dates
 using SH, BaseTypes, SmallTypes, OptionTypes, LegTypes, TradeTypes, LegTradeTypes, StatusTypes, LegMetaTypes
 using Globals, BaseUtil, DateUtil, StoreUtil, FileUtil, LogUtil
 
+export ST
+const ST = @__MODULE__
+
 export newTrade, loadTrade, loadLegTrade, findTrades
 export queryLegStatus, queryNumLegs, queryLeftovers, queryEntered, queryLegsEntered
 export findTradeEntered
@@ -63,26 +66,34 @@ function loadTrades(clauseIn::String, clauseArgs...)::Vector{Trade}
 end
 
 using Caches
+const TradesCacheType = Tuple{Vector{Trade},Dict{Int,Trade}}
 const CACHE_TRADES_OPEN = :TradesOpen
 const CACHE_TRADES_CLOSED = :TradesClosed
 export tradesClosed, tradesOpen, tradesOpenEntered
+
+getTradeAll(tid::Int) = @coalesce get(tradictOpen(), tid, nothing) get(tradictClosed(), tid, nothing)
+getTradeOpen(tid::Int) = get(tradictOpen(), tid, nothing)
+getTradeClosed(tid::Int) = get(tradictClosed(), tid, nothing)
+
 tradesOpen(xpir::Date; kws...)::Vector{Trade} = tradesOpen(x -> getTargetDate(x) == xpir) # filter(x -> getTargetDate(x) == xpir, tradesOpen(; kws...))
 tradesOpenEntered(d::Date; kws...)::Vector{Trade} = tradesOpen(x -> toDateMarket(tsCreated(x)) == d; kws...) # filter(x -> toDateMarket(tsCreated(x)) == d, tradesOpen(; kws...))
 tradesOpen(f; kws...)::Vector{Trade} = filter(f, tradesOpen(; kws...))
-function tradesOpen(;age=Minute(10))::Vector{Trade}
-    # return cache!(Dict{Int,Trade}, CACHE_TRADES_OPEN, age) do
-    #     return loadOpen()
-    # end
-    return cache!(Vector{Trade}, CACHE_TRADES_OPEN, age) do
-        return loadOpen()
-    end
-end
-function tradesClosed(;age=Minute(10), since=bdaysBefore(today(), 7))::Vector{Trade}
-    # return cache!(Dict{Int,Trade}, CACHE_TRADES_CLOSED, age) do
-    #     return loadClosed(since)
-    # end
-    return cache!(Vector{Trade}, CACHE_TRADES_CLOSED, age) do
-        return loadClosed(since)
+
+tradictOpen(;age=Minute(10))::Dict{Int,Trade} =
+        tradesCache(loadOpen, CACHE_TRADES_OPEN; age)[2]
+tradictClosed(;age=Minute(10), since=bdaysBefore(today(), 7))::Dict{Int,Trade} =
+        tracesCache(() -> loadClosed(since), CACHE_TRADES_CLOSED; age)[2]
+
+tradesOpen(;age=Minute(10))::Vector{Trade} =
+        tradesCache(loadOpen, CACHE_TRADES_OPEN; age)[1]
+tradesClosed(;age=Minute(10), since=bdaysBefore(today(), 7))::Vector{Trade} =
+        tracesCache(() -> loadClosed(since), CACHE_TRADES_CLOSED; age)[1]
+
+function tradesCache(updater, sym::Symbol;age=Minute(10))::TradesCacheType
+    return cache!(TradesCacheType, sym, age) do
+        trades = updater()
+        dict = toDict(getId, trades)
+        return (trades, dict)
     end
 end
 
@@ -167,7 +178,7 @@ loadLegTrade(row::NamedTuple) =
 using JsonConfig, DictUtil
 function deleteTrade(tid::Int)
     @warn "Deleting trade" tid
-    trade = loadTrade(tid)
+    trade = ST.getTradeOpen(tid)
     isnothing(getPrillDirOpen(trade)) || error("Trying to delete trade that has fill ", tid)
     # print("Are you sure this trade should be deleted? (N/y)")
     # input = readline()

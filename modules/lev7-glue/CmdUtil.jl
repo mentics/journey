@@ -5,7 +5,7 @@ using LogUtil, CollUtil
 using StoreTrade
 using Expirations
 
-export tradesToClose, xlms, xlmsv
+export xlms, xlmsv
 
 # TODO: remove after fixing calcs to not need it
 TexPerDay = 6.5 + .3 * (24 - 6.2)

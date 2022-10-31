@@ -1,7 +1,7 @@
 module CmdPos
 import Dates:Date
 using BaseTypes
-import SH:v,isStatus
+import SH:SH,v,isStatus
 import StatusTypes:WithFilled
 import LegMetaTypes:LegMeta
 import ProbTypes:Prob
@@ -11,10 +11,10 @@ import CalcUtil
 import Calendars
 import Markets:market
 import Expirations:expir
-import CmdUtil:tradesToClose
 using ProbKde
 import Kelly
 import Between
+import StoreTrade:ST
 
 export cret, cmet, ckel
 cret(lms::Coll{LegMeta}, curp::Currency=market().curp)::Ret = SH.combineTo(Ret, lms, curp)
@@ -36,7 +36,7 @@ function xprob(expr::Date)
     return prob
 end
 
-xlms(expr::Date)::Vector{LegMeta} = SH.combineTo(Vector{LegMeta}, tradesOpen(x -> isStatus(x, WithFilled) && getTargetDate(x) == expr))
+xlms(expr::Date)::Vector{LegMeta} = SH.combineTo(Vector{LegMeta}, ST.tradesOpen(x -> isStatus(x, WithFilled) && getTargetDate(x) == expr))
 xlms(ex::Int)::Vector{LegMeta} = xlms(expir(ex))
 xlms(ex::Int, add::Coll{LegMeta})::Vector{LegMeta} = concat(xlms(ex), add)
 
@@ -73,7 +73,7 @@ function xdr(ex::Int, add::Union{Nothing,Coll{LegMeta}}=nothing, curp::Currency=
     expr = expir(ex)
     # TODO: read from cache
     # TODO: this is inefficient because it converts to lms multiple times
-    tod = tradesOpen(expr)
+    tod = ST.tradesOpen(expr)
     if isempty(tod)
         if isnothing(add)
             println("No positions nor adds for ", expr)

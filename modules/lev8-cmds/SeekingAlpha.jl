@@ -91,9 +91,13 @@ function getRating(s)
     return d["quant_rating"]
 end
 
-function getCandidates()
+function getCandidates(;maxSyms=-1)
     quoteAll()
     global syms = filter(filterCandidateQuotes, keys(Quotes))
+    if maxSyms > 0
+        println("Restricting ", length(syms), " to ", maxSyms)
+        syms = collect(Iterators.take(syms, maxSyms))
+    end
     getMetrics(syms)
     getGrades(syms)
     loadDividends(syms)
@@ -500,13 +504,13 @@ function loadQuotes(src)
         unmatched = haskey(raw, "unmatched_symbols") ? raw["unmatched_symbols"]["symbol"] : []
 
         if haskey(raw, "quote")
-            global quotes = raw["quote"]
+            quotes = raw["quote"]
             for q in quotes
                 Quotes[q["symbol"]] = q
             end
             diff = setdiff(syms, map(x->x["symbol"], quotes))
             len = length(syms) - length(quotes)
-            @assert len == length(diff) == length(unmatched) "Different lens $(len) $(length(diff)) $(length(unmatched))"
+            @assert len == length(diff) == length(unmatched) "Different lengths $(len) $(length(diff)) $(length(unmatched))"
             println("not found ", diff)
         else
             println("no quotes found, unmatched: ", unmatched)

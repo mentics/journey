@@ -2,7 +2,8 @@ module ProcOrder
 using Dates
 using SH, Globals, BaseTypes, SmallTypes, OrderTypes, StatusTypes
 using BaseUtil, LogUtil, StoreUtil, TradierOrderConvert, ThreadUtil
-using Store, StoreTrade, StoreOrder, Backups, OrderWatching, TradierAccount
+using Store, StoreOrder, Backups, OrderWatching, TradierAccount
+using StoreTrade
 
 export procOrders, procOrder, matchOrders
 
@@ -67,8 +68,9 @@ function procOrderRaw(tord::Dict{String,Any})::Bool
     end
     if status in ("expired", "canceled", "rejected")
         # TODO: Need to do something different when we support > 4 legged trades
-        tnumLegs = queryNumLegs(tid)
-        isnothing(tnumLegs) && (@log debug "procOrder: Skipping already deleted trade" oid tid ; return false)
+        trade = ST.getTradeAll(tid)
+        isnothing(trade) && (@log debug "procOrder: Skipping already deleted trade" oid tid ; return false)
+        tnumLegs = length(getLegs(trade)) # queryNumLegs(tid)
         act = TradierOrderConvert.tierActionOrder(tord)
         onumLegs = TradierOrderConvert.tierNumLegs(tord)
         if act == 1 && (onumLegs == tnumLegs || onumLegs == tnumLegs - 1)

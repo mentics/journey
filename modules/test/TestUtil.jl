@@ -1,7 +1,10 @@
 module TestUtil
 using Globals
 
-export ≅, within, setupTeardown, testStart, testStop
+const TU = @__MODULE__
+export TU
+
+# export ≅, within, setupTeardown, testStart, testStop
 
 testStart() = Globals.set(:testing, true)
 testStop() = Globals.set(:testing, false)
