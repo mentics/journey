@@ -36,4 +36,15 @@ SH.getNetClose(o::Trade) = isnothing(o.prillDirClose) ? NaN : ( s = sum(getNetCl
 SH.getPnl(o::Trade) = getPrillDirOpen(o) + getPrillDirClose(o)
 SH.getMeta(o::Trade) = o.meta
 
+SH.isStatus(o::Trade{T}, status) where T = T <: status
+# SH.isStatus(o::Trade{T}, ::Type{S}) where {S,T} where T<:S = true
+# SH.isStatus(o::Trade{T}, ::Type{S}) where S where T = false
+
+# SH.isLive(o::Trade{T}) where T <: st.Live = true
+# SH.isLive(o::Trade) = false
+# SH.isOpen(o::Trade{T}) where T <: st.Open = true
+# SH.isOpen(o::Trade) = false
+# SH.isDeleted(o::Trade{T}) where T <: st.Deleted = true
+# SH.isDeleted(o::Trade) = false
+
 end

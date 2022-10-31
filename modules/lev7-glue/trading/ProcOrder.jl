@@ -21,15 +21,18 @@ end
 
 function procOrders()::Bool
     isnothing(snap()) || error("Do not procOrders when snapped")
-    t1 = @timed tords = tradierOrders()
+    timeTradierOrders = @timed tords = tradierOrders()
     length(tords) > 0 || return false
     res = false
-    t2 = @timed for tord in tords
+    timeProcOrders = @timed for tord in tords
         res |= procOrder(tord)
     end
-    t3 = @timed @sync StoreTrade.updateTradesCache()
-    t4 = @timed Store.dbChecks()
-    @log info "procOrders" length(tords) t1.time t2.time t3.time t4.time
+    # Update cache because it just made changes to trades in db
+    timeUpdateOpen = @timed StoreTrade.updateTradesOpen()
+    timeUpdateClosed = @timed StoreTrade.updateTradesClosed()
+    # Check to make sure things are ok in db
+    timeDbChecks = @timed Store.dbChecks()
+    @log info "procOrders" length(tords) timeTradierOrders.time timeProcOrders.time timeUpdateOpen.time timeUpdateClosed.time timeDbChecks.time
     return res
 end
 

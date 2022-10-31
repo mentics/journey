@@ -23,7 +23,7 @@ function newTrade(primitDir::PriceT, legs::Coll{LegMeta}, underBid::Currency, un
                     lid, getBid(lq), getAsk(lq), getIv(lq))
         end
     end
-    updateTradesCache()
+    updateTradesOpen()
     return tid
 end
 
@@ -63,30 +63,60 @@ function loadTrades(clauseIn::String, clauseArgs...)::Vector{Trade}
 end
 
 using Caches
-export tradesCached
-const TRADES_CACHE = :trades
-function tradesCached(;age=Minute(10))
-    return cache!(Dict{Int,Trade}, TRADES_CACHE, age) do
-        return loadTradesCache()
+const CACHE_TRADES_OPEN = :TradesOpen
+const CACHE_TRADES_CLOSED = :TradesClosed
+export tradesClosed, tradesOpen, tradesOpenEntered
+tradesOpen(xpir::Date; kws...)::Vector{Trade} = tradesOpen(x -> getTargetDate(x) == xpir) # filter(x -> getTargetDate(x) == xpir, tradesOpen(; kws...))
+tradesOpenEntered(d::Date; kws...)::Vector{Trade} = tradesOpen(x -> toDateMarket(tsCreated(x)) == d; kws...) # filter(x -> toDateMarket(tsCreated(x)) == d, tradesOpen(; kws...))
+tradesOpen(f; kws...)::Vector{Trade} = filter(f, tradesOpen(; kws...))
+function tradesOpen(;age=Minute(10))::Vector{Trade}
+    # return cache!(Dict{Int,Trade}, CACHE_TRADES_OPEN, age) do
+    #     return loadOpen()
+    # end
+    return cache!(Vector{Trade}, CACHE_TRADES_OPEN, age) do
+        return loadOpen()
     end
 end
-function loadTradesCache()
-    # trades = loadTrades("select tid from VTrade where status != ? or tsCreated >= now()+'-24 hour' or tsfilled >= now()+'-24 hour' or tsclosed >= now()+'-24 hour'", Closed)
-    trades = loadTrades(
-    """
-    select tid from LegTrade where lid in (
-        select lu.lid from LegUsed lu where olid in (
-            select olid from LegOrd where tsCreated >= (now() + '-2 hour') or tsFilled >= (now() + '-2 hour')
-        )
-    ) and tid in (
-        select tid from Trade where status != ?
-    )
-    """, Closed)
-    return toDict(getId, trades)
+function tradesClosed(;age=Minute(10), since=bdaysBefore(today(), 7))::Vector{Trade}
+    # return cache!(Dict{Int,Trade}, CACHE_TRADES_CLOSED, age) do
+    #     return loadClosed(since)
+    # end
+    return cache!(Vector{Trade}, CACHE_TRADES_CLOSED, age) do
+        return loadClosed(since)
+    end
 end
-function updateTradesCache()
-    Threads.@spawn tradesCached(;age=Second(0))
+
+loadOpen()::Vector{Trade} = loadTrades("select tid from Trade where status not in ($(qmarks(length(StatusClosed))))", StatusClosed...)
+#     trades = loadTrades("select tid from Trade where status not in ($(qmarks(length(StatusClosed))))", StatusClosed...)
+#     return toDict(getId, trades)
+# end
+
+loadClosed(since::Date)::Vector{Trade} = loadTrades("select tid from Trade where cast(tsCreated as date) >= ? and status in ($(qmarks(length(StatusClosed))))", since, StatusClosed...)
+#     trades = loadTrades("select tid from Trade where cast(tsCreated as date) >= ? and status in ($(qmarks(length(StatusClosed))))", since, StatusClosed...)
+#     return toDict(getId, trades)
+# end
+
+# function loadTradesCache()
+#     # trades = loadTrades("select tid from VTrade where status != ? or tsCreated >= now()+'-24 hour' or tsfilled >= now()+'-24 hour' or tsclosed >= now()+'-24 hour'", Closed)
+#     trades = loadTrades(
+#     """
+#     select tid from LegTrade where lid in (
+#         select lu.lid from LegUsed lu where olid in (
+#             select olid from LegOrd where tsCreated >= (now() + '-2 hour') or tsFilled >= (now() + '-2 hour')
+#         )
+#     ) and tid in (
+#         select tid from Trade where status != ?
+#     )
+#     """, Closed)
+#     return toDict(getId, trades)
+# end
+function updateTradesOpen()
+    Threads.@spawn tradesOpen(;age=Second(0))
 end
+function updateTradesClosed()
+    Threads.@spawn tradesClosed(;age=Second(0))
+end
+
 # function loadTradesUpdated()
 #     t1 = @timed trades = loadTrades("select tid from VTrade where tsfilled >= now()+'-2 hour' or tsclosed >= now()+'-2 hour'")
 #     t2 = @timed for trade in trades TradesCache[getId(trade)] = trade end
@@ -96,27 +126,27 @@ end
 dbdc(x) = isSomething(x) ? C(Float64(x)) : nothing
 noth(x) = ismissing(x) ? nothing : x
 
-findTrades(states::Type{<:Status}...)::Vector{Trade} = loadTrades("select tid from Trade where status in ($(qmarks(length(states))))", states...)
-findTrades(exp::Date, states::Type{<:Status}...)::Vector{Trade} = loadTrades("select tid from Trade where targetDate = ? and status in ($(qmarks(length(states))))", exp, states...)
+# findTrades(states::Type{<:Status}...)::Vector{Trade} = loadTrades("select tid from Trade where status in ($(qmarks(length(states))))", states...)
+# findTrades(exp::Date, states::Type{<:Status}...)::Vector{Trade} = loadTrades("select tid from Trade where targetDate = ? and status in ($(qmarks(length(states))))", exp, states...)
 # function findTrades(exp::Date, states::Type{<:Status}...)::Vector{Trade}
 #     strStates = join(repeat(['?'], length(states)), ',')
 #     tids = selectCol("select tid from Trade where targetDate = ? and status in ($(strStates))", exp, states...)
 #     loadTrade.(tids)
 # end
 # TODO: make this work with local timezone to date properly
-findTradeEntered(d::Date)::Vector{Trade} = loadTrade.(selectCol("select tid from Trade where cast(tsCreated as date)=?", d))
+# findTradeEntered(d::Date)::Vector{Trade} = loadTrade.(selectCol("select tid from Trade where cast(tsCreated as date)=?", d))
 
 # TODO: needs timezone
-queryEntered(d::Date, states::Type{<:Status}...)::Vector{NamedTuple} =
-    isempty(states) ? select("select tid, cast(tsCreated as date) enteredDate, targetDate, status from Trade where cast(tsCreated as date)=?", d) :
-                      select("select tid, cast(tsCreated as date) enteredDate, targetDate, status from Trade where cast(tsCreated as date)=? and status in ($(join(repeat(['?'], length(states)), ',')))", d, states...)
-queryLegsEntered(d::Date)::Vector{LegTrade} =
-    loadLegTrade.(select("select * from VLegTrade where cast(tsCreated as date)=?", d)) # TODO: doesn't use timezone as it should
+# queryEntered(d::Date, states::Type{<:Status}...)::Vector{NamedTuple} =
+#     isempty(states) ? select("select tid, cast(tsCreated as date) enteredDate, targetDate, status from Trade where cast(tsCreated as date)=?", d) :
+#                       select("select tid, cast(tsCreated as date) enteredDate, targetDate, status from Trade where cast(tsCreated as date)=? and status in ($(join(repeat(['?'], length(states)), ',')))", d, states...)
+# queryLegsEntered(d::Date)::Vector{LegTrade} =
+#     loadLegTrade.(select("select * from VLegTrade where cast(tsCreated as date)=?", d)) # TODO: doesn't use timezone as it should
 
-# queryLegStatus(lid::Int)::T where T<:Status = strToStatus(select("select status from VLegTrade where lid=?", lid)[1].status)
-queryLegStatus(lid::Int) = strToStatus(select("select status from VLegTrade where lid=?", lid)[1].status)
+# # queryLegStatus(lid::Int)::T where T<:Status = strToStatus(select("select status from VLegTrade where lid=?", lid)[1].status)
+# queryLegStatus(lid::Int) = strToStatus(select("select status from VLegTrade where lid=?", lid)[1].status)
 
-queryNumLegs(tid::Int)::Union{Nothing,Int} = (res = selectCol("select count(lid) from LegTrade where tid=?", tid) ; isempty(res) ? nothing : res[1] )
+# queryNumLegs(tid::Int)::Union{Nothing,Int} = (res = selectCol("select count(lid) from LegTrade where tid=?", tid) ; isempty(res) ? nothing : res[1] )
 
 function queryLeftovers()::Vector{LegTrade}
     rows = select("select * from vlegtrade where tscreated is not null and tsclosed is null and tid in (select tid from Trade where targetDate < current_date)")
@@ -148,7 +178,8 @@ function deleteTrade(tid::Int)
     # else
     #     @info "Not deleted."
     # end
-    delete!(TradesCache, tid)
+    updateTradesOpen()
+    # delete!(TradesCache, tid)
 end
 function undeleteTrade(tid::Int)
     t = loadJson(joinpath(dirData("save/deletedTrades"), "$(tid).json"), Trade)

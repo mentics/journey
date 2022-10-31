@@ -1,7 +1,8 @@
 module CmdPos
 import Dates:Date
 using BaseTypes
-import SH
+import SH:v,isStatus
+import StatusTypes:WithFilled
 import LegMetaTypes:LegMeta
 import ProbTypes:Prob
 import Rets:Ret
@@ -34,7 +35,8 @@ function xprob(expr::Date)
     prob, _ = pk.kdeToClose(F(curp), F(vix), start, expr)
     return prob
 end
-xlms(expr::Date)::Vector{LegMeta} = SH.combineTo(Vector{LegMeta}, tradesToClose(expr))
+
+xlms(expr::Date)::Vector{LegMeta} = SH.combineTo(Vector{LegMeta}, tradesOpen(x -> isStatus(x, WithFilled) && getTargetDate(x) == expr))
 xlms(ex::Int)::Vector{LegMeta} = xlms(expir(ex))
 xlms(ex::Int, add::Coll{LegMeta})::Vector{LegMeta} = concat(xlms(ex), add)
 
@@ -66,12 +68,12 @@ end
 # TODO: If type for metrics, then could follow the `to` pattern
 
 import DrawStrat
-
+using TradeTypes
 function xdr(ex::Int, add::Union{Nothing,Coll{LegMeta}}=nothing, curp::Currency=market().curp)
     expr = expir(ex)
     # TODO: read from cache
     # TODO: this is inefficient because it converts to lms multiple times
-    tod = tradesToClose(expr)
+    tod = tradesOpen(expr)
     if isempty(tod)
         if isnothing(add)
             println("No positions nor adds for ", expr)
@@ -81,7 +83,7 @@ function xdr(ex::Int, add::Union{Nothing,Coll{LegMeta}}=nothing, curp::Currency=
     else
         trade = tod[1]
         DrawStrat.drawRet(SH.to(Ret, trade, curp); probs=(xprob(ex),), curp, label="t$(SH.getId(trade))")
-        for i in 2:length(tod)
+        for i in eachindex(tod)[2:end]
             trade = tod[i]
             DrawStrat.drawRet!(SH.to(Ret, trade, curp); label="t$(SH.getId(trade))")
         end

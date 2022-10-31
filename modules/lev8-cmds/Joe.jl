@@ -27,32 +27,11 @@ function allStrats()
     return
 end
 
+mli() = ( MaxLoss[] = -2.0 ; MaxLossExpr[] = -7.9 )
 ml1() = ( MaxLoss[] = -2.0 ; MaxLossExpr[] = -3.0 )
 ml2() = ( MaxLoss[] = -3.0 ; MaxLossExpr[] = -4.0 )
 ml3() = ( MaxLoss[] = -4.0 ; MaxLossExpr[] = -5.0 )
 mlx() = ( MaxLoss[] = -9999.0 ; MaxLossExpr[] = -9999.0 )
-
-flat(x...) = Iterators.flatten(x)
-flatmap(f, coll) = Iterators.flatten(Iterators.map(f, coll))
-
-import Positions, StoreOrder, LegTypes
-using TradierAccount, OrderTypes, OptionTypes, TradierOrderConvert
-function filterLegs()
-    ords = filter!(SH.isLive, tos(Order, ta.tradierOrders()))
-    legsPos = Iterators.map(getLeg, Positions.positions(; age=Minute(1)))
-    legsOrds = Iterators.map(getLeg, flatmap(getLegs, ords))
-    d = Dict{Option,Int}()
-    for leg in flat(legsPos, legsOrds)
-        opt = getOption(leg)
-        side = getSide(leg)
-        status = get(d, opt, 0)
-        d[opt] = status == 0 ? Int(side) : (status == side ? status : 2)
-    end
-    return function(opt, side::Side.T)
-        status = get(d, getOption(opt), 0)
-        return !(status != 0 && (status == 2 || status != Int(side)))
-    end
-end
 
 # export @u
 # macro u(i)
@@ -68,7 +47,7 @@ function jorn(exs; kws...)
     # legsConflict = legsConflicting()
     # isLegAllowed(opt, side) = LegTypes.isConflict(legsConflict)
     # isLegAllowed = !LegTypes.isConflict(legsConflict)
-    isLegAllowed = filterLegs()
+    isLegAllowed = entryFilterOption()
 
     for i in exs
         r, ctx = runJorn(expir(i), isLegAllowed; kws...)
@@ -268,10 +247,10 @@ function joe(ctx, tctx, ret, lms)::Union{Nothing,NamedTuple}
     extra = ret.vals[1] > MinMx && ret.vals[end] > MinMx
     # if all || (met.mx >= MinMx && met.mn >= MaxLoss[] && met.prob >= 0.75 && met.ev >= 0.0 && extra)
     # if true || extra # (met.mx >= MinMx && met.mn >= MaxLoss[] && met.prob >= 0.75 && met.ev >= 0.0 && extra)
-    if must && (all || (met.mx >= MinMx && met.mn >= MaxLoss[] && met.prob >= 0.85 && met.ev >= 0.01 && rateEv >= 0.5 && extra))
+    if must && (all || (met.mx >= MinMx && met.mn >= MaxLoss[] && met.prob >= 0.85 && met.ev >= 0.01 && extra)) # rateEv >= 0.5
         # kelly = ckel(ctx.prob, ret)
         kelly = Kelly.ded!(tctx.kelBuf1, tctx.kelBuf2, ctx.prob.vals, ret.vals, -met.mn)
-        if all || kelly > 0.0
+        # if all || kelly > 0.0
             kelly = max(kelly, 0.0)
             Rets.addRetVals!(tctx.retBuf2, ctx.posRet.vals, ret.vals)  # combineTo(Ret, vcat(ctx.posLms, lms...), ctx.curp)
             valsb = tctx.retBuf2
@@ -288,7 +267,7 @@ function joe(ctx, tctx, ret, lms)::Union{Nothing,NamedTuple}
                     Msgs[:MaxLossExpr] = ["Hit MLE", minb, ctx.posMin, MaxLossExpr[]]
                 end
             end
-        end
+        # end
     end
     return nothing
 end

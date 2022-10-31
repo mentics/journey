@@ -52,7 +52,10 @@ SH.getPrillDir(o::Order) = o.prillDir
 SH.getLegs(o::Order) = o.legs
 SH.tsCreated(o::Order) = o.tsCreated
 SH.tsFilled(o::Order) = o.tsFilled
-SH.isLive(o::Order{T}) where T <: st.NotLive = false
-SH.isLive(o::Order) = true
+# SH.isDeleted(o::Order{T}) where T <: st.Deleted = true
+# SH.isDeleted(o::Order) = false
+# isDone(o::Order{T}) where T <: st.OrderDone = true
+# isDone(o::Order) = false
+SH.isStatus(o::Order{T}, status) where T = T <: status
 
 end

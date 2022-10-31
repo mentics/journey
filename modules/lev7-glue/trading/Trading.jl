@@ -88,11 +88,16 @@ const PreClosedLegs = Set{Int}()
 # end
 
 # TODO: test
+using CmdUtil
 function checkTradeLegs(legs)
-    legsDb = queryLegsEntered(today())
-    for leg in legs, legDb in legsDb
-        isConflict(leg, legDb) && @logerr "Cannot trade opposite side on same day" leg legDb
+    check = entryFilterLeg()
+    for leg in legs
+        check(leg)
     end
+    # legsDb = queryLegsEntered(today())
+    # for leg in legs, legDb in legsDb
+    #     isConflict(leg, legDb) && @logerr "Cannot trade opposite side on same day" leg legDb
+    # end
     return true
 end
 

@@ -1,7 +1,7 @@
 module CmdUtil
 using Dates
-using BaseTypes, StatusTypes, ChainTypes
-using LogUtil
+using SH, BaseTypes, StatusTypes, ChainTypes
+using LogUtil, CollUtil
 using StoreTrade
 using Expirations
 
@@ -9,9 +9,6 @@ export tradesToClose, xlms, xlmsv
 
 # TODO: remove after fixing calcs to not need it
 TexPerDay = 6.5 + .3 * (24 - 6.2)
-
-tradesToClose(ex::Int=0) = tradesToClose(expir(ex)) # findTrades(expir(ex; td=true), Filled,Closing,PartialClosed)
-tradesToClose(exp::Date) = findTrades(exp, Filled, Closing, PartialClosed)
 
 # xlmsv(ex::Int=0)::Vector{LegMeta} = tos(Vector{LegMeta}, tradesToClose(ex))
 # function xlms(when::Int=0)::Vector{LegMeta}
@@ -139,5 +136,38 @@ end
 #     LegMeta(oqss.put.long[mids.callLong - toInner], 1.0, Side.long),
 #     LegMeta(oqss.call.long[mids.callLong + toInner], 1.0, Side.long),
 #     LegMeta(oqss.call.short[mids.callShort + toInner + toOuter], 1.0, Side.short))
+
+import Positions, StoreOrder, LegTypes
+using TradierAccount, OrderTypes, OptionTypes, TradierOrderConvert
+export entryFilterOption, entryFilterLeg
+function entryFilterOption()
+    d = entryFilterLookup()
+    function c1(opt, side::Side.T)
+        status = get(d, getOption(opt), 0)
+        return !(status != 0 && (status == 2 || status != Int(side)))
+    end
+end
+function entryFilterLeg()
+    d = entryFilterLookup()
+    function c1(leg)
+        status = get(d, getOption(leg), 0)
+        side = getSide(leg)
+        return !(status != 0 && (status == 2 || status != Int(side)))
+    end
+end
+
+function entryFilterLookup()
+    ords = filter!(x->!SH.isStatus(x, Deleted), tos(Order, ta.tradierOrders()))
+    legsPos = Iterators.map(getLeg, Positions.positions(; age=Minute(1)))
+    legsOrds = Iterators.map(getLeg, flatmap(getLegs, ords))
+    d = Dict{Option,Int}()
+    for leg in flat(legsPos, legsOrds)
+        opt = getOption(leg)
+        side = getSide(leg)
+        status = get(d, opt, 0)
+        d[opt] = status == 0 ? Int(side) : (status == side ? status : 2)
+    end
+    return d
+end
 
 end

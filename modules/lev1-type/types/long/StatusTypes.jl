@@ -1,7 +1,7 @@
 module StatusTypes
 
 export Status, Preview, Starting, Accepted, Filled, PartialClosed, Closing, Closed, Canceled, Rejected, Expired
-export WithBasic, WithFilled, WithAccepted, WithDone, OrderDone, Closeable
+export WithBasic, WithFilled, WithAccepted, WithDone, OrderDone, Closeable, Deleted
 export symToStatus, strToStatus, toStatus
 
 export st
@@ -25,9 +25,14 @@ const WithAccepted = Union{Accepted,Canceled,Rejected,PartialFilled,WithFilled}
 const WithDone = Union{Closed,Expired,Canceled,Rejected}
 const OrderDone = Union{Filled,Expired,Canceled,Rejected}
 const StatusPending = Union{Starting,Accepted,PartialFilled}
-const NotLive = Union{Canceled,Rejected}
+const Deleted = Union{Canceled,Rejected}
 const Closeable = Union{Filled,PartialClosed}
+# const Open = Union{Preview,Starting,Accepted,PartialFilled,Filled,PartialClosed,Closing}
+const TradeLive = Union{PartialFilled,Filled,PartialClosed,Closing}
 # TODO: clean up unused of above after store simplification
+
+export StatusClosed
+const StatusClosed = (Closed, Canceled, Rejected, Expired)
 
 (Type{<:Status})(s::String) = strToStatus(s)
 strToStatus(str::AbstractString) = getproperty(@__MODULE__, Symbol(str))

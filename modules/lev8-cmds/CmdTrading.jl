@@ -82,7 +82,7 @@ function tradeSize2(kelly::Float64, kellyRatio::Float64 = 0.5)
 end
 
 function toc() # findTradesToClose
-    trades = sort!(collect(values(StoreTrade.tradesCached())); by=getTargetDate)
+    trades = sort!(StoreTrade.tradesOpen(); by=getTargetDate)
     todayDate = market().startDay
     for trade in trades
         trade isa Trade{Filled} || continue
@@ -96,11 +96,14 @@ function toc() # findTradesToClose
         if curVal > 0.0
             # tex = calcTex(ts, today() + Day(1))
             # timult = 1 / Calendars.texToYear(tex)
-            timult = 252 / (1 + bdays(toDateMarket(ts), todayDate))
+            dur = (1 + bdays(toDateMarket(ts), todayDate))
+            timult = 252 / dur
             mn = min(OptionUtil.legsExtrema(getLegs(trade)...)...)
             rate = timult * curVal / (-mn)
-            expr = xp.whichExpir(getTargetDate(trade))
-            println(expr, ": Trade ", getId(trade), " (", strShort(Date(ts)), " - ", strShort(getTargetDate(trade)), "): ", map(x -> sho(x), (;curVal, neto, netc, rate, mn, tex, timult)))
+            if rate > 0.5
+                expr = xp.whichExpir(getTargetDate(trade))
+                println(expr, ": Trade ", getId(trade), " (", strShort(Date(ts)), " - ", strShort(getTargetDate(trade)), "): ", map(x -> sho(x), (;curVal, neto, netc, rate, mn, dur, timult)))
+            end
         end
     end
 end
@@ -108,27 +111,17 @@ end
 
 #region CurrentPosition
 using CmdUtil
-# TODO: make it a const
-# cacheTrades = Dict{Int,Trade}()
 function todo(ex=0)
     Globals.set(:todoRunLast, now(UTC))
     legOvers = queryLeftovers()
-    # if !isnothing(findfirst(leg -> getSide(leg) != Side.long, legOvers))
-    #     msg = "Found short leftovers" # $(saveObj(legOvers))"
-    #     if Hour(Dates.now()) >= Hour(7)
-    #         error(msg)
-    #     else
-    #         @log warn msg
-    #     end
-    # end
     if !isempty(legOvers)
         println("Leftovers:")
         pretyble(to.(NamedTuple, legOvers))
     end
     @info "Current price: $(market().curp)"
-    trades = tradesToClose(ex)
-    for trade in trades cacheTrades[getId(trade)] = trade end
-    return trades
+    return collect(Iterators.filter(x -> getTargetDate(x) == expir(ex), tradesOpen()))
+    # trades = tradesToClose(ex)
+    # return trades
 end
 
 using RetTypes, Between, DrawStrat
@@ -137,7 +130,7 @@ toRet(trades, exp)::Ret = combineTo(Ret, trades, exp, market().curp, Globals.get
 toRet(trades)::Ret = combineTo(Ret, trades, market().curp) # TODO: choose diff start price?
 toLms(trades)::Vector{LegMeta} = combineTo(Vector{LegMeta}, trades) # TODO: choose diff start price?
 # TODO: change so matches todo and expirs and all: 0 for today, 1 for non-today next exp, and default is 0
-drpos(exp=expir(0)) = drawRet(toRet(tradesToClose(exp), exp); prob=prob(), curp=market().curp, label="pos")
+# drpos(exp=expir(0)) = drawRet(toRet(tradesToClose(exp), exp); prob=prob(), curp=market().curp, label="pos")
 export drt, adrt
 # drt(i::Int, ex=1) = drawRet(toRet([tradesFor(ex)[i]], ex), prob(), market().curp, "t$(i)")
 # adrt(i::Int, ex=1) = drawRet!(toRet([tradesFor(ex)[i]], ex), "t$(i)")
@@ -146,29 +139,29 @@ adrt(tid::Int) = ( trade = cacheTrades[tid] ; drawRet!(toRet([trade], getTargetD
 drt(trade::Trade) = drawRet(toRet([trade], getTargetDate(trade)); probs=probsFor(getTargetDate(trade)), curp=market().curp, label="t$(getId(trade))")
 adrt(trade::Trade) = drawRet!(toRet([trade], getTargetDate(trade)); label="t$(getId(trade))")
 
-function drx(ex=0)
-    # TODO: read from cache
-    tod = tradesToClose(ex)
-    drt(tod[1])
-    for i in 2:length(tod)
-        adrt(tod[i])
-    end
-    drawRet!(toRet(tod, expir(ex)); label="all")
-end
+# function drx(ex=0)
+#     # TODO: read from cache
+#     tod = tradesToClose(ex)
+#     drt(tod[1])
+#     for i in 2:length(tod)
+#         adrt(tod[i])
+#     end
+#     drawRet!(toRet(tod, expir(ex)); label="all")
+# end
 
-# TODO: moevd to CmdPos as xdr
-function drx(ex, lms)
-    # TODO: read from cache
-    tod = tradesToClose(ex)
-    drt(tod[1])
-    for i in 2:length(tod)
-        adrt(tod[i])
-    end
-    curp = market().curp
-    drawRet!(combineTo(Ret, lms, curp); label="add")
-    posLms = toLms(tod)
-    drawRet!(combineTo(Ret, vcat(posLms, lms), curp); label="all")
-end
+# # TODO: moved to CmdPos as xdr
+# function drx(ex, lms)
+#     # TODO: read from cache
+#     tod = tradesToClose(ex)
+#     drt(tod[1])
+#     for i in 2:length(tod)
+#         adrt(tod[i])
+#     end
+#     curp = market().curp
+#     drawRet!(combineTo(Ret, lms, curp); label="add")
+#     posLms = toLms(tod)
+#     drawRet!(combineTo(Ret, vcat(posLms, lms), curp); label="all")
+# end
 
 # drawRet(tradesToRets(todo(ex)))
 # calcPosStrat(today(), market().startPrice, Globals.get(:vtyRatio))
@@ -181,7 +174,8 @@ using TradierAccount, OrderTypes
 function todup()
     # TODO: need to show filled ones so we can cancel pending duplicates
     tords = filter!(x -> tierIsLive(x) && startswith(x["tag"], "op"), ta.tradierOrders())
-    tt = findTradeEntered(today())
+    # tt = findTradeEntered(today())
+    tt = tradesOpenEntered(today())
     lup = Dict(getId(trade) => findTord(tords, getId(trade)) for trade in tt)
     res = [(;xpr=xp.whichExpir(getTargetDate(trade)), tid=getId(trade), status=typeof(trade).parameters[1], oid=lup[getId(trade)]["id"]) for trade in cu.findDupes!(tt; by=getTargetDate)]
     sort!(res; by=x -> 10000*x.xpr + x.tid)
@@ -211,10 +205,10 @@ end
 #endregion
 
 ct(trad::Trade{<:Closeable}; kws...) = closePos(trad; kws..., pre=true)
-ct(tid::Int; kws...) = ct(cacheTrades[tid]; kws...)
+ct(tid::Int; kws...) = ct(tradeOpen(tid); kws...)
 # pre=true, legs=nothing, skipMin=false
 ctr(trad::Trade{<:Closeable}, primitDir::Real; kws...) = closePos(trad; kws..., pre=false, at=PriceT(primitDir))
-ctr(tid::Int, primitDir::Real; kws...) = ctr(cacheTrades[tid], primitDir; kws...)
+ctr(tid::Int, primitDir::Real; kws...) = ctr(tradeOpen(tid), primitDir; kws...)
 # ctrt(i::Int, at::Real; kws...) = closePos(trad; kws..., pre=false, at=PriceT(at))
 # ctt(i::Int; kws...) = ct(todo()[i]); kws..., pre=true)
 function closePos(trad::Trade{<:Closeable}; ratio=0.25, at=nothing, pre=true, kws...)
@@ -259,7 +253,6 @@ function canTrade(pre::Bool)
     Markets.canTrade()
     Chains.canTrade()
     !dev() || error("Don't make trades in devMode")
-
 end
 
 using BaseTypes, QuoteTypes, OutputUtil

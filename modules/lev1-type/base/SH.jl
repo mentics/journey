@@ -21,6 +21,9 @@ export isValid
 
 export to, tos, tosnn, combineTo, mapFlattenTo
 
+export v
+(v(x::Dict{K,V})::Vector{V}) where {K,V} = collect(values(x))
+
 const Vals = Vector{Float64}
 
 function getBid() end
@@ -53,7 +56,7 @@ function getQuantityDir() end
 function addQuantity() end
 
 # for Order
-export getId, getSymbol, getClass, getOrderType, getPrimitDir, getPrillDir, tsCreated, tsFilled, tsClosed
+export getId, getSymbol, getClass, getOrderType, getPrimitDir, getPrillDir, tsCreated, tsFilled, tsClosed, isStatus
 function getId() end
 function getClass() end
 function getSymbol() end
@@ -63,7 +66,9 @@ function getPrillDir() end
 function tsCreated() end
 function tsFilled() end
 function tsClosed() end
-function isLive() end
+# function isLive() end
+# function isDeleted() end
+function isStatus() end
 
 # for Trade
 export getPrillDirOpen, getPrillDirClose
@@ -98,8 +103,16 @@ function mapFlattenTo(gen, ::Type{T}, itr, args...)::Base.Generator where T; Ite
 tosnn(::Type{T}, itr, args...) where T =
         filter(!isnothing, map(x -> to(Union{Nothing,T}, x, args...), itr)) # TODO: is closure here optimum?
 tos(::Type{T}, itr, args...) where T = map(x -> to(T, x, args...), itr) # TODO: is closure here optimum?
-function combineTo() end
-# function combineTo(::Type{T}, itr, args...)::T where T end
+
+export ElType
+struct ElType{T} end
+(combineTo(::Type{R}, itr, args...)::R) where R = combineTo(R, ElType{eltype(itr)}, itr, args...)
+(combineTo(::Type{R}, ::Type{ElType{E}}, itr, args...)::R) where {R,E} = error("Undefined combineTo for ", R, ' ', E)
+
+# (testETR(::Type{R}, itr, args...)::R) where R = testET(ElType{eltype(itr)}, itr, args...)
+# (testETR(::Type{R}, ::Type{ElType{E}}, itr, args...)::R) where {R,E} = error("Undefined testElType for ", E)
+# (testETR(::Type{Float64}, ::Type{ElType{Float64}}, itr, args...)::Float64) = doit(itr, args[1])
+
 function to() end
 # function to(::Type{T}, x, args...)::T where T end
 to(::Type{T}) where T = x -> to(T, x)

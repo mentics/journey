@@ -41,7 +41,7 @@ SH.to(::Type{Ret}, trade::Trade, sp::Currency)::Ret = combineTo(Ret, tos(LegMeta
 # SH.tos(::Type{Vector{LegMeta}}, trades::AVec{<:Trade})::Vector{LegMeta} = collect(mapFlattenTo(getLegs, LegMeta, trades))
 # SH.tos(::Type{Vector{Vector{LegMeta}}}, trades::AVec{<:Trade})::Vector{LegMeta} = collect(mapFlattenTo(getLegs, LegMeta, trades))
 SH.to(::Type{Vector{LegMeta}}, trade::Trade)::Vector{LegMeta} = collect(mapFlattenTo(getLegs, LegMeta, [trade])) # TODO: cleanup, don't reuse wrongly
-SH.combineTo(::Type{Vector{LegMeta}}, trades::AVec{<:Trade})::Vector{LegMeta} = collect(mapFlattenTo(getLegs, LegMeta, trades))
+SH.combineTo(::Type{Vector{LegMeta}}, ::Type{<:ElType{<:Trade}}, trades)::Vector{LegMeta} = collect(mapFlattenTo(getLegs, LegMeta, trades))
 #endregion
 
 end

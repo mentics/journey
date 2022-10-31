@@ -126,4 +126,8 @@ function findDupes!(x::AbstractArray{T}; by=identity) where T
     return dupes
 end
 
+export flat, flatmap
+flat(x...) = Iterators.flatten(x)
+flatmap(f, coll) = Iterators.flatten(Iterators.map(f, coll))
+
 end

@@ -20,14 +20,15 @@ end
 
 nstr(n::Real)::String = string(round(n; digits=4))
 
-macro tail(sym, n=10)
+macro tail(sym, n=10, strx=".*")
     blk = Expr(:call, :tailit)
-    push!(blk.args, QuoteNode(sym), n)
+    push!(blk.args, QuoteNode(sym), n, string(strx))
     return Expr(:block, blk)
 end
 
-function tailit(typ::Symbol, n::Integer)
-    prout.(last(eachline(pathOut(typ)), n))
+function tailit(typ::Symbol, n::Integer, strx::String)
+    rx = Regex(strx)
+    prout.(filter(x->!isnothing(match(rx, x)), last(eachline(pathOut(typ)), n)))
     return
 end
 
