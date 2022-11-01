@@ -111,7 +111,7 @@ function getCandidates(;maxSyms=-1)
     return res
 end
 
-checkGrade(gs, cat, lte) = haskey(gs, cat) ? gs[cat] <= lte : true
+checkGrade(gs, cat, lte) = haskey(gs, cat) ? gs[cat] <= lte : false
 
 function quoteWeeklys()
     loadWeeklys()

@@ -70,13 +70,11 @@ end
 import DrawStrat
 using TradeTypes
 function xdr(ex::Int, add::Union{Nothing,Coll{LegMeta}}=nothing, curp::Currency=market().curp)
-    expr = expir(ex)
-    # TODO: read from cache
-    # TODO: this is inefficient because it converts to lms multiple times
-    tod = ST.tradesOpen(expr)
+    xpir = expir(ex)
+    tod = ST.tradesOpen(x -> isStatus(x, WithFilled) && getTargetDate(x) == xpir) # ST.tradesOpen(x -> x, expr)
     if isempty(tod)
         if isnothing(add)
-            println("No positions nor adds for ", expr)
+            println("No positions nor adds for ", xpir)
         else
             DrawStrat.drawRet(SH.combineTo(Ret, add, curp); probs=(xprob(ex),), curp, label="add")
         end

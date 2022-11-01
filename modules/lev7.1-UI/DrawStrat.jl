@@ -19,7 +19,8 @@ function drawRet(r::Ret; probs=nothing, curp=nothing, label="", newWin=false)
     xs = sp .* Bins.xs(extentHalf)
 
     xrange = (xs[1] - 0.5 * sp * Bins.width(), xs[end] + 0.5 * sp * Bins.width())
-    yMin, yMax = extrema(vals)
+    # yMin, yMax = extrema(vals)
+    yMin, yMax = (-5.0, 5.0)
     ax = newFig(ticksCentered(sp, xrange, (yMin, yMax)), newWin) do fig, ax
         # TODO: draw on fig arg
         if !isnothing(probs)

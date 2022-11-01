@@ -156,6 +156,7 @@ noth(x) = ismissing(x) ? nothing : x
 
 # # queryLegStatus(lid::Int)::T where T<:Status = strToStatus(select("select status from VLegTrade where lid=?", lid)[1].status)
 # queryLegStatus(lid::Int) = strToStatus(select("select status from VLegTrade where lid=?", lid)[1].status)
+getLegStatus(tid::Int, lid::Int) = findLeg(getTradeAll(tid), lid)
 
 # queryNumLegs(tid::Int)::Union{Nothing,Int} = (res = selectCol("select count(lid) from LegTrade where tid=?", tid) ; isempty(res) ? nothing : res[1] )
 

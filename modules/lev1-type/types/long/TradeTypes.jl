@@ -2,7 +2,7 @@ module TradeTypes
 using Dates
 using SH, BaseTypes, LegTradeTypes, StatusTypes
 
-export Trade, TradeMeta, getTargetDate
+export Trade, TradeMeta, getTargetDate, findLeg
 
 struct TradeMeta
     bid::Currency
@@ -35,6 +35,9 @@ SH.getNetOpen(o::Trade) = isnothing(o.prillDirOpen) ? NaN : ( s = sum(getNetOpen
 SH.getNetClose(o::Trade) = isnothing(o.prillDirClose) ? NaN : ( s = sum(getNetClose, o.legs) ; @assert s ≈ o.prillDirClose ; s )
 SH.getPnl(o::Trade) = getPrillDirOpen(o) + getPrillDirClose(o)
 SH.getMeta(o::Trade) = o.meta
+
+using CollUtil
+findLeg(trade::Trade, lid::Int) = find(x -> getId(x) == lid, trade.legs)
 
 SH.isStatus(o::Trade{T}, status) where T = T <: status
 # SH.isStatus(o::Trade{T}, ::Type{S}) where {S,T} where T<:S = true

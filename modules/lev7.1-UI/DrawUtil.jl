@@ -30,7 +30,7 @@ function newFig(f, (xticks, yticks), showLegend=true, newWin=false)
 
     Main.save[:ax] = ax
     showLegend && axislegend(ax)
-    DataInspector(fig)
+    DataInspector(fig; textcolor=:blue)
     if newWin
         display(GLMakie.Screen(), ax)
     else
@@ -49,7 +49,8 @@ function newFig(f, (xticks, yticks), showLegend=true, newWin=false)
 end
 
 function ticksCentered(sp, (xMin, xMax), (yMin, yMax))
-    ytickWidth = rndUp((yMax - yMin + .0001)/10, .5)
+    # ytickWidth = rndUp((yMax - yMin + .0001)/10, .5)
+    ytickWidth = .5
     yMin = rndDown(yMin - .0001, ytickWidth)
     yMax = rndUp(yMax + .0001, ytickWidth)
     maxY = max(abs(yMin), abs(yMax))

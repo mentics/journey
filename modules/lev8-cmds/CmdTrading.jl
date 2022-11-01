@@ -208,7 +208,7 @@ ct(trad::Trade{<:Closeable}; kws...) = closePos(trad; kws..., pre=true)
 ct(tid::Int; kws...) = ct(tradeOpen(tid); kws...)
 # pre=true, legs=nothing, skipMin=false
 ctr(trad::Trade{<:Closeable}, primitDir::Real; kws...) = closePos(trad; kws..., pre=false, at=PriceT(primitDir))
-ctr(tid::Int, primitDir::Real; kws...) = ctr(tradeOpen(tid), primitDir; kws...)
+ctr(tid::Int, primitDir::Real; kws...) = ctr(ST.getTradeOpen(tid), primitDir; kws...)
 # ctrt(i::Int, at::Real; kws...) = closePos(trad; kws..., pre=false, at=PriceT(at))
 # ctt(i::Int; kws...) = ct(todo()[i]); kws..., pre=true)
 function closePos(trad::Trade{<:Closeable}; ratio=0.25, at=nothing, pre=true, kws...)

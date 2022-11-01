@@ -1,7 +1,7 @@
 module Joe
 using Dates, NamedTupleTools
 using Globals, SH, BaseTypes, SmallTypes, Bins, LegMetaTypes, RetTypes, StratTypes
-using DateUtil, OptionUtil, CalcUtil, ThreadUtil, OutputUtil, LogUtil
+using DateUtil, OptionUtil, CalcUtil, ThreadUtil, OutputUtil, LogUtil, DictUtil
 import GenCands
 using Calendars, Expirations, Chains, ProbKde, Markets
 using CmdUtil
@@ -28,7 +28,9 @@ function allStrats()
 end
 
 mli() = ( MaxLoss[] = -2.0 ; MaxLossExpr[] = -7.9 )
-ml1() = ( MaxLoss[] = -2.0 ; MaxLossExpr[] = -3.0 )
+mla() = ( MaxLoss[] = -0.25 ; MaxLossExpr[] = -0.5 )
+ml0() = ( MaxLoss[] = -0.5 ; MaxLossExpr[] = -0.75 )
+ml1() = ( MaxLoss[] = -1.0 ; MaxLossExpr[] = -1.5 )
 ml2() = ( MaxLoss[] = -3.0 ; MaxLossExpr[] = -4.0 )
 ml3() = ( MaxLoss[] = -4.0 ; MaxLossExpr[] = -5.0 )
 mlx() = ( MaxLoss[] = -9999.0 ; MaxLossExpr[] = -9999.0 )
@@ -40,6 +42,7 @@ mlx() = ( MaxLoss[] = -9999.0 ; MaxLossExpr[] = -9999.0 )
 
 # import Profile
 function jorn(exs; kws...)
+    empty!(Skipped)
     # rs = Dict{Int,NamedTuple}()
     global ress = Vector{Vector{NamedTuple}}(undef,maximum(exs))
     global ctxs = Vector{NamedTuple}(undef,maximum(exs))
@@ -68,6 +71,7 @@ function disp()
         push!(res, (;
             ex=i,
             delete(r, :lms, :met, :metb)...,
+            ev=r.met.ev,
             evr="$(rd3(ctx.posMet.evr)):$(rd3(r.met.evr)):$(rd3(r.metb.evr))",
             prob="$(rd3(ctx.posMet.prob)):$(rd3(r.met.prob)):$(rd3(r.metb.prob))",
             r.met.mx,
@@ -78,7 +82,7 @@ function disp()
 end
 
 function runJorn(xpr::Date, isLegAllowed; nopos=false, all=false)
-    ctx = makeCtx(xpr; nopos, all)
+    global ctx = makeCtx(xpr; nopos, all)
     oqssAll = Chains.getOqss(xpr, ctx.curp, xlms(xpr))
     oqss = filtOqss(oqssAll) do oq
         abs(getStrike(oq) / ctx.curp - 1.0) < 0.1
@@ -122,7 +126,8 @@ function runJorn(xpr::Date, isLegAllowed; nopos=false, all=false)
     isempty(Msgs) || @info Msgs
 
     # res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roi)
-    res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roiEv)
+    # res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roiEv)
+    res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roiEvr)
     # res = sort!(reduce(vcat, ress); rev=true, by=x -> x.met.evr)
     @log debug "jorn proced results" cnt length(res)
     return (res, ctx)
@@ -176,7 +181,8 @@ function makeCtx(xpir::Date; nopos, all)::NamedTuple
     curp = market().curp
     # tex = calcTex(start, expr)
     # timult = 1 / Calendars.texToYear(tex)
-    timult = 252 / (1 + bdays(market().startDay, xpir))
+    days = (1 + bdays(market().startDay, xpir))
+    timult = 252 / days
     # vix = market().vix
     # prob = probKde(F(curp), tex, F(vix))
     # prob, _ = pk.probKdeComp(F(curp), F(vix), start, expr)
@@ -194,6 +200,7 @@ function makeCtx(xpir::Date; nopos, all)::NamedTuple
         all,
         curp,
         prob,
+        days,
         timult,
         posLms,
         posRet,
@@ -227,27 +234,34 @@ function joeCond(ctx, cond::Condor)
     r = joe(ctx, tctx, ret, lms)
     return isnothing(r) ? nothing : merge(r, (;lms))
 end
-function joe(ctx, tctx, ret, lms)::Union{Nothing,NamedTuple}
-    MinMx = 0.21
-    all = ctx.all
+function testOne(r)
+    empty!(Skipped)
+    ret = combineTo(Ret, r.lms, ctx.curp)
+    joe(ctx, ctx.threads[1], ret, r.lms; allo=false)
+    println(Skipped)
+end
+function joe(ctx, tctx, ret, lms; allo=nothing)::Union{Nothing,NamedTuple}
+    shouldTrackSkipped = false
+    MinMx = 0.17
+    all = isnothing(allo) ? ctx.all : allo
     met = calcMetrics(ctx.prob, ret)
     rateEv = ctx.timult * met.ev / (-met.mn)
+    rateEvr = ctx.timult * met.evr / (-met.mn)
     rate = ctx.timult * met.profit / (-met.mn)
-    0.0 < met.prob < 1.0 || return nothing
-    getThetaDir(lms) > 0.001 || return nothing
-    # if met.mx > -adjusted
-    #     global lmsBad = lms
-    #     global metBad = met
-    #     return
-    #     error("met.mx $(met.mx) <= $(-adjusted)")
-    # end
+    0.0 < met.prob < 1.0 || ( (shouldTrackSkipped && trackSkipped("prob")) ; return nothing )
+    getThetaDir(lms) > 0.001 || ( (shouldTrackSkipped && trackSkipped("thetaDir")) ; return nothing )
+
     # TODO: is ev > 0 too restrictive? and why can kelly be > 0 when ev < 0?
     # must = (min(0, ret.vals[1]) + min(0, ret.vals[end])) > -1.0
     must = ret.vals[1] > -0.1 && ret.vals[end] > -0.1
+    must || ( (shouldTrackSkipped && trackSkipped("must")) ; return nothing )
+    # must || ( return nothing )
     extra = ret.vals[1] > MinMx && ret.vals[end] > MinMx
+    maxLoss = (ctx.days-1) * MaxLoss[]
+    maxLossBoth = (ctx.days-1) * MaxLossExpr[]
     # if all || (met.mx >= MinMx && met.mn >= MaxLoss[] && met.prob >= 0.75 && met.ev >= 0.0 && extra)
     # if true || extra # (met.mx >= MinMx && met.mn >= MaxLoss[] && met.prob >= 0.75 && met.ev >= 0.0 && extra)
-    if must && (all || (met.mx >= MinMx && met.mn >= MaxLoss[] && met.prob >= 0.85 && met.ev >= 0.01 && extra)) # rateEv >= 0.5
+    if all || (met.mx >= MinMx && met.mn >= maxLoss && met.ev >= 0.01 && extra) # rateEv >= 0.5 && met.prob >= 0.85
         # kelly = ckel(ctx.prob, ret)
         kelly = Kelly.ded!(tctx.kelBuf1, tctx.kelBuf2, ctx.prob.vals, ret.vals, -met.mn)
         # if all || kelly > 0.0
@@ -255,21 +269,34 @@ function joe(ctx, tctx, ret, lms)::Union{Nothing,NamedTuple}
             Rets.addRetVals!(tctx.retBuf2, ctx.posRet.vals, ret.vals)  # combineTo(Ret, vcat(ctx.posLms, lms...), ctx.curp)
             valsb = tctx.retBuf2
             minb = minimum(valsb)
-            if all || (minb >= ctx.posMin || minb > MaxLossExpr[])
+            if all || (minb >= ctx.posMin || minb > maxLossBoth)
                 roi = rate * kelly
                 roiEv = rateEv * kelly
+                roiEvr = rateEvr * kelly
                 # rate = ctx.timult * met.mx / (-met.mn)
                 retb = Ret(tctx.retBuf2, ctx.curp, ctx.posRet.numLegs + 4)
                 metb = calcMetrics(ctx.prob, retb)
-                return (;roi, roiEv, rate, rateEv, kelly, met, metb)
+                return (;roi, roiEv, roiEvr, rate, rateEv, kelly, met, metb)
             else
-                runSync(lockMsg) do
-                    Msgs[:MaxLossExpr] = ["Hit MLE", minb, ctx.posMin, MaxLossExpr[]]
-                end
+                # shouldTrackSkipped && trackSkipped("max loss both: $((minb, ctx.posMin, maxLossBoth))")
+                shouldTrackSkipped && trackSkipped("max loss both")
             end
         # end
+    else
+        checks = ["met.mx >= MinMx", "met.mn >= maxLoss", "met.prob >= 0.85", "met.ev >= 0.01", "extra"]
+        checkVals = [met.mx >= MinMx, met.mn >= maxLoss, met.prob >= 0.85, met.ev >= 0.01, extra]
+        i = findfirst(x -> !x, checkVals)
+        shouldTrackSkipped && trackSkipped(checks[i])
+        # shouldTrackSkipped && trackSkipped("if") # $(checks[i]) $(eval(Meta.parse(x)))")
     end
     return nothing
+end
+
+const Skipped = Dict{String,Int}()
+function trackSkipped(s)
+    runSync(lockMsg) do
+        incKey(Skipped, s)
+    end
 end
 
 const lockMsg = ReentrantLock()

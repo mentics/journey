@@ -107,7 +107,7 @@ function closeTinyLegs!(legs, tid, optQuoter, maxClose::Int, sid::Side.T, exp::D
         cnt < maxClose || break
         lid = getId(leg)
         # We're no longer closing worthless future legs. TODO: add test for this case
-        if !isLegClosed(lid, pre) || (getSide(leg) == Side.long && getExpiration(leg) > exp)
+        if !isLegClosed(tid, lid, pre) || (getSide(leg) == Side.long && getExpiration(leg) > exp)
             q = optQuoter(leg)
             qty = getQuantity(leg)
             # @info "closeTinyLegs" getBid(q) getAsk(q) abs(getBid(q)/qty)
@@ -127,7 +127,7 @@ function closeTinyLegs!(legs, tid, optQuoter, maxClose::Int, sid::Side.T, exp::D
     return cnt
 end
 
-isLegClosed(lid::Int, pre::Bool) = pre ? lid in PreClosedLegs : queryLegStatus(lid) === Closed
+isLegClosed(tid::Int, lid::Int, pre::Bool) = pre ? lid in PreClosedLegs : ST.getLegStatus(tid, lid) === Closed
 
 using ProcOrder
 markLegClosedPre(lid::Int) = push!(PreClosedLegs, lid)
