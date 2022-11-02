@@ -21,9 +21,9 @@ Ignore = ["SNDL","YANG","MUX","QD","RIOT","GOTU","TAL","ACB","HUT","IQ","JMIA","
           "EWZ","FLBR","FCG","AMLP","BKLN","LABD","SRS","DBO","IYE","USFR","ITB","COPX","UCO",
 
           "AFRM","CAN","SRAD","SYF","PRPH","WB","BROS","YY","RLX","RUM","AMPL","PTLO","TLRY", # don't like company
-          "GRPH","NKTX","RGNX", # clinical stage
+          "GRPH","NKTX","RGNX","ITOS", # clinical stage
 
-          "RKT","BBW","ACRX","REI","FRSH","GPRO" # maybe reconsider someday
+          "RKT","BBW","ACRX","REI","FRSH","GPRO","QTRX","QFIN","UWMC" # maybe reconsider someday
 ]
 # Early stage clinical: "AVIR"
 IgnoreTemp = []#"CORZ","CLSK"]
@@ -105,7 +105,7 @@ function getCandidates(;maxSyms=-1)
 
     global res = filter(syms) do s
         gs = get(Data[:grades], s, nothing)
-        grade = isnothing(gs) || (checkGrade(gs, "value_category", 5) && checkGrade(gs, "profitability_category", 5)) # && checkGrade(gs, "growth_category", 9))
+        grade = !isnothing(gs) && (checkGrade(gs, "value_category", 5) && checkGrade(gs, "profitability_category", 5)) # && checkGrade(gs, "growth_category", 9))
         return grade && DictUtil.safeKeys(Data, 0.0, :metrics, s, "quant_rating") > 2.6
     end
     return res

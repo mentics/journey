@@ -87,7 +87,7 @@ tradictClosed(;age=Minute(10), since=bdaysBefore(today(), 7))::Dict{Int,Trade} =
 tradesOpen(;age=Minute(10))::Vector{Trade} =
         tradesCache(loadOpen, CACHE_TRADES_OPEN; age)[1]
 tradesClosed(;age=Minute(10), since=bdaysBefore(today(), 7))::Vector{Trade} =
-        tracesCache(() -> loadClosed(since), CACHE_TRADES_CLOSED; age)[1]
+        tradesCache(() -> loadClosed(since), CACHE_TRADES_CLOSED; age)[1]
 
 function tradesCache(updater, sym::Symbol;age=Minute(10))::TradesCacheType
     return cache!(TradesCacheType, sym, age) do
