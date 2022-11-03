@@ -24,6 +24,8 @@ ll = c.lookAll()
 2b) use c.findRoll to find what to roll to
 ==========
 
+For 401k trading covered calls, get alerted when price goes below a certain % of the strike, and then just roll to leap to lock in long term % return (and early exercise is bonus)
+
 Calculate the prob that market will move enough each day between now and target date
 such that using blackscholes/greeks, we can make a binomial prob for each day that it
 will reach a target annualized return and so we can close it early.

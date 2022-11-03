@@ -27,8 +27,8 @@ function allStrats()
     return
 end
 
+mla() = ( MaxLossAdd[] = -2.0 ;  MaxLoss[] = -0.1 ; MaxLossExpr[] = -0.15 )
 mli() = ( MaxLoss[] = -2.0 ; MaxLossExpr[] = -7.9 )
-mla() = ( MaxLoss[] = -0.25 ; MaxLossExpr[] = -0.5 )
 ml0() = ( MaxLoss[] = -0.5 ; MaxLossExpr[] = -0.75 )
 ml1() = ( MaxLoss[] = -1.0 ; MaxLossExpr[] = -1.5 )
 ml2() = ( MaxLoss[] = -3.0 ; MaxLossExpr[] = -4.0 )
@@ -153,8 +153,9 @@ using Caches, TradierData
 # const lock = ReentrantLock()
 const MaxLossExpr = Ref{Float64}(-3.0)
 const MaxLoss = Ref{Float64}(-2.0)
+const MaxLossAdd = Ref{Float64}(-2.0)
 
-calcRate(to::Date, ret, risk) = (ret / risk) * (1 / Calendars.texToYear(calcTex(now(UTC), to)))
+# calcRate(to::Date, ret, risk) = (ret / risk) * (1 / Calendars.texToYear(calcTex(now(UTC), to)))
 
 # export lms
 # import CmdExplore
@@ -179,13 +180,9 @@ end
 function makeCtx(xpir::Date; nopos, all)::NamedTuple
     # start = market().tsMarket
     curp = market().curp
-    # tex = calcTex(start, expr)
-    # timult = 1 / Calendars.texToYear(tex)
-    days = (1 + bdays(market().startDay, xpir))
-    timult = 252 / days
-    # vix = market().vix
-    # prob = probKde(F(curp), tex, F(vix))
-    # prob, _ = pk.probKdeComp(F(curp), F(vix), start, expr)
+    from = market().startDay
+    days = (1 + bdays(from, xpir))
+    timt = timult(xpir, from)
     prob = xprob(xpir)
     posLms = nopos ? LegMeta[] : xlms(xpir)
     posRet = combineTo(Ret, posLms, curp)
@@ -201,7 +198,7 @@ function makeCtx(xpir::Date; nopos, all)::NamedTuple
         curp,
         prob,
         days,
-        timult,
+        timt,
         posLms,
         posRet,
         posMet,
@@ -245,9 +242,9 @@ function joe(ctx, tctx, ret, lms; allo=nothing)::Union{Nothing,NamedTuple}
     MinMx = 0.17
     all = isnothing(allo) ? ctx.all : allo
     met = calcMetrics(ctx.prob, ret)
-    rateEv = ctx.timult * met.ev / (-met.mn)
-    rateEvr = ctx.timult * met.evr / (-met.mn)
-    rate = ctx.timult * met.profit / (-met.mn)
+    rateEv = ctx.timt * met.ev / (-met.mn)
+    rateEvr = ctx.timt * met.evr / (-met.mn)
+    rate = ctx.timt * met.profit / (-met.mn)
     0.0 < met.prob < 1.0 || ( (shouldTrackSkipped && trackSkipped("prob")) ; return nothing )
     getThetaDir(lms) > 0.001 || ( (shouldTrackSkipped && trackSkipped("thetaDir")) ; return nothing )
 
@@ -257,8 +254,8 @@ function joe(ctx, tctx, ret, lms; allo=nothing)::Union{Nothing,NamedTuple}
     must || ( (shouldTrackSkipped && trackSkipped("must")) ; return nothing )
     # must || ( return nothing )
     extra = ret.vals[1] > MinMx && ret.vals[end] > MinMx
-    maxLoss = (ctx.days-1) * MaxLoss[]
-    maxLossBoth = (ctx.days-1) * MaxLossExpr[]
+    maxLoss = (ctx.days-1) * MaxLoss[] + MaxLossAdd[]
+    maxLossBoth = (ctx.days-1) * MaxLossExpr[] + MaxLossAdd[]
     # if all || (met.mx >= MinMx && met.mn >= MaxLoss[] && met.prob >= 0.75 && met.ev >= 0.0 && extra)
     # if true || extra # (met.mx >= MinMx && met.mn >= MaxLoss[] && met.prob >= 0.75 && met.ev >= 0.0 && extra)
     if all || (met.mx >= MinMx && met.mn >= maxLoss && met.ev >= 0.01 && extra) # rateEv >= 0.5 && met.prob >= 0.85

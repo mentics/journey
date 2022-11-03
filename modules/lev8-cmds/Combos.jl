@@ -97,11 +97,10 @@ function look(sym; all=false, ratio)
     chs = getChains(sym)
     # locUnder = Under[sym]
     locUnder = stock(sym)
-    for expr in sort!(collect(keys(chs)))
+    for xpir in sort!(collect(keys(chs)))
         # expr < maxDate || break # exprs sorted asc
-        oqs = filter(isPut, chs[expr].chain)
-        # TODO: use tex instead of bdays?
-        timult = 252 / (1 + bdays(today(), expr))
+        oqs = filter(isPut, chs[xpir].chain)
+        timult = timult(xpir)
         underBid = locUnder["bid"]
         if all
             range = 1:length(oqs)
@@ -124,7 +123,7 @@ function look(sym; all=false, ratio)
             rate = timult * (primitDir - .0065) / strike # .0065 is the trade commission for fidelity
             # println("$(sym)[$(expr)]: $(underBid) -> $(strike) at $(primitDir) ($(getQuote(oq))) / $(strike) = $(rate)")
             if all || rate > 0.1
-                push!(res, (;sym, expr, mov=1.0 - strike/underBid, underBid, strike, primitDir, rate, div=getDividend(sym), oq))
+                push!(res, (;sym, xpir, mov=1.0 - strike/underBid, underBid, strike, primitDir, rate, div=getDividend(sym), oq))
             end
         end
     end
@@ -174,10 +173,7 @@ function findRoll(sym, at, cost=0.0, style=Style.put)
         oqs = filter(x->getStyle(x) == style, chs[expr].chain)
         # TODO: get Calendars further out
         expr < Date(2025,1,1) || continue
-        # TODO: use tex instead of bdays?
-        tex = Calendars.calcTex(now(UTC), expr)
-        timult = 1 / Calendars.texToYear(tex)
-        # timult = 252 / bdays(today(), expr)
+        timult = timult(expr)
         underBid = locUnder["bid"]
         for oq in oqs
             strike = getStrike(oq)

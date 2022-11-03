@@ -76,7 +76,7 @@ end
 
 function aprSched(targRate=0.5, risk=1.0)
     curVals = map(1:100) do i
-        timult = 252 / (1 + i)
+        timult = bdaysPerYear / (1 + i)
         curVal = risk * targRate / timult
         return curVal
     end

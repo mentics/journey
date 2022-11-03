@@ -96,8 +96,8 @@ function toc() # findTradesToClose
         if curVal > 0.0
             # tex = calcTex(ts, today() + Day(1))
             # timult = 1 / Calendars.texToYear(tex)
-            dur = (1 + bdays(toDateMarket(ts), todayDate))
-            timult = 252 / dur
+            dur = DateUtil.durRisk(toDateMarket(ts), todayDate)
+            timult = timult(toDateMarket(ts), todayDate)
             mn = min(OptionUtil.legsExtrema(getLegs(trade)...)...)
             rate = timult * curVal / (-mn)
             if rate > 0.5

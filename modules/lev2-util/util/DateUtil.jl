@@ -29,6 +29,12 @@ export getDate
 
 const LOCALZONE = localzone()
 
+export timult, calcRate
+bdaysPerYear() = 252.0
+durRisk(to::Date, from=today()) = 1 + bdays(from, to)
+timult(to::Date, from=today()) = bdaysPerYear() / durRisk(to, from)
+calcRate(to::Date, ret, risk, from=today()) = (ret / risk) * timult(to, from)
+
 #region Basic
 const SECOND_ZERO = Second(0)
 const SECOND_DAY = Second(Day(1))
