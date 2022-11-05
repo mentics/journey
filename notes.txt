@@ -22,6 +22,11 @@ CmdTrading.toc()
 ll = c.lookAll()
 
 2b) use c.findRoll to find what to roll to
+
+2c) All positions expiring within a week, look for good roll options if they are ITM by X%
+
+3d) All positions for all expirations that went ITM by over Y%, roll them out far (>= 6 months) to lock in decent long term rate and maybe reduce risk if possible
+
 ==========
 
 For 401k trading covered calls, get alerted when price goes below a certain % of the strike, and then just roll to leap to lock in long term % return (and early exercise is bonus)

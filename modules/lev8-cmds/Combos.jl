@@ -9,7 +9,7 @@ import SeekingAlpha
 export c
 const c = @__MODULE__
 
-maxDate() = today() + Year(1)
+maxDate() = today() + Year(10)
 minDate() = today() + Day(3)
 
 csa(sym) = checkSymAll(x -> x.mov >= 0.05 && x.rate >= 0.5, sym)
@@ -100,7 +100,7 @@ function look(sym; all=false, ratio)
     for xpir in sort!(collect(keys(chs)))
         # expr < maxDate || break # exprs sorted asc
         oqs = filter(isPut, chs[xpir].chain)
-        timult = timult(xpir)
+        timult = DateUtil.timult(xpir)
         underBid = locUnder["bid"]
         if all
             range = 1:length(oqs)
@@ -170,22 +170,26 @@ function findRoll(sym, at, cost=0.0, style=Style.put)
     locUnder = stock(sym)
     chs = getChains(sym)
     for expr in sort!(collect(keys(chs)))
+        println("Checking ", expr)
         oqs = filter(x->getStyle(x) == style, chs[expr].chain)
         # TODO: get Calendars further out
-        expr < Date(2025,1,1) || continue
-        timult = timult(expr)
+        # expr < Date(2025,1,1) || continue
+        timult = DateUtil.timult(expr)
         underBid = locUnder["bid"]
         for oq in oqs
             strike = getStrike(oq)
-            strike == at || continue
-            getBid(oq) > 0.0 || continue
-            primitDir = bap(oq, .4) - cost
+            # strike == at || continue
+            strikeDiff = abs(strike - at)
+            strikeDiff <= 2.0 || continue
+            getBid(oq) > 0.0 || ( println("skipping non-positive bid") ; continue )
+            entry = bap(oq, .2)
+            primitDir = entry - cost - strikeDiff
             @show primitDir cost
             rate = timult * (primitDir - .0065) / strike # .0065 is the trade commission for fidelity / 100
             # println("$(sym)[$(expr)]: $(underBid) -> $(strike) at $(primitDir) ($(getQuote(oq))) / $(strike) = $(rate)")
-            if rate > 0.3
-                push!(res, (;sym, expr, mov=1.0 - strike/underBid, underBid, strike, primitDir, rate, div=getDividend(sym)))
-            end
+            # if rate > 0.0
+                push!(res, (;sym, expr, mov=1.0 - strike/underBid, underBid, strike, primitDir, entry, rate, div=getDividend(sym)))
+            # end
         end
     end
     # pretyble(filter!(x -> x.mov > minMove, sort!(delete.(res, :oq); by=x -> x.rate)))

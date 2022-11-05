@@ -93,18 +93,18 @@ function toc() # findTradesToClose
         qt = quoter(trade, Action.close)
         netc = bap(qt)
         curVal = neto + netc
-        if curVal > 0.0
+        # if curVal > 0.0
             # tex = calcTex(ts, today() + Day(1))
             # timult = 1 / Calendars.texToYear(tex)
-            dur = DateUtil.durRisk(toDateMarket(ts), todayDate)
-            timult = timult(toDateMarket(ts), todayDate)
+            dur = DateUtil.durRisk(todayDate, toDateMarket(ts))
+            timt = DateUtil.timult(todayDate, toDateMarket(ts))
             mn = min(OptionUtil.legsExtrema(getLegs(trade)...)...)
-            rate = timult * curVal / (-mn)
-            if rate > 0.5
+            rate = timt * curVal / (-mn)
+            # if rate > 0.0
                 expr = xp.whichExpir(getTargetDate(trade))
-                println(expr, ": Trade ", getId(trade), " (", strShort(Date(ts)), " - ", strShort(getTargetDate(trade)), "): ", map(x -> sho(x), (;curVal, neto, netc, rate, mn, dur, timult)))
-            end
-        end
+                println(expr, ": Trade ", getId(trade), " (", strShort(Date(ts)), " - ", strShort(getTargetDate(trade)), "): ", map(x -> sho(x), (;curVal, neto, netc, rate, mn, dur, timt)))
+            # end
+        # end
     end
 end
 #endregion

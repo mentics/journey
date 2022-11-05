@@ -121,10 +121,15 @@ function chains(xprs, syms=("SPY",); age=PERIOD_UPDATE3)::SymChainsType
             return
         end
     end
+
     res = SymChainsType()
-    for (sym, xpr, ch) in chs
-        dictSym = get!(Dict, res, sym)
-        dictSym[xpr] = ch
+    if isempty(chs)
+        @logerr "No chains found" sym xprs
+    else
+        for (sym, xpr, ch) in chs
+            dictSym = get!(Dict, res, sym)
+            dictSym[xpr] = ch
+        end
     end
     return res
 end
