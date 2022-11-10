@@ -232,12 +232,12 @@ clegr(lid::Int, p=P(0.01); isMkt=false) = ( canTrade(false) ; closeLeg(loadLegTr
 export pnls
 function pnls(since=bdaysBefore(today(), 20))
     trades = ST.tradesClosed(;age=Minute(0), since) # findTrades(Closed)
-    sort!(trades; by=getTargetDate)
+    sort!(trades; by=tsClosed)
     bal = PriceT(0.0)
     tbl = map(trades) do trade
         pnl = getPnl(trade)
         bal += pnl
-        (;closed=getTargetDate(trade), tid=getId(trade), pnl, bal)
+        (;closed=tsClosed(trade), expir=getTargetDate(trade), tid=getId(trade), pnl, bal)
     end
     pretyble(tbl)
 end

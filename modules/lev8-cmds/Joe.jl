@@ -27,7 +27,7 @@ function allStrats()
     return
 end
 
-mla() = ( MaxLossAdd[] = -1.0 ;  MaxLoss[] = -0.08 ; MaxLossExpr[] = -0.12 )
+mla() = ( MaxLossAdd[] = -2.5 ;  MaxLoss[] = -0.01 ; MaxLossExpr[] = -0.02 )
 mli() = ( MaxLoss[] = -2.0 ; MaxLossExpr[] = -7.9 )
 ml0() = ( MaxLoss[] = -0.5 ; MaxLossExpr[] = -0.75 )
 ml1() = ( MaxLoss[] = -1.0 ; MaxLossExpr[] = -1.5 )
@@ -43,29 +43,27 @@ mlx() = ( MaxLoss[] = -9999.0 ; MaxLossExpr[] = -9999.0 )
 # import Profile
 function jorn(exs; kws...)
     empty!(Skipped)
-    # rs = Dict{Int,NamedTuple}()
+    global Sorter = r -> r.roiEv
+    global ressOrig = Vector{Vector{NamedTuple}}(undef,maximum(exs))
     global ress = Vector{Vector{NamedTuple}}(undef,maximum(exs))
     global ctxs = Vector{NamedTuple}(undef,maximum(exs))
-    # global rs1 = NamedTuple[]
-    # legsConflict = legsConflicting()
-    # isLegAllowed(opt, side) = LegTypes.isConflict(legsConflict)
-    # isLegAllowed = !LegTypes.isConflict(legsConflict)
     isLegAllowed = entryFilterOption()
 
     for i in exs
         r, ctx = runJorn(expir(i), isLegAllowed; kws...)
         !isempty(r) || continue
-        ress[i] = r
+        ressOrig[i] = r
         ctxs[i] = ctx
         # push!(rs1, merge((;i), r[1]))
     end
+    filt(r -> true)
     disp()
     return
 end
 function disp()
     res = NamedTuple[]
     for i in eachindex(ress)
-        isassigned(ress, i) || continue
+        isassigned(ress, i) && !isempty(ress[i]) || continue
         r = ress[i][1]
         ctx = ctxs[i]
         push!(res, (;
@@ -125,23 +123,29 @@ function runJorn(xpr::Date, isLegAllowed; nopos=false, all=false)
     end
     isempty(Msgs) || @info Msgs
 
-    # res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roi)
-    # res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roiEv)
-    res = sort!(reduce(vcat, ress); rev=true, by=x -> x.roiEvr)
-    # res = sort!(reduce(vcat, ress); rev=true, by=x -> x.met.evr)
+    res = reduce(vcat, ress)
     @log debug "jorn proced results" cnt length(res)
     return (res, ctx)
 end
 
-function sor(sym::Symbol)
-    for i in eachindex(ress)
-        isassigned(ress, i) || continue
-        sort!(ress[i]; rev=true, by=x-> haskey(x, sym) ? x[sym] : x.met[sym])
+function filt(f)
+    for i in eachindex(ressOrig)
+        isassigned(ressOrig, i) || continue
+        ress[i] = filter(f, ressOrig[i])
     end
+    sor(Sorter)
 end
+
+# function sor(sym::Symbol)
+#     for i in eachindex(ress)
+#         isassigned(ress, i) || continue
+#         sort!(ress[i]; rev=true, by=x-> haskey(x, sym) ? x[sym] : x.met[sym])
+#     end
+# end
 
 # Sort by total spread width: j.sor(x -> -(getStrike(x.lms[4]) - getStrike(x.lms[1])))
 function sor(f)
+    global Sorter = f
     for i in eachindex(ress)
         isassigned(ress, i) || continue
         sort!(ress[i]; rev=true, by=f)
@@ -243,7 +247,7 @@ function joe(ctx, tctx, ret, lms; allo=nothing)::Union{Nothing,NamedTuple}
     shouldTrackSkipped = false
     MinMx = 0.17
     # getThetaDir(lms) >= 0.0 || ( (shouldTrackSkipped && trackSkipped("thetaDir")) ; return nothing )
-    (getStrike(lms[4]) - getStrike(lms[1])) <= ctx.maxWidth || ( (shouldTrackSkipped && trackSkipped("max strike width")) ; return nothing )
+    # (getStrike(lms[4]) - getStrike(lms[1])) <= ctx.maxWidth || ( (shouldTrackSkipped && trackSkipped("max strike width")) ; return nothing )
     all = isnothing(allo) ? ctx.all : allo
     met = calcMetrics(ctx.prob, ret)
     rateEv = ctx.timt * met.ev / (-met.mn)
@@ -251,26 +255,20 @@ function joe(ctx, tctx, ret, lms; allo=nothing)::Union{Nothing,NamedTuple}
     rate = ctx.timt * met.profit / (-met.mn)
     0.0 < met.prob < 1.0 || ( (shouldTrackSkipped && trackSkipped("prob")) ; return nothing )
 
-    # TODO: is ev > 0 too restrictive? and why can kelly be > 0 when ev < 0?
-    # must = (min(0, ret.vals[1]) + min(0, ret.vals[end])) > -1.0
-    must = ret.vals[1] > -0.1 && ret.vals[end] > -0.1
-    # must = ret.vals[1] > 0.0 && ret.vals[end] > 0.0
-    must || ( (shouldTrackSkipped && trackSkipped("must")) ; return nothing )
-    # must || ( return nothing )
+    # must = ret.vals[1] > -0.1 && ret.vals[end] > -0.1
+    # must || ( (shouldTrackSkipped && trackSkipped("must")) ; return nothing )
     extra = ret.vals[1] > MinMx # && ret.vals[end] > MinMx
     maxLoss = (ctx.days-1) * MaxLoss[] + MaxLossAdd[]
     maxLossBoth = (ctx.days-1) * MaxLossExpr[] + MaxLossAdd[]
-    # if all || (met.mx >= MinMx && met.mn >= MaxLoss[] && met.prob >= 0.75 && met.ev >= 0.0 && extra)
-    # if true || extra # (met.mx >= MinMx && met.mn >= MaxLoss[] && met.prob >= 0.75 && met.ev >= 0.0 && extra)
     if all || (met.mx >= MinMx && met.mn >= maxLoss && met.ev >= 0.01 && extra) # rateEv >= 0.5 && met.prob >= 0.85
             # kelly = ckel(ctx.prob, ret)
         kelly = Kelly.ded!(tctx.kelBuf1, tctx.kelBuf2, ctx.prob.vals, ret.vals, -met.mn)
         # if all || kelly > 0.0
             kelly = max(kelly, 0.0)
             Rets.addRetVals!(tctx.retBuf2, ctx.posRet.vals, ret.vals)  # combineTo(Ret, vcat(ctx.posLms, lms...), ctx.curp)
-            valsb = tctx.retBuf2
-            minb = minimum(valsb)
-            if all || (minb >= ctx.posMin || minb > maxLossBoth)
+            # valsb = tctx.retBuf2
+            # minb = minimum(valsb)
+            # if all || (minb >= ctx.posMin || minb > maxLossBoth)
                 roi = rate * kelly
                 roiEv = rateEv * kelly
                 roiEvr = rateEvr * kelly
@@ -278,10 +276,10 @@ function joe(ctx, tctx, ret, lms; allo=nothing)::Union{Nothing,NamedTuple}
                 retb = Ret(tctx.retBuf2, ctx.curp, ctx.posRet.numLegs + 4)
                 metb = calcMetrics(ctx.prob, retb)
                 return (;roi, roiEv, roiEvr, rate, rateEv, kelly, met, metb)
-            else
+            # else
                 # shouldTrackSkipped && trackSkipped("max loss both: $((minb, ctx.posMin, maxLossBoth))")
                 shouldTrackSkipped && trackSkipped("max loss both")
-            end
+            # end
         # end
     else
         checks = ["met.mx >= MinMx", "met.mn >= maxLoss", "met.prob >= 0.85", "met.ev >= 0.01", "extra"]
