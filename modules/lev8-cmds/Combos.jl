@@ -163,7 +163,7 @@ function vol(sym)
 end
 
 import Calendars
-function findRoll(sym, at, cost=0.0, style=Style.put)
+function findRoll(sym, at, cost=0.0, style=Style.put, improve=false)
     res = NamedTuple[]
     getChains(sym)
     # locUnder = Under[sym]
@@ -172,19 +172,19 @@ function findRoll(sym, at, cost=0.0, style=Style.put)
     for expr in sort!(collect(keys(chs)))
         println("Checking ", expr)
         oqs = filter(x->getStyle(x) == style, chs[expr].chain)
-        # TODO: get Calendars further out
-        # expr < Date(2025,1,1) || continue
         timult = DateUtil.timult(expr)
         underBid = locUnder["bid"]
         for oq in oqs
             strike = getStrike(oq)
+            !improve || strike <= at || continue
             # strike == at || continue
             strikeDiff = abs(strike - at)
-            strikeDiff <= 2.0 || continue
+            strikeDiff <= 5.3 || continue
             getBid(oq) > 0.0 || ( println("skipping non-positive bid") ; continue )
             entry = bap(oq, .2)
-            primitDir = entry - cost - strikeDiff
-            @show primitDir cost
+            # reduct = style == Style.put ? max(0.0, strike - at) : max(0.0, strike - at)
+            primitDir = entry - cost - max(0.0, Int(style) * (at - strike)) # (strike > at ? (strike - at) : 0.0)
+            # @show primitDir cost
             rate = timult * (primitDir - .0065) / strike # .0065 is the trade commission for fidelity / 100
             # println("$(sym)[$(expr)]: $(underBid) -> $(strike) at $(primitDir) ($(getQuote(oq))) / $(strike) = $(rate)")
             # if rate > 0.0

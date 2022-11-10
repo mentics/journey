@@ -27,7 +27,7 @@ function allStrats()
     return
 end
 
-mla() = ( MaxLossAdd[] = -2.0 ;  MaxLoss[] = -0.1 ; MaxLossExpr[] = -0.15 )
+mla() = ( MaxLossAdd[] = -1.0 ;  MaxLoss[] = -0.08 ; MaxLossExpr[] = -0.12 )
 mli() = ( MaxLoss[] = -2.0 ; MaxLossExpr[] = -7.9 )
 ml0() = ( MaxLoss[] = -0.5 ; MaxLossExpr[] = -0.75 )
 ml1() = ( MaxLoss[] = -1.0 ; MaxLossExpr[] = -1.5 )
@@ -115,7 +115,7 @@ function runJorn(xpr::Date, isLegAllowed; nopos=false, all=false)
     cnt = 0
     empty!(Msgs)
     # Profile.clear()
-    GenCands.iterCondors(oqss, ctx.maxStrikeDist, ctx.curp, isLegAllowed, ctx, ress) do cond, c, rs
+    GenCands.iterCondors(oqss, ctx.maxWidth / 2.0, ctx.curp, isLegAllowed, ctx, ress) do cond, c, rs
         cnt += 1
         jr = joeCond(c, cond)
         if !isnothing(jr)
@@ -140,6 +140,7 @@ function sor(sym::Symbol)
     end
 end
 
+# Sort by total spread width: j.sor(x -> -(getStrike(x.lms[4]) - getStrike(x.lms[1])))
 function sor(f)
     for i in eachindex(ress)
         isassigned(ress, i) || continue
@@ -154,6 +155,7 @@ using Caches, TradierData
 const MaxLossExpr = Ref{Float64}(-3.0)
 const MaxLoss = Ref{Float64}(-2.0)
 const MaxLossAdd = Ref{Float64}(-2.0)
+const MaxWidth = Ref{Float64}(8.1)
 
 # calcRate(to::Date, ret, risk) = (ret / risk) * (1 / Calendars.texToYear(calcTex(now(UTC), to)))
 
@@ -204,7 +206,7 @@ function makeCtx(xpir::Date; nopos, all)::NamedTuple
         posMet,
         posMin=minimum(posRet.vals),
         threads,
-        maxStrikeDist = C(Globals.get(:Strats)[:maxStrikeDist])
+        maxWidth = MaxWidth[]
         # maxCallHeight = Globals.get(:Strats)[:maxCallHeight],
         # maxPutHeight = Globals.get(:Strats)[:maxPutHeight]
     )
@@ -240,26 +242,28 @@ end
 function joe(ctx, tctx, ret, lms; allo=nothing)::Union{Nothing,NamedTuple}
     shouldTrackSkipped = false
     MinMx = 0.17
+    # getThetaDir(lms) >= 0.0 || ( (shouldTrackSkipped && trackSkipped("thetaDir")) ; return nothing )
+    (getStrike(lms[4]) - getStrike(lms[1])) <= ctx.maxWidth || ( (shouldTrackSkipped && trackSkipped("max strike width")) ; return nothing )
     all = isnothing(allo) ? ctx.all : allo
     met = calcMetrics(ctx.prob, ret)
     rateEv = ctx.timt * met.ev / (-met.mn)
     rateEvr = ctx.timt * met.evr / (-met.mn)
     rate = ctx.timt * met.profit / (-met.mn)
     0.0 < met.prob < 1.0 || ( (shouldTrackSkipped && trackSkipped("prob")) ; return nothing )
-    getThetaDir(lms) > 0.001 || ( (shouldTrackSkipped && trackSkipped("thetaDir")) ; return nothing )
 
     # TODO: is ev > 0 too restrictive? and why can kelly be > 0 when ev < 0?
     # must = (min(0, ret.vals[1]) + min(0, ret.vals[end])) > -1.0
     must = ret.vals[1] > -0.1 && ret.vals[end] > -0.1
+    # must = ret.vals[1] > 0.0 && ret.vals[end] > 0.0
     must || ( (shouldTrackSkipped && trackSkipped("must")) ; return nothing )
     # must || ( return nothing )
-    extra = ret.vals[1] > MinMx && ret.vals[end] > MinMx
+    extra = ret.vals[1] > MinMx # && ret.vals[end] > MinMx
     maxLoss = (ctx.days-1) * MaxLoss[] + MaxLossAdd[]
     maxLossBoth = (ctx.days-1) * MaxLossExpr[] + MaxLossAdd[]
     # if all || (met.mx >= MinMx && met.mn >= MaxLoss[] && met.prob >= 0.75 && met.ev >= 0.0 && extra)
     # if true || extra # (met.mx >= MinMx && met.mn >= MaxLoss[] && met.prob >= 0.75 && met.ev >= 0.0 && extra)
     if all || (met.mx >= MinMx && met.mn >= maxLoss && met.ev >= 0.01 && extra) # rateEv >= 0.5 && met.prob >= 0.85
-        # kelly = ckel(ctx.prob, ret)
+            # kelly = ckel(ctx.prob, ret)
         kelly = Kelly.ded!(tctx.kelBuf1, tctx.kelBuf2, ctx.prob.vals, ret.vals, -met.mn)
         # if all || kelly > 0.0
             kelly = max(kelly, 0.0)

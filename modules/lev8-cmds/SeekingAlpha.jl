@@ -20,10 +20,10 @@ Ignore = ["SNDL","YANG","MUX","QD","RIOT","GOTU","TAL","ACB","HUT","IQ","JMIA","
           "URA","EDZ","EPV","BNO","IEZ","TBT","SDS","XME","TUR","DXD","ECH","TYO","VIXM","ERX","IAU","WEAT",
           "EWZ","FLBR","FCG","AMLP","BKLN","LABD","SRS","DBO","IYE","USFR","ITB","COPX","UCO",
 
-          "AFRM","CAN","SRAD","SYF","PRPH","WB","BROS","YY","RLX","RUM","AMPL","PTLO","TLRY","HLF", # don't like company
-          "GRPH","NKTX","RGNX","ITOS", # clinical stage
+          "AFRM","CAN","SRAD","SYF","PRPH","WB","BROS","YY","RLX","RUM","AMPL","PTLO","TLRY","HLF","SGHC", # don't like company
+          "GRPH","NKTX","RGNX","ITOS","EQRX", # clinical stage
 
-          "RKT","BBW","ACRX","REI","FRSH","GPRO","QTRX","QFIN","UWMC" # maybe reconsider someday
+          "RKT","BBW","ACRX","REI","FRSH","GPRO","QTRX","QFIN","UWMC","ENOV","FLGT","CODX","SB" # maybe reconsider someday
 ]
 # Early stage clinical: "AVIR"
 IgnoreTemp = []#"CORZ","CLSK"]

@@ -81,7 +81,7 @@ function tradeSize2(kelly::Float64, kellyRatio::Float64 = 0.5)
     println("$(kellyRatio) kelly trade size: ", kelly * kellyRatio * bal)
 end
 
-function toc() # findTradesToClose
+function toc(rateMin=0.5) # findTradesToClose
     trades = sort!(StoreTrade.tradesOpen(); by=getTargetDate)
     todayDate = market().startDay
     for trade in trades
@@ -100,10 +100,10 @@ function toc() # findTradesToClose
             timt = DateUtil.timult(todayDate, toDateMarket(ts))
             mn = min(OptionUtil.legsExtrema(getLegs(trade)...)...)
             rate = timt * curVal / (-mn)
-            # if rate > 0.0
+            if rate > rateMin
                 expr = xp.whichExpir(getTargetDate(trade))
                 println(expr, ": Trade ", getId(trade), " (", strShort(Date(ts)), " - ", strShort(getTargetDate(trade)), "): ", map(x -> sho(x), (;curVal, neto, netc, rate, mn, dur, timt)))
-            # end
+            end
         # end
     end
 end

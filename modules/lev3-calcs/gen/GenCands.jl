@@ -19,12 +19,12 @@ function iterSingle(f::Function, oqss::Oqss, args...)
     end
 end
 
-function iterSpreads(f::Function, oqss::Oqss, maxSpreadWidth::Currency, args...)
+function iterSpreads(f::Function, oqss::Oqss, maxSpreadWidth::Real, args...)
     iterSpreads(f, oqss.call, maxSpreadWidth, args...)
     iterSpreads(f, oqss.put, maxSpreadWidth, args...)
 end
 
-function paraSpreads(f::Function, oqss::Oqss, maxSpreadWidth::Currency, args...)
+function paraSpreads(f::Function, oqss::Oqss, maxSpreadWidth::Real, args...)
     paraSpreads(f, oqss.call, maxSpreadWidth, args...)
     paraSpreads(f, oqss.put, maxSpreadWidth, args...)
 end
@@ -35,7 +35,7 @@ end
 #     return true
 # end
 
-function iterCondors(f::Function, oqss::Oqss, maxSpreadWidth::Currency, curp::Currency, isLegAllowed, args...)
+function iterCondors(f::Function, oqss::Oqss, maxSpreadWidth::Real, curp::Currency, isLegAllowed, args...)
     # @warn "Still using left > 0.0 || continue"
     spreads = Vector{Spread}()
     iterSpreads(oqss, maxSpreadWidth, isLegAllowed, args...) do (lm1, lm2), args...
@@ -105,7 +105,7 @@ end
 #     return true
 # end
 
-function iterSpreads(f::Function, oqs::Sides{Vector{ChainTypes.OptionQuote}}, maxSpreadWidth::Currency, isLegAllowed, args...)::Bool
+function iterSpreads(f::Function, oqs::Sides{Vector{ChainTypes.OptionQuote}}, maxSpreadWidth::Real, isLegAllowed, args...)::Bool
     for oq1 in oqs.long, oq2 in oqs.short
         strikeWidth(oq1, oq2) <= maxSpreadWidth || continue
         oq1 != oq2 || continue
@@ -121,7 +121,7 @@ function iterSpreads(f::Function, oqs::Sides{Vector{ChainTypes.OptionQuote}}, ma
     return true
 end
 
-function paraSpreads(f::Function, oqs::Sides{Vector{ChainTypes.OptionQuote}}, maxSpreadWidth::Currency, args...)::Bool
+function paraSpreads(f::Function, oqs::Sides{Vector{ChainTypes.OptionQuote}}, maxSpreadWidth::Real, args...)::Bool
     finish = false
     @qbthreads for oq1 in oqs.long
         for oq2 in oqs.short

@@ -82,7 +82,7 @@ tradesOpen(f; kws...)::Vector{Trade} = filter(f, tradesOpen(; kws...))
 tradictOpen(;age=Minute(10))::Dict{Int,Trade} =
         tradesCache(loadOpen, CACHE_TRADES_OPEN; age)[2]
 tradictClosed(;age=Minute(10), since=bdaysBefore(today(), 7))::Dict{Int,Trade} =
-        tracesCache(() -> loadClosed(since), CACHE_TRADES_CLOSED; age)[2]
+        tradesCache(() -> loadClosed(since), CACHE_TRADES_CLOSED; age)[2]
 
 tradesOpen(;age=Minute(10))::Vector{Trade} =
         tradesCache(loadOpen, CACHE_TRADES_OPEN; age)[1]
