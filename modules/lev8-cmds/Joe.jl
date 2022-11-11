@@ -128,6 +128,11 @@ function runJorn(xpr::Date, isLegAllowed; nopos=false, all=false)
     return (res, ctx)
 end
 
+
+#==
+ j.filt(r -> getStrike(r.lms[end]) < curp)
+ j.filt(r -> getStrike(r.lms[end]) - getStrike(r.lms[1]) < 8.0)
+ ==#
 function filt(f)
     for i in eachindex(ressOrig)
         isassigned(ressOrig, i) || continue
@@ -259,7 +264,7 @@ function joe(ctx, tctx, ret, lms; allo=nothing)::Union{Nothing,NamedTuple}
     # must || ( (shouldTrackSkipped && trackSkipped("must")) ; return nothing )
     extra = ret.vals[1] > MinMx # && ret.vals[end] > MinMx
     maxLoss = (ctx.days-1) * MaxLoss[] + MaxLossAdd[]
-    maxLossBoth = (ctx.days-1) * MaxLossExpr[] + MaxLossAdd[]
+    # maxLossBoth = (ctx.days-1) * MaxLossExpr[] + MaxLossAdd[]
     if all || (met.mx >= MinMx && met.mn >= maxLoss && met.ev >= 0.01 && extra) # rateEv >= 0.5 && met.prob >= 0.85
             # kelly = ckel(ctx.prob, ret)
         kelly = Kelly.ded!(tctx.kelBuf1, tctx.kelBuf2, ctx.prob.vals, ret.vals, -met.mn)
@@ -277,8 +282,8 @@ function joe(ctx, tctx, ret, lms; allo=nothing)::Union{Nothing,NamedTuple}
                 metb = calcMetrics(ctx.prob, retb)
                 return (;roi, roiEv, roiEvr, rate, rateEv, kelly, met, metb)
             # else
-                # shouldTrackSkipped && trackSkipped("max loss both: $((minb, ctx.posMin, maxLossBoth))")
-                shouldTrackSkipped && trackSkipped("max loss both")
+                # # shouldTrackSkipped && trackSkipped("max loss both: $((minb, ctx.posMin, maxLossBoth))")
+                # shouldTrackSkipped && trackSkipped("max loss both")
             # end
         # end
     else

@@ -18,12 +18,12 @@ BadPricing = []#"BAX", "OLN"]
 Ignore = ["SNDL","YANG","MUX","QD","RIOT","GOTU","TAL","ACB","HUT","IQ","JMIA","ABEV","JDST","SOXS","FAZ",
           "SQQQ","SPXU","QID","SDOW","TWM","NINE","TECS","DUST","SPXS","SRTY","ZSL","DRV","TZA","DIG","UNG",
           "URA","EDZ","EPV","BNO","IEZ","TBT","SDS","XME","TUR","DXD","ECH","TYO","VIXM","ERX","IAU","WEAT",
-          "EWZ","FLBR","FCG","AMLP","BKLN","LABD","SRS","DBO","IYE","USFR","ITB","COPX","UCO",
+          "EWZ","FLBR","FCG","AMLP","BKLN","LABD","SRS","DBO","IYE","USFR","ITB","COPX","UCO","AHT","ARR",
 
-          "AFRM","CAN","SRAD","SYF","PRPH","WB","BROS","YY","RLX","RUM","AMPL","PTLO","TLRY","HLF","SGHC", # don't like company
+          "AFRM","CAN","SRAD","SYF","PRPH","WB","BROS","YY","RLX","RUM","AMPL","PTLO","TLRY","HLF","SGHC","YOU", # don't like company
           "GRPH","NKTX","RGNX","ITOS","EQRX", # clinical stage
-
-          "RKT","BBW","ACRX","REI","FRSH","GPRO","QTRX","QFIN","UWMC","ENOV","FLGT","CODX","SB" # maybe reconsider someday
+          "PCH", # something wrong with pricing
+          "RKT","BBW","ACRX","REI","FRSH","GPRO","QTRX","QFIN","UWMC","ENOV","FLGT","CODX","SB","EGY","ZIM","VIR" # maybe reconsider someday
 ]
 # Early stage clinical: "AVIR"
 IgnoreTemp = []#"CORZ","CLSK"]
