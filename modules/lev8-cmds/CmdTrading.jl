@@ -100,6 +100,7 @@ function toc(rateMin=0.5) # findTradesToClose
             timt = DateUtil.timult(todayDate, toDateMarket(ts))
             mn = min(OptionUtil.legsExtrema(getLegs(trade)...)...)
             rate = timt * curVal / (-mn)
+            # @show rate timt curVal (-mn)
             if rate > rateMin
                 expr = xp.whichExpir(getTargetDate(trade))
                 println(expr, ": Trade ", getId(trade), " (", strShort(Date(ts)), " - ", strShort(getTargetDate(trade)), "): ", map(x -> sho(x), (;curVal, neto, netc, rate, mn, dur, timt)))

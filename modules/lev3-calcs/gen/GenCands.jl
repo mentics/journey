@@ -44,6 +44,10 @@ function iterCondors(f::Function, oqss::Oqss, maxSpreadWidth::Real, curp::Curren
         push!(spreads, ((lm1, ret1), (lm2, ret2)))
         return true
     end
+    # TODO: investigate?
+    if length(spreads) <= 4
+        return true
+    end
     @assert length(spreads) > 4 string("Not enough spreads: ", length(spreads), ' ', getExpiration(first(SmallTypes.iter(oqss))))
     # widths = strikeWidth.(map(x -> (x[1][1], x[2][1]), spreads))
     # @error "iterCondors" maxSpreadWidth curp

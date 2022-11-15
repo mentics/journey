@@ -46,8 +46,12 @@ SH.addQuantity(lm::LegMeta, addend::Real) =
 # TODO: still not sure if abs is right here
 SH.to(OptionQuote, lm::LegMeta) = OptionQuote(getOption(lm), abs(getQuote(lm)), getMeta(lm), nothing)
 
-export getThetaDir
+export getThetaDir, getDelta
 getThetaDir(lm::LegMeta) = lm.meta.theta * getQuantityDir(getLeg(lm))
 getThetaDir(lms::Coll{LegMeta}) = sum(getThetaDir, lms)
+# getThetaDir(oq::OptionQuote) = oq.meta.theta * getQuantityDir(getLeg(lm))
+# getThetaDir(oqs::Coll{OptionQuote}) = sum(getThetaDir, oqs)
+getDelta(lm::LegMeta) = lm.meta.delta * getQuantityDir(getLeg(lm))
+getDelta(lms::Coll{LegMeta}) = sum(getDelta, lms)
 
 end

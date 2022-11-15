@@ -56,7 +56,8 @@ function useSnap(nam::AbstractString)
             Globals.set(:snapTs, snapToTs(nam))
             # @info "Use Snap: Loading saved data" nam
             updateAll()
-            ProbHist.probHists(;up=true)
+            # TODO: need this?
+            # ProbHist.probHists(;up=true)
         catch e
             @warn "WARNING: Use Snap: Snap might be in an inconsistent state" nam
             rethrow(e)
@@ -96,7 +97,7 @@ allSnaps(desc=true) = sort(readdir(TradierConfig.SnavePath; join=false, sort=fal
 findByIndex(num::Int)::String = allSnaps()[num]
 function findByParts(nums::Int...)
     files = sort(readdir(TradierConfig.SnavePath; join=false, sort=false); rev=false)
-    p = vcat(fill("", 5-length(nums)), map(n -> n == 0 ? "" : string(n), nums)...)
+    p = vcat(fill("", 5-length(nums)), map(numRegex, nums)...)
     for file in files
         rx = ".*$(p[1]).*-.*$(p[2]).*-.*$(p[3]).*\\..*$(p[4]).*-.*$(p[5]).*"
         # println(p, rx)
@@ -105,6 +106,8 @@ function findByParts(nums::Int...)
         end
     end
 end
+
+numRegex(n) = n == 0 ? "" : (n >= 1000 ? string(n) : lpad(n, 2, "0"))
 #endregion
 
 end

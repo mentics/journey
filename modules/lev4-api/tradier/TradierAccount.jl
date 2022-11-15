@@ -23,8 +23,8 @@ end
 
 function tradierPositions()::TradierRespVec
     result = tradierGet("/accounts/$(getAccountId())/positions", Call(nameof(var"#self#")))
-    positions = result["positions"]
-    if positions != "null"
+    positions = get(result, "positions", nothing)
+    if !isnothing(positions) && positions != "null"
         return ensureVector(positions["position"])
     else
         return TRADIER_EMPTY

@@ -31,6 +31,9 @@ function xprob(expr::Date)
     start = mkt.tsMarket
     # tex = Calendars.calcTex(start, expr)
     vix = mkt.vix
+    if iszero(vix)
+        error("vix was 0")
+    end
     # return ProbKde.probKde(F(curp), F(vix), tex)
     prob, _ = pk.kdeToClose(F(curp), F(vix), start, expr)
     return prob

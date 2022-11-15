@@ -4,7 +4,7 @@ using DateUtil, DictUtil, LogUtil
 using Globals, BaseTypes, QuoteTypes, Caches, TradierData
 using Calendars, DataHelper
 
-export Market, market, marketPrices, urp, urpon, urpoff, mktNumDays
+export Market, market # , marketPrices, urp, urpon, urpoff, mktNumDays
 
 mutable struct Market
     startDay::Date
@@ -70,23 +70,37 @@ function update()::Nothing
     setCache!(MARKET, newVal())
     return
 end
+
+using HistData
 function newVal()::Market
-    t1 = @timed tqs = tradierQuotes(("SPY", "VIX"))["quote"]
-    tq = tqs[1]
-    tsMarket = unix2datetime(max(tq["bid_date"], tq["ask_date"])/1000)
-    # TODO: clean this up
-    if (!isnothing(snap()) && abs(snapTs() - tsMarket) > Minute(10))
-        # println("Falling back because snap doesn't have quotes call")
-        tq = tradierQuote()
-        @assert tq["symbol"] == "SPY"
-        q = Quote(C(tryKey(tq, "bid", 0.0)), C(tryKey(tq, "ask", 0.0)))
+    # t1 = @timed
+    res = tradierQuotes(("SPY", "VIX"))
+    if haskey(res, "quote")
+        tqs = res["quote"]
+        tq = tqs[1]
         tsMarket = unix2datetime(max(tq["bid_date"], tq["ask_date"])/1000)
+    # elseif (!isnothing(snap()) && abs(snapTs() - tsMarket) > Minute(10))
+    elseif !isnothing(snap())
+        # TODO: clean this up
+        # println("Falling back because snap doesn't have both quotes call")
+        tq = tradierQuote()
+        # println("Markets.newVal snap failover: ", tq)
+        @assert tq["symbol"] == "SPY"
+        q = Quote(C(get(tq, "bid", 0.0)), C(get(tq, "ask", 0.0)))
+        tsMarket = unix2datetime(max(tq["bid_date"], tq["ask_date"])/1000)
+        # @show snapTs() tsMarket tq
+        if abs(snapTs() - tsMarket) > Minute(15)
+            @show snapTs() tsMarket tq
+            error("Failed to get snapped SPY quote for fallback")
+        end
         startDay = nextTradingDay(toDateMarket(tsMarket))
-        vix = C(0.0)
+        vix = dataDay(startDay, "VIX").open
         m = C(0.5 * (q.bid + q.ask))
-        op = C(tryKey(tq, "open", m))
+        op = C(getnn(tq, "open", m))
         sp = urp() ? m : op
         return Market(startDay, q, vix, m, sp, op, tsMarket, now(UTC))
+    else
+        error("tradierQuotes invalid return and not snapped: ", res)
     end
     @assert tqs[1]["symbol"] == "SPY"
     @assert tqs[2]["symbol"] == "VIX"
@@ -98,7 +112,7 @@ function newVal()::Market
     # op = C(tryKey(tq, "open", m))
     op = C(getnn(tq, "open", m))
     sp = urp() ? m : op
-    @log info "Loaded market" Threads.threadid() t1.time
+    # @log info "Loaded market" Threads.threadid() t1.time
     return Market(startDay, q, vix, m, sp, op, tsMarket, now(UTC))
 end
 #endregion

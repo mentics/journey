@@ -29,7 +29,7 @@ function findShortsToClose()
     end
 end
 
-shc(args...) = Tuple(lr for lr in sh(args...))
+# shc(args...) = Tuple(lr for lr in sh(args...))
 sh(str::AStr, exs::Int...) = sh(str, expir.(exs))
 sh(str::AStr, exps::Coll{Date}=expirs())::Vector{LegMeta} = tos(LegMeta, shLegs(str, collect(exps)), optQuoter)
 function shlr(str::AStr, exps=expirs(), sp=market().startPrice)
@@ -40,10 +40,12 @@ function shlr(str::AStr, exps=expirs(), sp=market().startPrice)
 end
 shRet(str::AStr, exps, sp=market().startPrice) = combineTo(Ret, shlr(str, exps, sp))
 shVals(str::AStr, exps, sp=market().startPrice) = getVals(shRet(str, exps, sp))
-drsh(str::AStr, ex::Int=1; kws...) = drsh(str, expirs()[ex:ex+2]; kws...) # (sp = market().startPrice ; drawRet(shRet(str, expirs()[ex:ex+2], sp), nothing, sp, "sh") )
+drsh(str::AStr, exs...; kws...) = drsh(str, getInds(expirs(), exs); kws...) # (sp = market().startPrice ; drawRet(shRet(str, expirs()[ex:ex+2], sp), nothing, sp, "sh") )
 drsh(str::AStr, exps; kws...) = (sp = market().startPrice ; drawRet(shRet(str, exps, sp); kws..., curp=sp, label="sh") )
 drsh!(str::AStr, ex::Int=1; kws...) = drsh!(str, expirs()[ex:ex+2])
 drsh!(str::AStr, exps; kws...) = (sp = market().startPrice ; drawRet!(shRet(str, exps, sp); label="sh+") )
+
+getInds(v, inds) = [v[i] for i in inds]
 
 # TODO: need to move all probs calcs to util
 # using ProbHist
@@ -529,5 +531,118 @@ function bbToClose()
         return false
     end
 end
+
+#region Adjusting
+# ------------ Adjusting ---------------
+import SmallTypes:Style.call,Style.put,Side.long,Side.short
+function condorLong(xpir, curp)
+    # return vcat(spreadLong(xpir, curp, -6, 1), spreadShort(xpir, curp, 5, 1))
+    return vcat(spread(xpir, put, long, coff(curp, -6, 1)), spread(xpir, call, short, coff(curp, 5, 1)))
+end
+function condorShort(xpir, curp)
+    return vcat(spread(xpir, put, short, coff(curp, -6, 1)), spread(xpir, call, long, coff(curp, 5, 1)))
+end
+
+# function condorShort(xpir, curp)
+#     return vcat(spreadShort(xpir, curp, -6, 1), spreadLong(xpir, curp, 5, 1))
+# end
+# function condorShort(xpir, mid, w)
+#     return vcat(spreadShort(xpir, mid, -(w+1), 1), spreadLong(xpir, mid, w, 1))
+# end
+
+function butter(xpir, curp)
+    return vcat(spreadLong(xpir, curp, -1, 1), spreadShort(xpir, curp, 1, 1))
+end
+
+# function spreadLong(xpir, curp, off, w)
+# 	m = floor(curp)
+# 	return sh("l$(m+off)p / s$(m+off+w)p", [xpir])
+# end
+# function spreadShort(xpir, curp, off, w)
+# 	m = floor(curp)
+# 	return sh("s$(m+off)c / l$(m+off+w)c", [xpir])
+# end
+
+spread(xpir, style, side, s1, s2) = sh("$(toCode(side))$(s1)$(toCode(style)) / $(toCode(toOther(side)))$(s2)$(toCode(style))", [xpir])
+spread(xpir, style, side, (s1, s2)) = spread(xpir, style, side, s1, s2)
+coff(curp, off1, rel2) = ( c = floor(curp) ; return (c + off1, c + off1 + rel2) )
+# spreadCurp(xpir, style, side, curp, off, w)
+# spreadPL(xpir, )
+
+function runadjust(f, init=condorLong)
+    xpir = Date(2022,11,11)
+    datestart = Date(2022,11,1)
+    snap(datestart, 2)
+    lmsinit = init(xpir, market().curp)
+    qinit = quoter(lmsinit, Action.open)
+    println("Initial open: $(qinit)")
+    date = bdaysAfter(datestart, 1)
+    lmscur = lmsinit
+    net = bap(qinit)
+    while date < xpir
+        snap(date, 2)
+        curp = market().curp
+        println("Snapped to: ", snap(), " curp: ", curp)
+        actions = f(xpir, curp, lmscur)
+        netc = 0.0
+        neto = 0.0
+        for (i, replacement) in actions
+            nc = bap(optQuoter(lmscur[i], Action.close))
+            no = bap(optQuoter(replacement, Action.open))
+            println("Closed $(i) for $(nc) and opened for $(no) for net: $(nc + no)")
+            net += nc + no
+            lmscur[i] = replacement
+            netc += nc
+            neto += no
+        end
+        println("net: ", net, " change: netc=", netc, ", neto=", neto)
+        date = bdaysAfter(date, 1)
+    end
+    println("Snapped to final: ", snap(xpir, 12, 0))
+    qfinal = quoter(lmscur, Action.close)
+    println("Final close: $(qfinal)")
+    net += bap(qfinal)
+    global lmsfinal = lmscur
+    println("Final net: ", net)
+end
+
+function stratNoop(xpir, curp, lmscur)
+    return []
+end
+
+function strat1(xpir, curp, lmscur)
+    if curp < getStrike(lmscur[1])
+        return collect(zip(1:4, condorLong(xpir, curp)))
+    elseif curp > getStrike(lmscur[end])
+        return collect(zip(1:4, condorLong(xpir, curp)))
+    end
+    return []
+end
+
+function stratbutter(xpir, curp, lmscur)
+    if curp < getStrike(lmscur[1])
+        return collect(zip(1:4, butter(xpir, curp)))
+    elseif curp > getStrike(lmscur[end])
+        return collect(zip(1:4, butter(xpir, curp)))
+    end
+    return []
+end
+
+function strat2(xpir, curp, lmscur)
+    if curp < getStrike(lmscur[1])
+        return collect(zip(1:2, spread(xpir, put, long, coff(curp, -6, 1))))
+    elseif curp > getStrike(lmscur[end])
+        return collect(zip(3:4, spread(xpir, call, short, coff(curp, 5, 1))))
+    end
+    return []
+end
+
+function stratShort1(xpir, curp, lmscur)
+    if getStrike(lmscur[1]) < curp < getStrike(lmscur[end])
+        return collect(zip(1:4, condorShort(xpir, curp)))
+    end
+    return []
+end
+#endregion
 
 end

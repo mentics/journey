@@ -29,6 +29,8 @@ ll = c.lookAll()
 
 ==========
 
+Draw pnl surfaces with time as the third axis
+
 For 401k trading covered calls, get alerted when price goes below a certain % of the strike, and then just roll to leap to lock in long term % return (and early exercise is bonus)
 
 Calculate the prob that market will move enough each day between now and target date
@@ -446,3 +448,74 @@ end
 # 3d matrix:
 m3 = cat([1 2 3; 1 2 3], [4 5 6; 4 5 6]; dims=3)
 reshape(reshape(m3, (2*3, 2)), (2,3,2))
+
+
+====
+function condor1(xpir, curp)
+	m = floor(curp)
+	return sh("l$(m-6)p / s$(m-5)p / s$(m+5)c / l$(m+6)c", [xpir])
+end
+
+Testing rolling a condor
+xpir = Date(2022,11,11)
+
+snap(Date(2022,11,1), 2)
+# SPY:384.935
+lmsCur = condor1(xpir, market().curp) # sh("l378p / s379p / s389c / l390c", [xpir])
+quoter(lmsCur, Action.open)
+# NETO: Qo(0.740, 0.820), risk: -.26
+# NET: .74
+
+snap(Date(2022,11,2), 2)
+# SPY:382.535
+quoter(lmsCur, Action.close)
+# netc: Qc(-0.840, -0.760)
+
+snap(Date(2022,11,3), 2) ; market().curp
+# SPY:369.330
+quoter(lmsCur, Action.close)
+# netc: Qc(-0.960, -0.710)
+
+## Option 1: Move upper leg down to curp
+quoter(lmsCur[3:4], Action.close)
+# NETC: Qc(-0.130, -0.100)
+# NET: .74 - .13
+lmsMoved = sh("s369c / l370c", [xpir])
+quoter(lmsMoved, Action.open)
+# NETO: Qo(0.480, 0.540)
+# NET: .74 - .13 + .48 = 1.09
+lmsCheck1 = vcat(lmsCur[1:2], lmsMoved)
+drlms(lmsCheck1)
+quoter(lmsCheck1, Action.close)
+# Qc(-1.370, -1.090) which would be a net loss of -1.370 + 1.09 = -.28, but I think the pnl away from the middle would be 1.09 - .17?
+# because it flips the condor upside down
+# checking...
+snap(xpir, 12, 0) ; market().curp
+# SPY: 398.27
+quoter(lmsCheck1, Action.close)
+# netc: Qc(-1.690, -0.590) but theoretically, puts are worthless, calls should be $1 apart, so should be $1 to close.
+# which would give us a net on the trade of +0.09 but there would likely be at least $.03 net to close, so .06 profit?
+
+
+## Option 2: Move upper leg down to butterfly
+quoter(lmsCur[3:4], Action.close)
+# NETC: Qc(-0.130, -0.100)
+# NET: .74 - .13
+lmsMoved = sh("s379c / l380c", [xpir])
+quoter(lmsMoved, Action.open)
+# NETO: Qo(0.270, 0.290)
+# NET: .74 - .13 + .27 = .88
+lmsCheck1 = vcat(lmsCur[1:2], lmsMoved)
+drlms(lmsCheck1)
+quoter(lmsCheck1, Action.close)
+# Qc(-1.120, -0.880) which would be a net loss of -1.120 + .88 = -.24
+# checking...
+snap(xpir, 12, 0) ; market().curp
+# SPY: 398.27
+quoter(lmsCheck1, Action.close)
+# netc: Qc(-1.230, -0.770) but theoretically, puts are worthless, calls should be $1 apart, so should be $1 to close.
+# which would give us a net on the trade of +0.09 but there would likely be at least $.03 net to close, so .06 profit at most?
+
+
+
+# TODO: simulate big move on last day and how it looks to roll out

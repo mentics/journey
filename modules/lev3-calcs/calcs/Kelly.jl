@@ -70,7 +70,8 @@ function ded!(buf1, buf2, prob, origvals, risk)
             xleft = xmid
         end
     end
-    @error "Could not solve for kelly" xleft xmid xright left mid right
+    # TODO: resolve this
+    # @error "Could not solve for kelly" xleft xmid xright left mid right
     return -Inf
     # TODO: maybe it's concave up, check first?
     # error("could not solve")

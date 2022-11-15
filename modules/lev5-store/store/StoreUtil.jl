@@ -59,6 +59,7 @@ const LastCall = Ref{DateTime}(DateTime(0))
 dbUrl(dbName) = replace(DB_URL, "DBNAME" => dbName)
 
 function runSql(sql::AStr, args...)
+    # error("ran sql")
     connection = @timed checkConnection()
     cnt = Ref(0)
     sql2 = replace(sql, "?" =>  s -> ( cnt[] += 1 ; "\$$(cnt[])" ) )

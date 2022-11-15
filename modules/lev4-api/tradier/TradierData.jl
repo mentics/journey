@@ -17,7 +17,7 @@ function tradierQuotes(syms::Coll{<:AStr})::TradierResp
     payload = "symbols=$(join(syms, ','))&greeks=false"
     raw = tradierPost("/markets/quotes", payload, Call(nameof(var"#self#")); retries=3)
     # haskey(raw["quotes"], "quote") || error(raw)
-    return raw["quotes"]
+    return useKey(TradierResp, raw, "quotes")
 end
 
 import Globals

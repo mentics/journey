@@ -163,9 +163,9 @@ function entryFilterLookup()
     d = Dict{Option,Int}()
     for leg in flat(legsPos, legsOrds)
         opt = getOption(leg)
-        side = getSide(leg)
+        side = Int(getSide(leg))
         status = get(d, opt, 0)
-        d[opt] = status == 0 ? Int(side) : (status == side ? status : 2)
+        d[opt] = status == 0 ? side : (status == side ? status : 2)
     end
     return d
 end

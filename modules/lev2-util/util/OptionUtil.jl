@@ -68,6 +68,7 @@ legs2Levels(legs::Coll) = spreadLevels(longShort(legs[1], legs[2])...)
 spreadExtrema(legLong, legShort) = minmax(spreadLevels(legLong, legShort)...)
 function spreadLevels(legLong, legShort)
     @assert getSide(legLong) == Side.long && getSide(legShort) == Side.short
+    @assert getStyle(legLong) == getStyle(legShort)
     netOpen = getNetOpen(legLong) + getNetOpen(legShort)
     if getStyle(legLong) == Style.call
         left = netOpen
@@ -98,6 +99,7 @@ function legsExtrema(legs::NTuple{4})
     @assert issorted(legs; by=getStrike)
     levLeft = spreadLevels(longShort(legs[1], legs[2])...)
     levRight = spreadLevels(longShort(legs[3], legs[4])...)
+    # println(levLeft, levRight)
     left = levLeft[1] + levRight[1]
     mid = levLeft[2] + levRight[1]
     right = levLeft[2] + levRight[2]

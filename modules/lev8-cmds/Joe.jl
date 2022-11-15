@@ -79,9 +79,9 @@ function disp()
     pretyble(res)
 end
 
-function runJorn(xpr::Date, isLegAllowed; nopos=false, all=false)
+function runJorn(xpr::Date, isLegAllowed; nopos=false, all=false, posLms=nothing)
     global ctx = makeCtx(xpr; nopos, all)
-    oqssAll = Chains.getOqss(xpr, ctx.curp, xlms(xpr))
+    oqssAll = Chains.getOqss(xpr, ctx.curp, isnothing(posLms) ? xlms(xpr) : posLms)
     oqss = filtOqss(oqssAll) do oq
         abs(getStrike(oq) / ctx.curp - 1.0) < 0.1
     end
@@ -287,10 +287,12 @@ function joe(ctx, tctx, ret, lms; allo=nothing)::Union{Nothing,NamedTuple}
             # end
         # end
     else
-        checks = ["met.mx >= MinMx", "met.mn >= maxLoss", "met.prob >= 0.85", "met.ev >= 0.01", "extra"]
-        checkVals = [met.mx >= MinMx, met.mn >= maxLoss, met.prob >= 0.85, met.ev >= 0.01, extra]
-        i = findfirst(x -> !x, checkVals)
-        shouldTrackSkipped && trackSkipped(checks[i])
+        if shouldTrackSkipped
+            checks = ["met.mx >= MinMx", "met.mn >= maxLoss", "met.prob >= 0.85", "met.ev >= 0.01", "extra"]
+            checkVals = [met.mx >= MinMx, met.mn >= maxLoss, met.prob >= 0.85, met.ev >= 0.01, extra]
+            i = findfirst(x -> !x, checkVals)
+            trackSkipped(checks[i])
+        end
         # shouldTrackSkipped && trackSkipped("if") # $(checks[i]) $(eval(Meta.parse(x)))")
     end
     return nothing

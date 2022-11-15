@@ -10,7 +10,7 @@ export c
 const c = @__MODULE__
 
 maxDate() = today() + Year(10)
-minDate() = today() + Day(3)
+minDate() = today() + Day(5)
 
 csa(sym) = checkSymAll(x -> x.mov >= 0.05 && x.rate >= 0.5, sym)
 checkSymAll(pred, sym) =  sort!([(;x.expr, x.mov, x.rate, x.strike, x.primitDir) for x in sort(filter(x-> x.sym == sym && pred(x), LookedRaw); by=x->x.rate)]; by=x->x.rate)

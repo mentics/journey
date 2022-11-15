@@ -22,7 +22,14 @@ dataDaily(from::Date, to::Date, sym::AStr="SPY")::DailyType = filter(r -> from <
 dailyDict(from::Date, to::Date, sym::AStr="SPY")::Dict{Date,NamedTuple} = toDict(getDate, filter(x -> from <= x.date <= to, dataDaily(sym)))
 
 priceOpen(d::Date)::Currency = dataDay(d).open
-dataDay(d::Date)::DailyRowType = (daily = dataDaily() ; daily[findfirst(r->r.date == d, daily)])
+function dataDay(d::Date, sym::AStr="SPY")::DailyRowType
+    daily = dataDaily(sym)
+    i = findfirst(r -> r.date == d, daily)
+    if isnothing(i)
+        error("Quote for $(sym) not found for $(d)")
+    end
+    daily[i]
+end
 
 # daily is in descending date order.
 # pass in a view if you want to save a separate out-of-sample set.

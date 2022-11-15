@@ -105,13 +105,14 @@ end
 
 using ThreadPools
 chain(xpr::Date; kws...)::OptionChain = chains([xpr]; kws...)["SPY"][xpr]
-chain(xpr::Date, sym::String; kws...)::OptionChain = chains([xpr], [sym]; kws...)[sym]
+chain(xpr::Date, sym::String; kws...)::OptionChain = chains([xpr], [sym]; kws...)[sym][xpr]
 # chain(xprs, sym::String; kws...)::OptionChain = chains(xprs, [sym]; kws...)[sym]
 function chains(xprs, syms=("SPY",); age=PERIOD_UPDATE3)::SymChainsType
     @assert applicable(length, xprs)
     @assert applicable(length, syms)
     @assert eltype(xprs) == Date
     @assert eltype(syms) == String string(eltype(syms), " != ", String)
+    # @show syms xprs
     _, chs = logqbmap((sym, xpr) for sym in syms, xpr in xprs) do (sym, xpr)
         try
             # println("Refreshing chain for ", sym, ' ', xpr, " in thread ", Threads.threadid())

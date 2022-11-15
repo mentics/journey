@@ -22,7 +22,13 @@ end
 
 # function SH.calcQuote(lookup, lms::Union{Coll{LegMeta},AVec{<:LegTrade}}, act::Action.T=Action.open)::Quote
 function SH.calcQuote(lookup, lms::Coll{T}, act::Action.T=Action.open)::Quote where T<:Union{Leg,LegMeta,<:LegTrade}
-        sumQuotes(getQuote(calcOptQuote(lookup, lm, act)) for lm in lms)
+    sumQuotes(getQuote(calcOptQuote(lookup, lm, act)) for lm in lms)
 end
+
+function requote(optQuoter, lm::LegMeta, action::Action.T)::LegMeta
+    leg = getLeg(lm)
+    return LegMeta(optQuoter(leg, action), getQuantity(leg), getSide(leg))
+end
+requote(optQuoter, lms::Coll{LegMeta}, action::Action.T) = requote.(optQuoter, lms, action)
 
 end

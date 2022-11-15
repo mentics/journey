@@ -90,6 +90,14 @@ function incKey(d::Dict, k)
     d[k] = curval + 1
 end
 
+export addToKey
+function addToKey(d::Dict, k, a)
+    valcur = useKey(d, k, zero(a))
+    valnew = valcur + a
+    d[k] = valnew
+    return valnew
+end
+
 export incDictKey
 function incDictKey(d::Dict, k1, k2)
     d2 = useKey(Dict, d, k1)

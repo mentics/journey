@@ -60,6 +60,16 @@ function loadTrades(clauseIn::String, clauseArgs...)::Vector{Trade}
     legsRows = select("select * from VLegTrade where tid in ($(clauseIn)) order by tid asc, strike asc", clauseArgs...)
     return map(zip(ts, groupby(x -> x.tid, legsRows))) do (t, tlrs)
         legs = loadLegTrade.(tlrs)
+        if length(legs) == 4
+            if getStyle(legs[1]) != getStyle(legs[2])
+                @assert getStrike(legs[2]) == getStrike(legs[3])
+                tmp = legs[3]
+                legs[3] = legs[2]
+                legs[2] = tmp
+            end
+            @assert getStyle(legs[1]) == getStyle(legs[2])
+            @assert getStyle(legs[3]) == getStyle(legs[4])
+        end
         return Trade{strToStatus(t.status)}(t.tid, t.targetdate, dbdc(t.primitdir), dbdc(t.prilldiropen), dbdc(t.prilldirclose),
               legs, t.tscreated, noth(t.tsfilled), noth(t.tsclosed), TradeMeta(dbdc(t.underbid), dbdc(t.underask)))
     end

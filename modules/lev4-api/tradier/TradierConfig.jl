@@ -118,8 +118,10 @@ function loadSnave(name::AStr, info::CallInfo{T})::Union{Nothing,T} where T
         #     @warn "loadSnave did not find file. Returning empty response because devMode" path
         #     return T()
         # else
-            @log warn "loadSnave did not find file, falling back on call" path
-            return nothing
+            # @log warn "loadSnave did not find file, falling back on call" path
+            # error("Tried to make HTTP call when snapped")
+            @log warn "loadSnave did not find file, returning blank" path
+            return T()
         # end
     end
 end
