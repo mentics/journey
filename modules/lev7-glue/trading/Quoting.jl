@@ -25,10 +25,10 @@ function SH.calcQuote(lookup, lms::Coll{T}, act::Action.T=Action.open)::Quote wh
     sumQuotes(getQuote(calcOptQuote(lookup, lm, act)) for lm in lms)
 end
 
-function requote(optQuoter, lm::LegMeta, action::Action.T)::LegMeta
+function requote(optQuoter, lm::Union{LegMeta,LegTrade}, action::Action.T)::LegMeta
     leg = getLeg(lm)
     return LegMeta(optQuoter(leg, action), getQuantity(leg), getSide(leg))
 end
-requote(optQuoter, lms::Coll{LegMeta}, action::Action.T) = requote.(optQuoter, lms, action)
+requote(optQuoter, lms::Union{Coll{LegMeta},Coll{LegTrade}}, action::Action.T) = requote.(optQuoter, lms, action)
 
 end

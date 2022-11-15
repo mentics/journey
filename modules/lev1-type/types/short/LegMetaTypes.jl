@@ -47,11 +47,11 @@ SH.addQuantity(lm::LegMeta, addend::Real) =
 SH.to(OptionQuote, lm::LegMeta) = OptionQuote(getOption(lm), abs(getQuote(lm)), getMeta(lm), nothing)
 
 export getThetaDir, getDelta
-getThetaDir(lm::LegMeta) = lm.meta.theta * getQuantityDir(getLeg(lm))
-getThetaDir(lms::Coll{LegMeta}) = sum(getThetaDir, lms)
-# getThetaDir(oq::OptionQuote) = oq.meta.theta * getQuantityDir(getLeg(lm))
-# getThetaDir(oqs::Coll{OptionQuote}) = sum(getThetaDir, oqs)
-getDelta(lm::LegMeta) = lm.meta.delta * getQuantityDir(getLeg(lm))
-getDelta(lms::Coll{LegMeta}) = sum(getDelta, lms)
+SH.getTheta(lm::LegMeta) = lm.meta.theta * getQuantityDir(getLeg(lm))
+SH.getTheta(lms::Coll{LegMeta}) = sum(getTheta, lms)
+# getTheta(oq::OptionQuote) = oq.meta.theta * getQuantityDir(getLeg(lm))
+# getTheta(oqs::Coll{OptionQuote}) = sum(getThetaDir, oqs)
+SH.getDelta(lm::LegMeta) = lm.meta.delta * getQuantityDir(getLeg(lm))
+SH.getDelta(lms::Coll{LegMeta}) = sum(getDelta, lms)
 
 end

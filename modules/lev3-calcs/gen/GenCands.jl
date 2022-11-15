@@ -1,7 +1,7 @@
 module GenCands
 using ThreadPools
 using SH, BaseTypes, SmallTypes, LegMetaTypes
-using OptionUtil, LogUtil
+using OptionUtil, LogUtil, ThreadUtil
 import CalcUtil
 using ChainTypes
 using Rets, StratTypes
@@ -55,12 +55,27 @@ function iterCondors(f::Function, oqss::Oqss, maxSpreadWidth::Real, curp::Curren
     @log debug "Number of spreads" length(spreads)
     MaxSpreads = 99999999
 
+    lok = ReentrantLock()
+
     twith(ThreadPools.QueuePool(2, Threads.nthreads()-1)) do pool
         @tthreads pool for i in 1:min(MaxSpreads, length(spreads))
             for j in (i+1):min(MaxSpreads, length(spreads))
                 s1 = spreads[i]
                 s2 = spreads[j]
-                getStrike(s1[2]) <= getStrike(s2[1]) || continue
+                str12 = getStrike(s1[2])
+                str21 = getStrike(s2[1])
+                str12 <= str21 || continue
+
+                # (str12 != str21 || getSide(s1[2]) == getSide(s2[1]))
+                if !(str12 != str21 || getSide(s1[2]) == getSide(s2[1]))
+                    # runSync(lok) do
+                    #     println("Found legs that cancel out")
+                    #     @show s1[2][1] s2[1][1]
+                    # end
+                    # TODO: is there some way to change spread gen to avoid this case?
+                    continue
+                end
+
                 cond = (spreads[i], spreads[j])
                 left, mid, right = OptionUtil.legsExtrema(map(x -> x[1], (cond[1]..., cond[2]...)))
                 max(left, mid, right) > 0.02 || continue

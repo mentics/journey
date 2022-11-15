@@ -87,7 +87,7 @@ function strat1(acct)
         qt = quoter(trade[:lms], Action.close)
         netc = usePrice(qt)
         curVal = neto + netc
-        theta = getThetaDir(lmsc)
+        theta = getTheta(lmsc)
         # if curVal > 0.0 || daysLeft <= 2 || theta < -0.005
             timt = DateUtil.timult(date, dateOpen)
             mn = min(OptionUtil.legsExtrema(trade[:lms]...)...)
@@ -120,7 +120,7 @@ function strat1(acct)
         filter!(res) do r
             deltaAdd = getDelta(r.lms)
             return r.roiEv >= 0.1 &&
-                getThetaDir(r.lms) >= 0.0 &&
+                getTheta(r.lms) >= 0.0 &&
                 (
                     abs(deltaAcct + deltaAdd) < MaxDelta ||
                     abs(deltaAcct + deltaAdd) < abs(deltaAcct)

@@ -72,8 +72,7 @@ function disp()
             ev=r.met.ev,
             evr="$(rd3(ctx.posMet.evr)):$(rd3(r.met.evr)):$(rd3(r.metb.evr))",
             prob="$(rd3(ctx.posMet.prob)):$(rd3(r.met.prob)):$(rd3(r.metb.prob))",
-            r.met.mx,
-            thetaDir=getThetaDir(r.lms)
+            r.met.mx
         ))
     end
     pretyble(res)
@@ -251,14 +250,14 @@ end
 function joe(ctx, tctx, ret, lms; allo=nothing)::Union{Nothing,NamedTuple}
     shouldTrackSkipped = false
     MinMx = 0.17
-    # getThetaDir(lms) >= 0.0 || ( (shouldTrackSkipped && trackSkipped("thetaDir")) ; return nothing )
+    # getTheta(lms) >= 0.0 || ( (shouldTrackSkipped && trackSkipped("thetaDir")) ; return nothing )
     # (getStrike(lms[4]) - getStrike(lms[1])) <= ctx.maxWidth || ( (shouldTrackSkipped && trackSkipped("max strike width")) ; return nothing )
     all = isnothing(allo) ? ctx.all : allo
     met = calcMetrics(ctx.prob, ret)
     rateEv = ctx.timt * met.ev / (-met.mn)
     rateEvr = ctx.timt * met.evr / (-met.mn)
     rate = ctx.timt * met.profit / (-met.mn)
-    0.0 < met.prob < 1.0 || ( (shouldTrackSkipped && trackSkipped("prob")) ; return nothing )
+    # 0.0 < met.prob < 1.0 || ( (shouldTrackSkipped && trackSkipped("prob")) ; return nothing )
 
     # must = ret.vals[1] > -0.1 && ret.vals[end] > -0.1
     # must || ( (shouldTrackSkipped && trackSkipped("must")) ; return nothing )
@@ -280,7 +279,7 @@ function joe(ctx, tctx, ret, lms; allo=nothing)::Union{Nothing,NamedTuple}
                 # rate = ctx.timult * met.mx / (-met.mn)
                 retb = Ret(tctx.retBuf2, ctx.curp, ctx.posRet.numLegs + 4)
                 metb = calcMetrics(ctx.prob, retb)
-                return (;roi, roiEv, roiEvr, rate, rateEv, kelly, met, metb)
+                return (;roi, roiEv, roiEvr, rate, rateEv, kelly, met, metb, delta=getDelta(lms), theta=getTheta(lms))
             # else
                 # # shouldTrackSkipped && trackSkipped("max loss both: $((minb, ctx.posMin, maxLossBoth))")
                 # shouldTrackSkipped && trackSkipped("max loss both")

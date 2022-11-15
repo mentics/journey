@@ -21,6 +21,8 @@ export isValid
 
 export to, tos, tosnn, combineTo, mapFlattenTo
 
+export getDelta, getTheta
+
 export v
 (v(x::Dict{K,V})::Vector{V}) where {K,V} = collect(values(x))
 
@@ -54,6 +56,9 @@ function calcOptQuote() end
 function getQuantityDir() end
 
 function addQuantity() end
+
+function getTheta() end
+function getDelta() end
 
 # for Order
 export getId, getSymbol, getClass, getOrderType, getPrimitDir, getPrillDir, tsCreated, tsFilled, tsClosed, isStatus

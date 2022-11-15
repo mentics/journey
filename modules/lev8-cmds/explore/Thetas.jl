@@ -57,7 +57,7 @@ function procDay(understart)
     thetaSum = 0.0
     xtrinSum = 0.0
     for (i, lm) in enumerate(lms)
-        theta = getThetaDir(lm)
+        theta = getTheta(lm)
         thetaSum += theta
         push!(row, (Symbol(:theta, i), theta))
         xtrin = extrinsDir(lm, curp)
