@@ -249,8 +249,8 @@ function testOne(r)
 end
 function joe(ctx, tctx, ret, lms; allo=nothing)::Union{Nothing,NamedTuple}
     shouldTrackSkipped = false
-    MinMx = 0.17
-    # getTheta(lms) >= 0.0 || ( (shouldTrackSkipped && trackSkipped("thetaDir")) ; return nothing )
+    MinMx = 0.11
+    getTheta(lms) >= 0.0 || ( (shouldTrackSkipped && trackSkipped("theta")) ; return nothing )
     # (getStrike(lms[4]) - getStrike(lms[1])) <= ctx.maxWidth || ( (shouldTrackSkipped && trackSkipped("max strike width")) ; return nothing )
     all = isnothing(allo) ? ctx.all : allo
     met = calcMetrics(ctx.prob, ret)
@@ -261,7 +261,7 @@ function joe(ctx, tctx, ret, lms; allo=nothing)::Union{Nothing,NamedTuple}
 
     # must = ret.vals[1] > -0.1 && ret.vals[end] > -0.1
     # must || ( (shouldTrackSkipped && trackSkipped("must")) ; return nothing )
-    extra = ret.vals[1] > MinMx # && ret.vals[end] > MinMx
+    extra = ret.vals[1] >= MinMx && ret.vals[end] >= MinMx
     maxLoss = (ctx.days-1) * MaxLoss[] + MaxLossAdd[]
     # maxLossBoth = (ctx.days-1) * MaxLossExpr[] + MaxLossAdd[]
     if all || (met.mx >= MinMx && met.mn >= maxLoss && met.ev >= 0.01 && extra) # rateEv >= 0.5 && met.prob >= 0.85

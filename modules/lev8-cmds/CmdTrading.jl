@@ -183,10 +183,14 @@ function todup()
     pretyble(res)
 end
 
+export todord
+todord() = sort(xp.whichExpir.(getTargetDate.(tradesOpenEntered(today()))))
+
 import TradierOrder
 function cancel(tid)
     tords = filter!(x -> tierIsLive(x) && startswith(x["tag"], "op"), ta.tradierOrders())
-    tt = findTradeEntered(today())
+    # tt = findTradeEntered(today())
+    tt = tradesOpenEntered(today())
     lup = Dict(getId(trade) => findTord(tords, getId(trade)) for trade in tt)
     oid = lup[tid]["id"]
     println("Cancelling oid ", oid)

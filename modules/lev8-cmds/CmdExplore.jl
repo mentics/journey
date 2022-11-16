@@ -7,6 +7,9 @@ using Expirations, Markets, Chains
 using DrawStrat
 using CmdPos
 
+export ce
+const ce = @__MODULE__
+
 export sh, shc, shRet, shVals, drsh, drsh!, shLegs # shLegs is reexported form Shorthand
 export drlms, drlms!
 
@@ -565,6 +568,7 @@ end
 
 spread(xpir, style, side, s1, s2) = sh("$(toCode(side))$(s1)$(toCode(style)) / $(toCode(toOther(side)))$(s2)$(toCode(style))", [xpir])
 spread(xpir, style, side, (s1, s2)) = spread(xpir, style, side, s1, s2)
+cread(xpir, style, side, curp, w) = ( c = floor(curp) ; spread(xpir, style, side, c - w, c + w) )
 coff(curp, off1, rel2) = ( c = floor(curp) ; return (c + off1, c + off1 + rel2) )
 # spreadCurp(xpir, style, side, curp, off, w)
 # spreadPL(xpir, )
