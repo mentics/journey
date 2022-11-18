@@ -6,7 +6,7 @@ import CalcUtil
 using ChainTypes
 using Rets, StratTypes
 
-const MinSpreadMx = 0.01
+const MinSpreadMx = 0.03
 
 # TODO: consider including cash secured puts?
 function iterSingle(f::Function, oqss::Oqss, args...)
@@ -24,9 +24,9 @@ function iterSpreads(f::Function, oqss::Oqss, maxSpreadWidth::Real, args...)
     iterSpreads(f, oqss.put, maxSpreadWidth, args...)
 end
 
-function paraSpreads(f::Function, oqss::Oqss, maxSpreadWidth::Real, args...)
-    paraSpreads(f, oqss.call, maxSpreadWidth, args...)
-    paraSpreads(f, oqss.put, maxSpreadWidth, args...)
+function paraSpreads(f::Function, oqss::Oqss, maxSpreadWidth::Real, isLegAllowed, args...)
+    paraSpreads(f, oqss.call, maxSpreadWidth, isLegAllowed, args...)
+    paraSpreads(f, oqss.put, maxSpreadWidth, isLegAllowed, args...)
 end
 
 # function iterSpreads(f::Function, oqss::Oqss, strikeMin::Currency, args...)::Bool
@@ -133,24 +133,25 @@ function iterSpreads(f::Function, oqs::Sides{Vector{ChainTypes.OptionQuote}}, ma
         legLong = to(LegMeta, oq1, Side.long)
         legShort = to(LegMeta, oq2, Side.short)
         _, mx = OptionUtil.spreadExtrema(legLong, legShort)
-        mx > MinSpreadMx || continue
+        mx >= MinSpreadMx || continue
         spr = getStrike(legLong) < getStrike(legShort) ? (legLong, legShort) : (legShort, legLong)
         f(spr, args...) || return false
     end
     return true
 end
 
-function paraSpreads(f::Function, oqs::Sides{Vector{ChainTypes.OptionQuote}}, maxSpreadWidth::Real, args...)::Bool
+function paraSpreads(f::Function, oqs::Sides{Vector{ChainTypes.OptionQuote}}, maxSpreadWidth::Real, isLegAllowed, args...)::Bool
     finish = false
     @qbthreads for oq1 in oqs.long
         for oq2 in oqs.short
             strikeWidth(oq1, oq2) <= maxSpreadWidth || continue
             # (getStrike(oq1) >= strikeMin && getStrike(oq2) >= strikeMin && oq1 != oq2) || continue
             oq1 != oq2 || continue
+            (isLegAllowed(oq1, Side.long) && isLegAllowed(oq2, Side.short)) || continue
             legLong = to(LegMeta, oq1, Side.long)
             legShort = to(LegMeta, oq2, Side.short)
             _, mx = OptionUtil.spreadExtrema(legLong, legShort)
-            mx > MinSpreadMx || continue
+            mx >= MinSpreadMx || continue
             spr = getStrike(legLong) < getStrike(legShort) ? (legLong, legShort) : (legShort, legLong)
             # f(spr, args...) || ( finish = stop ; break )
             f(spr, args...) || return false

@@ -19,5 +19,6 @@ OptionMeta(d::Dict{String,Any}) = OptionMeta(; (Symbol(x[1]) => x[2] for x in d)
 SH.getIv(m::OptionMeta) = m.mid_iv
 SH.getTheta(m::OptionMeta) = m.theta
 SH.getDelta(m::OptionMeta) = m.delta
+SH.getGamma(m::OptionMeta) = m.gamma
 
 end

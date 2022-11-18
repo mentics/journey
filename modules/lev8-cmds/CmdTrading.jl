@@ -280,6 +280,8 @@ end
 #endregion
 
 SH.getDelta(trade::Trade) = SH.getDelta(Quoting.requote(optQuoter, getLegs(trade), Action.close))
+SH.getGamma(trade::Trade) = SH.getGamma(Quoting.requote(optQuoter, getLegs(trade), Action.close))
+SH.getTheta(trade::Trade) = SH.getTheta(Quoting.requote(optQuoter, getLegs(trade), Action.close))
 
 export deltaPos
 function deltaPos(xprs=1:21)

@@ -17,7 +17,7 @@ using Calendars
 
 using Globals
 using Markets
-urpon()
+Markets.urpon()
 setvr(.7)
 
 using Sched, SchedBg

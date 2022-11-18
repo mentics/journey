@@ -29,6 +29,8 @@ ll = c.lookAll()
 
 ==========
 
+Mark results from toc() when there is already an order for it
+
 Draw pnl surfaces with time as the third axis
 
 For 401k trading covered calls, get alerted when price goes below a certain % of the strike, and then just roll to leap to lock in long term % return (and early exercise is bonus)

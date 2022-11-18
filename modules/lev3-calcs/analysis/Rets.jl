@@ -51,7 +51,7 @@ function combineRetVals!(buf::Vector{Float64}, rets::NTuple{4,Ret}, extra::Vecto
     # foreach(extra) do r; @assert rets[1].center == r.center end
     valss = map(r->r.vals, rets)
     # extraValss = map(r->r.vals, extra)
-    for i in eachindex(rets[1].vals)
+    for i in eachindex(buf)
         # println(typeof(extraValss), ", ", length(extraValss))
         # @info typeof(valss) length(valss) length(extraValss[1])
         # error("")
@@ -68,6 +68,13 @@ function combineRetVals!(buf::Vector{Float64}, rets::NTuple{4,Ret}, extra::Vecto
         # es = sum(v[i] for v in extraValss)
         # es = reduce((ret1, ret2) -> ret1[i] + ret2[i], extraValss)
         buf[i] = valss[1][i] + valss[2][i] + valss[3][i] + valss[4][i] + extra[i]
+    end
+end
+
+function combineRetVals!(buf::Vector{Float64}, rets::Vector{Ret}, indqs::Vector{<:Tuple{Integer,Integer}})
+    # TODO: @assert rets[1].center == rets[2].center == rets[3].center == rets[4].center
+    for i in eachindex(buf)
+        buf[i] = sum(((ind, qty),) -> qty * rets[ind].vals[i], indqs)
     end
 end
 

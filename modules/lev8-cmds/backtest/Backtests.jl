@@ -51,6 +51,8 @@ function run(f)
         acct[:xpirs] = SnapUtil.snapExpirs(snap())
         acct[:delta] = isempty(acct[:poss]) ? 0.0 : calcDelta(acct[:poss])
         acct[:deltas] = isempty(acct[:poss]) ? Dict{Date,Float64}() : calcDeltas(acct[:poss])
+        acct[:gamma] = isempty(acct[:poss]) ? 0.0 : calcGamma(acct[:poss])
+        acct[:gammas] = isempty(acct[:poss]) ? Dict{Date,Float64}() : calcGammas(acct[:poss])
         f(acct)
         println("End $(date): $(acct[:bal]) real:$(acct[:real]) delta:$(rond(acct[:delta]))")
     end
@@ -58,11 +60,21 @@ end
 
 calcDelta(trade::Dict) = getDelta(requote(optQuoter, trade[:lms], Action.close))
 calcDelta(trades::Coll) = sum(calcDelta, trades)
+calcGamma(trade::Dict) = getGamma(requote(optQuoter, trade[:lms], Action.close))
+calcGamma(trades::Coll) = sum(calcGamma, trades)
 
 function calcDeltas(trades::Coll)
     d = Dict{Date,Float64}()
     for trade in trades
         addToKey(d, trade[:targetDate], calcDelta(trade))
+    end
+    return d
+end
+
+function calcGammas(trades::Coll)
+    d = Dict{Date,Float64}()
+    for trade in trades
+        addToKey(d, trade[:targetDate], calcGamma(trade))
     end
     return d
 end
@@ -112,8 +124,8 @@ function strat1(acct)
     for xpir in first(acct[:xpirs], 21)
         xpir > bdaysAfter(date, 3) || continue
         posLms = collect(Iterators.filter(x -> SH.getExpiration(x) == xpir, cu.flatmap(x -> x[:lms], acct[:poss])))
-        # res, ctx = Joe.runJorn(xpir, isLegAllowed; nopos=true, posLms, all=true)
-        res, ctx = Joe.runJorn(xpir, isLegAllowed; nopos=true, posLms)
+        res, ctx = Joe.runJorn(xpir, isLegAllowed; nopos=true, posLms, all=true)
+        # res, ctx = Joe.runJorn(xpir, isLegAllowed; nopos=true, posLms)
         !isempty(res) || continue
         deltaAcct = acct[:delta]
         deltaXpir = get(acct[:deltas], xpir, 0.0)

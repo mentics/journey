@@ -32,5 +32,13 @@ isConflict(leg, opt, side::Side.T) = side != getSide(leg) && getOption(opt) == g
 isConflict(legs::Coll) = (opt, side::Side.T) -> !isnothing(findfirst(leg -> isConflict(leg, opt, side), legs))
 # isConflict(legs::Coll, opt, side::Side.T) = !isnothing(findfirst(leg -> isConflict(leg, opt, side), legs))
 isConflict(legs::Coll, side::Side.T) = opt -> !isnothing(findfirst(leg -> isConflict(leg, opt, side), legs))
+function hasConflict(legs)
+    for i in eachindex(legs)[1:end-1]
+        for j in i+1:lastindex(legs)
+            !isConflict(legs[i], legs[j]) || return true
+        end
+    end
+    return false
+end
 
 end

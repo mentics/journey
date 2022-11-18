@@ -8,7 +8,7 @@ export toCode, toOther
 export getIv
 export getOption, getLeg, getMeta, getOptionMeta, getQuote
 export calcQuote, calcOptQuote
-export getQuantityDir, addQuantity
+export getQuantityDir, addQuantity, withQuantity
 
 export getVals, getVals!, valAt, getCenter, draw, draw!
 
@@ -21,7 +21,7 @@ export isValid
 
 export to, tos, tosnn, combineTo, mapFlattenTo
 
-export getDelta, getTheta
+export getDelta, getTheta, getGamma
 
 export v
 (v(x::Dict{K,V})::Vector{V}) where {K,V} = collect(values(x))
@@ -56,9 +56,11 @@ function calcOptQuote() end
 function getQuantityDir() end
 
 function addQuantity() end
+function withQuantity() end
 
-function getTheta() end
-function getDelta() end
+getTheta(itr) = sum(getTheta, itr)
+getDelta(itr) = sum(getDelta, itr)
+getGamma(itr) = sum(getGamma, itr)
 
 # for Order
 export getId, getSymbol, getClass, getOrderType, getPrimitDir, getPrillDir, tsCreated, tsFilled, tsClosed, isStatus

@@ -16,12 +16,12 @@ csa(sym) = checkSymAll(x -> x.mov >= 0.05 && x.rate >= 0.5, sym)
 checkSymAll(pred, sym) =  sort!([(;x.expr, x.mov, x.rate, x.strike, x.primitDir) for x in sort(filter(x-> x.sym == sym && pred(x), LookedRaw); by=x->x.rate)]; by=x->x.rate)
 
 using ThreadPools
-function lookAll(cands=SeekingAlpha.getCandidates(); ratio=.95)
+function lookAll(cands=SeekingAlpha.getCandidates(); ratio=.95, age=Minute(10))
     prout("Start proc")
     _, looked = logqbmap(cands) do sym
         try
             prout("Combos processing", sym)
-            return look(sym; ratio)
+            return look(sym; ratio, age)
         catch e
             prerr(e)
             return
@@ -85,7 +85,7 @@ end
 sa = SeekingAlpha
 import TradierData:findEarnDate,findExDate
 using Between
-function look(sym; all=false, ratio)
+function look(sym; all=false, ratio, age=Minute(10))
     try
     res = []
     # about = SeekingAlpha.Cands[sym]
@@ -94,9 +94,9 @@ function look(sym; all=false, ratio)
     # maxDate = min(parseDate(about, "earning_announce_date"), parseDate(about, "div_pay_date"))
     # maxDate = min(findExDate(tryKey(sa.Dividends, sym)), findEarnDate(tryKey(sa.Earnings,sym)))
     # maxDate = maxDate() # min(findExDate(get(sa.Dividends, sym, nothing)), findEarnDate(get(sa.Earnings, sym, nothing)))
-    chs = getChains(sym)
+    chs = getChains(sym; age)
     # locUnder = Under[sym]
-    locUnder = stock(sym)
+    locUnder = stock(sym; age)
     for xpir in sort!(collect(keys(chs)))
         # expr < maxDate || break # exprs sorted asc
         oqs = filter(isPut, chs[xpir].chain)
