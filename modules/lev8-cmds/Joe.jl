@@ -41,16 +41,16 @@ mlx() = ( MaxLoss[] = -9999.0 ; MaxLossExpr[] = -9999.0 )
 # end
 
 # import Profile
-function jorn(exs; kws...)
+function jorn(exs; nopos=false, kws...)
     empty!(Skipped)
     global Sorter = r -> r.roiEv
     global ressOrig = Vector{Vector{NamedTuple}}(undef,maximum(exs))
     global ress = Vector{Vector{NamedTuple}}(undef,maximum(exs))
     global ctxs = Vector{NamedTuple}(undef,maximum(exs))
-    isLegAllowed = entryFilterOption()
+    isLegAllowed = nopos ? (_,_)->true : entryFilterOption()
 
     for i in exs
-        r, ctx = runJorn(expir(i), isLegAllowed; kws...)
+        r, ctx = runJorn(expir(i), isLegAllowed; nopos, kws...)
         !isempty(r) || continue
         ressOrig[i] = r
         ctxs[i] = ctx
@@ -80,7 +80,7 @@ end
 
 function runJorn(xpr::Date, isLegAllowed; nopos=false, all=false, posLms=nothing, condors=true, spreads=false)
     global ctx = makeCtx(xpr; nopos, all)
-    oqssAll = Chains.getOqss(xpr, ctx.curp, isnothing(posLms) ? xlms(xpr) : posLms)
+    oqssAll = Chains.getOqss(xpr, ctx.curp, nopos ? posLms : xlms(xpr))
     oqss = filtOqss(oqssAll) do oq
         abs(getStrike(oq) / ctx.curp - 1.0) < 0.1
     end
@@ -334,10 +334,10 @@ const Msgs = Dict{Symbol,Vector{Any}}()
 #endregion
 
 import LegTypes
-function runlc(xpr; kws...)
-    jorn(xpr; all=true, condors=false, spreads=true)
+function runlc(xpr; maxSpreads=1000, kws...)
+    jorn(xpr; all=true, condors=false, spreads=true, nopos=true, posLms=LegMeta[])
     # filt(r -> r.met.mx >= (-r.met.mn + .04))
-    global lmss = [x.lms for x in ress[xpr]]
+    global lmss = first([x.lms for x in ress[xpr]], maxSpreads)
     rets = map(lmss) do lms
         ret = combineTo(Ret, lms, ctx.curp)
         adjust!(ret.vals, ret.numLegs) # reduce for slippage and closing short cost
@@ -373,6 +373,13 @@ function lmsForQtys(lmss, qtys)
     return collect(Iterators.flatten(map(i -> (withQuantity(lmss[i][1], qtys[i]), withQuantity(lmss[i][2], qtys[i])), inds)))
 end
 
+function testlc(;maxIter=10)
+    num = 4
+    buf1 = zeros(UInt8, num)
+    buf2 = zeros(UInt8, num)
+    findLinCombo(buf1, buf2, rand(num), (x,q)->dot(x,q), x->true; maxIter)
+end
+
 findLinCombo(lmss, isConflict; kws...) = findLinCombo(zeros(UInt8, length(lmss)), zeros(UInt8, length(lmss)), lmssToVdg(lmss), scoreVdg, isConflict; kws...)
 function findLinCombo(res, qtys, cands, score, check; maxQtyTotal = 12, scoreTarget = 0.00001, maxIter = 1e6)
     # presorted by desirability, so prefer low indices
@@ -387,11 +394,13 @@ function findLinCombo(res, qtys, cands, score, check; maxQtyTotal = 12, scoreTar
     qt = 0
     for qtyTot in 2:maxQtyTotal
         qt = qtyTot
+        left = 0
+        @label start
         fill!(qtys, 0)
-        qtys[1] = qtyTot - 1
-        qtys[2] = 1
-        nz2 = 1
-        nz1 = 2
+        nz2 = left+1
+        nz1 = left+2
+        qtys[nz2] = qtyTot - 1
+        qtys[nz1] = 1
 
         while true
             # prit(qtys, ' ', nz2, ' ', nz1)
@@ -426,9 +435,15 @@ function findLinCombo(res, qtys, cands, score, check; maxQtyTotal = 12, scoreTar
                 if qtys[nz2] == 1
                     while true
                         nz2 -= 1
-                        if nz2 == 0
-                            println("Proced all for qty ", qtyTot, " after iterations ", i)
-                            @goto done
+                        if nz2 == left
+                            left += 1
+                            if left == len - 1
+                                println("Proced all for qty ", qtyTot, " after iterations ", i)
+                                @goto done
+                            else
+                                # println("Shifting left ", left)
+                                @goto start
+                            end
                         end
                         if qtys[nz2] > 0
                             break
