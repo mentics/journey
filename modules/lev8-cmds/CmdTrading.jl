@@ -81,8 +81,11 @@ function tradeSize2(kelly::Float64, kellyRatio::Float64 = 0.5)
     println("$(kellyRatio) kelly trade size: ", kelly * kellyRatio * bal)
 end
 
+import ProcOrder
 function toc(rateMin=0.5) # findTradesToClose
     trades = sort!(StoreTrade.tradesOpen(); by=getTargetDate)
+    ords = filter!(x->!SH.isStatus(x, Deleted), tos(Order, ta.tradierOrders()))
+    tids = extractTid.(ords)
     todayDate = market().startDay
     for trade in trades
         trade isa Trade{Filled} || continue
@@ -102,12 +105,16 @@ function toc(rateMin=0.5) # findTradesToClose
             rate = timt * curVal / (-mn)
             # @show rate timt curVal (-mn)
             if rate > rateMin
+                tid = getTid(trade)
                 expr = xp.whichExpir(getTargetDate(trade))
-                println(expr, ": Trade ", getId(trade), " (", strShort(Date(ts)), " - ", strShort(getTargetDate(trade)), "): ", map(x -> sho(x), (;curVal, neto, netc, rate, mn, dur, timt)))
+                println(expr, ": Trade ", tid, " (", strShort(Date(ts)), " - ", strShort(getTargetDate(trade)), "): ", map(x -> sho(x), (;curVal, neto, netc, rate, mn, dur, timt)))
+                tord = find(x -> x == tid, tids)
+                isnothing(tord) || println("    Ord: ", showinfo(tord))
             end
         # end
     end
 end
+ordinfo(tord) = "oid:$(tord["id"]) status:$(tord["status"])"
 #endregion
 
 #region CurrentPosition
