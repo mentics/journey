@@ -9,8 +9,12 @@ const ta = @__MODULE__
 
 function tradierOrders()::TradierRespVec
     result = tradierGet("/accounts/$(getAccountId())/orders?includeTags=true", Call(nameof(var"#self#")))
-    orders = result["orders"]
-    if orders != "null"
+    orders = get(result, "orders") do
+        println("result = ", result)
+        # error("No orders key in response for tradierOrders.")
+        println("WARN: No orders key in response for tradierOrders.")
+    end
+    if !isnothing(orders) && orders != "null"
         return ensureVector(orders["order"])
     else
         return TRADIER_EMPTY

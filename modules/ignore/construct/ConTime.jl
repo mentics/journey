@@ -3,7 +3,6 @@ using Dates
 using SH, Globals
 using LegMetaTypes
 using Expirations, Snapshots
-using CmdStrats
 
 function run(exp::Date, numSnaps::Int)
     lmsPos = LegMeta[]

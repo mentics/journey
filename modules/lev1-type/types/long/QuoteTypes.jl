@@ -23,6 +23,8 @@ SH.getBid(q::Quote) = q.bid
 SH.getAsk(q::Quote) = q.ask
 Base.abs(q::Quote) = Quote(q.action, abs(q.bid), abs(q.ask))
 Base.show(io::IO, q::Quote) = print(io, (q.action == Action.open ? "Qo" : "Qc") * (q.bid === q.ask ? "($(q.bid))" : "($(q.bid), $(q.ask))"))
+# Base.:(+)(q::Quote, addend::Real) = Quote(q.action, q.bid + addend, q.ask + addend)
+Base.:(+)(addend::Real, q::Quote) = Quote(q.action, q.bid + addend, q.ask + addend)
 
 # SH.bap(lm)::Currency = getBid(lm)
 # SH.bap(hasQuotes::Coll)::Currency = sum(getBid, hasQuotes)

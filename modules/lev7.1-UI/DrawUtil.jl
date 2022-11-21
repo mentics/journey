@@ -31,15 +31,17 @@ function newFig(f, (xticks, yticks), showLegend=true, newWin=false)
     Main.save[:ax] = ax
     showLegend && axislegend(ax)
     DataInspector(fig; textcolor=:blue)
+    disp = nothing
     if newWin
-        display(GLMakie.Screen(), ax)
+        disp = display(GLMakie.Screen(), ax)
     else
-        display(fig)
+        disp = display(fig)
     end
     # TODO: can try more screens: display(GLMakie.Screen(), figure_or_scene).
     # from https://makie.juliaplots.org/v0.17.8/documentation/backends/glmakie/index.html
     # and https://discourse.julialang.org/t/multiple-makie-display-windows/26295/22
-    glscr = GLMakie.GLFW_WINDOWS[1]
+    # glscr = GLMakie.GLFW_WINDOWS[1]
+    glscr = GLMakie.to_native(disp)
     # resize!(glscr, )
     GLFW.SetWindowPos(glscr, 140, 80)
     # Sometimes it wasn't popping up on top, so this is to force it to do so

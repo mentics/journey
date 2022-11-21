@@ -333,6 +333,54 @@ const Msgs = Dict{Symbol,Vector{Any}}()
 
 #endregion
 
+using SnapUtil, Chains, Quoting
+function checkLcOverTime(start=1; maxIter=1e6)
+    dates = SnapUtil.snapDates()
+    dateStart = dates[start]
+    println("Snap to ", dateStart)
+    snap(dateStart, 2)
+    dateEnd = SnapUtil.snapExpirs(snap())[min(16, end)]
+    xprMax = xp.whichExpir(dateEnd)
+    println("runlc for ", xprMax)
+    global lmsOrig = runlc(xprMax; maxSpreads=1000, maxIter)
+    res = NamedTuple[]
+    neto = bap(lmsOrig)
+    push!(res, calcLmsInfo(neto, dateStart, 0, lmsOrig))
+    for date in dates[(start+1):end]
+        date <= dateEnd || break
+        println("Snap to ", date)
+        if !isnothing(SnapUtil.snapName(date, 2))
+            snap(date, 2)
+        else
+            snap(date, 1)
+        end
+        days = bdays(dateStart, date)
+        lms = Quoting.requote(optQuoter, lmsOrig, Action.close)
+        push!(res, calcLmsInfo(neto, date, days, lms))
+    end
+
+    snap(SnapUtil.lastSnap(dateEnd))
+    lms = Quoting.requote(optQuoter, lmsOrig, Action.close)
+    push!(res, calcLmsInfo(neto, dateEnd, bdays(dateStart, dateEnd), lms))
+
+    println("neto: ", neto)
+    pretyble(res)
+end
+
+function calcLmsInfo(neto, date, days, lms)
+    qt = quoter(lms, Action.close)
+    return (;
+        date,
+        days,
+        under = market().curp,
+        quot = qt,
+        bap = bap(qt),
+        delta = 100*getDelta(lms),
+        gamma = 100*getGamma(lms),
+        theta = 100*getTheta(lms)
+    )
+end
+
 import LegTypes
 function runlc(xpr; maxSpreads=1000, kws...)
     jorn(xpr; all=true, condors=false, spreads=true, nopos=true, posLms=LegMeta[])

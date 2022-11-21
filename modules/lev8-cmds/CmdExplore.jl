@@ -1,7 +1,7 @@
 module CmdExplore
 using Dates
 using SH, Globals, BaseTypes, SmallTypes, RetTypes, StratTypes, LegMetaTypes
-using LogUtil, ConstructUtil
+using LogUtil
 using Shorthand, Between
 using Expirations, Markets, Chains
 using DrawStrat
@@ -62,37 +62,6 @@ using StratTypes
 export findSpreads, findSpread
 findSpreads(spreads, combi::Combi) = ( findSpread(spreads, (combi[1], combi[2])), findSpread(spreads, (combi[3], combi[4])) )
 findSpread(spreads, lr::NTuple{2,LegRet}) = findfirst(s -> s == lr, spreads)
-
-# using CmdStrats, StratGen, Positions
-# function whyNotCombi(combi::Combi)
-#     inspreads = findSpreads(CmdStrats.lastSpreads2[], combi)
-#     # @info "Was in spreads?" inspreads
-#     oqs = optQuoter.(tos(LegMeta, combi))
-#     vo = StratGen.validOption(Globals.get(:Strats)[:maxStrikeDist], market().curp)
-#     optInvalid = findfirst(map(!, vo.(oqs)))
-#     @info "Options valid?" optInvalid
-#     legsPos = getLeg.(positions())
-#     conflict = map(lr -> isConflict.(getLeg(lr), legsPos), combi)
-#     @info "Is position conflict?" conflict # Tuple(c for c in conflict)
-
-#     if (inspreads == (nothing,nothing))
-#         answer = "because: \n"
-#         if !isnothing(optInvalid) # optsValid != (false, false, false, false)
-#             answer *= "  first invalid option found "
-#             answer *= string(oqs[optInvalid])
-#             answer *= '\n'
-#         end
-#         if conflict != (false, false, false, false)
-#             ind = findfirst(conflict)
-#             answer *= "  conflicted with position "
-#             answer *= string(find(p -> isConflict(combi[ind], getLeg(p)), legsPos))
-#             answer *= '\n'
-#         end
-#         println("Was not in spreads $(answer)")
-#     else
-#         println("TODO: was in spreads")
-#     end
-# end
 
 using ThreadPools
 using ProbTypes

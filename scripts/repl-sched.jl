@@ -18,14 +18,10 @@ using Calendars
 using Globals
 using Markets
 Markets.urpon()
-setvr(.7)
 
 using Sched, SchedBg
 SchedBg.add()
 Sched.start()
-
-using SchedStrat
-ss = SchedStrat
 
 using DateUtil
 using Snapshots

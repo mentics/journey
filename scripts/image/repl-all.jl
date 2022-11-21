@@ -1,19 +1,17 @@
-include("repl-trade.jl")
+include("../repl-trade.jl")
 
 using Snapshots
-import TestUtil:TU
-
-jorn(1);
-i = 1 ; r = j.ress[i][1] ; xdr(i, r.lms) ;
+# import TestUtil:TU
 
 devon()
-TU.testStart()
-snap(1)
+# TU.testStart()
+# snap(1)
 so(r.lms)
-TU.testStop()
+# TU.testStop()
 devoff()
+# snop()
 
-ll = c.lookAll(sa.getCandidates(;maxSyms=100); ratio=.95)
+ll = c.lookAll(sa.getCandidates(;maxSyms=10); ratio=.95)
 
 # using Dates
 # using SH, BaseTypes, Globals, Bins, SmallTypes, StratTypes, LegTypes, LegMetaTypes

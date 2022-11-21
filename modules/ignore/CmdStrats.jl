@@ -1,4 +1,5 @@
 module CmdStrats
+#lev8-cmds
 using Dates
 using SH, BaseTypes, SmallTypes, QuoteTypes, LegTypes, LegMetaTypes, StratTypes, RetTypes, ProbTypes
 using Globals, Bins, BaseUtil, LogUtil, DateUtil, CollUtil, ProbUtil, VectorCalcUtil, Between, Scoring

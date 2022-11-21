@@ -5,7 +5,7 @@ export findCycles
 function findCycles()
     # isdefined(@__MODULE__, :MAPPING) ||
     makeMapping()
-    findCycle(MAPPING, "root", keys(MAPPING), 1)
+    return findCycle(MAPPING, "root", keys(MAPPING), 1)
 end
 
 function findCycle(mapping, from, working, len)

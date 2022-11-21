@@ -91,11 +91,6 @@ end
 #     (getExpiration(lr1) > getExpiration(lr2) && getSide(lr1) == Side.short) ||
 #     (getExpiration(lr2) > getExpiration(lr1) && getSide(lr2) == Side.short)
 
-SH.getSide(lr::LegRet) = getSide(first(lr))
-SH.getStyle(lr::LegRet) = getStyle(first(lr))
-SH.getOption(lr::LegRet) = getOption(first(lr))
-SH.getExpiration(lr::LegRet) = getExpiration(first(lr))
-
 isCallLong(lr::LegRet) = getStyle(lr[1]) == Style.call && getSide(lr[1]) == Side.long
 isCallShort(lr::LegRet) = getStyle(lr[1]) == Style.call && getSide(lr[1]) == Side.short
 isPutLong(lr::LegRet) = getStyle(lr[1]) == Style.put && getSide(lr[1]) == Side.long

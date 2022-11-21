@@ -4,7 +4,6 @@ using Globals, BaseTypes, SH, SmallTypes, StratTypes, StatusTypes, TradeTypes, L
 using DateUtil, LogUtil, CollUtil
 using Trading, Quoting
 using Calendars, Markets, Expirations, Chains, StoreTrade
-using CmdStrats
 using OptionUtil
 
 export so, sor, solr, cancel, todo, ct, ctr, drpos, tot, drx, toc, todup
@@ -85,7 +84,7 @@ import ProcOrder
 function toc(rateMin=0.5) # findTradesToClose
     trades = sort!(StoreTrade.tradesOpen(); by=getTargetDate)
     ords = filter!(x->!SH.isStatus(x, Deleted), tos(Order, ta.tradierOrders()))
-    tids = extractTid.(ords)
+    tids = ProcOrder.extractTid.(ords)
     todayDate = market().startDay
     for trade in trades
         trade isa Trade{Filled} || continue
@@ -105,7 +104,7 @@ function toc(rateMin=0.5) # findTradesToClose
             rate = timt * curVal / (-mn)
             # @show rate timt curVal (-mn)
             if rate > rateMin
-                tid = getTid(trade)
+                tid = getId(trade)
                 expr = xp.whichExpir(getTargetDate(trade))
                 println(expr, ": Trade ", tid, " (", strShort(Date(ts)), " - ", strShort(getTargetDate(trade)), "): ", map(x -> sho(x), (;curVal, neto, netc, rate, mn, dur, timt)))
                 tord = find(x -> x == tid, tids)
@@ -132,20 +131,20 @@ function todo(ex=0)
     # return trades
 end
 
-using RetTypes, Between, DrawStrat
-toRet(trades, exp)::Ret = combineTo(Ret, trades, exp, market().curp, Globals.get(:vtyRatio)) # TODO: choose diff start price?
-# toLms(trades, exp)::Ret = combineTo(LegMeta, trades, exp, market().curp, Globals.get(:vtyRatio)) # TODO: choose diff start price?
-toRet(trades)::Ret = combineTo(Ret, trades, market().curp) # TODO: choose diff start price?
-toLms(trades)::Vector{LegMeta} = combineTo(Vector{LegMeta}, trades) # TODO: choose diff start price?
-# TODO: change so matches todo and expirs and all: 0 for today, 1 for non-today next exp, and default is 0
-# drpos(exp=expir(0)) = drawRet(toRet(tradesToClose(exp), exp); prob=prob(), curp=market().curp, label="pos")
-export drt, adrt
-# drt(i::Int, ex=1) = drawRet(toRet([tradesFor(ex)[i]], ex), prob(), market().curp, "t$(i)")
-# adrt(i::Int, ex=1) = drawRet!(toRet([tradesFor(ex)[i]], ex), "t$(i)")
-drt(tid::Int) = ( trade = cacheTrades[tid] ; drawRet(toRet([trade], getTargetDate(trade)), prob(), market().curp, "t$(tid)") )
-adrt(tid::Int) = ( trade = cacheTrades[tid] ; drawRet!(toRet([trade], getTargetDate(trade)), "t$(tid)") )
-drt(trade::Trade) = drawRet(toRet([trade], getTargetDate(trade)); probs=probsFor(getTargetDate(trade)), curp=market().curp, label="t$(getId(trade))")
-adrt(trade::Trade) = drawRet!(toRet([trade], getTargetDate(trade)); label="t$(getId(trade))")
+# using RetTypes, Between, DrawStrat
+# toRet(trades, exp)::Ret = combineTo(Ret, trades, exp, market().curp, Globals.get(:vtyRatio)) # TODO: choose diff start price?
+# # toLms(trades, exp)::Ret = combineTo(LegMeta, trades, exp, market().curp, Globals.get(:vtyRatio)) # TODO: choose diff start price?
+# toRet(trades)::Ret = combineTo(Ret, trades, market().curp) # TODO: choose diff start price?
+# toLms(trades)::Vector{LegMeta} = combineTo(Vector{LegMeta}, trades) # TODO: choose diff start price?
+# # TODO: change so matches todo and expirs and all: 0 for today, 1 for non-today next exp, and default is 0
+# # drpos(exp=expir(0)) = drawRet(toRet(tradesToClose(exp), exp); prob=prob(), curp=market().curp, label="pos")
+# export drt, adrt
+# # drt(i::Int, ex=1) = drawRet(toRet([tradesFor(ex)[i]], ex), prob(), market().curp, "t$(i)")
+# # adrt(i::Int, ex=1) = drawRet!(toRet([tradesFor(ex)[i]], ex), "t$(i)")
+# drt(tid::Int) = ( trade = cacheTrades[tid] ; drawRet(toRet([trade], getTargetDate(trade)), prob(), market().curp, "t$(tid)") )
+# adrt(tid::Int) = ( trade = cacheTrades[tid] ; drawRet!(toRet([trade], getTargetDate(trade)), "t$(tid)") )
+# drt(trade::Trade) = drawRet(toRet([trade], getTargetDate(trade)); probs=probsFor(getTargetDate(trade)), curp=market().curp, label="t$(getId(trade))")
+# adrt(trade::Trade) = drawRet!(toRet([trade], getTargetDate(trade)); label="t$(getId(trade))")
 
 # function drx(ex=0)
 #     # TODO: read from cache
@@ -257,7 +256,8 @@ end
 #region Local
 function canTrade(pre::Bool)
     snapped = !isnothing(snap())
-    intest() && snapped && return true
+    pre && intest() && snapped && return true
+    pre && dev() && return true
     snapped && error("Don't trade when snapped")
     # NOTE: maybe allow anything if tenv() === :paper
     # These checks will also fail if snapped

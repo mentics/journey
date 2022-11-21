@@ -8,3 +8,8 @@ using Dates
 # NTT = NamedTupleTools
 using SH, BaseTypes, Globals, Bins, SmallTypes, StratTypes, LegTypes, LegMetaTypes
 using OutputUtil
+
+import ModuleUtil
+if ModuleUtil.findCycles()
+    error("Startup aborted due to module cycles detected")
+end

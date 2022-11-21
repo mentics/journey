@@ -2,7 +2,7 @@ module SchedBg
 using Dates
 using Globals, LogUtil, DateUtil
 using Sched, Calendars
-import ProcSched, Snapshots, SchedStrat
+import ProcSched, Snapshots
 
 # To be used with repl-sched.jl
 
@@ -24,7 +24,7 @@ snaveWrapper() = isMarketOpen() && Snapshots.snave()
 
 whenStrat(from::DateTime, isMktOpen::Bool, tsMktChange::DateTime) = nextMarketPeriod(from, isMktOpen, tsMktChange, Second(60), Second(0), Minute(4))
 #  ÷ max(1, length(SchedStrat.UseExps))
-stratWrapper() = isMarketOpen() && SchedStrat.run()
+# stratWrapper() = isMarketOpen() && SchedStrat.run()
 
 function readd(i)
     Sched.remove(Jobs[i][1])

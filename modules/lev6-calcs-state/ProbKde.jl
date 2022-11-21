@@ -149,7 +149,8 @@ end
 function probKde(center::Float64, var::Float64, tex::Float64; up=false)::Prob
     # Calendars.calcTex(now(UTC), today() + Day(MaxDays)) with some margin down
     if tex > 3500
-        error("Requested prob for > 3500 tex")
+        # error("Requested prob for > 3500 tex")
+        println("WARN: Requested prob for > 3500 tex")
     end
     @assert var < 100 # had params flipped so check
     @assert isfinite(center) && center > 0.0

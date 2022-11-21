@@ -43,4 +43,9 @@ SH.getSide(spr::Combi) = ( s1 = getSide(spr[1]) ; s2 = getSide(spr[4]) ; s1 == s
 
 SH.getStrike(lr::LegRet) = getStrike(first(lr))
 
+SH.getSide(lr::LegRet) = getSide(first(lr))
+SH.getStyle(lr::LegRet) = getStyle(first(lr))
+SH.getOption(lr::LegRet) = getOption(first(lr))
+SH.getExpiration(lr::LegRet) = getExpiration(first(lr))
+
 end
