@@ -35,6 +35,8 @@ Check how greeks neutral pos changes values and greeks over snaps
 
 Calc greek self because it's sometimes not present in data?
 
+for cands input into runlc, get the best N spreads for for each greek with both +/-
+
 Find neutral greeks add with existing non-zero values
 
 Draw pnl surfaces with time as the third axis

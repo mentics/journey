@@ -20,5 +20,7 @@ SH.getIv(m::OptionMeta) = m.mid_iv
 SH.getTheta(m::OptionMeta) = m.theta
 SH.getDelta(m::OptionMeta) = m.delta
 SH.getGamma(m::OptionMeta) = m.gamma
+SH.getVega(m::OptionMeta) = m.vega
+SH.getRho(m::OptionMeta) = m.rho
 
 end

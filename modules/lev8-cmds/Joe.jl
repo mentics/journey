@@ -384,7 +384,18 @@ end
 import LegTypes
 function runlc(xpr; maxSpreads=1000, kws...)
     jorn(xpr; all=true, condors=false, spreads=true, nopos=true, posLms=LegMeta[])
-    # filt(r -> r.met.mx >= (-r.met.mn + .04))
+    filt() do r
+        mis = findfirst(r.lms) do lm
+            if getDelta(lm) == 0.0 && getGamma(lm) == 0.0
+                println("Skipped missing greeks for ", lm)
+                return true
+            end
+            return false
+        end
+        isnothing(mis) || return false
+        # return r.met.mx >= (-r.met.mn + .02)
+        return true
+    end
     global lmss = first([x.lms for x in ress[xpr]], maxSpreads)
     rets = map(lmss) do lms
         ret = combineTo(Ret, lms, ctx.curp)
@@ -398,14 +409,15 @@ function runlc(xpr; maxSpreads=1000, kws...)
         # TODO: if keep, optimize
         # lms = collect(flat(lmss[inds]...))
         lms = lmsForQtys(lmss, qtys)
-        getTheta(lms) > 0.0 || return false
+        # getTheta(lms) > 0.0 || return false
         !LegTypes.hasConflict(lms) || return false
 
         tctx = ctx.threads[Threads.threadid()]
         combineRetVals!(tctx.retBuf1, rets, indqs)
         ret = Ret(tctx.retBuf1, ctx.curp, 2 * length(lms))
         met = calcMetrics(ctx.prob, ret)
-        return met.prob > .6
+        return met.prob > .6 && met.mx >= .1
+        return true
     end
     global res = findLinCombo(lmss, check; kws...)
     inds = g0q(res.qtys)
@@ -428,19 +440,33 @@ function testlc(;maxIter=10)
     findLinCombo(buf1, buf2, rand(num), (x,q)->dot(x,q), x->true; maxIter)
 end
 
-findLinCombo(lmss, isConflict; kws...) = findLinCombo(zeros(UInt8, length(lmss)), zeros(UInt8, length(lmss)), lmssToVdg(lmss), scoreVdg, isConflict; kws...)
-function findLinCombo(res, qtys, cands, score, check; maxQtyTotal = 12, scoreTarget = 0.00001, maxIter = 1e6)
+#=
+v = rand(20) .- .5
+toCands(x) = x
+scoreNums(cands, qtys, ad) = abs(dot(cands, qtys) + ad)
+scoreNums(cands, qtys, ::Nothing) = abs(dot(cands, qtys))
+r = j.findLinCombo(v, toCands, scoreNums; maxIter=1000)
+ =#
+ findLinCombo(candsRaw, toCands, score, check=x->true; kws...) =
+        findLinCombo(zeros(UInt8, length(candsRaw)), zeros(UInt8, length(candsRaw)), toCands(candsRaw), score, check; kws...)
+ findLinCombo(lmss, check=x->true; kws...) = findLinCombo(zeros(UInt8, length(lmss)), zeros(UInt8, length(lmss)), lmssToVdg(lmss), scoreVdg, check; kws...)
+function findLinCombo(res, qtys, cands, score, check; start=nothing, maxQtyTotal = 12, scoreTarget = 0.00001, maxIter = 1e6)
     # presorted by desirability, so prefer low indices
     # MaxQtyPer = 3
     # MaxSprs = 12
     # qb = zeros(UInt8, len)
     # qtys = zeros(UInt8, len)
+
+    fill!(qtys, 0)
+    scoreStart = score(cands, qtys, start)
+    println("Initial score: ", scoreStart)
+
     len = length(qtys)
     scor = 10000.0
     scorBest = scor
     i = 0
     qt = 0
-    for qtyTot in 2:maxQtyTotal
+    for qtyTot in 4:maxQtyTotal
         qt = qtyTot
         left = 0
         @label start
@@ -454,7 +480,7 @@ function findLinCombo(res, qtys, cands, score, check; maxQtyTotal = 12, scoreTar
             # prit(qtys, ' ', nz2, ' ', nz1)
             # Score new case and break if acceptable
             # scor = score(vals(cands, qtys))
-            scor = score(cands, qtys)
+            scor = score(cands, qtys, start)
             if scor < scorBest && check(qtys)
                 scorBest = scor
                 copy!(res, qtys)
@@ -467,7 +493,7 @@ function findLinCombo(res, qtys, cands, score, check; maxQtyTotal = 12, scoreTar
             end
             i += 1
             if i % 1000000 == 0
-                println("Iterations: ", i, ' ', g0(qtys))
+                println("Iterations: ", i, ' ', g0q(qtys))
             end
             i < maxIter || ( println("Stopping due to max iterations") ; @goto abort )
 
@@ -510,6 +536,7 @@ function findLinCombo(res, qtys, cands, score, check; maxQtyTotal = 12, scoreTar
     end
     @label abort
     println("Reached quantity ", qt)
+    scoreStart == 0.0 || println("Improved score to % ", 100 * scorBest / scoreStart)
     return (;qtys=res, score=scorBest, iters=i)
 end
 
@@ -520,37 +547,59 @@ function lmssToVdg(lmss)
     len = length(lmss)
     vd = Vector{Float64}(undef, len)
     vg = Vector{Float64}(undef, len)
+    vv = Vector{Float64}(undef, len)
     for i in eachindex(lmss)
         vd[i] = getDelta(lmss[i])
         vg[i] = getGamma(lmss[i])
+        vv[i] = getVega(lmss[i])
     end
-    return (vd, vg)
+    return (vd, vg, vv)
 end
 
 using LinearAlgebra
-scoreVdg(vdg, qtys) = abs(dot(vdg[1], qtys)) + 8 * abs(dot(vdg[2], qtys))
-
-function lmsvals(lmss, qtys)
-    val1 = 0.0
-    val2 = 0.0
-    i = 1
-    for lms in lmss
-        qty = qtys[i]
-        val1 += getDelta(lms) * qty
-        val2 += getGamma(lms) * qty
-        i += 1
-    end
-    return (val1, val2)
+function scoreVdg(vdg, qtys, ad)
+    return abs(ad[1] + dot(vdg[1], qtys)) + 8 * abs(ad[2] + dot(vdg[2], qtys)) + abs(ad[3] + dot(vdg[3], qtys))
 end
-# lmsval1(lms) = getDelta(lms)
-# lmsval2(lms) = getGamma(lms)
-# val1(lmss, qtys) = sum(getDelta.(lmss) .* qtys)
-# val2(lmss, qtys) = sum(getGamma.(lmss) .* qtys)
-lmsscore((val1, val2)) = abs(val1) + 8 * abs(val2)
+function scoreVdg(vdg, qtys, ::Nothing)
+    return abs(dot(vdg[1], qtys)) + 8 * abs(dot(vdg[2], qtys)) + abs(dot(vdg[3], qtys))
+end
 
-# scoreZero(lms, qtys) = abs(sum(getDelta.(lms) .* qtys)) + 8 * abs(sum(getGamma.(lms) .* qtys))
-# score(lms, qtys) = scoreZero(lms, qtys) # + 0.00001 * sum(qtys) + 0.1 * sum(getTheta.(lms) .* qtys)
+# function lmsvals(lmss, qtys)
+#     val1 = 0.0
+#     val2 = 0.0
+#     val3 = 0.0
+#     i = 1
+#     for lms in lmss
+#         qty = qtys[i]
+#         val1 += getDelta(lms) * qty
+#         val2 += getGamma(lms) * qty
+#         val3 += getVega(lms) * qty
+#         i += 1
+#     end
+#     return (val1, val2, val3)
+# end
+# # lmsval1(lms) = getDelta(lms)
+# # lmsval2(lms) = getGamma(lms)
+# # val1(lmss, qtys) = sum(getDelta.(lmss) .* qtys)
+# # val2(lmss, qtys) = sum(getGamma.(lmss) .* qtys)
+# lmsscore((val1, val2, val3)) = abs(val1) + 8 * abs(val2) + abs(val3)
+
+# # scoreZero(lms, qtys) = abs(sum(getDelta.(lms) .* qtys)) + 8 * abs(sum(getGamma.(lms) .* qtys))
+# # score(lms, qtys) = scoreZero(lms, qtys) # + 0.00001 * sum(qtys) + 0.1 * sum(getTheta.(lms) .* qtys)
 
 prit(qtys, args...) = println(collect(Int, qtys), args...)
+
+
+
+using TradeTypes
+import StoreTrade
+function greeksPos(xprs=1:21)
+    trades = filter(t -> xp.whichExpir(getTargetDate(t)) in xprs, StoreTrade.tradesOpen())
+    return isempty(trades) ? zeros(4) : mapreduce(greeks, .+, trades)#, (x1, x2) -> x1 .+ x2)
+end
+
+greeks(trade) = apply(trade, getDelta, getGamma, getTheta, getVega)
+
+apply(x, fs...) = map(f -> f(x), fs)
 
 end

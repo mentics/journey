@@ -21,7 +21,7 @@ export isValid
 
 export to, tos, tosnn, combineTo, mapFlattenTo
 
-export getDelta, getTheta, getGamma
+export getDelta, getTheta, getGamma, getVega, getRho
 
 export v
 (v(x::Dict{K,V})::Vector{V}) where {K,V} = collect(values(x))
@@ -61,6 +61,8 @@ function withQuantity() end
 getTheta(itr) = sum(getTheta, itr)
 getDelta(itr) = sum(getDelta, itr)
 getGamma(itr) = sum(getGamma, itr)
+getVega(itr) = sum(getVega, itr)
+getRho(itr) = sum(getRho, itr)
 
 # for Order
 export getId, getSymbol, getClass, getOrderType, getPrimitDir, getPrillDir, tsCreated, tsFilled, tsClosed, isStatus

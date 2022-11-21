@@ -83,8 +83,10 @@ end
 import ProcOrder
 function toc(rateMin=0.5) # findTradesToClose
     trades = sort!(StoreTrade.tradesOpen(); by=getTargetDate)
-    ords = filter!(x->!SH.isStatus(x, Deleted), tos(Order, ta.tradierOrders()))
-    tids = ProcOrder.extractTid.(ords)
+    # ords = filter!(x->!SH.isStatus(x, Deleted), tos(Order, ta.tradierOrders()))
+    tords = filter!(x -> tierIsLive(x), ta.tradierOrders())
+    println("tords ", length(tords))
+    tids = ProcOrder.extractTid.(tords)
     todayDate = market().startDay
     for trade in trades
         trade isa Trade{Filled} || continue
@@ -107,13 +109,13 @@ function toc(rateMin=0.5) # findTradesToClose
                 tid = getId(trade)
                 expr = xp.whichExpir(getTargetDate(trade))
                 println(expr, ": Trade ", tid, " (", strShort(Date(ts)), " - ", strShort(getTargetDate(trade)), "): ", map(x -> sho(x), (;curVal, neto, netc, rate, mn, dur, timt)))
-                tord = find(x -> x == tid, tids)
-                isnothing(tord) || println("    Ord: ", showinfo(tord))
+                ind = findfirst(x -> x == tid, tids)
+                isnothing(ind) || println("    Ord: ", ordinfo(tords[ind]))
             end
         # end
     end
 end
-ordinfo(tord) = "oid:$(tord["id"]) status:$(tord["status"])"
+ordinfo(tord) = "oid:$(tord["id"]) status:$(tord["status"]) price:$(tord["price"])"
 #endregion
 
 #region CurrentPosition
@@ -289,6 +291,7 @@ end
 SH.getDelta(trade::Trade) = SH.getDelta(Quoting.requote(optQuoter, getLegs(trade), Action.close))
 SH.getGamma(trade::Trade) = SH.getGamma(Quoting.requote(optQuoter, getLegs(trade), Action.close))
 SH.getTheta(trade::Trade) = SH.getTheta(Quoting.requote(optQuoter, getLegs(trade), Action.close))
+SH.getVega(trade::Trade) = SH.getVega(Quoting.requote(optQuoter, getLegs(trade), Action.close))
 
 export deltaPos
 function deltaPos(xprs=1:21)
