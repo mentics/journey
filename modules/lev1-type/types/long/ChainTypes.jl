@@ -27,6 +27,7 @@ SH.getStrike(oq::OptionQuote) = getStrike(oq.option)
 SH.getBid(oq::OptionQuote) = getBid(oq.quot)
 SH.getAsk(oq::OptionQuote) = getAsk(oq.quot)
 SH.getIv(oq::OptionQuote) = oq.meta.iv
+OptionMetaTypes.getGreeks(oq::OptionQuote) = getGreeks(oq.meta)
 
 SH.isValid(curp::Currency) =
     oq::OptionQuote ->

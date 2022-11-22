@@ -1,11 +1,12 @@
 module Joe
 using Dates, NamedTupleTools
-using Globals, SH, BaseTypes, SmallTypes, Bins, LegMetaTypes, RetTypes, StratTypes
+using Globals, SH, BaseTypes, SmallTypes, Bins, LegMetaTypes, RetTypes, StratTypes, OptionMetaTypes
 using DateUtil, OptionUtil, CalcUtil, ThreadUtil, OutputUtil, LogUtil, DictUtil, CollUtil
 import GenCands
 using Calendars, Expirations, Chains, ProbKde, Markets
 using CmdUtil
 using CmdPos
+import LegTypes
 
 export jorn
 
@@ -78,13 +79,13 @@ function disp()
     pretyble(res)
 end
 
-function runJorn(xpr::Date, isLegAllowed; nopos=false, all=false, posLms=nothing, condors=true, spreads=false)
-    global ctx = makeCtx(xpr; nopos, all)
-    oqssAll = Chains.getOqss(xpr, ctx.curp, nopos ? posLms : xlms(xpr))
+function runJorn(xpir::Date, isLegAllowed; nopos=false, all=false, posLms=nothing, condors=true, spreads=false)
+    global ctx = makeCtx(xpir; nopos, all)
+    oqssAll = Chains.getOqss(xpir, ctx.curp, nopos ? posLms : xlms(xpir))
     oqss = filtOqss(oqssAll) do oq
         abs(getStrike(oq) / ctx.curp - 1.0) < 0.1
     end
-    @log debug "jorn processing" xpr length(oqss) length(oqssAll) ctx.curp
+    @log debug "jorn processing" xpir length(oqss) length(oqssAll) ctx.curp
 
     # GenCands.iterSingle(oqss, ctx, res) do lms, c, r
     #     jr = joe(c, lms)
@@ -252,9 +253,10 @@ end
 function joe(ctx, tctx, ret, lms; allo=nothing)::Union{Nothing,NamedTuple}
     shouldTrackSkipped = false
     MinMx = 0.7
+    gks = getGreeks(lms)
     # (getStrike(lms[4]) - getStrike(lms[1])) <= ctx.maxWidth || ( (shouldTrackSkipped && trackSkipped("max strike width")) ; return nothing )
     all = isnothing(allo) ? ctx.all : allo
-    (all || getTheta(lms) >= 0.0) || ( (shouldTrackSkipped && trackSkipped("theta")) ; return nothing )
+    (all || gks.theta >= 0.0) || ( (shouldTrackSkipped && trackSkipped("theta")) ; return nothing )
     met = calcMetrics(ctx.prob, ret)
     rateEv = ctx.timt * met.ev / (-met.mn)
     rateEvr = ctx.timt * met.evr / (-met.mn)
@@ -281,7 +283,8 @@ function joe(ctx, tctx, ret, lms; allo=nothing)::Union{Nothing,NamedTuple}
                 # rate = ctx.timult * met.mx / (-met.mn)
                 retb = Ret(tctx.retBuf2, ctx.curp, ctx.posRet.numLegs + 4)
                 metb = calcMetrics(ctx.prob, retb)
-                return (;roi, roiEv, roiEvr, rate, rateEv, kelly, met, metb, delta=getDelta(lms), gamma=getGamma(lms), theta=getTheta(lms))
+                gks = getGreeks(lms)
+                return (;roi, roiEv, roiEvr, rate, rateEv, kelly, met, metb, gks.delta, gks.gamma, gks.theta, gks.vega) # delta=getDelta(lms), gamma=getGamma(lms), theta=getTheta(lms))
             # else
                 # # shouldTrackSkipped && trackSkipped("max loss both: $((minb, ctx.posMin, maxLossBoth))")
                 # shouldTrackSkipped && trackSkipped("max loss both")
@@ -369,31 +372,87 @@ end
 
 function calcLmsInfo(neto, date, days, lms)
     qt = quoter(lms, Action.close)
+    gks = getGreeks(lms)
     return (;
         date,
         days,
         under = market().curp,
         quot = qt,
         bap = bap(qt),
-        delta = 100*getDelta(lms),
-        gamma = 100*getGamma(lms),
-        theta = 100*getTheta(lms)
+        delta = 100*gks.delta,
+        gamma = 100*gks.gamma,
+        theta = 100*gks.theta
     )
 end
 
-import LegTypes
-function runlc(xpr; maxSpreads=1000, kws...)
+function hasGreeks(oq)
+    gks = getGreeks(oq)
+    return gks.delta != 0.0 || gks.gamma != 0.0
+end
+
+function runlc2(xprs=1:2; maxSpreads=1000, start=GreeksZero, kws...)
+    spreads = reduce(vcat, map(xprs) do xpr
+        getSpreads(expir(xpr))
+    end)
+    println("Spread count ", length(spreads))
+
+    # TODO: sort them
+    # spreads = first(spreads, maxSpreads)
+
+    function check(qtys)
+        return true
+    end
+
+    global res = findLinCombo(spreads, check; start, kws...)
+    inds = g0q(res.qtys)
+    println("Best score ", res.score, ' ', inds, " after iterations ", res.iters)
+
+    # drlms(flat(lmss[inds]...));
+    return lmsForQtys(spreads, res.qtys)
+end
+
+function getSpreads(xpir)
+    global ctx = makeCtx(xpir; nopos=true, all=true)
+    oqssAll = Chains.getOqss(xpir, ctx.curp)
+    oqss = filtOqss(oqssAll) do oq
+        hasGreeks(oq) || ( println("Skipped missing greeks for ", oq) ; return false )
+        abs(getStrike(oq) / ctx.curp - 1.0) < 0.1 || return false
+        return true
+    end
+
+    isLegAllowed = (_,_)->true
+
+    sthreads = [Vector{NTuple{2,LegMeta}}() for _ in 1:Threads.nthreads()]
+    GenCands.paraSpreads(oqss, ctx.maxWidth/2.0, isLegAllowed, ctx, sthreads) do lms, c, rs
+        # calcMetrics(c.threads[Threads.threadid()], c.prob, lms)
+        mn, mx = OptionUtil.legsExtrema(lms)
+        if mx >= (-mn + .02)
+            push!(rs[Threads.threadid()], lms)
+        end
+        return true
+    end
+    return reduce(vcat, sthreads)
+end
+
+# function CalcUtil.calcMetrics(buf::Vector{Float64}, curp::Currency, prob::Prob, lms::AVec{LegMeta})
+#     combineRetVals!(buf, rets, indqs)
+#     ret = Ret(buf, curp, 2 * length(lms))
+#     met = calcMetrics(prob, ret)
+# end
+
+function runlc(xpr; maxSpreads=1000, start=GreeksZero, kws...)
     jorn(xpr; all=true, condors=false, spreads=true, nopos=true, posLms=LegMeta[])
     filt() do r
         mis = findfirst(r.lms) do lm
-            if getDelta(lm) == 0.0 && getGamma(lm) == 0.0
+            gks = getGreeks(lm)
+            if gks.delta == 0.0 && gks.gamma == 0.0
                 println("Skipped missing greeks for ", lm)
                 return true
             end
             return false
         end
         isnothing(mis) || return false
-        # return r.met.mx >= (-r.met.mn + .02)
+        r.met.mx >= (-r.met.mn + .02) || return false
         return true
     end
     global lmss = first([x.lms for x in ress[xpr]], maxSpreads)
@@ -419,7 +478,7 @@ function runlc(xpr; maxSpreads=1000, kws...)
         return met.prob > .6 && met.mx >= .1
         return true
     end
-    global res = findLinCombo(lmss, check; kws...)
+    global res = findLinCombo(lmss, check; start, kws...)
     inds = g0q(res.qtys)
     println("Best score ", res.score, ' ', inds, " after iterations ", res.iters)
 
@@ -449,7 +508,7 @@ r = j.findLinCombo(v, toCands, scoreNums; maxIter=1000)
  =#
  findLinCombo(candsRaw, toCands, score, check=x->true; kws...) =
         findLinCombo(zeros(UInt8, length(candsRaw)), zeros(UInt8, length(candsRaw)), toCands(candsRaw), score, check; kws...)
- findLinCombo(lmss, check=x->true; kws...) = findLinCombo(zeros(UInt8, length(lmss)), zeros(UInt8, length(lmss)), lmssToVdg(lmss), scoreVdg, check; kws...)
+ findLinCombo(lmss, check=x->true; kws...) = findLinCombo(zeros(UInt8, length(lmss)), zeros(UInt8, length(lmss)), lmssToGreeks(lmss), scoreGreeks, check; kws...)
 function findLinCombo(res, qtys, cands, score, check; start=nothing, maxQtyTotal = 12, scoreTarget = 0.00001, maxIter = 1e6)
     # presorted by desirability, so prefer low indices
     # MaxQtyPer = 3
@@ -543,26 +602,41 @@ end
 g0(v) = findall(x -> x > 0, v)
 g0q(v) = [(i, v[i]) for i in findall(x -> x > 0, v)]
 
-function lmssToVdg(lmss)
-    len = length(lmss)
-    vd = Vector{Float64}(undef, len)
-    vg = Vector{Float64}(undef, len)
-    vv = Vector{Float64}(undef, len)
-    for i in eachindex(lmss)
-        vd[i] = getDelta(lmss[i])
-        vg[i] = getGamma(lmss[i])
-        vv[i] = getVega(lmss[i])
+lmssToGreeks(lmss) = getGreeks.(lmss)
+function scoreGreeks(gkss::AVec{GreeksType}, qtys::AVec, ad::GreeksType)
+    del = 0.0 ; gam = 0.0 ; veg = 0.0
+    for i in eachindex(qtys)
+        qty = qtys[i]
+        gks = gkss[i]
+        qty > 0 || continue
+        del += qty * gks.delta
+        gam += qty * gks.gamma
+        veg += qty * gks.vega
     end
-    return (vd, vg, vv)
+    return abs(del + ad.delta) + 8 * abs(gam + ad.gamma) + abs(veg + ad.vega)
 end
 
-using LinearAlgebra
-function scoreVdg(vdg, qtys, ad)
-    return abs(ad[1] + dot(vdg[1], qtys)) + 8 * abs(ad[2] + dot(vdg[2], qtys)) + abs(ad[3] + dot(vdg[3], qtys))
-end
-function scoreVdg(vdg, qtys, ::Nothing)
-    return abs(dot(vdg[1], qtys)) + 8 * abs(dot(vdg[2], qtys)) + abs(dot(vdg[3], qtys))
-end
+# function lmssToVdg(lmss)
+#     len = length(lmss)
+#     vd = Vector{Float64}(undef, len)
+#     vg = Vector{Float64}(undef, len)
+#     vv = Vector{Float64}(undef, len)
+#     for i in eachindex(lmss)
+#         gks = getGreeks(lmss[i])
+#         vd[i] = gks.delta
+#         vg[i] = gks.gamma
+#         vv[i] = gks.vega
+#     end
+#     return (vd, vg, vv)
+# end
+
+# using LinearAlgebra
+# function scoreVdg(vdg, qtys, ad)
+#     return abs(ad[1] + dot(vdg[1], qtys)) + 8 * abs(ad[2] + dot(vdg[2], qtys)) + abs(ad[3] + dot(vdg[3], qtys))
+# end
+# function scoreVdg(vdg, qtys, ::Nothing)
+#     return abs(dot(vdg[1], qtys)) + 8 * abs(dot(vdg[2], qtys)) + abs(dot(vdg[3], qtys))
+# end
 
 # function lmsvals(lmss, qtys)
 #     val1 = 0.0
@@ -588,18 +662,5 @@ end
 # # score(lms, qtys) = scoreZero(lms, qtys) # + 0.00001 * sum(qtys) + 0.1 * sum(getTheta.(lms) .* qtys)
 
 prit(qtys, args...) = println(collect(Int, qtys), args...)
-
-
-
-using TradeTypes
-import StoreTrade
-function greeksPos(xprs=1:21)
-    trades = filter(t -> xp.whichExpir(getTargetDate(t)) in xprs, StoreTrade.tradesOpen())
-    return isempty(trades) ? zeros(4) : mapreduce(greeks, .+, trades)#, (x1, x2) -> x1 .+ x2)
-end
-
-greeks(trade) = apply(trade, getDelta, getGamma, getTheta, getVega)
-
-apply(x, fs...) = map(f -> f(x), fs)
 
 end

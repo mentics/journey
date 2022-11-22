@@ -1,6 +1,6 @@
 module Backtests
 using Dates
-using Globals, BaseTypes, SmallTypes, OptionTypes, LegMetaTypes
+using Globals, BaseTypes, SmallTypes, OptionTypes, LegMetaTypes, OptionMetaTypes
 using DateUtil, CollUtil, DictUtil
 using Expirations, Markets, Snapshots, Chains
 import SH
@@ -13,14 +13,17 @@ const bt = @__MODULE__
 
 # TODO: use historical data for VIX to fill in VIX when not in Markets
 
+const TradeType = Dict{Symbol,Any}
+
 function run(f)
+    devon()
     global acct = Dict(
         :bal => C(0.0),
         :real => C(0.0),
-        :trades => Vector{Dict{Symbol,Any}}(),
-        :poss => Vector{Dict{Symbol,Any}}(),
-        :todayOpens => Vector{Dict{Symbol,Any}}(),
-        :todayCloses => Vector{Dict{Symbol,Any}}()
+        :trades => Vector{TradeType}(),
+        :poss => Vector{TradeType}(),
+        :todayOpens => Vector{TradeType}(),
+        :todayCloses => Vector{TradeType}()
     )
     num = SnapUtil.countSnaps()
     datePrev = Date(0)
@@ -49,32 +52,25 @@ function run(f)
         acct[:ts] = ts
         acct[:date] = date
         acct[:xpirs] = SnapUtil.snapExpirs(snap())
-        acct[:delta] = isempty(acct[:poss]) ? 0.0 : calcDelta(acct[:poss])
-        acct[:deltas] = isempty(acct[:poss]) ? Dict{Date,Float64}() : calcDeltas(acct[:poss])
-        acct[:gamma] = isempty(acct[:poss]) ? 0.0 : calcGamma(acct[:poss])
-        acct[:gammas] = isempty(acct[:poss]) ? Dict{Date,Float64}() : calcGammas(acct[:poss])
+        acct[:greeks] = isempty(acct[:poss]) ? GreeksZero : getGreeks(acct[:poss])
+        acct[:greeksExpirs] = isempty(acct[:poss]) ? Dict{Date,GreeksType}() : greeksForExpirs(acct[:poss])
         f(acct)
-        println("End $(date): $(acct[:bal]) real:$(acct[:real]) delta:$(rond(acct[:delta]))")
+        println("End $(date): $(acct[:bal]) real:$(acct[:real]) delta:$(rond(acct[:greeks].delta))")
     end
 end
 
-calcDelta(trade::Dict) = getDelta(requote(optQuoter, trade[:lms], Action.close))
-calcDelta(trades::Coll) = sum(calcDelta, trades)
-calcGamma(trade::Dict) = getGamma(requote(optQuoter, trade[:lms], Action.close))
-calcGamma(trades::Coll) = sum(calcGamma, trades)
+OptionMetaTypes.getGreeks(trade::TradeType) = getGreeks(requote(optQuoter, trade[:lms], Action.close))
 
-function calcDeltas(trades::Coll)
-    d = Dict{Date,Float64}()
+function greeksForExpirs(trades::Coll)::Dict{Date,GreeksType}
+    d = Dict{Date,GreeksType}()
     for trade in trades
-        addToKey(d, trade[:targetDate], calcDelta(trade))
-    end
-    return d
-end
-
-function calcGammas(trades::Coll)
-    d = Dict{Date,Float64}()
-    for trade in trades
-        addToKey(d, trade[:targetDate], calcGamma(trade))
+        date = trade[:targetDate]
+        gks = getGreeks(trade)
+        if !haskey(d, date)
+            d[date] = gks
+        else
+            d[date] = greeksAdd(d[date], gks)
+        end
     end
     return d
 end
@@ -99,7 +95,7 @@ function strat1(acct)
         qt = quoter(trade[:lms], Action.close)
         netc = usePrice(qt)
         curVal = neto + netc
-        theta = getTheta(lmsc)
+        # theta = getTheta(lmsc)
         # if curVal > 0.0 || daysLeft <= 2 || theta < -0.005
             timt = DateUtil.timult(date, dateOpen)
             mn = min(OptionUtil.legsExtrema(trade[:lms]...)...)
@@ -127,12 +123,13 @@ function strat1(acct)
         res, ctx = Joe.runJorn(xpir, isLegAllowed; nopos=true, posLms, all=true)
         # res, ctx = Joe.runJorn(xpir, isLegAllowed; nopos=true, posLms)
         !isempty(res) || continue
-        deltaAcct = acct[:delta]
-        deltaXpir = get(acct[:deltas], xpir, 0.0)
+        deltaAcct = acct[:greeks].delta
+        deltaXpir = haskey(acct[:greeksExpirs], xpir) ? acct[:greeksExpirs][xpir].delta : 0.0
         filter!(res) do r
-            deltaAdd = getDelta(r.lms)
+            gks = getGreeks(r.lms)
+            deltaAdd = gks.delta
             return r.roiEv >= 0.1 &&
-                getTheta(r.lms) >= 0.0 &&
+                gks.theta >= 0.0 &&
                 (
                     abs(deltaAcct + deltaAdd) < MaxDelta ||
                     abs(deltaAcct + deltaAdd) < abs(deltaAcct)
@@ -155,22 +152,23 @@ end
 
 #region Actions
 function openTrade(acct, lms, neto, label)
+    date = minimum(SH.getExpiration, lms)
     trade = Dict(
         :id => nextTradeId(acct),
         :lms => lms,
         :neto => neto,
         :tsOpen => acct[:ts],
         :labelClose => label,
-        :targetDate => minimum(SH.getExpiration, lms)
+        :targetDate => date
     )
     push!(acct[:trades], trade)
     push!(acct[:poss], trade)
     push!(acct[:todayOpens], trade)
     acct[:bal] += neto
-    delta = getDelta(lms)
-    acct[:delta] += delta
-    deltaNew = addToKey(acct[:deltas], trade[:targetDate], delta)
-    println("Open: '$(label)' $(trade[:id]) for $(neto) target=$(getExpir(trade)) deltaX: $(rond(delta)) -> $(rond(deltaNew)) deltaAcct: $(rond(acct[:delta]))")
+    gks = getGreeks(lms)
+    acct[:greeks] = greeksAdd(acct[:greeks], gks)
+    acct[:greeksExpirs][date] = greeksAdd(get!(acct[:greeksExpirs], date, GreeksZero), gks)
+    println("Open: '$(label)' $(trade[:id]) for $(neto) target=$(getExpir(trade))") # deltaX: $(rond(delta)) -> $(rond(deltaNew)) deltaAcct: $(rond(acct[:delta]))")
     return trade
 end
 function closeTrade(acct, trade, lmsc, netc, label)

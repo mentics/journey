@@ -118,6 +118,7 @@ function chains(xprs, syms=("SPY",); age=PERIOD_UPDATE3)::SymChainsType
             # println("Refreshing chain for ", sym, ' ', xpr, " in thread ", Threads.threadid())
             return (sym, xpr, refreshChain(sym, xpr, age))
         catch e
+            println("Exception in multithreaded get chains")
             prerr(e)
             return
         end

@@ -288,15 +288,4 @@ function priceUse(qt, orig=nothing; ratio=nothing, at=nothing)
 end
 #endregion
 
-SH.getDelta(trade::Trade) = SH.getDelta(Quoting.requote(optQuoter, getLegs(trade), Action.close))
-SH.getGamma(trade::Trade) = SH.getGamma(Quoting.requote(optQuoter, getLegs(trade), Action.close))
-SH.getTheta(trade::Trade) = SH.getTheta(Quoting.requote(optQuoter, getLegs(trade), Action.close))
-SH.getVega(trade::Trade) = SH.getVega(Quoting.requote(optQuoter, getLegs(trade), Action.close))
-
-export deltaPos
-function deltaPos(xprs=1:21)
-    trades = filter(t -> xp.whichExpir(getTargetDate(t)) in xprs, StoreTrade.tradesOpen())
-    isempty(trades) ? "No trades" : sum(SH.getDelta, trades)
-end
-
 end

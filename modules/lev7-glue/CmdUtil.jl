@@ -1,9 +1,9 @@
 module CmdUtil
 using Dates
-using SH, BaseTypes, StatusTypes, ChainTypes
+using SH, BaseTypes, StatusTypes, ChainTypes, OptionMetaTypes
 using LogUtil, CollUtil
 using StoreTrade
-using Expirations
+using Chains, Expirations
 
 export xlms, xlmsv
 
@@ -169,5 +169,27 @@ function entryFilterLookup()
     end
     return d
 end
+
+using TradeTypes
+function greeksPos(xprs=1:21)
+    trades = filter(t -> xp.whichExpir(getTargetDate(t)) in xprs, StoreTrade.tradesOpen())
+    return getGreeks(trades)
+    # return isempty(trades) ? zeros(4) : mapreduce(greeks, .+, trades)
+end
+
+# apply(x, fs...) = map(f -> f(x), fs)
+# apply(x, fs...) = map(f -> f(x), fs)
+
+# SH.getDelta(trade::Trade) = SH.getDelta(Quoting.requote(optQuoter, getLegs(trade), Action.close))
+# SH.getGamma(trade::Trade) = SH.getGamma(Quoting.requote(optQuoter, getLegs(trade), Action.close))
+# SH.getTheta(trade::Trade) = SH.getTheta(Quoting.requote(optQuoter, getLegs(trade), Action.close))
+# SH.getVega(trade::Trade) = SH.getVega(Quoting.requote(optQuoter, getLegs(trade), Action.close))
+OptionMetaTypes.getGreeks(trade::Trade)::GreeksType = getGreeks(Quoting.requote(optQuoter, getLegs(trade), Action.close))
+
+# export deltaPos
+# function deltaPos(xprs=1:21)
+#     trades = filter(t -> xp.whichExpir(getTargetDate(t)) in xprs, StoreTrade.tradesOpen())
+#     isempty(trades) ? "No trades" : sum(SH.getDelta, trades)
+# end
 
 end
