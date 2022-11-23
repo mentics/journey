@@ -49,6 +49,12 @@ function lastSnap(date::Date)::Union{Nothing,String}
     return snapName(dts[end])
 end
 
+function lastSnapBefore(date::Date)::Union{Nothing,String}
+    dts = filter(x -> Date(x) < date, SnapUtil.snapDateTimes())
+    !isempty(dts) || return nothing
+    return snapName(dts[end])
+end
+
 snapExists(date::Date) = !isnothing(lastSnap(date))
 
 const SNAP_DATEFORMAT = dateformat"yyyy-mm-dd.HH-MM"

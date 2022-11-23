@@ -15,7 +15,7 @@ const bt = @__MODULE__
 
 const TradeType = Dict{Symbol,Any}
 
-function run(f)
+function run(f; snapStart=SnapUtil.countSnaps())
     devon()
     global acct = Dict(
         :bal => C(0.0),
@@ -25,7 +25,7 @@ function run(f)
         :todayOpens => Vector{TradeType}(),
         :todayCloses => Vector{TradeType}()
     )
-    num = SnapUtil.countSnaps()
+    num = snapStart
     datePrev = Date(0)
     # max = 100
     # for i in num:-1:(num-max)
@@ -148,6 +148,38 @@ function strat1(acct)
             trade[:met] = r.met
         # end
     end
+end
+
+using Combos
+function stratSellPut(acct)
+    OpenXpirAfter = Day(14)
+    date = acct[:date]
+    curp = market().curp
+    for trade in acct[:poss]
+        dateOpen = toDateMarket(trade[:tsOpen])
+        dateOpen < date || continue         # don't close today's entries
+        xpir = getExpir(trade)
+        daysLeft = bdays(date, xpir)
+        if snap() == SnapUtil.lastSnapBefore(xpir + Day(1))
+            label = "roll last snap before xpir"
+        elseif (daysLeft <= 6 && curp < getStrike(trade) - 0.5)
+            label = "roll curp < strike"
+        end
+        if !isnothing(label)
+            lmsc = requote(optQuoter, trade[:lms], Action.close)
+            # TODO: maybe use lmsc instead of quoting again?
+            qt = quoter(trade[:lms], Action.close)
+            netc = usePrice(qt)
+            closeTrade(acct, trade, lmsc, netc, label)
+        end
+    end
+
+    xpirMin = xp.expirGte(date + OpenXpirAfter)
+    cands = c.look("SPY"; ratio=1.001, all=true, dateMin=xpirMin)
+    sort!(cands; by=x->x.rate)
+    entry = cands[end]
+    lms = [LegMeta(entry.oq, 1.0, Side.short)]
+    openTrade(acct, lms, netOpen(lms), "short put curp=$(curp) strike=$(entry.strike) rate=$(entry.rate)")
 end
 
 #region Actions

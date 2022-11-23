@@ -19,6 +19,8 @@ end
 
 whichExpir(d::Date) = searchsortedfirst(expirs(), d)
 
+expirGte(date::Date) = ( xpirs = expirs() ; xpirs[searchsortedfirst(xpirs, date)] )
+
 #region Local
 const EXPIRS_TYPE = OffsetArray{Date}
 

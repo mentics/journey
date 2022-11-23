@@ -85,9 +85,9 @@ end
 sa = SeekingAlpha
 import TradierData:findEarnDate,findExDate
 using Between
-function look(sym; all=false, ratio, age=Minute(10))
+function look(sym; all=false, ratio, age=Minute(10), dateMin=nothing)
     try
-    res = []
+    res = NamedTuple[]
     # about = SeekingAlpha.Cands[sym]
     # about = SeekingAlpha.Data[:metrics]
     # maxDate = min(parseDate(about[:earningsUpcomingAnnounceDate]), parseDate(about[Symbol("dividendsEx-DivDate")]))
@@ -95,6 +95,9 @@ function look(sym; all=false, ratio, age=Minute(10))
     # maxDate = min(findExDate(tryKey(sa.Dividends, sym)), findEarnDate(tryKey(sa.Earnings,sym)))
     # maxDate = maxDate() # min(findExDate(get(sa.Dividends, sym, nothing)), findEarnDate(get(sa.Earnings, sym, nothing)))
     chs = getChains(sym; age)
+    if !isnothing(dateMin)
+        chs = filter(x -> x.first > dateMin, chs)
+    end
     # locUnder = Under[sym]
     locUnder = stock(sym; age)
     for xpir in sort!(collect(keys(chs)))
@@ -120,11 +123,12 @@ function look(sym; all=false, ratio, age=Minute(10))
             getBid(oq) >= 0.05 || continue
             strike = getStrike(oq)
             primitDir = bap(oq)
-            rate = timult * (primitDir - .0065) / strike # .0065 is the trade commission for fidelity
+            adj = strike > underBid ? primitDir - (strike - underBid) : primitDir
+            rate = timult * (adj - .0065) / strike # .0065 is the trade commission for fidelity
             # println("$(sym)[$(expr)]: $(underBid) -> $(strike) at $(primitDir) ($(getQuote(oq))) / $(strike) = $(rate)")
-            if all || rate > 0.1
-                push!(res, (;sym, xpir, mov=1.0 - strike/underBid, underBid, strike, primitDir, rate, div=getDividend(sym), oq))
-            end
+            # if all || rate > 0.1
+                push!(res, (;sym, xpir, mov=1.0 - strike/underBid, underBid, strike, primitDir, adj, rate, div=getDividend(sym), oq))
+            # end
         end
     end
     return res
