@@ -55,7 +55,8 @@ function run(f; snapStart=SnapUtil.countSnaps())
         acct[:greeks] = isempty(acct[:poss]) ? GreeksZero : getGreeks(acct[:poss])
         acct[:greeksExpirs] = isempty(acct[:poss]) ? Dict{Date,GreeksType}() : greeksForExpirs(acct[:poss])
         f(acct)
-        println("End $(date): $(acct[:bal]) real:$(acct[:real]) delta:$(rond(acct[:greeks].delta))")
+        println("End $(date): $(acct[:bal]) real:$(acct[:real]) #open:$(length(acct[:poss]))")
+        # delta:$(rond(acct[:greeks].delta))
     end
 end
 
@@ -153,6 +154,7 @@ end
 using Combos
 function stratSellPut(acct)
     OpenXpirAfter = Day(14)
+    SafeExpire = 1.0
     date = acct[:date]
     curp = market().curp
     for trade in acct[:poss]
@@ -160,9 +162,11 @@ function stratSellPut(acct)
         dateOpen < date || continue         # don't close today's entries
         xpir = getExpir(trade)
         daysLeft = bdays(date, xpir)
-        if snap() == SnapUtil.lastSnapBefore(xpir + Day(1))
-            label = "roll last snap before xpir"
-        elseif (daysLeft <= 6 && curp < getStrike(trade) - 0.5)
+        label = nothing
+        strike = SH.getStrike(trade[:lms][1])
+        if snap() == SnapUtil.lastSnapBefore(xpir + Day(1)) && strike > curp - SafeExpire
+            label = "roll last snap before xpir $(strike) > ($(curp) - $(SafeExpier))"
+        elseif (daysLeft <= 6 && curp < strike - 0.5)
             label = "roll curp < strike"
         end
         if !isnothing(label)
@@ -171,15 +175,26 @@ function stratSellPut(acct)
             qt = quoter(trade[:lms], Action.close)
             netc = usePrice(qt)
             closeTrade(acct, trade, lmsc, netc, label)
+
+            entry, oq = c.findRoll("SPY", strike, netc; silent=true)
+            lms = [LegMeta(oq, 1.0, Side.short)]
+            openTrade(acct, lms, netOpen(lms), "rolled TODO: rate")
         end
     end
 
-    xpirMin = xp.expirGte(date + OpenXpirAfter)
-    cands = c.look("SPY"; ratio=1.001, all=true, dateMin=xpirMin)
-    sort!(cands; by=x->x.rate)
-    entry = cands[end]
+    # TODO: show unrealized pnl to guage how it really does
+    # and rpnl shows negative which shouldn't happen
+
+    entry = findEntry(date + OpenXpirAfter)
     lms = [LegMeta(entry.oq, 1.0, Side.short)]
     openTrade(acct, lms, netOpen(lms), "short put curp=$(curp) strike=$(entry.strike) rate=$(entry.rate)")
+end
+
+function findEntry(dateMin)
+    xpirMin = xp.expirGte(dateMin)
+    cands = c.look("SPY"; ratio=1.001, all=true, dateMin=xpirMin)
+    sort!(cands; by=x->x.rate)
+    return cands[end]
 end
 
 #region Actions
@@ -258,5 +273,11 @@ function entryFilterLookup(acct)
     return d
 end
 #endregion
+
+# function findCurp(chs)
+#     chs = filter(isPut, chs)
+#     chs = sort!(chs, by=x->abs(x.meta.delta + 0.5))
+#     return SH.getStrike(chs[1])
+# end
 
 end

@@ -69,9 +69,17 @@ function getChains(sym::String; age=Minute(10))::ChainsType
     xprs = filter(x -> mnd <= x <= mxd, expirs(sym))
     return CH.chains(xprs, (sym,); age)[sym]
 end
-function stock(sym::String; age=Minute(10))::Dict{String,Any}
-    return cache!(Dict{String,Any}, Symbol("stock-", sym), age) do
-        return tradierQuote(sym)
+
+using QuoteTypes
+function stock(sym::String; age=Minute(10))::Quote # ::Dict{String,Any}
+    if "SPY" == sym
+        # This is to support backtest when it's snapped
+        return market().curQuot
+    else
+        return cache!(Dict{String,Any}, Symbol("stock-", sym), age) do
+            tq = tradierQuote(sym)
+            return Quote(tq["bid"], tq["ask"])
+        end
     end
 end
 
@@ -104,7 +112,7 @@ function look(sym; all=false, ratio, age=Minute(10), dateMin=nothing)
         # expr < maxDate || break # exprs sorted asc
         oqs = filter(isPut, chs[xpir].chain)
         timult = DateUtil.timult(xpir)
-        underBid = locUnder["bid"]
+        underBid = getBid(locUnder) # locUnder["bid"]
         if all
             range = 1:length(oqs)
         else
@@ -167,17 +175,19 @@ function vol(sym)
 end
 
 import Calendars
-function findRoll(sym, at, cost=0.0, style=Style.put, improve=false)
+function findRoll(sym, at, cost=0.0, style=Style.put, improve=false; silent=false)
     res = NamedTuple[]
+    resOqs = Vector{OptionQuote}()
     getChains(sym)
     # locUnder = Under[sym]
+    # locUnder = stock(sym)
     locUnder = stock(sym)
     chs = getChains(sym)
     for expr in sort!(collect(keys(chs)))
-        println("Checking ", expr)
+        # silent || println("Checking ", expr)
         oqs = filter(x->getStyle(x) == style, chs[expr].chain)
         timult = DateUtil.timult(expr)
-        underBid = locUnder["bid"]
+        underBid = getBid(locUnder) # locUnder["bid"]
         for oq in oqs
             strike = getStrike(oq)
             !improve || strike <= at || continue
@@ -193,13 +203,16 @@ function findRoll(sym, at, cost=0.0, style=Style.put, improve=false)
             # println("$(sym)[$(expr)]: $(underBid) -> $(strike) at $(primitDir) ($(getQuote(oq))) / $(strike) = $(rate)")
             # if rate > 0.0
                 push!(res, (;sym, expr, mov=1.0 - strike/underBid, underBid, strike, primitDir, entry, rate, div=getDividend(sym)))
+                push!(resOqs, oq)
             # end
         end
     end
     # pretyble(filter!(x -> x.mov > minMove, sort!(delete.(res, :oq); by=x -> x.rate)))
-    pretyble(sort!(res; by=x->x.rate); dateYear=true)
-    # return res
-    return
+    perm = sortperm(res; by=x->x.rate)
+    res = res[perm]
+    resOqs = resOqs[perm]
+    silent || pretyble(res; dateYear=true)
+    return (res[end], resOqs[end])
 end
 
 # using Combos
