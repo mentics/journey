@@ -27,7 +27,7 @@ tradierOptionChain(exp::Date, sym::String=getDefaultSymbol())::TradierRespVec = 
             println("nothing: ", exp)
             error("stop")
         end
-        if isnothing(raw["options"])
+        if !haskey(raw, "options") || isnothing(raw["options"])
             println("Could not load open chain with snap $(Globals.snap()) for exp: ", exp)
             error("stop")
         end

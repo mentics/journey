@@ -31,9 +31,9 @@ const LOCALZONE = localzone()
 
 export timult, calcRate
 bdaysPerYear() = 252.0
-durRisk(to::Date, from=today()) = 1 + bdays(from, to)
-timult(to::Date, from=today()) = bdaysPerYear() / durRisk(to, from)
-calcRate(to::Date, ret, risk, from=today()) = (ret / risk) * timult(to, from)
+durRisk(from::Date, to::Date) = 1 + bdays(from, to)
+timult(from::Date, to::Date) = bdaysPerYear() / durRisk(from, to)
+calcRate(from::Date, to::Date, ret, risk) = (ret / risk) * timult(from, to)
 
 #region Basic
 const SECOND_ZERO = Second(0)

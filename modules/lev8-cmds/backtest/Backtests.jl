@@ -7,6 +7,7 @@ import SH
 import LegTypes
 import SnapUtil
 import OptionUtil
+import Shorthand
 
 export bt
 const bt = @__MODULE__
@@ -17,47 +18,101 @@ const TradeType = Dict{Symbol,Any}
 
 function run(f; snapStart=SnapUtil.countSnaps())
     devon()
+    LogUtil.resetLog(:backtest)
     global acct = Dict(
         :bal => C(0.0),
         :real => C(0.0),
         :trades => Vector{TradeType}(),
         :poss => Vector{TradeType}(),
         :todayOpens => Vector{TradeType}(),
-        :todayCloses => Vector{TradeType}()
+        :todayCloses => Vector{TradeType}(),
+        :riskDays => 0.0
     )
     num = snapStart
+    dateStart = SnapUtil.snapDate(num)
     datePrev = Date(0)
-    # max = 100
-    # for i in num:-1:(num-max)
-    # for i in min(num, max):-1:1
-    for i in num:-1:1
+    # Stop at 2 because 1 might be currently executing
+    for i in num:-1:2
         snap(i)
+        name = snap()
         mkt = market()
         ts = mkt.tsMarket
         date = toDateMarket(ts)
+
+        # for trade in acct[:poss]
+        #     if getExpir(trade) < date
+        #         error("getexpir:$(getExpir(trade)) < date:$(date); ", trade)
+        #     end
+        #     for lm in trade[:lms]
+        #         if SH.getExpiration(lm) < date
+        #             error("lmexpir:$(SH.getExpiration(lm)) < date:$(date); ", trade)
+        #         end
+        #     end
+        # end
+
         if date != datePrev
-            for trade in acct[:poss]
-                xpir = getExpir(trade)
-                if xpir < date
-                    lmsc = requote(optQuoter, trade[:lms], Action.close)
-                    closeTrade(acct, trade, lmsc, netClose(trade), "expired")
-                end
-            end
+            # TODO: closing and opening on same day might affect this a little, but I think buying power allows this so maybe it's ok
+            acct[:riskDays] += (date - datePrev).value * getRisk(acct[:poss])
             empty!(acct[:todayOpens])
             empty!(acct[:todayCloses])
             datePrev = date
         end
 
-        println("Start $(date) SPY: $(mkt.curp), VIX: $(mkt.vix)")
+        out("Start $(name) SPY: $(mkt.curp), VIX: $(mkt.vix)")
         acct[:ts] = ts
         acct[:date] = date
-        acct[:xpirs] = SnapUtil.snapExpirs(snap())
+        acct[:xpirs] = SnapUtil.snapExpirs(name)
         acct[:greeks] = isempty(acct[:poss]) ? GreeksZero : getGreeks(acct[:poss])
         acct[:greeksExpirs] = isempty(acct[:poss]) ? Dict{Date,GreeksType}() : greeksForExpirs(acct[:poss])
         f(acct)
-        println("End $(date): $(acct[:bal]) real:$(acct[:real]) #open:$(length(acct[:poss]))")
+
+        tind = 1
+        while tind < length(acct[:poss])
+            trade = acct[:poss][tind]
+            xpir = getExpir(trade)
+            if snap() == SnapUtil.lastSnapBefore(xpir + Day(1))
+                lmsc = requote(optQuoter, trade[:lms], Action.close)
+                closeTrade(acct, trade, lmsc, netClose(trade), "expired")
+            else
+                tind += 1
+            end
+        end
+
+        acct[:urpnl] = urpnl(acct[:poss])
+        out("End $(name): $(acct[:bal]) rpnl:$(acct[:real]) urpnl:$(acct[:urpnl]) #open:$(length(acct[:poss])) risk:$(getRisk(acct[:poss]))")
         # delta:$(rond(acct[:greeks].delta))
+
+        # for trade in acct[:poss]
+        #     if getExpir(trade) <= date
+        #         out("WARN: getexpir:$(getExpir(trade)) < date:$(date); ", trade)
+        #     end
+        #     for lm in trade[:lms]
+        #         if SH.getExpiration(lm) <= date
+        #             out("WARN: lmexpir:$(SH.getExpiration(lm)) < date:$(date); ", trade)
+        #         end
+        #     end
+        # end
     end
+    dateEnd = SnapUtil.snapDate(snap())
+    total = acct[:real] + acct[:urpnl]
+    # We're going to pretend we closed everything at the last snap, so don't need to add risk.
+    # acct[:riskDays] += getRisk(acct[:poss]) # model it for end of last day, so only * 1 day
+    rate = calcRate(dateStart, dateEnd, total, acct[:riskDays])
+    out("Summary $(dateStart) - $(dateEnd):")
+    out("  rpnl = $(acct[:real]), urpnl = $(acct[:urpnl])")
+    out("  Total: $(total)")
+    out("  rate: $(rond(rate))")
+end
+
+# TODO: this is only correct for short put strategy
+getRisk(trade) = SH.getStrike(trade[:lms][1])
+getRisk(trades::Coll) = sum(getRisk, trades; init=0.0)
+
+urpnl(trades::Coll) = sum(urpnl, trades)
+function urpnl(trade)
+    qt = quoter(trade[:lms], Action.close)
+    netc = usePrice(qt)
+    return trade[:neto] + netc
 end
 
 OptionMetaTypes.getGreeks(trade::TradeType) = getGreeks(requote(optQuoter, trade[:lms], Action.close))
@@ -98,7 +153,7 @@ function strat1(acct)
         curVal = neto + netc
         # theta = getTheta(lmsc)
         # if curVal > 0.0 || daysLeft <= 2 || theta < -0.005
-            timt = DateUtil.timult(date, dateOpen)
+            timt = DateUtil.timult(dateOpen, date)
             mn = min(OptionUtil.legsExtrema(trade[:lms]...)...)
             rate = timt * curVal / (-mn)
             label = nothing
@@ -153,8 +208,12 @@ end
 
 using Combos
 function stratSellPut(acct)
-    OpenXpirAfter = Day(14)
+    MaxOpen = 10
+    OpenXpirAfter = Day(13)
+    MinMoveRatio = .95
     SafeExpire = 1.0
+    RollNear = 1.0
+    MinRate = .1
     date = acct[:date]
     curp = market().curp
     for trade in acct[:poss]
@@ -164,10 +223,10 @@ function stratSellPut(acct)
         daysLeft = bdays(date, xpir)
         label = nothing
         strike = SH.getStrike(trade[:lms][1])
-        if snap() == SnapUtil.lastSnapBefore(xpir + Day(1)) && strike > curp - SafeExpire
-            label = "roll last snap before xpir $(strike) > ($(curp) - $(SafeExpier))"
-        elseif (daysLeft <= 6 && curp < strike - 0.5)
-            label = "roll curp < strike"
+        if snap() != SnapUtil.lastSnap() && snap() == SnapUtil.lastSnapBefore(xpir + Day(1)) && strike > curp - SafeExpire
+            label = "roll last snap before xpir:$(xpir), $(strike) > ($(curp) - $(SafeExpire))"
+        elseif (daysLeft <= 6 && strike > curp + RollNear)
+            label = "roll near xpir:$(xpir), strike:$(strike) > curp:$(curp) + $(RollNear)"
         end
         if !isnothing(label)
             lmsc = requote(optQuoter, trade[:lms], Action.close)
@@ -176,23 +235,24 @@ function stratSellPut(acct)
             netc = usePrice(qt)
             closeTrade(acct, trade, lmsc, netc, label)
 
-            entry, oq = c.findRoll("SPY", strike, netc; silent=true)
+            entry, oq = c.findRoll("SPY", strike, -netc; silent=true)
             lms = [LegMeta(oq, 1.0, Side.short)]
-            openTrade(acct, lms, netOpen(lms), "rolled TODO: rate")
+            openTrade(acct, lms, netOpen(lms), "rolled $(rond(entry.rate))")
         end
     end
 
-    # TODO: show unrealized pnl to guage how it really does
-    # and rpnl shows negative which shouldn't happen
-
-    entry = findEntry(date + OpenXpirAfter)
-    lms = [LegMeta(entry.oq, 1.0, Side.short)]
-    openTrade(acct, lms, netOpen(lms), "short put curp=$(curp) strike=$(entry.strike) rate=$(entry.rate)")
+    if length(acct[:poss]) < MaxOpen
+        entry = findEntry(date + OpenXpirAfter, MinMoveRatio)
+        if entry.rate > MinRate
+            lms = [LegMeta(entry.oq, 1.0, Side.short)]
+            openTrade(acct, lms, netOpen(lms), "short put curp=$(curp) strike=$(entry.strike) rate=$(rond(entry.rate))")
+        end
+    end
 end
 
-function findEntry(dateMin)
+function findEntry(dateMin, ratio)
     xpirMin = xp.expirGte(dateMin)
-    cands = c.look("SPY"; ratio=1.001, all=true, dateMin=xpirMin)
+    cands = c.look("SPY"; ratio, dateMin=xpirMin)
     sort!(cands; by=x->x.rate)
     return cands[end]
 end
@@ -215,12 +275,12 @@ function openTrade(acct, lms, neto, label)
     gks = getGreeks(lms)
     acct[:greeks] = greeksAdd(acct[:greeks], gks)
     acct[:greeksExpirs][date] = greeksAdd(get!(acct[:greeksExpirs], date, GreeksZero), gks)
-    println("Open: '$(label)' $(trade[:id]) for $(neto) target=$(getExpir(trade))") # deltaX: $(rond(delta)) -> $(rond(deltaNew)) deltaAcct: $(rond(acct[:delta]))")
+    out("Open #$(trade[:id]) $(Shorthand.tosh(lms[1])): '$(label)' neto:$(neto)") # deltaX: $(rond(delta)) -> $(rond(deltaNew)) deltaAcct: $(rond(acct[:delta]))")
     return trade
 end
-function closeTrade(acct, trade, lmsc, netc, label)
+function closeTrade(acct, trade, lms, netc, label)
     # NOTE: snap might have already moved when called here, so don't use anything except acct
-    trade[:lmsc] = lmsc
+    trade[:lmsc] = lms
     trade[:netc] = netc
     trade[:tsClosed] = acct[:ts]
     trade[:labelClose] = label
@@ -229,7 +289,7 @@ function closeTrade(acct, trade, lmsc, netc, label)
     acct[:bal] += netc
     acct[:real] += trade[:neto] + netc
     trade[:labelClose] = label
-    println("Close: '$(label)' $(trade[:id]) for $(netc) pnl=$(trade[:neto] + netc) expir=$(getExpir(trade)) open for $(openDur(trade)) with days left $(bdaysLeft(acct[:date], trade))")
+    out("Close #$(trade[:id]) $(Shorthand.tosh(lms[1])): '$(label)' neto:$(trade[:neto]) netc:$(netc) pnl=$(trade[:neto] + netc) ; $(openDur(trade)) days open, $(bdaysLeft(acct[:date], trade)) days left")
     return
 end
 nextTradeId(acct) = length(acct[:trades]) + 1
@@ -279,5 +339,8 @@ end
 #     chs = sort!(chs, by=x->abs(x.meta.delta + 0.5))
 #     return SH.getStrike(chs[1])
 # end
+
+using LogUtil
+out(args...) = LogUtil.logit(:backtest, args...)
 
 end

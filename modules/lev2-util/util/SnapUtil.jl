@@ -43,6 +43,11 @@ function snapName(date::Date, i::Int)::Union{Nothing,String}
     return snapName(dts[i])
 end
 
+snapDate(num::Int) = snapDate(snapName(num))
+snapDate(name::String) = Date(DateTime(name, SNAP_DATEFORMAT))
+snapNum(date::Date) = findfirst(x -> x >= date, snapDateTimes())
+
+lastSnap() = snapNames()[end]
 function lastSnap(date::Date)::Union{Nothing,String}
     dts = filter(x -> Date(x) == date, SnapUtil.snapDateTimes())
     !isempty(dts) || return nothing

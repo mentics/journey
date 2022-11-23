@@ -31,7 +31,7 @@ function getAsk() end
 
 function getStyle() end
 function getStrike() end
-function getExpiration() end
+getExpiration(itr) = minimum(getExpiration, itr)
 
 function getSide() end
 function getQuantity() end

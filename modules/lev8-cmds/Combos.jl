@@ -9,8 +9,8 @@ import SeekingAlpha
 export c
 const c = @__MODULE__
 
-maxDate() = today() + Year(10)
-minDate() = today() + Day(5)
+maxDate() = market().startDay + Year(10)
+minDate() = market().startDay + Day(5)
 
 csa(sym) = checkSymAll(x -> x.mov >= 0.05 && x.rate >= 0.5, sym)
 checkSymAll(pred, sym) =  sort!([(;x.expr, x.mov, x.rate, x.strike, x.primitDir) for x in sort(filter(x-> x.sym == sym && pred(x), LookedRaw); by=x->x.rate)]; by=x->x.rate)
@@ -64,8 +64,8 @@ end
 
 bestRate(v) = findmax(x -> x.rate, v)
 
-function getChains(sym::String; age=Minute(10))::ChainsType
-    mnd, mxd = (minDate(), maxDate())
+function getChains(sym::String; age=Minute(10), dateMin=minDate(), dateMax=maxDate())::ChainsType
+    mnd, mxd = (dateMin, dateMax)
     xprs = filter(x -> mnd <= x <= mxd, expirs(sym))
     return CH.chains(xprs, (sym,); age)[sym]
 end
@@ -76,9 +76,9 @@ function stock(sym::String; age=Minute(10))::Quote # ::Dict{String,Any}
         # This is to support backtest when it's snapped
         return market().curQuot
     else
-        return cache!(Dict{String,Any}, Symbol("stock-", sym), age) do
+        return cache!(Quote, Symbol("stock-", sym), age) do
             tq = tradierQuote(sym)
-            return Quote(tq["bid"], tq["ask"])
+            return Quote(C(tq["bid"]), C(tq["ask"]))
         end
     end
 end
@@ -102,16 +102,16 @@ function look(sym; all=false, ratio, age=Minute(10), dateMin=nothing)
     # maxDate = min(parseDate(about, "earning_announce_date"), parseDate(about, "div_pay_date"))
     # maxDate = min(findExDate(tryKey(sa.Dividends, sym)), findEarnDate(tryKey(sa.Earnings,sym)))
     # maxDate = maxDate() # min(findExDate(get(sa.Dividends, sym, nothing)), findEarnDate(get(sa.Earnings, sym, nothing)))
-    chs = getChains(sym; age)
-    if !isnothing(dateMin)
-        chs = filter(x -> x.first > dateMin, chs)
-    end
+    chs = isnothing(dateMin) ? getChains(sym; age) : getChains(sym; age, dateMin)
+    # if !isnothing(dateMin)
+    #     chs = filter(x -> x.first > dateMin, chs)
+    # end
     # locUnder = Under[sym]
     locUnder = stock(sym; age)
     for xpir in sort!(collect(keys(chs)))
         # expr < maxDate || break # exprs sorted asc
         oqs = filter(isPut, chs[xpir].chain)
-        timult = DateUtil.timult(xpir)
+        timult = DateUtil.timult(market().startDay, xpir)
         underBid = getBid(locUnder) # locUnder["bid"]
         if all
             range = 1:length(oqs)
@@ -186,7 +186,7 @@ function findRoll(sym, at, cost=0.0, style=Style.put, improve=false; silent=fals
     for expr in sort!(collect(keys(chs)))
         # silent || println("Checking ", expr)
         oqs = filter(x->getStyle(x) == style, chs[expr].chain)
-        timult = DateUtil.timult(expr)
+        timult = DateUtil.timult(market().startDay, expr)
         underBid = getBid(locUnder) # locUnder["bid"]
         for oq in oqs
             strike = getStrike(oq)

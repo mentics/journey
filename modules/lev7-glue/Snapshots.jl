@@ -7,7 +7,8 @@ using Positions, Chains, Expirations, Markets, ProbHist
 export snave, snop
 
 # snap() = isnothing(getSnap()) ? nothing : Dates.format(tims(market().ts), DFTEST)
-Globals.snap(num::Int) = snap(findByIndex(num))
+SnapUtil.snapName(num::Int) = findByIndex(num)
+Globals.snap(num::Int) = snap(SnapUtil.snapName(num))
 Globals.snap(num1::Int, num2::Int, num::Int...) = snap(findByParts(num1, num2, num...))
 Globals.snap(nam::AbstractString) = useSnap(nam)
 Globals.snap(date::Date, i::Int) = snap(SnapUtil.snapName(date, i))

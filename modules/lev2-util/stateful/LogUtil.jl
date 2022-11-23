@@ -136,6 +136,7 @@ end
 
 function resetLog(syms::Symbol...)
     for sym in syms
+        haskey(Outs, sym) || continue
         out = Outs[sym]
         runSync(out.lock) do
             ensureClosed(out)

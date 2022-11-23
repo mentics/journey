@@ -82,6 +82,7 @@ end
 
 import ProcOrder
 function toc(rateMin=0.5) # findTradesToClose
+    @assert isnothing(snap()) "toc() doesn't work when snapped"
     trades = sort!(StoreTrade.tradesOpen(); by=getTargetDate)
     # ords = filter!(x->!SH.isStatus(x, Deleted), tos(Order, ta.tradierOrders()))
     tords = filter!(x -> tierIsLive(x), ta.tradierOrders())
@@ -100,8 +101,8 @@ function toc(rateMin=0.5) # findTradesToClose
         # if curVal > 0.0
             # tex = calcTex(ts, today() + Day(1))
             # timult = 1 / Calendars.texToYear(tex)
-            dur = DateUtil.durRisk(todayDate, toDateMarket(ts))
-            timt = DateUtil.timult(todayDate, toDateMarket(ts))
+            dur = DateUtil.durRisk(toDateMarket(ts), todayDate)
+            timt = DateUtil.timult(toDateMarket(ts), todayDate)
             mn = min(OptionUtil.legsExtrema(getLegs(trade)...)...)
             rate = timt * curVal / (-mn)
             # @show rate timt curVal (-mn)

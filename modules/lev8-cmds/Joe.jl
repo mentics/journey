@@ -195,7 +195,7 @@ function makeCtx(xpir::Date; nopos, all)::NamedTuple
     curp = market().curp
     from = market().startDay
     days = (1 + bdays(from, xpir))
-    timt = timult(xpir, from)
+    timt = timult(from, xpir)
     prob = xprob(xpir)
     posLms = nopos ? LegMeta[] : xlms(xpir)
     posRet = combineTo(Ret, posLms, curp)
@@ -391,8 +391,14 @@ function hasGreeks(oq)
 end
 
 function runlc2(xprs=1:2; maxSpreads=1000, start=GreeksZero, kws...)
+    curp = market().curp
+    probs = Dict{Date,Prob}()
     spreads = reduce(vcat, map(xprs) do xpr
-        getSpreads(expir(xpr))
+        xpir = expir(xpr)
+        if !haskey(probs, xpir)
+            probs[xpir] = xprob(xpir)
+        end
+        return getSpreads(xpir)
     end)
     println("Spread count ", length(spreads))
 
@@ -400,6 +406,20 @@ function runlc2(xprs=1:2; maxSpreads=1000, start=GreeksZero, kws...)
     # spreads = first(spreads, maxSpreads)
 
     function check(qtys)
+        # getTheta(lms) > 0.0 || return false
+        # !LegTypes.hasConflict(lms) || return false
+
+        # tctx = ctx.threads[Threads.threadid()]
+        # combineRetVals!(tctx.retBuf1, rets, indqs)
+        # ret = Ret(tctx.retBuf1, ctx.curp, 2 * length(lms))
+
+        # met = calcMetrics(ctx.prob, ret)
+
+        # TODO: if keep, optimize
+        lms = lmsForQtys(spreads, qtys)
+        met = calcMetrics(probs[getExpiration(lms)], curp, lms)
+
+        return met.prob > .8 && met.mx >= .1
         return true
     end
 
@@ -425,14 +445,24 @@ function getSpreads(xpir)
     sthreads = [Vector{NTuple{2,LegMeta}}() for _ in 1:Threads.nthreads()]
     GenCands.paraSpreads(oqss, ctx.maxWidth/2.0, isLegAllowed, ctx, sthreads) do lms, c, rs
         # calcMetrics(c.threads[Threads.threadid()], c.prob, lms)
-        mn, mx = OptionUtil.legsExtrema(lms)
-        if mx >= (-mn + .02)
-            push!(rs[Threads.threadid()], lms)
-        end
+        met = calcMetrics(c.prob, c.curp, lms)
+        # mn, mx = OptionUtil.legsExtrema(lms)
+        met.mx >= (-met.mn + .02) || return true
+        # met.prob >= .25 || return true
+        # met.ev >= 0.0 || return true
+        # met.evr >= 0.0 || return true
+        push!(rs[Threads.threadid()], lms)
         return true
     end
     return reduce(vcat, sthreads)
 end
+
+using ProbTypes
+function CalcUtil.calcMetrics(prob::Prob, curp::Currency, lms::Coll{LegMeta})
+    ret = combineTo(Ret, lms, curp)
+    return calcMetrics(prob, ret)
+end
+
 
 # function CalcUtil.calcMetrics(buf::Vector{Float64}, curp::Currency, prob::Prob, lms::AVec{LegMeta})
 #     combineRetVals!(buf, rets, indqs)
@@ -525,7 +555,7 @@ function findLinCombo(res, qtys, cands, score, check; start=nothing, maxQtyTotal
     scorBest = scor
     i = 0
     qt = 0
-    for qtyTot in 4:maxQtyTotal
+    for qtyTot in 2:maxQtyTotal
         qt = qtyTot
         left = 0
         @label start
