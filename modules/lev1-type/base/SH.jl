@@ -107,8 +107,12 @@ tos(::Type{T}, itr, args...) where T = map(x -> to(T, x, args...), itr) # TODO: 
 
 export ElType
 struct ElType{T} end
-(combineTo(::Type{R}, itr, args...)::R) where R = combineTo(R, ElType{eltype(itr)}, itr, args...)
+(combineTo(::Type{R}, itr, args...)::R) where R = combineTo(R, ElType{eeltype(itr)}, itr, args...)
 (combineTo(::Type{R}, ::Type{ElType{E}}, itr, args...)::R) where {R,E} = error("Undefined combineTo for ", R, ' ', E, ' ', args)
+function eeltype(itr)
+    e = eltype(itr)
+    return e != Any ? e : eltype(first(itr.it))
+end
 
 # (testETR(::Type{R}, itr, args...)::R) where R = testET(ElType{eltype(itr)}, itr, args...)
 # (testETR(::Type{R}, ::Type{ElType{E}}, itr, args...)::R) where {R,E} = error("Undefined testElType for ", E)

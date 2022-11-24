@@ -27,6 +27,9 @@ SH.combineTo(::Type{Ret}, ::Type{<:ElType{<:LegMeta}}, lms, curp::Currency)::Ret
 SH.combineTo(::Type{Ret}, legs::Coll{Leg}, oqter, forDate::Date, sp::Currency, vtyRatio::Float64)::Ret = combineRets(tos(Ret, tos(LegMeta, legs, oqter), forDate, sp, vtyRatio))
 # SH.combineTo(::Type{Ret}, legs::Coll{Leg,4}, oqter, forDate::Date, sp::Currency, vtyRatio::Float64)::Ret = combineRets(tos(Ret, tos(LegMeta, legs, oqter), forDate, sp, vtyRatio))
 
+SH.combineTo(::Type{Ret}, ::Type{<:ElType{<:LegRet}}, lrs::Coll{LegRet})::Ret = combineRets(map(to(Ret), lrs))
+SH.combineTo(::Type{Vals}, ::Type{<:ElType{<:LegRet}}, lrs::Coll{LegRet})::Vals = combineRetVals(tos(Ret, lrs))
+
 #region Trades
 # TODO: convert directly to these objects (or related) from db?
 # SH.toLegMetas(trads) = reduce(vcat, toLegMeta.(getLegs(trad)) for trad in trads; init=Vector{LegMeta}())

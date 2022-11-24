@@ -17,6 +17,7 @@ export drlms, drlms!
 # drlms!(lms; kws...) = drawRet!(combineTo(Ret, lms, minimum(getExpiration.(lms)), market().startPrice, getvr()); kws...)
 drlms(lms; kws...) = drawRet(combineTo(Ret, lms, market().startPrice); curp=market().curp, kws...)
 drlms!(lms; kws...) = drawRet!(combineTo(Ret, lms, market().startPrice); kws...)
+drlms!(lm::LegMeta; kws...) = drawRet!(to(Ret, lm, market().startPrice); kws...)
 
 export findShortsToClose
 # TODO: move this to scheduled
@@ -33,20 +34,20 @@ function findShortsToClose()
 end
 
 # shc(args...) = Tuple(lr for lr in sh(args...))
-sh(str::AStr, exs::Int...) = sh(str, expir.(exs))
-sh(str::AStr, exps::Coll{Date}=expirs())::Vector{LegMeta} = tos(LegMeta, shLegs(str, collect(exps)), optQuoter)
+sh(str::AStr, exs::Int...) = sh(str, expir.(exs)...)
+sh(str::AStr, exps::Date...)::Vector{LegMeta} = tos(LegMeta, shLegs(str, collect(exps)), optQuoter)
 function shlr(str::AStr, exps=expirs(), sp=market().startPrice)
-    lms = sh(str, exps)
+    lms = sh(str, exps...)
     exp = minimum(getExpiration, lms)
     vr = Globals.get(:vtyRatio)
     [(lm, to(Ret, lm, exp, sp, vr)) for lm in lms]
 end
 shRet(str::AStr, exps, sp=market().startPrice) = combineTo(Ret, shlr(str, exps, sp))
 shVals(str::AStr, exps, sp=market().startPrice) = getVals(shRet(str, exps, sp))
-drsh(str::AStr, exs...; kws...) = drsh(str, getInds(expirs(), exs); kws...) # (sp = market().startPrice ; drawRet(shRet(str, expirs()[ex:ex+2], sp), nothing, sp, "sh") )
-drsh(str::AStr, exps; kws...) = (sp = market().startPrice ; drawRet(shRet(str, exps, sp); kws..., curp=sp, label="sh") )
-drsh!(str::AStr, ex::Int=1; kws...) = drsh!(str, expirs()[ex:ex+2])
-drsh!(str::AStr, exps; kws...) = (sp = market().startPrice ; drawRet!(shRet(str, exps, sp); label="sh+") )
+drsh(str::AStr, exs::Int...; kws...) = drsh(str, getInds(expirs(), exs)...; kws...) # (sp = market().startPrice ; drawRet(shRet(str, expirs()[ex:ex+2], sp), nothing, sp, "sh") )
+drsh(str::AStr, exps::Date...; kws...) = (sp = market().startPrice ; drawRet(shRet(str, exps, sp); kws..., curp=sp, label="sh") )
+drsh!(str::AStr, exs::Int...; kws...) = drsh!(str, getInds(expirs(), exs)...; kws...)
+drsh!(str::AStr, exps::Date...; kws...) = (sp = market().startPrice ; drawRet!(shRet(str, exps, sp); label="sh+") )
 
 getInds(v, inds) = [v[i] for i in inds]
 

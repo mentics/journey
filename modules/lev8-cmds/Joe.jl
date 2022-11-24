@@ -458,7 +458,7 @@ function getSpreads(xpir)
 end
 
 using ProbTypes
-function CalcUtil.calcMetrics(prob::Prob, curp::Currency, lms::Coll{LegMeta})
+function CalcUtil.calcMetrics(prob::Prob, curp::Currency, lms)
     ret = combineTo(Ret, lms, curp)
     return calcMetrics(prob, ret)
 end
@@ -643,7 +643,50 @@ function scoreGreeks(gkss::AVec{GreeksType}, qtys::AVec, ad::GreeksType)
         gam += qty * gks.gamma
         veg += qty * gks.vega
     end
-    return abs(del + ad.delta) + 8 * abs(gam + ad.gamma) + abs(veg + ad.vega)
+    return scoreGreeks(del + ad.delta, gam + ad.gamma, veg + ad.vega)
+end
+
+scoreGreeks(x) = scoreGreeks(getGreeks(x))
+scoreGreeks(x, ad::GreeksType) = scoreGreeks(greeksAdd(getGreeks(x), ad))
+
+scoreGreeks(gks::GreeksType) = scoreGreeks(gks.delta, gks.gamma, gks.vega)
+scoreGreeks(del, gam, veg) = abs(del) + 8 * abs(gam) + abs(veg)
+
+using CmdExplore, Between
+function improveGreeks(f, rs, lmsStart; xpir=getExpiration(lmsStart))
+    ctx = (;xpir, prob=xprob(xpir), curp=market().curp)
+    lms = lmsStart
+    i = nothing
+    while true
+        score = f(ctx, lms)
+        println("score ($(i)): ", score)
+        i = findfirst(rs) do r
+            s = f(ctx, lms, r.lms)
+            # println("s $(s) > score $(score)")
+            return s > score
+        end
+        !isnothing(i) || break
+        lms = vcatt(lms, rs[i].lms)
+        println("Added $(i) $(f(ctx, rs[i].lms)) -> $(f(ctx, lms))")
+    end
+    drlms(lms)
+    return lms
+end
+
+function scoring(ctx, lmss...)
+    # println("scoring: ", typeof(lmss))
+    lms = Iterators.flatten(lmss)
+    met = calcMet(lms, ctx.prob, ctx.curp)
+    scorGks = scoreGreeks(lms)
+    # return met.evr - scorGks
+    return -scorGks
+end
+
+vcatt(itrs...) = collect(Iterators.flatten(itrs))
+
+function calcMet(lms, prob=xprob(getExpiration(lms)), curp=market().curp)
+    met = calcMetrics(prob, curp, lms)
+    return met
 end
 
 # function lmssToVdg(lmss)

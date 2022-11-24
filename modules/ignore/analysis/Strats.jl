@@ -5,8 +5,6 @@ using SH, BaseTypes, StratTypes
 using RetTypes, Rets
 
 # TODO: put this somewhere else and get rid of this file?
-SH.combineTo(::Type{Ret}, lrs::Coll{LegRet,4})::Ret = combineRets(map(to(Ret), lrs))
-SH.combineTo(::Type{Vals}, lrs::Coll{LegRet,4})::Vals = combineRetVals(tos(Ret, lrs))
 
 SH.getVals!(buf::Vector{Float64}, s::Strat)::Vector{Float64} = ( combineRetVals!(buf, tos(Ret, s)) ; return buf )
 # SH.getVals!(buf::Vector{Float64}, s::Strat, extra::Vector{LegRet})::Nothing = ( combineRetVals!(buf, getRets(s), getindex.(extra, 2)) ; return )
