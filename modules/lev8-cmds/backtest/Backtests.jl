@@ -206,6 +206,95 @@ function strat1(acct)
     end
 end
 
+function tradeInfo(trade)
+    xpir = getExpir(trade)
+    daysLeft = bdays(date, xpir)
+    daysTotal = bdays(dateOpen, xpir)
+    xpirRatio = (1 + daysLeft) / daysTotal
+    neto = trade[:neto]
+    lmsc = requote(optQuoter, trade[:lms], Action.close)
+    # TODO: maybe use lmsc instead of quoting again?
+    qt = quoter(trade[:lms], Action.close)
+    netc = usePrice(qt)
+    curVal = neto + netc
+    timt = DateUtil.timult(dateOpen, date)
+    mn = min(OptionUtil.legsExtrema(trade[:lms]...)...)
+    rate = timt * curVal / (-mn)
+    return (; xpir, daysLeft, daysTotal, xpirRatio, neto, lmsc, qt, netc, curVal, timt, mn, rate)
+end
+
+checkRateRatio(t, p) = t.rate >= (t.xpirRatio * p.RateMin) ? "rate: $(rond(t.rate))" : nothing
+
+function check(fs, args...)
+    ss = filter(!isnothing, map(x -> x(args...), fs))
+    return isempty(ss) ? nothing : join(ss, " ; ")
+end
+
+function checkClose(fs, acct, args...)
+    date = acct[:date]
+    for trade in acct[:poss]
+        dateOpen = toDateMarket(trade[:tsOpen])
+        dateOpen < date || continue         # don't close today's entries
+        t = tradeInfo(trade)
+        label = check(fs, t, args...)
+        # # elseif daysLeft <= 2
+        # #     label = "daysLeft"
+        # # elseif theta < -0.015
+        # #     label = "theta: $(rond(theta))"
+        # # elseif curVal <= -trade[:met].mx
+        # #     label = "loss < -max profit: $(curVal) <= $(-trade[:met].mx)"
+        # end
+        if !isnothing(label)
+            closeTrade(acct, trade, lmsc, netc, label)
+        end
+    end
+end
+
+function stratShortSpread()
+    params = (;
+        RateMin = 0.5,
+        MaxDelta = 0.3,
+        XpirBdays =
+    )
+    checkClose((checkRateRatio,), acct, params)
+
+    isLegAllowed = entryFilterOption(acct)
+    jorn(Xprs; condors=false, spreads=true, all=true)
+    for xpr in  # first(acct[:xpirs], 21)
+
+        acct[:xpirs][Xprs]
+                xpir > bdaysAfter(date, 3) || continue
+        posLms = collect(Iterators.filter(x -> SH.getExpiration(x) == xpir, cu.flatmap(x -> x[:lms], acct[:poss])))
+        res, ctx = Joe.runJorn(xpir, isLegAllowed; nopos=true, posLms, all=true)
+        # res, ctx = Joe.runJorn(xpir, isLegAllowed; nopos=true, posLms)
+        !isempty(res) || continue
+        deltaAcct = acct[:greeks].delta
+        deltaXpir = haskey(acct[:greeksExpirs], xpir) ? acct[:greeksExpirs][xpir].delta : 0.0
+        filter!(res) do r
+            gks = getGreeks(r.lms)
+            deltaAdd = gks.delta
+            return r.roiEv >= 0.1 &&
+                gks.theta >= 0.0 &&
+                (
+                    abs(deltaAcct + deltaAdd) < MaxDelta ||
+                    abs(deltaAcct + deltaAdd) < abs(deltaAcct)
+                ) &&
+                (
+                    abs(deltaXpir + deltaAdd) < MaxDelta ||
+                    abs(deltaXpir + deltaAdd) < abs(deltaXpir)
+                )
+        end
+        !isempty(res) || continue
+        # sort!(res; rev=true, by=r -> r.roiEv)
+        sort!(res; rev=true, by=r -> r.met.prob)
+        r = res[1]
+        # if r.roiEv > 0.2
+            trade = openTrade(acct, r.lms, netOpen(r.lms), "joe roiEv=$(rond(r.roiEv))")
+            trade[:met] = r.met
+        # end
+    end
+end
+
 using Combos
 function stratSellPut(acct)
     MaxOpen = 10
