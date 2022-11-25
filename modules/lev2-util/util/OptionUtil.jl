@@ -46,7 +46,7 @@ end
 function calcExtrins(oq::OptionQuote, curp::Real)::Tuple{Currency,Currency,Currency}
     bid = getBid(oq)
     ask = getAsk(oq)
-    imp = bap(oq)
+    imp = bap(oq, 0.0) # TODO: is 0.0 right here?
     dist = abs(curp - getStrike(oq))
     if extrinSub(getStyle(oq), getStrike(oq), curp)
         res = (bid - dist, ask - dist, imp - dist)
@@ -62,6 +62,12 @@ function calcExtrins(oq::OptionQuote, curp::Real)::Tuple{Currency,Currency,Curre
 end
 
 extrinSub(style::Style.T, strike::Real, curp::Real)::Bool = xor(Style.call == style, strike >= curp)
+
+netExpired(lms, curp) = sum(x -> netExpired1(x, curp), lms)
+function netExpired1(lm, curp)
+    s = getStrike(lm)
+    return extrinSub(getStyle(lm), s, curp) ? Int(getSide(lm)) * abs(curp - s) : 0.0
+end
 
 legsExtrema(legs::NTuple{2}) = spreadExtrema(longShort(legs[1], legs[2])...)
 legs2Levels(legs::Coll) = spreadLevels(longShort(legs[1], legs[2])...)

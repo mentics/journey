@@ -183,7 +183,7 @@ findTord(tords, tid) = find(x -> parse(Int, SubString(x["tag"], 3)) == tid, tord
 using TradierAccount, OrderTypes
 function todup()
     # TODO: need to show filled ones so we can cancel pending duplicates
-    tords = filter!(x -> tierIsLive(x) && startswith(x["tag"], "op"), ta.tradierOrders())
+    tords = filter!(x -> tierIsLive(x) && startswith(get(x, "tag", ""), "op"), ta.tradierOrders())
     # tt = findTradeEntered(today())
     tt = tradesOpenEntered(today())
     lup = Dict(getId(trade) => findTord(tords, getId(trade)) for trade in tt)
