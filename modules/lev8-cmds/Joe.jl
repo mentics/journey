@@ -106,6 +106,7 @@ function runJorn(xpir::Date, isLegAllowed; nopos=false, all=false, posLms=nothin
             end
             return true
         end
+        # println("num spreads: ", cnt)
         isempty(Msgs) || @info Msgs
     end
 

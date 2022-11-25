@@ -206,9 +206,10 @@ function strat1(acct)
     end
 end
 
-function tradeInfo(trade)
+function tradeInfo(trade, date)
     xpir = getExpir(trade)
     daysLeft = bdays(date, xpir)
+    dateOpen = toDateMarket(trade[:tsOpen])
     daysTotal = bdays(dateOpen, xpir)
     xpirRatio = (1 + daysLeft) / daysTotal
     neto = trade[:neto]
@@ -235,7 +236,7 @@ function checkClose(fs, acct, args...)
     for trade in acct[:poss]
         dateOpen = toDateMarket(trade[:tsOpen])
         dateOpen < date || continue         # don't close today's entries
-        t = tradeInfo(trade)
+        t = tradeInfo(trade, date)
         label = check(fs, t, args...)
         # # elseif daysLeft <= 2
         # #     label = "daysLeft"
@@ -245,12 +246,13 @@ function checkClose(fs, acct, args...)
         # #     label = "loss < -max profit: $(curVal) <= $(-trade[:met].mx)"
         # end
         if !isnothing(label)
-            closeTrade(acct, trade, lmsc, netc, label)
+            closeTrade(acct, trade, t.lmsc, t.netc, label)
         end
     end
 end
 
-function stratShortSpread()
+using Joe ; j = Joe
+function stratShortSpread(acct)
     params = (;
         RateMin = 0.5,
         MaxDelta = 0.3,
@@ -260,29 +262,31 @@ function stratShortSpread()
 
     date = acct[:date]
     xpirs = filter(x -> params.XpirBdays[1] <= bdays(date, x) <= params.XpirBdays[2], acct[:xpirs])
-    xprs = whichExpir.(xpirs)
+    xprs = xp.whichExpir.(xpirs)
 
     isLegAllowed = entryFilterOption(acct)
-    posLms = cu.flatmap(x -> x[:lms], acct[:poss])
+    posLms = collect(cu.flatmap(x -> x[:lms], acct[:poss]))
 
-    rs = [(;lms, met=j.calcMet(lms)) for lms in j.getSpreads(expir(4))]
+    # rs = [(;lms, met=j.calcMet(lms)) for lms in j.getSpreads(expir(4))]
 
-
-    jorn(xprs, isLegAllowed; condors=false, spreads=true, all=true, nopos, posLms)
-    for i in  eachindex(j.ress)
-        isassigned(j.ress, i) || continue
-        res = j.ress[i]
+    # jorn(xprs; condors=false, spreads=true, all=true, nopos=true, posLms)
+    # res, ctx = Joe.runJorn(xpir, isLegAllowed; nopos=true, posLms, all=true)
+    # for i in eachindex(j.ress)
+    for i in xprs
+        # isassigned(j.ress, i) || continue
+        # j.filt(x -> x.delta < 0.0)
+        # j.sor(x -> x.met.prob)
+        # res = j.ress[i]
         xpir = expir(i)
         # posLms = collect(Iterators.filter(x -> SH.getExpiration(x) == xpir, cu.flatmap(x -> x[:lms], acct[:poss])))
-        # res, ctx = Joe.runJorn(xpir, isLegAllowed; nopos=true, posLms, all=true)
+        res, ctx = Joe.runJorn(xpir, isLegAllowed; nopos=true, posLms, all=true, condors=false, spreads=true)
+        filter!(x -> x.delta < 0.0, res)
+        sort!(res; rev=true, by=x -> x.met.evr)
         # res, ctx = Joe.runJorn(xpir, isLegAllowed; nopos=true, posLms)
         !isempty(res) || continue
 
         r = res[1]
-        # if r.roiEv > 0.2
-            trade = openTrade(acct, r.lms, netOpen(r.lms), "joe roiEv=$(rond(r.roiEv))")
-            trade[:met] = r.met
-        # end
+        trade = openTrade(acct, r.lms, netOpen(r.lms), "joe roiEv=$(rond(r.roiEv))")
     end
 end
 
