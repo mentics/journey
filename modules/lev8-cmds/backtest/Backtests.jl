@@ -254,39 +254,30 @@ function stratShortSpread()
     params = (;
         RateMin = 0.5,
         MaxDelta = 0.3,
-        XpirBdays =
+        XpirBdays = (7,20)
     )
     checkClose((checkRateRatio,), acct, params)
 
-    isLegAllowed = entryFilterOption(acct)
-    jorn(Xprs; condors=false, spreads=true, all=true)
-    for xpr in  # first(acct[:xpirs], 21)
+    date = acct[:date]
+    xpirs = filter(x -> params.XpirBdays[1] <= bdays(date, x) <= params.XpirBdays[2], acct[:xpirs])
+    xprs = whichExpir.(xpirs)
 
-        acct[:xpirs][Xprs]
-                xpir > bdaysAfter(date, 3) || continue
-        posLms = collect(Iterators.filter(x -> SH.getExpiration(x) == xpir, cu.flatmap(x -> x[:lms], acct[:poss])))
-        res, ctx = Joe.runJorn(xpir, isLegAllowed; nopos=true, posLms, all=true)
+    isLegAllowed = entryFilterOption(acct)
+    posLms = cu.flatmap(x -> x[:lms], acct[:poss])
+
+    rs = [(;lms, met=j.calcMet(lms)) for lms in j.getSpreads(expir(4))]
+
+
+    jorn(xprs, isLegAllowed; condors=false, spreads=true, all=true, nopos, posLms)
+    for i in  eachindex(j.ress)
+        isassigned(j.ress, i) || continue
+        res = j.ress[i]
+        xpir = expir(i)
+        # posLms = collect(Iterators.filter(x -> SH.getExpiration(x) == xpir, cu.flatmap(x -> x[:lms], acct[:poss])))
+        # res, ctx = Joe.runJorn(xpir, isLegAllowed; nopos=true, posLms, all=true)
         # res, ctx = Joe.runJorn(xpir, isLegAllowed; nopos=true, posLms)
         !isempty(res) || continue
-        deltaAcct = acct[:greeks].delta
-        deltaXpir = haskey(acct[:greeksExpirs], xpir) ? acct[:greeksExpirs][xpir].delta : 0.0
-        filter!(res) do r
-            gks = getGreeks(r.lms)
-            deltaAdd = gks.delta
-            return r.roiEv >= 0.1 &&
-                gks.theta >= 0.0 &&
-                (
-                    abs(deltaAcct + deltaAdd) < MaxDelta ||
-                    abs(deltaAcct + deltaAdd) < abs(deltaAcct)
-                ) &&
-                (
-                    abs(deltaXpir + deltaAdd) < MaxDelta ||
-                    abs(deltaXpir + deltaAdd) < abs(deltaXpir)
-                )
-        end
-        !isempty(res) || continue
-        # sort!(res; rev=true, by=r -> r.roiEv)
-        sort!(res; rev=true, by=r -> r.met.prob)
+
         r = res[1]
         # if r.roiEv > 0.2
             trade = openTrade(acct, r.lms, netOpen(r.lms), "joe roiEv=$(rond(r.roiEv))")

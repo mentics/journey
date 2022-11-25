@@ -435,8 +435,8 @@ function getSpreads(xpir)
     global ctx = makeCtx(xpir; nopos=true, all=true)
     oqssAll = Chains.getOqss(xpir, ctx.curp)
     oqss = filtOqss(oqssAll) do oq
-        hasGreeks(oq) || ( println("Skipped missing greeks for ", oq) ; return false )
-        abs(getStrike(oq) / ctx.curp - 1.0) < 0.1 || return false
+        # hasGreeks(oq) || ( println("Skipped missing greeks for ", oq) ; return false )
+        abs(getStrike(oq) / ctx.curp - 1.0) < 0.15 || return false
         return true
     end
 
