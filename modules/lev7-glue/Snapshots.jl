@@ -1,14 +1,15 @@
 module Snapshots
 using Dates
-using Globals, DateUtil, FileUtil, TradierConfig, LogUtil, SnapUtil
+using Globals, DateUtil, FileUtil, TradierConfig, LogUtil
 using Calendars, Sched
 using Positions, Chains, Expirations, Markets, ProbHist
+using SnapUtil:SnapUtil, snapNames, snapName
 
 export snave, snop
 
 # snap() = isnothing(getSnap()) ? nothing : Dates.format(tims(market().ts), DFTEST)
-SnapUtil.snapName(num::Int) = findByIndex(num)
-Globals.snap(num::Int) = snap(SnapUtil.snapName(num))
+SnapUtil.snapName(num::Int) = snapNames()[num]
+Globals.snap(num::Int) = snap(snapName(num))
 Globals.snap(num1::Int, num2::Int, num::Int...) = snap(findByParts(num1, num2, num...))
 Globals.snap(nam::AbstractString) = useSnap(nam)
 Globals.snap(date::Date, i::Int) = snap(SnapUtil.snapName(date, i))
@@ -94,8 +95,8 @@ end
 newName() = formatLocal(now(UTC), SnapUtil.SNAP_DATEFORMAT)
 
 # const REGEX_NAME = r"(\d\d\d\d-\d\d-\d\d\.\d\d-\d\d)"
-allSnaps(desc=true) = sort(readdir(TradierConfig.SnavePath; join=false, sort=false); rev=desc)
-findByIndex(num::Int)::String = allSnaps()[num]
+# allSnaps(desc=true) = sort(readdir(TradierConfig.SnavePath; join=false, sort=false); rev=desc)
+# findByIndex(num::Int)::String = allSnaps()[num]
 function findByParts(nums::Int...)
     files = sort(readdir(TradierConfig.SnavePath; join=false, sort=false); rev=false)
     p = vcat(fill("", 5-length(nums)), map(numRegex, nums)...)

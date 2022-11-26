@@ -46,6 +46,7 @@ end
 snapDate(num::Int) = snapDate(snapName(num))
 snapDate(name::String) = Date(DateTime(name, SNAP_DATEFORMAT))
 snapNum(date::Date) = findfirst(x -> x >= date, snapDateTimes())
+snapNum(name::String) = findfirst(x -> x == name, snapNames())
 
 lastSnap() = snapNames()[end]
 function lastSnap(date::Date)::Union{Nothing,String}

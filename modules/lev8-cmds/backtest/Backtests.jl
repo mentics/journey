@@ -18,66 +18,26 @@ const TradeType = Dict{Symbol,Any}
 
 #region CurStrat
 checkRateRatio(acct, t, p) = t.rate >= (t.xpirRatio * p.RateMin) ? "rate: $(rond(t.rate))" : nothing
+checkProfit(acct, t, p) = t.curVal >= p.MinTakeProfit ? "take min profit" : nothing
 function checkThreaten(acct, t, p)
     s = getStrike(t.lmsc[1])
     threat = (s - acct[:curp]) / s
     return threat <= p.ThreatenPercent ? "threat: $(threat)" : nothing
 end
 
-function stratShortSpread(acct)
-    params = (;
-        MaxOpen = 100,
-        RateMin = 0.5,
-        ThreatenPercent = -0.01,
-        MinAbove = 0.05,
-        XpirBdays = (7,20)
-    )
-    checkClose((checkRateRatio,checkThreaten), acct, params)
-
-    date = acct[:date]
-    xpirs = filter(x -> params.XpirBdays[1] <= bdays(date, x) <= params.XpirBdays[2], acct[:xpirs])
-    xprs = xp.whichExpir.(xpirs)
-    curp = acct[:curp]
-
-    isLegAllowed = entryFilterOption(acct)
-    posLms = collect(cu.flatmap(x -> x[:lms], acct[:poss]))
-
-    # rs = [(;lms, met=j.calcMet(lms)) for lms in j.getSpreads(expir(4))]
-
-    # jorn(xprs; condors=false, spreads=true, all=true, nopos=true, posLms)
-    # res, ctx = Joe.runJorn(xpir, isLegAllowed; nopos=true, posLms, all=true)
-    # for i in eachindex(j.ress)
-    for i in xprs
-        length(acct[:poss]) < params.MaxOpen || ( println("Hit max open") ; break )
-        # isassigned(j.ress, i) || continue
-        # j.filt(x -> x.delta < 0.0)
-        # j.sor(x -> x.met.prob)
-        # res = j.ress[i]
-        xpir = expir(i)
-        # posLms = collect(Iterators.filter(x -> getExpiration(x) == xpir, cu.flatmap(x -> x[:lms], acct[:poss])))
-        res, ctx = Joe.runJorn(xpir, isLegAllowed; nopos=true, posLms, all=true, condors=false, spreads=true)
-        filter!(res) do r
-            return getSide(r.lms[1]) == Side.short && aboveRat(getStrike(r.lms[1]), curp) > params.MinAbove
-        end
-        sort!(res; rev=true, by=x -> x.met.evr)
-        # res, ctx = Joe.runJorn(xpir, isLegAllowed; nopos=true, posLms)
-        !isempty(res) || continue
-
-        r = res[1]
-        trade = openTrade(acct, r.lms, netOpen(r.lms), "joe above=$(rond(aboveRat(getStrike(r.lms[1]), curp)))", -r.met.mn)
-    end
-end
-
+# TODO: try adjusting strat dep on VIX
 function stratSimpleCondor(acct)
     params = (;
         MaxOpen = 1000,
-        RateMin = 0.25,
         # ThreatenPercent = -0.01,
         MinProfit = 0.04,
         MaxWidth = 5.0,
-        XpirBdays = (8,30)
+        XpirBdays = (12,40),
+        RateMin = 0.1,
+        MinTakeProfit = 0.01,
     )
-    checkClose((checkRateRatio,), acct, params)
+    # checkClose((checkRateRatio,), acct, params)
+    checkClose((checkProfit,), acct, params)
 
     date = acct[:date]
     xpirs = filter(x -> params.XpirBdays[1] <= bdays(date, x) <= params.XpirBdays[2], acct[:xpirs])
@@ -92,13 +52,14 @@ function stratSimpleCondor(acct)
     for i in xprs
         length(acct[:poss]) < params.MaxOpen || ( println("Hit max open") ; break )
         xpir = expir(i)
-        res, ctx = Joe.runJorn(xpir, isLegAllowed; nopos=true, posLms, all=true, condors=true, spreads=false)
+        filtOq = oq -> abs(getStrike(oq) / curp - 1.0) < 0.015
+        res, ctx = Joe.runJorn(xpir, isLegAllowed; nopos=true, posLms, all=true, condors=true, spreads=false, filtOq)
         filter!(res) do r
             return getSide(r.lms[1]) == getSide(r.lms[end]) == Side.short &&
                 r.met.mx >= params.MinProfit &&
                 getStrike(r.lms[4]) - getStrike(r.lms[1]) <= params.MaxWidth &&
-                getStrike(r.lms[2]) < curp + 2 &&
-                getStrike(r.lms[3]) > curp - 2 &&
+                # getStrike(r.lms[2]) < curp + 2 &&
+                # getStrike(r.lms[3]) > curp - 2 &&
                 getStrike(r.lms[2]) - getStrike(r.lms[1]) == getStrike(r.lms[4]) - getStrike(r.lms[3])
         end
         sort!(res; rev=true, by=x -> x.met.mx / (-x.met.mn))
@@ -106,13 +67,13 @@ function stratSimpleCondor(acct)
         !isempty(res) || continue
 
         r = res[1]
-        openTrade(acct, r.lms, netOpen(r.lms), "joe evr:$(rond(r.met.evr))", -r.met.mn)
+        openTrade(acct, r.lms, netOpen(r.lms), "j", -r.met.mn)
     end
 end
 #endregion
 
 #region Process
-function run(f; snapStart=SnapUtil.countSnaps())
+function run(f; snapStart=65)
     devon()
     LogUtil.resetLog(:backtest)
     global acct = Dict(
@@ -125,11 +86,10 @@ function run(f; snapStart=SnapUtil.countSnaps())
         :riskDays => 0.0,
         :lastTradeId => 0
     )
-    num = snapStart
-    dateStart = SnapUtil.snapDate(num)
+    dateStart = SnapUtil.snapDate(snapStart)
     datePrev = Date(0)
-    # Stop at 2 because 1 might be currently executing
-    for i in num:-1:2
+    # Stop at count-1 because 1 might be currently executing
+    for i in snapStart:(SnapUtil.countSnaps()-1)
         snap(i)
         name = snap()
         mkt = market()
@@ -182,8 +142,8 @@ function run(f; snapStart=SnapUtil.countSnaps())
         end
 
         acct[:urpnl] = urpnl(acct[:poss])
-        total = acct[:real] + acct[:urpnl]
-        rate = calcRate(dateStart, date, total, acct[:riskDays] / days)
+        # total = acct[:real] + acct[:urpnl]
+        rate = calcRate(dateStart, date, acct[:real], acct[:riskDays] / days)
         out("End $(name): $(rond(acct[:bal])) rpnl:$(rond(acct[:real])) urpnl:$(rond(acct[:urpnl])) #open:$(length(acct[:poss])) risk:$(acct[:riskDays] / days) rate:$(rate)")
         # delta:$(rond(acct[:greeks].delta))
 
@@ -364,6 +324,16 @@ end
 using LogUtil
 out(args...) = LogUtil.logit(:backtest, args...)
 
+function track(lms, start)
+    num = start
+    while SnapUtil.snapDate(num) <= getExpiration(lms)
+        snap(num)
+        print(market().curp, ": ")
+        println(quoter(lms, Action.close))
+        num += 1
+    end
+end
+
 # function findCurp(chs)
 #     chs = filter(isPut, chs)
 #     chs = sort!(chs, by=x->abs(x.meta.delta + 0.5))
@@ -494,6 +464,50 @@ out(args...) = LogUtil.logit(:backtest, args...)
 #     cands = c.look("SPY"; ratio, dateMin=xpirMin)
 #     sort!(cands; by=x->x.rate)
 #     return cands[end]
+# end
+
+# function stratShortSpread(acct)
+#     params = (;
+#         MaxOpen = 100,
+#         RateMin = 0.5,
+#         ThreatenPercent = -0.01,
+#         MinAbove = 0.05,
+#         XpirBdays = (7,20)
+#     )
+#     checkClose((checkRateRatio,checkThreaten), acct, params)
+
+#     date = acct[:date]
+#     xpirs = filter(x -> params.XpirBdays[1] <= bdays(date, x) <= params.XpirBdays[2], acct[:xpirs])
+#     xprs = xp.whichExpir.(xpirs)
+#     curp = acct[:curp]
+
+#     isLegAllowed = entryFilterOption(acct)
+#     posLms = collect(cu.flatmap(x -> x[:lms], acct[:poss]))
+
+#     # rs = [(;lms, met=j.calcMet(lms)) for lms in j.getSpreads(expir(4))]
+
+#     # jorn(xprs; condors=false, spreads=true, all=true, nopos=true, posLms)
+#     # res, ctx = Joe.runJorn(xpir, isLegAllowed; nopos=true, posLms, all=true)
+#     # for i in eachindex(j.ress)
+#     for i in xprs
+#         length(acct[:poss]) < params.MaxOpen || ( println("Hit max open") ; break )
+#         # isassigned(j.ress, i) || continue
+#         # j.filt(x -> x.delta < 0.0)
+#         # j.sor(x -> x.met.prob)
+#         # res = j.ress[i]
+#         xpir = expir(i)
+#         # posLms = collect(Iterators.filter(x -> getExpiration(x) == xpir, cu.flatmap(x -> x[:lms], acct[:poss])))
+#         res, ctx = Joe.runJorn(xpir, isLegAllowed; nopos=true, posLms, all=true, condors=false, spreads=true)
+#         filter!(res) do r
+#             return getSide(r.lms[1]) == Side.short && aboveRat(getStrike(r.lms[1]), curp) > params.MinAbove
+#         end
+#         sort!(res; rev=true, by=x -> x.met.evr)
+#         # res, ctx = Joe.runJorn(xpir, isLegAllowed; nopos=true, posLms)
+#         !isempty(res) || continue
+
+#         r = res[1]
+#         trade = openTrade(acct, r.lms, netOpen(r.lms), "joe above=$(rond(aboveRat(getStrike(r.lms[1]), curp)))", -r.met.mn)
+#     end
 # end
 #endregion
 

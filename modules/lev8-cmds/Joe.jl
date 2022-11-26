@@ -79,12 +79,11 @@ function disp()
     pretyble(res)
 end
 
-function runJorn(xpir::Date, isLegAllowed; nopos=false, all=false, posLms=nothing, condors=true, spreads=false)
+function runJorn(xpir::Date, isLegAllowed; nopos=false, all=false, posLms=nothing, condors=true, spreads=false, filtOq=nothing)
     global ctx = makeCtx(xpir; nopos, all)
     oqssAll = Chains.getOqss(xpir, ctx.curp, nopos ? posLms : xlms(xpir))
-    oqss = filtOqss(oqssAll) do oq
-        abs(getStrike(oq) / ctx.curp - 1.0) < 0.1
-    end
+    !isnothing(filtOq) || ( filtOq = oq -> abs(getStrike(oq) / ctx.curp - 1.0) < 0.1 )
+    oqss = filtOqss(filtOq, oqssAll)
     @log debug "jorn processing" xpir length(oqss) length(oqssAll) ctx.curp
 
     # GenCands.iterSingle(oqss, ctx, res) do lms, c, r
@@ -389,6 +388,9 @@ end
 function hasGreeks(oq)
     gks = getGreeks(oq)
     return gks.delta != 0.0 || gks.gamma != 0.0
+end
+function hasMissingGreeks(lms)
+    return !isnothing(findfirst(lm -> !hasGreeks(lm), lms))
 end
 
 function runlc2(xprs=1:2; maxSpreads=1000, start=GreeksZero, kws...)
