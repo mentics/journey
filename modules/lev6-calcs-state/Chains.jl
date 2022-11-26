@@ -15,7 +15,7 @@ export quoter, optQuoter, isQuotable
 
 # distRatio(x1, x2) = x2 == 0.0 ? 0.0 : abs(1.0 - x1 / x2)
 
-getOqss(i::Int, curp::Currency, legsCheck=LegMeta[])::Oqss = getOqss(chain(i).chain, curp, legsCheck)
+getOqss(i::Int, curp::Currency, legsCheck=LegMeta[])::Oqss = getOqss(chain(expir(i)).chain, curp, legsCheck)
 getOqss(expr::Date, curp::Currency, legsCheck=LegMeta[])::Oqss = getOqss(chain(expr).chain, curp, legsCheck)
 function getOqss(oqs::Vector{OptionQuote}, curp::Currency, legsCheck=LegMeta[])::Oqss
     # oqs = filter(oq -> distRatio(getStrike(oq), curp) < Bins.SPAN/2, oqsIn)
@@ -104,16 +104,16 @@ end
 # end
 
 using ThreadPools
-chain(xpr::Date; kws...)::OptionChain = chains([xpr]; kws...)["SPY"][xpr]
-chain(xpr::Date, sym::String; kws...)::OptionChain = chains([xpr], [sym]; kws...)[sym][xpr]
+chain(xpir::Date; kws...)::OptionChain = chains([xpir]; kws...)["SPY"][xpir]
+chain(xpir::Date, sym::String; kws...)::OptionChain = chains([xpir], [sym]; kws...)[sym][xpir]
 # chain(xprs, sym::String; kws...)::OptionChain = chains(xprs, [sym]; kws...)[sym]
-function chains(xprs, syms=("SPY",); age=PERIOD_UPDATE3)::SymChainsType
-    @assert !isempty(xprs) # applicable(length, xprs)
+function chains(xpirs, syms=("SPY",); age=PERIOD_UPDATE3)::SymChainsType
+    @assert !isempty(xpirs) # applicable(length, xprs)
     @assert applicable(length, syms)
-    @assert eltype(xprs) == Date
+    @assert eltype(xpirs) == Date
     @assert eltype(syms) == String string(eltype(syms), " != ", String)
     # @show syms xprs
-    _, chs = logqbmap((sym, xpr) for sym in syms, xpr in xprs) do (sym, xpr)
+    _, chs = logqbmap((sym, xpr) for sym in syms, xpr in xpirs) do (sym, xpr)
         try
             # println("Refreshing chain for ", sym, ' ', xpr, " in thread ", Threads.threadid())
             return (sym, xpr, refreshChain(sym, xpr, age))
@@ -126,7 +126,7 @@ function chains(xprs, syms=("SPY",); age=PERIOD_UPDATE3)::SymChainsType
 
     res = SymChainsType()
     if isempty(chs)
-        @logerr "No chains found" sym xprs
+        @logerr "No chains found" sym xpirs
     else
         for (sym, xpr, ch) in chs
             dictSym = get!(Dict, res, sym)

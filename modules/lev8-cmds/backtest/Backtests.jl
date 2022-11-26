@@ -9,7 +9,7 @@ import SnapUtil
 import OptionUtil
 import Shorthand
 import Quoting:requote
-using Joe ; j = Joe
+using Joe
 
 export bt
 const bt = @__MODULE__
@@ -23,6 +23,52 @@ function checkThreaten(acct, t, p)
     s = getStrike(t.lmsc[1])
     threat = (s - acct[:curp]) / s
     return threat <= p.ThreatenPercent ? "threat: $(threat)" : nothing
+end
+
+function stratLongSpread(acct)
+    params = (;
+        MaxOpen = 1000,
+        # ThreatenPercent = -0.01,
+        MinProfit = 0.04,
+        MaxWidth = 5.0,
+        XpirBdays = (30,40),
+        RateMin = 0.1,
+        MinTakeProfit = 0.01,
+    )
+    # checkClose((checkRateRatio,), acct, params)
+    checkClose((checkProfit,), acct, params)
+
+    date = acct[:date]
+    xpirs = filter(x -> params.XpirBdays[1] <= bdays(date, x) <= params.XpirBdays[2], acct[:xpirs])
+    xprs = xp.whichExpir.(xpirs)
+    curp = acct[:curp]
+
+    isLegAllowed = entryFilterOption(acct)
+    posLms = collect(cu.flatmap(x -> x[:lms], acct[:poss]))
+
+    # rs = [(;lms, met=j.calcMet(lms)) for lms in j.getSpreads(expir(4))]
+
+    for i in xprs
+        length(acct[:poss]) < params.MaxOpen || ( println("Hit max open") ; break )
+        xpir = expir(i)
+
+        filtOq = oq -> abs(getStrike(oq) / curp - 1.0) < 0.015
+        res, ctx = Joe.runJorn(xpir, isLegAllowed; nopos=true, posLms, all=true, condors=true, spreads=false, filtOq)
+        filter!(res) do r
+            return getSide(r.lms[1]) == getSide(r.lms[end]) == Side.short &&
+                r.met.mx >= params.MinProfit &&
+                getStrike(r.lms[4]) - getStrike(r.lms[1]) <= params.MaxWidth &&
+                # getStrike(r.lms[2]) < curp + 2 &&
+                # getStrike(r.lms[3]) > curp - 2 &&
+                getStrike(r.lms[2]) - getStrike(r.lms[1]) == getStrike(r.lms[4]) - getStrike(r.lms[3])
+        end
+        sort!(res; rev=true, by=x -> x.met.mx / (-x.met.mn))
+        # res, ctx = Joe.runJorn(xpir, isLegAllowed; nopos=true, posLms)
+        !isempty(res) || continue
+
+        r = res[1]
+        openTrade(acct, r.lms, netOpen(r.lms), "j", -r.met.mn)
+    end
 end
 
 # TODO: try adjusting strat dep on VIX
