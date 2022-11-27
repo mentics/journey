@@ -31,6 +31,16 @@ function find(f, itr)
     return nothing
 end
 
+function (find(f, v::AVec{T}, inds)::Tuple{Int,Union{Nothing,T}}) where T
+    for i in inds
+        x = v[i]
+        res = f(x)
+        res == -1 && break
+        res == 1 && return (i, x)
+    end
+    return (0, nothing)
+end
+
 # function argument f must return trinary: (-1: not found stop, 0: not found continue, 1: found)
 function findFrom(f, start::Int, v::Vector{T})::Union{Nothing,Tuple{Int,T}} where T
     for i in start:length(v)

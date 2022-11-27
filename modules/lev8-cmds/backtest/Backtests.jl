@@ -14,6 +14,14 @@ using Joe
 export bt
 const bt = @__MODULE__
 
+#= Explore pricing
+lmss = bt.findLongSpreadEntry(expir(16), market().curp, (;rat=.8, off=30.0))
+lmss2 = bt.findLongSpreadEntry(expir(16), market().curp, (;rat=1.0, off=5.0))
+priceOption(market().curp, texPY(market().tsMarket, lmss[2]), lmss[2], .35)
+priceOption(market().curp, texPY(market().tsMarket, lmss2[1]), lmss2[1], .276)
+=#
+
+
 const TradeType = Dict{Symbol,Any}
 
 #region CurStrat
@@ -77,13 +85,15 @@ function findLongSpreadEntry(xpir, curp, p)
     oqss = CH.getOqss(xpir, curp)
     # oql = find(oq -> getStrike(oq) > 0.8 * curp, oqss.put.long)
     # oql = find(oq -> bap(oq) >= .04, oqss.put.long)
-    oqs = find(oq -> getStrike(oq) >= p.rat * curp, oqss.put.short)
-    !isnothing(oqs) || ( println("Could not find put oqs") ; return nothing )
+    # println("First strike: ", getStrike(oqss.put.short[1]))
+    ioqs = findfirst(oq -> getStrike(oq) >= p.rat * curp, oqss.put.short)
+    !isnothing(ioqs) || ( println("Could not find put oqs") ; return nothing )
+    oqs = oqss.put.short[ioqs]
     soqs = getStrike(oqs)
     soql = soqs - p.off
-    oql = find(oq -> getStrike(oq) >= soql - 0.25, oqss.put.long)
+    oqli, oql = find(oq -> getStrike(oq) <= soql + 0.25, oqss.put.long, ioqs:-1:1)
     !isnothing(oql) || ( println("Could not find put offset oql $(soql) from oqs $(soqs)") ; return nothing )
-    @assert getStrike(oql) < getStrike(oqs)
+    @assert getStrike(oql) < getStrike(oqs) "$(getStrike(oql)) ; $(getStrike(oqs))"
     # TODO: It appears there may be cases where theta > delta, so might be worth searching for
     return [to(LegMeta, oql, Side.long), to(LegMeta, oqs, Side.short)]
 end
@@ -91,11 +101,12 @@ end
 # TODO: have use the recent high (period = xpir days) and go rat above that
 function findShortSpreadEntry(xpir, curp, p)
     oqss = CH.getOqss(xpir, curp)
-    oqs = find(oq -> getStrike(oq) <= p.rat * curp, Iterators.reverse(oqss.call.short))
-    !isnothing(oqs) || ( println("Could not find call oqs") ; return nothing )
+    ioqs = findfirst(oq -> getStrike(oq) <= p.rat * curp, Iterators.reverse(oqss.call.short))
+    !isnothing(ioqs) || ( println("Could not find call oqs") ; return nothing )
+    oqs = oqss.call.short[ioqs]
     soqs = getStrike(oqs)
     soql = soqs + p.off
-    oql = find(oq -> getStrike(oq) <= soql + 0.25, Iterators.reverse(oqss.call.long))
+    ioql, oql = find(oq -> getStrike(oq) >= soql - 0.25, oqss.call.long, ioqs:lastindex(oqss.call.long))
     !isnothing(oql) || ( println("Could not find call offset oql $(soql) from oqs $(soqs)") ; return nothing )
     @assert getStrike(oql) > getStrike(oqs)
     # TODO: It appears there may be cases where theta > delta, so might be worth searching for

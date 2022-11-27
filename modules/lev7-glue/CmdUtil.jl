@@ -192,4 +192,7 @@ OptionMetaTypes.getGreeks(trade::Trade)::GreeksType = getGreeks(Quoting.requote(
 #     isempty(trades) ? "No trades" : sum(SH.getDelta, trades)
 # end
 
+export texPY
+texPY(from, leg) = cal.texToYear(calcTex(from, getExpiration(leg)))
+
 end
