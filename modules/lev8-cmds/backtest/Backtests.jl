@@ -25,50 +25,81 @@ function checkThreaten(acct, t, p)
     return threat <= p.ThreatenPercent ? "threat: $(threat)" : nothing
 end
 
-function stratLongSpread(acct)
-    params = (;
-        MaxOpen = 1000,
-        # ThreatenPercent = -0.01,
-        MinProfit = 0.04,
-        MaxWidth = 5.0,
-        XpirBdays = (30,40),
-        RateMin = 0.1,
-        MinTakeProfit = 0.01,
+function checkSides(acct, t, p)
+    if getStyle(t.lmsc[1]) == Style.call
+        t.curVal >= p.Call.take && return "Call take min profit"
+    else
+        t.curVal >= p.Put.take && return "Put take min profit"
+    end
+    return nothing
+end
+
+function stratGiantCondor(acct)
+    p = (;
+        MaxOpen = 100,
+        XpirBdays = 40,
+        Put = (;rat=0.8, off=30.0, prof=0.8, take=0.4),
+        Call = (;rat=1.12, off=20.0, prof=0.7, take=0.2),
     )
     # checkClose((checkRateRatio,), acct, params)
-    checkClose((checkProfit,), acct, params)
+    checkClose((checkSides,), acct, p)
 
     date = acct[:date]
-    xpirs = filter(x -> params.XpirBdays[1] <= bdays(date, x) <= params.XpirBdays[2], acct[:xpirs])
-    xprs = xp.whichExpir.(xpirs)
+    # xpirs = filter(x -> params.XpirBdays[1] <= bdays(date, x) <= params.XpirBdays[2], acct[:xpirs])
+    # xprs = xp.whichExpir.(xpirs)
     curp = acct[:curp]
 
-    isLegAllowed = entryFilterOption(acct)
-    posLms = collect(cu.flatmap(x -> x[:lms], acct[:poss]))
+    # isLegAllowed = entryFilterOption(acct)
+    # posLms = collect(cu.flatmap(x -> x[:lms], acct[:poss]))
 
     # rs = [(;lms, met=j.calcMet(lms)) for lms in j.getSpreads(expir(4))]
 
-    for i in xprs
-        length(acct[:poss]) < params.MaxOpen || ( println("Hit max open") ; break )
-        xpir = expir(i)
+    # for i in xprs
+        length(acct[:poss]) < p.MaxOpen || ( println("Hit max open") ; return )
+        # xpir = expir(i)
+        xpir = xp.expirGte(bdaysAfter(date, p.XpirBdays))
 
-        filtOq = oq -> abs(getStrike(oq) / curp - 1.0) < 0.015
-        res, ctx = Joe.runJorn(xpir, isLegAllowed; nopos=true, posLms, all=true, condors=true, spreads=false, filtOq)
-        filter!(res) do r
-            return getSide(r.lms[1]) == getSide(r.lms[end]) == Side.short &&
-                r.met.mx >= params.MinProfit &&
-                getStrike(r.lms[4]) - getStrike(r.lms[1]) <= params.MaxWidth &&
-                # getStrike(r.lms[2]) < curp + 2 &&
-                # getStrike(r.lms[3]) > curp - 2 &&
-                getStrike(r.lms[2]) - getStrike(r.lms[1]) == getStrike(r.lms[4]) - getStrike(r.lms[3])
-        end
-        sort!(res; rev=true, by=x -> x.met.mx / (-x.met.mn))
-        # res, ctx = Joe.runJorn(xpir, isLegAllowed; nopos=true, posLms)
-        !isempty(res) || continue
+        lms = findLongSpreadEntry(xpir, curp, p.Put)
+        !(isnothing(lms) || bap(lms) < p.Put.prof) || return
+        neto = netOpen(lms)
+        @assert neto > 0.0
+        openTrade(acct, lms, neto, "long spread greeks: $(getGreeks(lms))", abs(getStrike(lms[1]) - getStrike(lms[2])) - neto)
 
-        r = res[1]
-        openTrade(acct, r.lms, netOpen(r.lms), "j", -r.met.mn)
-    end
+        lms = findShortSpreadEntry(xpir, curp, p.Call)
+        !(isnothing(lms) || bap(lms) < p.Call.prof) || return
+        neto = netOpen(lms)
+        @assert neto > 0.0
+        openTrade(acct, lms, neto, "short spread greeks: $(getGreeks(lms))", abs(getStrike(lms[1]) - getStrike(lms[2])) - neto)
+    # end
+end
+
+function findLongSpreadEntry(xpir, curp, p)
+    oqss = CH.getOqss(xpir, curp)
+    # oql = find(oq -> getStrike(oq) > 0.8 * curp, oqss.put.long)
+    # oql = find(oq -> bap(oq) >= .04, oqss.put.long)
+    oqs = find(oq -> getStrike(oq) >= p.rat * curp, oqss.put.short)
+    !isnothing(oqs) || ( println("Could not find put oqs") ; return nothing )
+    soqs = getStrike(oqs)
+    soql = soqs - p.off
+    oql = find(oq -> getStrike(oq) >= soql - 0.25, oqss.put.long)
+    !isnothing(oql) || ( println("Could not find put offset oql $(soql) from oqs $(soqs)") ; return nothing )
+    @assert getStrike(oql) < getStrike(oqs)
+    # TODO: It appears there may be cases where theta > delta, so might be worth searching for
+    return [to(LegMeta, oql, Side.long), to(LegMeta, oqs, Side.short)]
+end
+
+# TODO: have use the recent high (period = xpir days) and go rat above that
+function findShortSpreadEntry(xpir, curp, p)
+    oqss = CH.getOqss(xpir, curp)
+    oqs = find(oq -> getStrike(oq) <= p.rat * curp, Iterators.reverse(oqss.call.short))
+    !isnothing(oqs) || ( println("Could not find call oqs") ; return nothing )
+    soqs = getStrike(oqs)
+    soql = soqs + p.off
+    oql = find(oq -> getStrike(oq) <= soql + 0.25, Iterators.reverse(oqss.call.long))
+    !isnothing(oql) || ( println("Could not find call offset oql $(soql) from oqs $(soqs)") ; return nothing )
+    @assert getStrike(oql) > getStrike(oqs)
+    # TODO: It appears there may be cases where theta > delta, so might be worth searching for
+    return [to(LegMeta, oqs, Side.short), to(LegMeta, oql, Side.long)]
 end
 
 # TODO: try adjusting strat dep on VIX

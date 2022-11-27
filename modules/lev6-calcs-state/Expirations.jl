@@ -17,9 +17,13 @@ function expirs(sym="SPY"; age=Hour(12))::OffsetArray{Date}
     return _expirs
 end
 
-whichExpir(d::Date) = searchsortedfirst(expirs(), d)
+whichExpir(d::Date)::Int = searchsortedfirst(expirs(), d)
 
-expirGte(date::Date) = ( xpirs = expirs() ; xpirs[searchsortedfirst(xpirs, date)] )
+function expirGte(date::Date)::Date
+    xpirs = expirs()
+    ind = searchsortedfirst(xpirs, date)
+    ind > lastindex(xpirs) ? xpirs[end] : xpirs[ind]
+end
 
 #region Local
 const EXPIRS_TYPE = OffsetArray{Date}

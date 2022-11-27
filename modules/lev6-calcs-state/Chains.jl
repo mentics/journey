@@ -23,7 +23,8 @@ function getOqss(oqs::Vector{OptionQuote}, curp::Currency, legsCheck=LegMeta[]):
     fcons = !isConflict(legsCheck, Side.short)
     # fcans = noLimit ? ftrue : canShort(Globals.get(:Strats), curp) # noLimit=false
     fcans = canShort(Globals.get(:Strats), curp)
-    oqsValid = filter(isValid(curp), oqs)
+    # oqsValid = filter(isValid(curp), oqs)
+    oqsValid = oqs
     oqsLong = filter(fconl, oqsValid)
     oqsCallLong = filter(SmallTypes.isCall, oqsLong)
     oqsPutLong = filter(SmallTypes.isPut, oqsLong)
