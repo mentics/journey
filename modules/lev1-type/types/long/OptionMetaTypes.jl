@@ -18,7 +18,12 @@ struct OptionMeta
     bid_iv::Float64
     ask_iv::Float64
     mid_iv::Float64
+    function OptionMeta(delta, theta, phi, vega, rho, gamma, bid_iv, ask_iv, mid_iv)
+        return new(def(delta), def(theta), def(phi), def(vega), def(rho), def(gamma), def(bid_iv), def(ask_iv), def(mid_iv))
+    end
 end
+def(::Missing) = 0.0
+def(x) = x
 OptionMeta(;delta=0.0, theta=0.0, phi=0.0, vega=0.0, rho=0.0, gamma=0.0, bid_iv=0.0, ask_iv=0.0, mid_iv=0.0, kws...) = OptionMeta(delta, theta, phi, vega, rho, gamma, bid_iv, ask_iv, mid_iv)
 OptionMeta(d::Dict{String,Any}) = OptionMeta(; (Symbol(x[1]) => x[2] for x in d)...)
 SH.getIv(m::OptionMeta) = m.mid_iv

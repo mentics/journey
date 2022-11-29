@@ -138,6 +138,9 @@ function updateTradesClosed()
     Threads.@spawn tradesClosed(;age=Second(0))
 end
 
+using CollUtil
+getLegTrade(lid::Integer) = find(x -> getId(x) == lid, flatmap(getLegs, tradesOpen()))
+
 # function loadTradesUpdated()
 #     t1 = @timed trades = loadTrades("select tid from VTrade where tsfilled >= now()+'-2 hour' or tsclosed >= now()+'-2 hour'")
 #     t2 = @timed for trade in trades TradesCache[getId(trade)] = trade end

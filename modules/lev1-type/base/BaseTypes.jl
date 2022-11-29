@@ -10,6 +10,7 @@ const CollN{N} = Union{AVec{T},NTuple{N,T}} where T
 
 const Currency = FixedDecimal{Int,3}
 C(x::Real) = Currency(x)
+Base.Int(x::Currency) = FixedPointDecimals.value(x)
 
 const PriceT = FixedDecimal{Int,2}
 P(x::Real) = PriceT(x)

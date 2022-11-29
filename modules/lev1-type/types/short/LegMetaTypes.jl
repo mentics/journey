@@ -18,7 +18,7 @@ struct LegMeta
             @error "LegMeta() received 0.0 bid which may cause problems" newQuote leg meta
             # error("LegMeta() received 0.0 bid which may cause problems")
         end
-        new(leg, newQuote, meta)
+        return new(leg, newQuote, meta)
     end
 end
 LegMeta(oq::OptionQuote, qty::Float64, side::Side.T) = LegMeta(Leg(getOption(oq), qty, side), getQuote(oq, side), getMeta(oq))

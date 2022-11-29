@@ -19,6 +19,7 @@ end
 
 whichExpir(d::Date)::Int = searchsortedfirst(expirs(), d)
 
+xprGte(date::Date)::Int = whichExpir(expirGte(date))
 function expirGte(date::Date)::Date
     xpirs = expirs()
     ind = searchsortedfirst(xpirs, date)

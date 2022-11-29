@@ -137,7 +137,7 @@ function markLegClosed(lid::Int, oid::Int, side::Side.T)::Bool
         status = tord["status"]
         if status == "filled"
             procOrder(tord)
-            @assert isLegClosed(lid, false) "Leg close order completed but leg not closed"
+            # @assert isLegClosed(lid, false) "Leg close order completed but leg not closed"
             return true
         elseif status in ("open", "partially_filled", "pending")
             i === 5 && (@info "Waiting for market close leg order processing")

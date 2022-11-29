@@ -101,7 +101,7 @@ end
 # TODO: have use the recent high (period = xpir days) and go rat above that
 function findShortSpreadEntry(xpir, curp, p)
     oqss = CH.getOqss(xpir, curp)
-    ioqs = findfirst(oq -> getStrike(oq) <= p.rat * curp, Iterators.reverse(oqss.call.short))
+    ioqs = lastindex(oqss.call.short) - findfirst(oq -> getStrike(oq) <= p.rat * curp, reverse(oqss.call.short))
     !isnothing(ioqs) || ( println("Could not find call oqs") ; return nothing )
     oqs = oqss.call.short[ioqs]
     soqs = getStrike(oqs)

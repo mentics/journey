@@ -240,8 +240,8 @@ function closePos(trad::Trade{<:Closeable}; ratio=0.25, at=nothing, pre=true, kw
     @info "Closing $(getId(trad)): $(PRI(string(primit))) resulting in pnl:$(getPrillDirOpen(trad) + primit)"
     closeTrade(optQuoter, trad, primit; kws..., pre)
 end
-cleg(lid::Int, p=P(0.01); isMkt=false) = ( canTrade(true) ; closeLeg(loadLegTrade(lid), P(p); pre=true, isMkt) )
-clegr(lid::Int, p=P(0.01); isMkt=false) = ( canTrade(false) ; closeLeg(loadLegTrade(lid), P(p); pre=false, isMkt) )
+cleg(lid::Int, p=P(0.01); isMkt=false) = ( canTrade(true) ; closeLeg(ST.getLegTrade(lid), P(p); pre=true, isMkt) )
+clegr(lid::Int, p=P(0.01); isMkt=false) = ( canTrade(false) ; closeLeg(ST.getLegTrade(lid), P(p); pre=false, isMkt) )
 
 export pnls
 function pnls(since=bdaysBefore(today(), 20))
