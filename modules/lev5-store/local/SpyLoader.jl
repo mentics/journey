@@ -1,5 +1,6 @@
 module SpyLoader
 using BaseTypes, SmallTypes
+using DateUtil
 import SqlLoader
 import HistSpy as hspy
 
@@ -24,9 +25,9 @@ P_VOLUME,STRIKE_DISTANCE,STRIKE_DISTANCE_PCT
 function dropTables()
     hspy.close!()
     hspy.db()
-    hspy.exec("drop table Call")
-    hspy.exec("drop table Put")
-    hspy.exec("drop table Under")
+    hspy.exec("drop table if exists Call")
+    hspy.exec("drop table if exists Put")
+    hspy.exec("drop table if exists Under")
 end
 
 function createTables()
@@ -51,6 +52,9 @@ function createTables()
     hspy.exec("create table if not exists Call" * colSpec)
     hspy.exec("create table if not exists Put" * colSpec)
     hspy.exec("create table if not exists Under (ts int not null primary key, under int not null) strict")
+end
+
+function pragmasSpeed()
     hspy.exec("PRAGMA journal_mode = OFF")
     hspy.exec("PRAGMA synchronous = 0")
     hspy.exec("PRAGMA cache_size = 1000000")
@@ -58,28 +62,40 @@ function createTables()
     hspy.exec("PRAGMA temp_store = MEMORY")
 end
 
-function loadSample()
-    dropTables()
-    createTables()
-    stmtCall = hspy.prep("insert into Call (ts, expir, strike, bid, ask, last, vol, delta, gamma, vega, theta, rho, iv) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-    stmtPut = hspy.prep("insert into Put (ts, expir, strike, bid, ask, last, vol, delta, gamma, vega, theta, rho, iv) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-    stmtUnder = hspy.prep("insert into under values (?, ?)")
+function load()
+    # dropTables()
+    # createTables()
+    timeStart = time()
+    println("Started: ", nowz())
+    hspy.db()
+    pragmasSpeed()
+    stmtCall = hspy.prep("insert or ignore into Call (ts, expir, strike, bid, ask, last, vol, delta, gamma, vega, theta, rho, iv) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    stmtPut = hspy.prep("insert or ignore into Put (ts, expir, strike, bid, ask, last, vol, delta, gamma, vega, theta, rho, iv) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    stmtUnder = hspy.prep("insert or ignore into under values (?, ?)")
     try
-        csvPath = "C:/data/market/optionsdx/spy_sample-1.csv"
-        line, itr = Iterators.peel(Iterators.drop(eachline(csvPath), 1))
-        tsPrev = procLine(line, 0, stmtCall, stmtPut, stmtUnder)
-        i = 1
-        for line in itr
-            tsPrev = procLine(line, tsPrev, stmtCall, stmtPut, stmtUnder)
-            i += 1
-            if i % 10000 == 0
-                println(i)
+        csvPaths = ["C:/data/market/optionsdx/spy_15x_20220$(month).txt" for month in 1:8]
+        for csvPath in csvPaths
+            println("Loading $(csvPath)...")
+            line, itr = Iterators.peel(Iterators.drop(eachline(csvPath), 1))
+            tsPrev = procLine(line, 0, stmtCall, stmtPut, stmtUnder)
+            i = 1
+            for line in itr
+                tsPrev = procLine(line, tsPrev, stmtCall, stmtPut, stmtUnder)
+                i += 1
+                if i % 10000 == 0
+                    println(i)
+                    # break
+                end
+                # break
             end
-            # break
+            println("Finished loading $(csvPath)")
         end
     finally
         hspy.close!.((stmtCall, stmtPut, stmtUnder))
     end
+    timeEnd = time()
+    println("End: ", nowz())
+    println("Elapsed seconds: ", timeEnd - timeStart)
     return first(hspy.select("select (select count(*) as cnt from call) as calls, (select count(*) as cnt from put) as puts, (select count(*) as cnt from under) as unders"))
 end
 
@@ -167,7 +183,7 @@ function procLine(line, tsPrev, stmtCall, stmtPut, stmtUnder)
     end
 end
 
-parsem(type, s, mis=missing) = isempty(s) ? mis : parse(type, s)
+parsem(type, s, mis=missing) = isempty(strip(s)) ? mis : parse(type, s)
 parsem(type::Type{Currency}, s, mis=missing) = isempty(s) ? mis : Int(parse(type, s))
 
 # function toQuotePair(nt::NamedTuple)::Union{NTuple{2,OptionQuote},Tuple{OptionQuote}}

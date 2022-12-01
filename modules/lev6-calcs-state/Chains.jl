@@ -11,88 +11,38 @@ const CH = @__MODULE__
 export chains, chain, ivs, calcNearIv
 export quoter, optQuoter, isQuotable
 
+using ChainUtil
+getOqss(i::Int, curp::Currency, legsCheck=LegMeta[])::Oqss = ChainUtil.getOqss(chain(expir(i)).chain, curp, legsCheck)
+getOqss(expr::Date, curp::Currency, legsCheck=LegMeta[])::Oqss = ChainUtil.getOqss(chain(expr).chain, curp, legsCheck)
+
 # ftrue(_) = true
 
 # distRatio(x1, x2) = x2 == 0.0 ? 0.0 : abs(1.0 - x1 / x2)
 
-getOqss(i::Int, curp::Currency, legsCheck=LegMeta[])::Oqss = getOqss(chain(expir(i)).chain, curp, legsCheck)
-getOqss(expr::Date, curp::Currency, legsCheck=LegMeta[])::Oqss = getOqss(chain(expr).chain, curp, legsCheck)
-function getOqss(oqs::Vector{OptionQuote}, curp::Currency, legsCheck=LegMeta[])::Oqss
-    # oqs = filter(oq -> distRatio(getStrike(oq), curp) < Bins.SPAN/2, oqsIn)
-    fconl = !isConflict(legsCheck, Side.long)
-    fcons = !isConflict(legsCheck, Side.short)
-    # fcans = noLimit ? ftrue : canShort(Globals.get(:Strats), curp) # noLimit=false
-    fcans = canShort(Globals.get(:Strats), curp)
-    # oqsValid = filter(isValid(curp), oqs)
-    oqsValid = oqs
-    oqsLong = filter(fconl, oqsValid)
-    oqsCallLong = filter(SmallTypes.isCall, oqsLong)
-    oqsPutLong = filter(SmallTypes.isPut, oqsLong)
-    oqsShort = filter(x -> fcons(x) && fcans(x), oqsValid)
-    # oqsShort = filter(x -> fcons(x), oqsValid)
-    oqsCallShort = filter(SmallTypes.isCall, oqsShort)
-    oqsPutShort = filter(SmallTypes.isPut, oqsShort)
-    return Styles(Sides(oqsCallLong, oqsCallShort), Sides(oqsPutLong, oqsPutShort))
-end
-# function getOqss(oqsIn::Vector{OptionQuote}, curp::Currency)::Oqss
-#     # oqs = filter(oq -> distRatio(getStrike(oq), curp) < Bins.SPAN/2, oqsIn)
-#     oqsValid = Iterators.filter(isValid, oqs)
+# const OQSS_SNAP2 = Dict{String,Oqss}()
+# oqssSnap(snapName::String, exp::Date)::Oqss = (key = string(snapName, '-', exp) ; useKey(OQSS_SNAP2, key) do
+#     runSync(lock) do
+#         chains = chainSnap(snapName, false)
+#         res = getOqss(chains[exp].chain)
+#         println("Cached oqss for ", key)
+#         return res
+#     end
+# end)
 
-#     oqsLong = oqsValid # Iterators.filter(isLong, oqsValid)
-#     oqsShort = oqsValid # Iterators.filter(isShort, oqsValid)
-
-#     oqsCallLong = collect(Iterators.filter(SmallTypes.isCall, oqsLong))
-#     oqsPutLong = collect(Iterators.filter(SmallTypes.isPut, oqsLong))
-#     oqsCallShort = collect(Iterators.filter(SmallTypes.isCall, oqsShort))
-#     oqsPutShort = collect(Iterators.filter(SmallTypes.isPut, oqsShort))
-#     return Styles(Sides(oqsCallLong, oqsCallShort), Sides(oqsPutLong, oqsPutShort))
+# using ThreadUtil
+# const lock = ReentrantLock()
+# const CHAINS_SNAP = Dict{String,ChainsType}()
+# chainSnap(snapName::String, revert=true)::ChainsType = useKey(CHAINS_SNAP, snapName) do
+#     runSync(lock) do
+#         back = snap()
+#         !isnothing(back) || error("Don't chainsSnap when not snapped")
+#         snap(snapName)
+#         res = chains()
+#         !revert || snap(back)
+#         println("Cached chains for ", snapName)
+#         return res
+#     end
 # end
-export filtOqss
-function filtOqss(f::Function, oqss::Oqss)
-    return Styles(Sides(filter(f, oqss.call.long), filter(f, oqss.call.short)), Sides(filter(f, oqss.put.long), filter(f, oqss.put.short)))
-end
-
-function findOqs(oqs, curp::Currency, dists; maxDiff=1.0)
-    res = Vector{OptionQuote}(undef, length(dists))
-    diffs = fill(Inf, length(dists)) # Vector{Currency}(Inf, length(dists))
-    for oq in oqs
-        dist = getStrike(oq) - curp
-        for i in eachindex(diffs)
-            diff = abs(dists[i] - dist)
-            if diff < diffs[i]
-                diffs[i] = diff
-                res[i] = oq
-            end
-        end
-    end
-    isnothing(findfirst(x -> x > maxDiff, diffs)) || return nothing
-    return res
-end
-
-const OQSS_SNAP2 = Dict{String,Oqss}()
-oqssSnap(snapName::String, exp::Date)::Oqss = (key = string(snapName, '-', exp) ; useKey(OQSS_SNAP2, key) do
-    runSync(lock) do
-        chains = chainSnap(snapName, false)
-        res = getOqss(chains[exp].chain)
-        println("Cached oqss for ", key)
-        return res
-    end
-end)
-
-using ThreadUtil
-const lock = ReentrantLock()
-const CHAINS_SNAP = Dict{String,ChainsType}()
-chainSnap(snapName::String, revert=true)::ChainsType = useKey(CHAINS_SNAP, snapName) do
-    runSync(lock) do
-        back = snap()
-        !isnothing(back) || error("Don't chainsSnap when not snapped")
-        snap(snapName)
-        res = chains()
-        !revert || snap(back)
-        println("Cached chains for ", snapName)
-        return res
-    end
-end
 
 # const OQ_EMPTY = Vector{OptionQuote}()
 # chain(i::Int)::Vector{OptionQuote} = chain(expir(i))
@@ -254,7 +204,7 @@ function procChain(exp::Date, data::Vector{Dict{String,Any}})::OptionChain
         newOpt = OptionQuote(opt, qt, toOptionMeta(raw["greeks"]), raw)
         push!(res, newOpt)
     end
-    sort!(res, by=getStrike)
+    sort!(res, by=x -> (getStrike(x), -Int(getStyle(x))))
     return OptionChain(res, nowMs())
 end
 

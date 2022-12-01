@@ -66,8 +66,8 @@ toTimeLocal(ts::DateTime)::Time = Time(ZonedDateTime(ts, LOCALZONE; from_utc=tru
 #endregion
 
 #region Parsing
-fromLocal(str::AbstractString, df::DateFormat) = DateTime(ZonedDateTime(DateTime(str, df), LOCALZONE), UTC)
-formatLocal(dt::DateTime, format::DateFormat)::String = Dates.format(astimezone(ZonedDateTime(dt, tz"UTC"), LOCALZONE), format)
+fromLocal(str::AbstractString, df::DateFormat=ISODateTimeFormat) = DateTime(ZonedDateTime(DateTime(str, df), LOCALZONE), UTC)
+formatLocal(dt::DateTime, format::DateFormat=ISODateTimeFormat)::String = Dates.format(astimezone(ZonedDateTime(dt, tz"UTC"), LOCALZONE), format)
 #endregion
 
 #region Formatting

@@ -105,8 +105,9 @@ function incDictKey(d::Dict, k1, k2)
     d2[k2] = curval + 1
 end
 
-export toDict
-toDict(f, v) = Dict(f(x) => x for x in v)
+export dictFromVals, dictFromKeys
+dictFromVals(f, vals) = Dict(f(x) => x for x in vals)
+dictFromKeys(f, keys) = Dict(x => f(x) for x in keys)
 # function toDict(f, v)
 #     d = Dict()
 #     for x in v

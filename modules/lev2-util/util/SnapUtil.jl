@@ -1,6 +1,7 @@
 module SnapUtil
 using Dates
 using Globals, Caches
+using DateUtil
 
 const SnavePath = dirData("snave")
 
@@ -36,7 +37,7 @@ function snapExpirs()::Vector{Date}
     end
 end
 
-snapName(dt::DateTime)::String = Dates.format(dt, SNAP_DATEFORMAT)
+snapName(dt::DateTime)::String = formatLocal(dt, SNAP_DATEFORMAT)
 function snapName(date::Date, i::Int)::Union{Nothing,String}
     dts = filter(x -> Date(x) == date, SnapUtil.snapDateTimes())
     length(dts) >= i || return nothing

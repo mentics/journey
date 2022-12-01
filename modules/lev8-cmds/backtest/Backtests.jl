@@ -1,15 +1,12 @@
 module Backtests
 using Dates
-using Globals, BaseTypes, SmallTypes, OptionTypes, LegMetaTypes, OptionMetaTypes
-using DateUtil, CollUtil, DictUtil
-using Expirations, Markets, Snapshots, Chains
-using SH
-import LegTypes
-import SnapUtil
-import OptionUtil
+using SH, Globals, BaseTypes, SmallTypes, OptionTypes, LegTypes, LegMetaTypes, OptionMetaTypes
+using DateUtil, CollUtil, DictUtil, ChainUtil
+using Between
+# import OptionUtil
 import Shorthand
-import Quoting:requote
-using Joe
+import HistSpy as hspy
+using Calendars
 
 export bt
 const bt = @__MODULE__
@@ -44,48 +41,80 @@ end
 
 function stratGiantCondor(acct)
     p = (;
-        MaxOpen = 100,
-        XpirBdays = 40,
+        MaxOpen = 100000,
+        XpirBdays = (;min=40, max=80),
         Put = (;rat=0.8, off=30.0, prof=0.8, take=0.4),
         Call = (;rat=1.12, off=20.0, prof=0.7, take=0.2),
     )
     # checkClose((checkRateRatio,), acct, params)
     checkClose((checkSides,), acct, p)
 
+    # ts = acct[:ts]
     date = acct[:date]
-    # xpirs = filter(x -> params.XpirBdays[1] <= bdays(date, x) <= params.XpirBdays[2], acct[:xpirs])
-    # xprs = xp.whichExpir.(xpirs)
     curp = acct[:curp]
+    xoqss = acct[:xoqss]
 
     # isLegAllowed = entryFilterOption(acct)
     # posLms = collect(cu.flatmap(x -> x[:lms], acct[:poss]))
 
-    # rs = [(;lms, met=j.calcMet(lms)) for lms in j.getSpreads(expir(4))]
-
-    # for i in xprs
+    xpirMin = bdaysAfter(date, p.XpirBdays.min)
+    xpirMax = bdaysAfter(date, p.XpirBdays.max)
+    xpirs = filter(x -> xpirMin <= x <= xpirMax, acct[:xpirs])
+    for xpir in xpirs
+        oqss = xoqss[xpir]
         length(acct[:poss]) < p.MaxOpen || ( println("Hit max open") ; return )
-        # xpir = expir(i)
-        xpir = xp.expirGte(bdaysAfter(date, p.XpirBdays))
+        global keep = oqss
 
-        lms = findLongSpreadEntry(xpir, curp, p.Put)
-        !(isnothing(lms) || bap(lms) < p.Put.prof) || return
-        neto = netOpen(lms)
-        @assert neto > 0.0
-        openTrade(acct, lms, neto, "long spread greeks: $(getGreeks(lms))", abs(getStrike(lms[1]) - getStrike(lms[2])) - neto)
+        # TODO: have use the recent high (period = xpir days) and require rat above that
+        lms = findLongSpreadEntry(oqss, p.Put)
+        if !isnothing(lms) && getStrike(lms[2]) <= p.Put.rat * curp
+            neto = netOpen(lms)
+            @assert neto > 0.0
+            openTrade(acct, lms, neto, "long spread greeks: $(getGreeks(lms))", abs(getStrike(lms[1]) - getStrike(lms[2])) - neto)
+        else
+            println("Could not find put entry")
+        end
 
-        lms = findShortSpreadEntry(xpir, curp, p.Call)
-        !(isnothing(lms) || bap(lms) < p.Call.prof) || return
-        neto = netOpen(lms)
-        @assert neto > 0.0
-        openTrade(acct, lms, neto, "short spread greeks: $(getGreeks(lms))", abs(getStrike(lms[1]) - getStrike(lms[2])) - neto)
-    # end
+        lms = findShortSpreadEntry(oqss, p.Call)
+        if !isnothing(lms) && getStrike(lms[1]) >= p.Call.rat * curp
+            neto = netOpen(lms)
+            @assert neto > 0.0
+            openTrade(acct, lms, neto, "short spread greeks: $(getGreeks(lms))", abs(getStrike(lms[1]) - getStrike(lms[2])) - neto)
+        else
+            println("Could not find call entry")
+        end
+    end
 end
 
-function findLongSpreadEntry(xpir, curp, p)
-    oqss = CH.getOqss(xpir, curp)
-    # oql = find(oq -> getStrike(oq) > 0.8 * curp, oqss.put.long)
-    # oql = find(oq -> bap(oq) >= .04, oqss.put.long)
-    # println("First strike: ", getStrike(oqss.put.short[1]))
+function findLongSpreadEntry(oqss, p)
+    shorts = oqss.put.short
+    longs = oqss.put.long
+    ilo = 1
+    isho = findfirst(oq -> getBid(oq) > p.prof, shorts)
+    lo = longs[ilo]
+    sho = shorts[isho]
+    neto = getBid(sho) - getAsk(lo) # Choosing worst case at this stage
+    while neto < p.prof
+        isho += 1
+        sho = shorts[isho]
+        while getStrike(sho) - getStrike(lo) > p.off
+            ilo += 1
+            lo = longs[ilo]
+        end
+        neto = getBid(sho) - getAsk(lo) # Choosing worst case at this stage
+    end
+    shoBid = getBid(sho)
+    while true
+        if shoBid - getAsk(longs[ilo+1]) < p.prof
+            lo = longs[ilo]
+            break
+        else
+            ilo += 1
+        end
+    end
+    return [to(LegMeta, longs[ilo], Side.long), to(LegMeta, shorts[isho], Side.short)]
+
+
     ioqs = findfirst(oq -> getStrike(oq) >= p.rat * curp, oqss.put.short)
     !isnothing(ioqs) || ( println("Could not find put oqs") ; return nothing )
     oqs = oqss.put.short[ioqs]
@@ -98,9 +127,36 @@ function findLongSpreadEntry(xpir, curp, p)
     return [to(LegMeta, oql, Side.long), to(LegMeta, oqs, Side.short)]
 end
 
-# TODO: have use the recent high (period = xpir days) and go rat above that
-function findShortSpreadEntry(xpir, curp, p)
-    oqss = CH.getOqss(xpir, curp)
+function findShortSpreadEntry(oqss, p)
+    shorts = oqss.call.short
+    longs = oqss.call.long
+    ilo = lastindex(longs)
+    isho = findlast(oq -> getBid(oq) > p.prof, shorts)
+    lo = longs[ilo]
+    sho = shorts[isho]
+    neto = getBid(sho) - getAsk(lo) # Choosing worst case at this stage
+    while neto < p.prof
+        # @show ilo isho neto
+        isho -= 1
+        sho = shorts[isho]
+        while getStrike(lo) - getStrike(sho) > p.off
+            ilo -= 1
+            lo = longs[ilo]
+        end
+        neto = getBid(sho) - getAsk(lo) # Choosing worst case at this stage
+    end
+    shoBid = getBid(sho)
+    while true
+        if shoBid - getAsk(longs[ilo-1]) < p.prof
+            lo = longs[ilo]
+            break
+        else
+            ilo -= 1
+        end
+    end
+    return [to(LegMeta, sho, Side.short), to(LegMeta, lo, Side.long)]
+
+
     ioqs = lastindex(oqss.call.short) - findfirst(oq -> getStrike(oq) <= p.rat * curp, reverse(oqss.call.short))
     !isnothing(ioqs) || ( println("Could not find call oqs") ; return nothing )
     oqs = oqss.call.short[ioqs]
@@ -112,57 +168,11 @@ function findShortSpreadEntry(xpir, curp, p)
     # TODO: It appears there may be cases where theta > delta, so might be worth searching for
     return [to(LegMeta, oqs, Side.short), to(LegMeta, oql, Side.long)]
 end
-
-# TODO: try adjusting strat dep on VIX
-function stratSimpleCondor(acct)
-    params = (;
-        MaxOpen = 1000,
-        # ThreatenPercent = -0.01,
-        MinProfit = 0.04,
-        MaxWidth = 5.0,
-        XpirBdays = (12,40),
-        RateMin = 0.1,
-        MinTakeProfit = 0.01,
-    )
-    # checkClose((checkRateRatio,), acct, params)
-    checkClose((checkProfit,), acct, params)
-
-    date = acct[:date]
-    xpirs = filter(x -> params.XpirBdays[1] <= bdays(date, x) <= params.XpirBdays[2], acct[:xpirs])
-    xprs = xp.whichExpir.(xpirs)
-    curp = acct[:curp]
-
-    isLegAllowed = entryFilterOption(acct)
-    posLms = collect(cu.flatmap(x -> x[:lms], acct[:poss]))
-
-    # rs = [(;lms, met=j.calcMet(lms)) for lms in j.getSpreads(expir(4))]
-
-    for i in xprs
-        length(acct[:poss]) < params.MaxOpen || ( println("Hit max open") ; break )
-        xpir = expir(i)
-        filtOq = oq -> abs(getStrike(oq) / curp - 1.0) < 0.015
-        res, ctx = Joe.runJorn(xpir, isLegAllowed; nopos=true, posLms, all=true, condors=true, spreads=false, filtOq)
-        filter!(res) do r
-            return getSide(r.lms[1]) == getSide(r.lms[end]) == Side.short &&
-                r.met.mx >= params.MinProfit &&
-                getStrike(r.lms[4]) - getStrike(r.lms[1]) <= params.MaxWidth &&
-                # getStrike(r.lms[2]) < curp + 2 &&
-                # getStrike(r.lms[3]) > curp - 2 &&
-                getStrike(r.lms[2]) - getStrike(r.lms[1]) == getStrike(r.lms[4]) - getStrike(r.lms[3])
-        end
-        sort!(res; rev=true, by=x -> x.met.mx / (-x.met.mn))
-        # res, ctx = Joe.runJorn(xpir, isLegAllowed; nopos=true, posLms)
-        !isempty(res) || continue
-
-        r = res[1]
-        openTrade(acct, r.lms, netOpen(r.lms), "j", -r.met.mn)
-    end
-end
 #endregion
 
 #region Process
-function run(f; snapStart=65)
-    devon()
+function run(f)
+    hspy.db()
     LogUtil.resetLog(:backtest)
     global acct = Dict(
         :bal => C(0.0),
@@ -174,27 +184,12 @@ function run(f; snapStart=65)
         :riskDays => 0.0,
         :lastTradeId => 0
     )
-    dateStart = SnapUtil.snapDate(snapStart)
+    from, to = hspy.getRange()
+    dateStart = toDateMarket(from)
     datePrev = Date(0)
-    # Stop at count-1 because 1 might be currently executing
-    for i in snapStart:(SnapUtil.countSnaps()-1)
-        snap(i)
-        name = snap()
-        mkt = market()
-        ts = mkt.tsMarket
+    for ts in hspy.getTss()
         date = toDateMarket(ts)
         days = bdays(dateStart, date)
-
-        # for trade in acct[:poss]
-        #     if getExpir(trade) < date
-        #         error("getexpir:$(getExpir(trade)) < date:$(date); ", trade)
-        #     end
-        #     for lm in trade[:lms]
-        #         if getExpiration(lm) < date
-        #             error("lmexpir:$(getExpiration(lm)) < date:$(date); ", trade)
-        #         end
-        #     end
-        # end
 
         if date != datePrev
             # TODO: closing and opening on same day might affect this a little, but I think buying power allows this so maybe it's ok
@@ -204,23 +199,31 @@ function run(f; snapStart=65)
             datePrev = date
         end
 
-        out("Start $(name) SPY: $(mkt.curp), VIX: $(mkt.vix)")
+        curp = hspy.getUnder(ts)
+        out("Start $(formatLocal(ts)) SPY: $(curp)") # TODO: , VIX: $(mkt.vix)")
         acct[:ts] = ts
         acct[:date] = date
-        acct[:curp] = mkt.curp
-        acct[:xpirs] = SnapUtil.snapExpirs(name)
+        acct[:curp] = curp
+        acct[:xpirs] = hspy.getExpirs(ts)
+        xoqss = hspy.getXoqss(ts, curp)
+        acct[:xoqss] = xoqss
+        lup = lookup(xoqss)
+        acct[:lup] = lup
         acct[:greeks] = isempty(acct[:poss]) ? GreeksZero : getGreeks(acct[:poss])
         acct[:greeksExpirs] = isempty(acct[:poss]) ? Dict{Date,GreeksType}() : greeksForExpirs(acct[:poss])
+
+        # Run strat for this time
         f(acct)
 
         tind = 1
         while tind <= length(acct[:poss])
             trade = acct[:poss][tind]
             xpir = getExpir(trade)
-            if snap() == SnapUtil.lastSnapBefore(xpir + Day(1))
+            if ts == getMarketClose(xpir)
+            # if snap() == SnapUtil.lastSnapBefore(xpir + Day(1))
                 lmsc = requote(optQuoter, trade[:lms], Action.close)
-                netc = OptionUtil.netExpired(lmsc, mkt.curp)
-                if abs(mkt.curp - getStrike(lmsc[1])) < 5.0 || abs(mkt.curp - getStrike(lmsc[end])) < 5.0
+                netc = OptionUtil.netExpired(lmsc, curp)
+                if abs(curp - getStrike(lmsc[1])) < 5.0 || abs(curp - getStrike(lmsc[end])) < 5.0
                     netc -= 0.02
                 end
                 closeTrade(acct, trade, lmsc, netc, "expired $(netClose(trade))")
@@ -229,28 +232,15 @@ function run(f; snapStart=65)
             end
         end
 
-        acct[:urpnl] = urpnl(acct[:poss])
-        # total = acct[:real] + acct[:urpnl]
+        acct[:urpnl] = urpnl(lup, acct[:poss])
         rate = calcRate(dateStart, date, acct[:real], acct[:riskDays] / days)
-        out("End $(name): $(rond(acct[:bal])) rpnl:$(rond(acct[:real])) urpnl:$(rond(acct[:urpnl])) #open:$(length(acct[:poss])) risk:$(acct[:riskDays] / days) rate:$(rate)")
-        # delta:$(rond(acct[:greeks].delta))
-
-        # for trade in acct[:poss]
-        #     if getExpir(trade) <= date
-        #         out("WARN: getexpir:$(getExpir(trade)) < date:$(date); ", trade)
-        #     end
-        #     for lm in trade[:lms]
-        #         if getExpiration(lm) <= date
-        #             out("WARN: lmexpir:$(getExpiration(lm)) < date:$(date); ", trade)
-        #         end
-        #     end
-        # end
+        out("End $(formatLocal(ts)): $(rond(acct[:bal])) rpnl:$(rond(acct[:real])) urpnl:$(rond(acct[:urpnl])) #open:$(length(acct[:poss])) risk:$(acct[:riskDays] / days) rate:$(rate)")
     end
-    dateEnd = SnapUtil.snapDate(snap())
     total = acct[:real] + acct[:urpnl]
-    # We're going to pretend we closed everything at the last snap, so don't need to add risk.
+    days = bdays(dateStart, toDateMarket(to))
+    # We're going to pretend we closed everything at the last time, so don't need to add risk.
     # acct[:riskDays] += getRisk(acct[:poss]) # model it for end of last day, so only * 1 day
-    rate = calcRate(dateStart, dateEnd, total, acct[:riskDays])
+    rate = calcRate(dateStart, dateEnd, total, acct[:riskDays] / days)
     out("Summary $(dateStart) - $(dateEnd):")
     out("  rpnl = $(acct[:real]), urpnl = $(acct[:urpnl])")
     out("  Total: $(total)")
@@ -328,19 +318,34 @@ end
 getRisk(trade) = trade[:risk] # getStrike(trade[:lms][1])
 getRisk(trades::Coll) = sum(getRisk, trades; init=0.0)
 
-urpnl(trades::Coll) = sum(urpnl, trades; init=0.0)
-function urpnl(trade)
-    qt = quoter(trade[:lms], Action.close)
+urpnl(lup, trades::Coll) = sum(x -> urpnl(lup, x), trades; init=0.0)
+function urpnl(lup, trade)
+    qt = calcQuote(lup, trade[:lms], Action.close)
     netc = usePrice(qt)
     return trade[:neto] + netc
 end
 
-OptionMetaTypes.getGreeks(trade::TradeType) = getGreeks(requote(optQuoter, trade[:lms], Action.close))
+function lookup(xoqss)
+    return function(exp::Date, style::Style.T, strike::Currency) # ::Union{Nothing,OptionQuote}
+        try
+            res = find(x -> getStrike(x) == strike, getfield(xoqss[exp], Symbol(style)).long)
+            !isnothing(res) || println("WARN: Could not quote $(exp), $(style), $(strike)")
+            return res
+        catch e
+            @show exp style strike
+            rethrow(e)
+        end
+    end
+end
+
+OptionMetaTypes.getGreeks(lup, trade::TradeType) =
+        getGreeks(calcQuote(lup, trade[:lms], Action.close))
+# getGreeks(requote(optQuoter, trade[:lms], Action.close))
 
 function greeksForExpirs(trades::Coll)::Dict{Date,GreeksType}
     d = Dict{Date,GreeksType}()
     for trade in trades
-        date = trade[:targetDate]
+        date = getExpir(trade) # [:targetDate]
         gks = getGreeks(trade)
         if !haskey(d, date)
             d[date] = gks
@@ -426,176 +431,6 @@ end
 #     chs = filter(isPut, chs)
 #     chs = sort!(chs, by=x->abs(x.meta.delta + 0.5))
 #     return getStrike(chs[1])
-# end
-#endregion
-
-#region PrevStrats
-# function strat1(acct)
-#     # ts = acct[:ts]
-#     RateMin = 0.5
-#     MaxDelta = 0.3
-#     date = acct[:date]
-#     for trade in acct[:poss]
-#         dateOpen = toDateMarket(trade[:tsOpen])
-#         dateOpen < date || continue         # don't close today's entries
-#         xpir = getExpir(trade)
-#         daysLeft = bdays(date, xpir)
-#         daysTotal = bdays(dateOpen, xpir)
-#         xpirRatio = (1 + daysLeft) / daysTotal
-#         neto = trade[:neto]
-#         lmsc = requote(optQuoter, trade[:lms], Action.close)
-#         # TODO: maybe use lmsc instead of quoting again?
-#         qt = quoter(trade[:lms], Action.close)
-#         netc = usePrice(qt)
-#         curVal = neto + netc
-#         # theta = getTheta(lmsc)
-#         # if curVal > 0.0 || daysLeft <= 2 || theta < -0.005
-#             timt = DateUtil.timult(dateOpen, date)
-#             mn = min(OptionUtil.legsExtrema(trade[:lms]...)...)
-#             rate = timt * curVal / (-mn)
-#             label = nothing
-#             if rate >= (xpirRatio * RateMin)
-#                 label = "rate: $(rond(rate))"
-#             # elseif daysLeft <= 2
-#             #     label = "daysLeft"
-#             # elseif theta < -0.015
-#             #     label = "theta: $(rond(theta))"
-#             # elseif curVal <= -trade[:met].mx
-#             #     label = "loss < -max profit: $(curVal) <= $(-trade[:met].mx)"
-#             end
-#             if !isnothing(label)
-#                 closeTrade(acct, trade, lmsc, netc, label)
-#             end
-#         # end
-#     end
-
-#     isLegAllowed = entryFilterOption(acct)
-#     for xpir in first(acct[:xpirs], 21)
-#         xpir > bdaysAfter(date, 3) || continue
-#         posLms = collect(Iterators.filter(x -> getExpiration(x) == xpir, cu.flatmap(x -> x[:lms], acct[:poss])))
-#         res, ctx = Joe.runJorn(xpir, isLegAllowed; nopos=true, posLms, all=true)
-#         # res, ctx = Joe.runJorn(xpir, isLegAllowed; nopos=true, posLms)
-#         !isempty(res) || continue
-#         deltaAcct = acct[:greeks].delta
-#         deltaXpir = haskey(acct[:greeksExpirs], xpir) ? acct[:greeksExpirs][xpir].delta : 0.0
-#         filter!(res) do r
-#             gks = getGreeks(r.lms)
-#             deltaAdd = gks.delta
-#             return r.roiEv >= 0.1 &&
-#                 gks.theta >= 0.0 &&
-#                 (
-#                     abs(deltaAcct + deltaAdd) < MaxDelta ||
-#                     abs(deltaAcct + deltaAdd) < abs(deltaAcct)
-#                 ) &&
-#                 (
-#                     abs(deltaXpir + deltaAdd) < MaxDelta ||
-#                     abs(deltaXpir + deltaAdd) < abs(deltaXpir)
-#                 )
-#         end
-#         !isempty(res) || continue
-#         # sort!(res; rev=true, by=r -> r.roiEv)
-#         sort!(res; rev=true, by=r -> r.met.prob)
-#         r = res[1]
-#         # if r.roiEv > 0.2
-#             trade = openTrade(acct, r.lms, netOpen(r.lms), "joe roiEv=$(rond(r.roiEv))", -r.met.mn)
-#             trade[:met] = r.met
-#         # end
-#     end
-# end
-
-# using Combos
-# function stratSellPut(acct)
-#     MaxOpen = 10
-#     OpenXpirAfter = Day(13)
-#     MinMoveRatio = .95
-#     SafeExpire = 1.0
-#     RollNear = 1.0
-#     MinRate = .1
-#     date = acct[:date]
-#     curp = market().curp
-#     for trade in acct[:poss]
-#         dateOpen = toDateMarket(trade[:tsOpen])
-#         dateOpen < date || continue         # don't close today's entries
-#         xpir = getExpir(trade)
-#         daysLeft = bdays(date, xpir)
-#         label = nothing
-#         strike = getStrike(trade[:lms][1])
-#         if snap() != SnapUtil.lastSnap() && snap() == SnapUtil.lastSnapBefore(xpir + Day(1)) && strike > curp - SafeExpire
-#             label = "roll last snap before xpir:$(xpir), $(strike) > ($(curp) - $(SafeExpire))"
-#         elseif (daysLeft <= 6 && strike > curp + RollNear)
-#             label = "roll near xpir:$(xpir), strike:$(strike) > curp:$(curp) + $(RollNear)"
-#         end
-#         if !isnothing(label)
-#             lmsc = requote(optQuoter, trade[:lms], Action.close)
-#             # TODO: maybe use lmsc instead of quoting again?
-#             qt = quoter(trade[:lms], Action.close)
-#             netc = usePrice(qt)
-#             closeTrade(acct, trade, lmsc, netc, label)
-
-#             entry, oq = c.findRoll("SPY", strike, -netc; silent=true)
-#             lms = [LegMeta(oq, 1.0, Side.short)]
-#             openTrade(acct, lms, netOpen(lms), "rolled $(rond(entry.rate))", getStrike(lms[1]))
-#         end
-#     end
-
-#     if length(acct[:poss]) < MaxOpen
-#         entry = findEntry(date + OpenXpirAfter, MinMoveRatio)
-#         if entry.rate > MinRate
-#             lms = [LegMeta(entry.oq, 1.0, Side.short)]
-#             openTrade(acct, lms, netOpen(lms), "short put curp=$(curp) strike=$(entry.strike) rate=$(rond(entry.rate))", getStrike(lms[1]))
-#         end
-#     end
-# end
-
-# function findEntry(dateMin, ratio)
-#     xpirMin = xp.expirGte(dateMin)
-#     cands = c.look("SPY"; ratio, dateMin=xpirMin)
-#     sort!(cands; by=x->x.rate)
-#     return cands[end]
-# end
-
-# function stratShortSpread(acct)
-#     params = (;
-#         MaxOpen = 100,
-#         RateMin = 0.5,
-#         ThreatenPercent = -0.01,
-#         MinAbove = 0.05,
-#         XpirBdays = (7,20)
-#     )
-#     checkClose((checkRateRatio,checkThreaten), acct, params)
-
-#     date = acct[:date]
-#     xpirs = filter(x -> params.XpirBdays[1] <= bdays(date, x) <= params.XpirBdays[2], acct[:xpirs])
-#     xprs = xp.whichExpir.(xpirs)
-#     curp = acct[:curp]
-
-#     isLegAllowed = entryFilterOption(acct)
-#     posLms = collect(cu.flatmap(x -> x[:lms], acct[:poss]))
-
-#     # rs = [(;lms, met=j.calcMet(lms)) for lms in j.getSpreads(expir(4))]
-
-#     # jorn(xprs; condors=false, spreads=true, all=true, nopos=true, posLms)
-#     # res, ctx = Joe.runJorn(xpir, isLegAllowed; nopos=true, posLms, all=true)
-#     # for i in eachindex(j.ress)
-#     for i in xprs
-#         length(acct[:poss]) < params.MaxOpen || ( println("Hit max open") ; break )
-#         # isassigned(j.ress, i) || continue
-#         # j.filt(x -> x.delta < 0.0)
-#         # j.sor(x -> x.met.prob)
-#         # res = j.ress[i]
-#         xpir = expir(i)
-#         # posLms = collect(Iterators.filter(x -> getExpiration(x) == xpir, cu.flatmap(x -> x[:lms], acct[:poss])))
-#         res, ctx = Joe.runJorn(xpir, isLegAllowed; nopos=true, posLms, all=true, condors=false, spreads=true)
-#         filter!(res) do r
-#             return getSide(r.lms[1]) == Side.short && aboveRat(getStrike(r.lms[1]), curp) > params.MinAbove
-#         end
-#         sort!(res; rev=true, by=x -> x.met.evr)
-#         # res, ctx = Joe.runJorn(xpir, isLegAllowed; nopos=true, posLms)
-#         !isempty(res) || continue
-
-#         r = res[1]
-#         trade = openTrade(acct, r.lms, netOpen(r.lms), "joe above=$(rond(aboveRat(getStrike(r.lms[1]), curp)))", -r.met.mn)
-#     end
 # end
 #endregion
 

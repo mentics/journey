@@ -102,7 +102,7 @@ tradesClosed(;age=Minute(10), since=bdaysBefore(today(), 7))::Vector{Trade} =
 function tradesCache(updater, sym::Symbol;age=Minute(10))::TradesCacheType
     return cache!(TradesCacheType, sym, age) do
         trades = updater()
-        dict = toDict(getId, trades)
+        dict = dictFromVals(getId, trades)
         return (trades, dict)
     end
 end

@@ -1,21 +1,41 @@
 module HistSpy
 using Dates, Tables
 import Sqlite as SQL
-using SH, CollUtil
+using SH, CollUtil, DictUtil
 using BaseTypes, SmallTypes, OptionTypes, QuoteTypes, OptionMetaTypes, ChainTypes
 using Calendars
+import ChainUtil
 
+#region Public
 getQuotes(ts::DateTime, xpir::Date)::Vector{OptionQuote} =
         sort!(vcat(getCalls(ts, xpir), getPuts(ts, xpir)); by=getStrike)
 getCalls(ts::DateTime, xpir::Date)::Vector{OptionQuote} =
-        collect(map(toOptionQuote, select("select 1 as style, * from Call where ts=? and expir=? order by strike", toUnix(ts), toUnix(getMarketClose(xpir)))))
+        collect(map(toOptionQuote, sel("select 1 as style, * from Call where ts=? and expir=? order by strike", toUnix(ts), toUnix(getMarketClose(xpir)))))
 getPuts(ts::DateTime, xpir::Date)::Vector{OptionQuote} =
-        collect(map(toOptionQuote, select("select -1 as style, * from Put where ts=? and expir=? order by strike", toUnix(ts), toUnix(getMarketClose(xpir)))))
+        collect(map(toOptionQuote, sel("select -1 as style, * from Put where ts=? and expir=? order by strike", toUnix(ts), toUnix(getMarketClose(xpir)))))
+getUnder(ts::DateTime)::Currency =
+        reinterpret(Currency, (sel1("select under from Under where ts=?", toUnix(ts)).under))
 
-quoteTss() = [fromUnix(first(x)) for x in select("select ts from (select distinct ts from call union all select distinct ts from put) order by ts")]
+getTss() = [fromUnix(first(x)) for x in sel("select distinct ts from (select distinct ts from call union all select distinct ts from put) order by ts")]
+getExpirs(ts::DateTime) = [toExpir(first(x)) for x in sel("select distinct expir from (select expir from call where ts=? union all select expir from put where ts=?) order by expir", toUnix(ts), toUnix(ts))]
+function getRange()
+    # r = sel("select min(ts) as 'from', max(ts) as 'to' from call")[1]
+    r = sel1("select (select min(ts) from call) as 'from', (select max(ts) from call) as 'to'")
+    return (;from=fromUnix(r.from), to=fromUnix(r.to))
+end
+
+getOqss(ts::DateTime, xpir, curp::Currency, args...)::Oqss = ChainUtil.getOqss(getQuotes(ts, xpir), curp, args...)
+
+getXoqss(ts::DateTime, curp::Currency, args...)::Dict{Date,Oqss} = getXoqss(ts, getExpirs(ts), curp, args...)
+function getXoqss(ts::DateTime, xpirs, curp::Currency, args...)::Dict{Date,Oqss}
+    dictFromKeys(xpirs) do xpir
+        getOqss(ts, xpir, curp, args...)
+    end
+end
+#endregion
 
 #region Local
-const Db = Ref{Union{Nothing,sql.DB}}(nothing)
+const Db = Ref{Union{Nothing,SQL.DB}}(nothing)
 const Path = joinpath(SQL.BaseDir, "options-spy.sqlite")
 const TableName = "spy"
 #endregion
@@ -34,8 +54,10 @@ exec(sql, params...) = SQL.exec(Db[], sql, params...)
 prep(sql) = SQL.prep(Db[], sql)
 run(stmt, vals::Coll) = SQL.run(stmt, vals)
 run(stmt, vals...) = SQL.run(stmt, vals...)
-select(sql, params::Coll) = SQL.select(Db[], sql, params)
-select(sql, params...) = SQL.select(Db[], sql, params...)
+sel(sql, params::Coll) = SQL.sel(Db[], sql, params)
+sel(sql, params...) = SQL.sel(Db[], sql, params...)
+sel1(sql, params::Coll) = sel(sql, params)[1]
+sel1(sql, params...) = sel(sql, params...)[1]
 #endregion
 
 #region Util

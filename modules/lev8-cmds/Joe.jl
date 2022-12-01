@@ -1,7 +1,7 @@
 module Joe
 using Dates, NamedTupleTools
 using Globals, SH, BaseTypes, SmallTypes, Bins, LegMetaTypes, RetTypes, StratTypes, OptionMetaTypes
-using DateUtil, OptionUtil, CalcUtil, ThreadUtil, OutputUtil, LogUtil, DictUtil, CollUtil
+using DateUtil, OptionUtil, CalcUtil, ThreadUtil, OutputUtil, LogUtil, DictUtil, CollUtil, ChainUtil
 import GenCands
 using Calendars, Expirations, Chains, ProbKde, Markets
 using CmdUtil
@@ -83,7 +83,7 @@ function runJorn(xpir::Date, isLegAllowed; nopos=false, all=false, posLms=nothin
     global ctx = makeCtx(xpir; nopos, all)
     oqssAll = Chains.getOqss(xpir, ctx.curp, nopos ? posLms : xlms(xpir))
     !isnothing(filtOq) || ( filtOq = oq -> abs(getStrike(oq) / ctx.curp - 1.0) < 0.1 )
-    oqss = filtOqss(filtOq, oqssAll)
+    oqss = ChainUtil.filtOqss(filtOq, oqssAll)
     @log debug "jorn processing" xpir length(oqss) length(oqssAll) ctx.curp
 
     # GenCands.iterSingle(oqss, ctx, res) do lms, c, r
