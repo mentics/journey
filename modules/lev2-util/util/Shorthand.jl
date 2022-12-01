@@ -10,7 +10,8 @@ export tosh
 legsTosh(legs, exps) = join((legTosh(leg, exps) for leg in legs), " / ")
 tosh(legs::Coll, exps) = join((legTosh(leg, exps) for leg in legs), " / ")
 
-legTosh(leg, exps) = string(toCode(getSide(leg)), round(getStrike(leg); digits=1), toCode(getStyle(leg)), '@', searchsortedfirst(exps, getExpiration(leg)))
+# legTosh(leg, exps) = string(toCode(getSide(leg)), round(getStrike(leg); digits=1), toCode(getStyle(leg)), '@', searchsortedfirst(exps, getExpiration(leg)))
+legTosh(leg, exps) = string(toCode(getSide(leg)), round(getStrike(leg); digits=1), toCode(getStyle(leg)), '@', getExpiration(leg))
 tosh(leg, exps) = string(toCode(getSide(leg)), round(getStrike(leg); digits=1), toCode(getStyle(leg)), '@', searchsortedfirst(exps, getExpiration(leg)))
 # strikes = join(map(l -> "$(first(string(side(l))))$(s(strike(l), 1))$(first(string(style(l))))@$(searchsortedfirst(exps, expiration(l)))", legs(ar)), " / ")
 tosh(lm) = string(toCode(getSide(lm)), round(getStrike(lm); digits=1), toCode(getStyle(lm)), '@', getExpiration(lm))

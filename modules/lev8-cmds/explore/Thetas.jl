@@ -2,7 +2,7 @@ module Thetas
 using Dates
 using SH, Globals, BaseTypes, LegMetaTypes, ChainTypes
 using DateUtil, OptionUtil, OutputUtil, LegUtil
-using Quoting, Between, SnapUtil
+using Between, SnapUtil
 using Snapshots, Chains, Markets, Expirations
 using Joe
 

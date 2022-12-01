@@ -69,17 +69,17 @@ function netExpired1(lm, curp)
     return extrinSub(getStyle(lm), s, curp) ? Int(getSide(lm)) * abs(curp - s) : 0.0
 end
 
-legsExtrema(legs::NTuple{2}) = spreadExtrema(longShort(legs[1], legs[2])...)
-legs2Levels(legs::Coll) = spreadLevels(longShort(legs[1], legs[2])...)
-spreadExtrema(legLong, legShort) = minmax(spreadLevels(legLong, legShort)...)
-function spreadLevels(legLong, legShort)
+legsExtrema(neto, legs::NTuple{2}) = spreadExtrema(neto, longShort(legs[1], legs[2])...)
+legs2Levels(neto, legs::Coll) = spreadLevels(neto, longShort(legs[1], legs[2])...)
+spreadExtrema(neto, legLong, legShort) = minmax(spreadLevels(neto, legLong, legShort)...)
+function spreadLevels(neto, legLong, legShort)
     @assert getSide(legLong) == Side.long && getSide(legShort) == Side.short
     @assert getStyle(legLong) == getStyle(legShort)
-    netOpen = getNetOpen(legLong) + getNetOpen(legShort)
+    # neto = getNetOpen(legLong) + getNetOpen(legShort)
     if getStyle(legLong) == Style.call
-        left = netOpen
+        left = neto
         sd = getStrike(legShort) - getStrike(legLong)
-        right = sd + netOpen
+        right = sd + neto
         # if sign(sd) * sign(netOpen) > 0
         #     @info "iterSpreads call sign mismatch" left right getStrike(legLong) getStrike(legShort) netOpen sign(sd) sign(netOpen) getQuote(legLong) getQuote(legShort)
         # end
@@ -88,8 +88,8 @@ function spreadLevels(legLong, legShort)
         # end
     else
         sd = getStrike(legLong) - getStrike(legShort)
-        left = sd + netOpen
-        right = netOpen
+        left = sd + neto
+        right = neto
         # if sign(sd) * sign(netOpen) > 0
         #     @info "iterSpreads put sign mismatch" left right getStrike(legLong) getStrike(legShort) netOpen sign(sd) sign(netOpen) getQuote(legLong) getQuote(legShort)
         # end
@@ -100,11 +100,11 @@ function spreadLevels(legLong, legShort)
     return (left, right)
 end
 
-function legsExtrema(legs::NTuple{4})
+function legsExtrema(neto, legs::NTuple{4})
     # @assert getStrike(cond[1][2]) <= getStrike(cond[2][1]) "$(getStrike.(cond[1])) $(getStrike.(cond[2]))" # issorted(legs; by=getStrike)
     @assert issorted(legs; by=getStrike)
-    levLeft = spreadLevels(longShort(legs[1], legs[2])...)
-    levRight = spreadLevels(longShort(legs[3], legs[4])...)
+    levLeft = spreadLevels(neto, longShort(legs[1], legs[2])...)
+    levRight = spreadLevels(neto, longShort(legs[3], legs[4])...)
     # println(levLeft, levRight)
     left = levLeft[1] + levRight[1]
     mid = levLeft[2] + levRight[1]
@@ -112,8 +112,8 @@ function legsExtrema(legs::NTuple{4})
     # @info "condorExtrema" levLeft levRight left mid right
     return (left, mid, right)
 end
-legsExtrema(l1, l2) = legsExtrema((l1, l2))
-legsExtrema(l1, l2, l3, l4) = legsExtrema((l1, l2, l3, l4))
+legsExtrema(neto, l1, l2) = legsExtrema(neto, (l1, l2))
+legsExtrema(neto, l1, l2, l3, l4) = legsExtrema(neto, (l1, l2, l3, l4))
 
 longShort(leg1, leg2) = isLong(leg1) ? (leg1, leg2) : (leg2, leg1)
 

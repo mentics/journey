@@ -1,4 +1,4 @@
-module PricingUtil
+module PricingExplore
 using Dates, Intervals
 using SH, BaseTypes, SmallTypes, OptionTypes, QuoteTypes, ChainTypes, OptionMetaTypes
 using DateUtil, FileUtil, OutputUtil, OptionUtil, SnapUtil

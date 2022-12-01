@@ -1,44 +1,45 @@
 module OptionMetaTypes
-using SH
+using SH, SmallTypes
 
-export Greeks, GreeksType, OptionMeta
-export getGreeks, greeksAdd, greeksSum, greeksMult, GreeksZero
+export Greeks, GreeksZero, OptionMeta, newOptionMeta
+export addGreeks, sumGreeks, multGreeks
 
-const Greeks = (:delta, :theta, :phi, :vega, :rho, :gamma)
-const GreeksZero = (; delta=0.0, theta=0.0, phi=0.0, vega=0.0, rho=0.0, gamma=0.0)
-const GreeksType = NamedTuple{Greeks,NTuple{6,Float64}}
+# const GreekSyms = (:delta, :theta, :phi, :vega, :rho, :gamma)
+# const GreeksType = NamedTuple{Greeks,NTuple{6,Float64}}
 
-struct OptionMeta
+struct Greeks
     delta::Float64
     theta::Float64
     phi::Float64
     vega::Float64
     rho::Float64
     gamma::Float64
+end
+const GreeksZero = Greeks(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+
+struct OptionMeta
+    greeks::Greeks
     bid_iv::Float64
     ask_iv::Float64
     mid_iv::Float64
-    function OptionMeta(delta, theta, phi, vega, rho, gamma, bid_iv, ask_iv, mid_iv)
-        return new(def(delta), def(theta), def(phi), def(vega), def(rho), def(gamma), def(bid_iv), def(ask_iv), def(mid_iv))
-    end
 end
-def(::Missing) = 0.0
+def(::Missing) = NaN
 def(x) = x
-OptionMeta(;delta=0.0, theta=0.0, phi=0.0, vega=0.0, rho=0.0, gamma=0.0, bid_iv=0.0, ask_iv=0.0, mid_iv=0.0, kws...) = OptionMeta(delta, theta, phi, vega, rho, gamma, bid_iv, ask_iv, mid_iv)
+function OptionMeta(delta, theta, phi, vega, rho, gamma, bid_iv, ask_iv, mid_iv)
+    return OptionMeta(Greeks(def(delta), def(theta), def(phi), def(vega), def(rho), def(gamma)), def(bid_iv), def(ask_iv), def(mid_iv))
+end
+OptionMeta(;delta=NaN, theta=NaN, phi=NaN, vega=NaN, rho=NaN, gamma=NaN, bid_iv=NaN, ask_iv=NaN, mid_iv=NaN, kws...) = OptionMeta(delta, theta, phi, vega, rho, gamma, bid_iv, ask_iv, mid_iv)
 OptionMeta(d::Dict{String,Any}) = OptionMeta(; (Symbol(x[1]) => x[2] for x in d)...)
+function newOptionMeta(om::OptionMeta, dir::DirSQ)
+    OptionMeta(multGreeks(dirMult(dir), om.greeks), om.bid_iv, om.ask_iv, om.mid_iv)
+end
 SH.getIv(m::OptionMeta) = m.mid_iv
+SH.getGreeks(m::OptionMeta) = m.greeks
 
-# SH.getTheta(m::OptionMeta) = m.theta
-# SH.getDelta(m::OptionMeta) = m.delta
-# SH.getGamma(m::OptionMeta) = m.gamma
-# SH.getVega(m::OptionMeta) = m.vega
-# SH.getRho(m::OptionMeta) = m.rho
-getGreeks(m::OptionMeta)::GreeksType = (; m.delta, m.theta, m.phi, m.vega, m.rho, m.gamma)
-greeksAdd(g1::GreeksType, g2::GreeksType)::GreeksType = ntadd(g1, g2) # (; delta=k*m.delta, theta=k*m.theta, phi=k*m.phi, vega=k*m.vega, rho=k*m.rho, gamma=k*m.gamma)
-ntadd(nt1::NamedTuple, nt2::NamedTuple) = NamedTuple{fieldnames(nt1)}(values(nt1) .+ values(nt2))
+addGreeks(g1::Greeks, g2::Greeks)::Greeks = Greeks(g1.delta + g2.delta, g1.theta + g2.theta, g1.phi + g2.phi, g1.vega + g2.vega, g1.rho + g2.rho, g1.gamma + g2.gamma)
 
-greeksMult(k::Real, m)::GreeksType = (; delta=k*m.delta, theta=k*m.theta, phi=k*m.phi, vega=k*m.vega, rho=k*m.rho, gamma=k*m.gamma)
-function greeksSum(itr)::GreeksType
+multGreeks(k::Real, g2::Greeks)::Greeks = Greeks(k * g2.delta, k * g2.theta, k * g2.phi, k * g2.vega, k * g2.rho, k * g2.gamma)
+function sumGreeks(itr)::Greeks
     delta = 0.0; theta = 0.0; phi = 0.0; vega = 0.0; rho = 0.0; gamma = 0.0
     for x in itr
         delta += x.delta
@@ -48,17 +49,9 @@ function greeksSum(itr)::GreeksType
         rho += x.rho
         gamma += x.gamma
     end
-    return (; delta, theta, phi, vega, rho, gamma)
+    return Greeks(delta, theta, phi, vega, rho, gamma)
 end
 
-getGreeks(itr)::GreeksType = greeksSum(map(getGreeks, itr))
-
-# getTheta(x) = greeks(x).theta
-# sumDelta(itr) = sum(getDelta, itr)
-# sumTheta(itr) = sum(getTheta, itr)
-# sumPhi(itr) = sum(getPhi, itr)
-# sumVega(itr) = sum(getVega, itr)
-# sumRho(itr) = sum(getRho, itr)
-# sumGamma(itr) = sum(getGamma, itr)
+SH.getGreeks(itr)::Greeks = sumGreeks(map(getGreeks, itr))
 
 end

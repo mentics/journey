@@ -6,7 +6,7 @@ export getStyle, getExpiration, getStrike, getSide, getQuantity, getAction
 export getBid, getAsk
 export toCode, toOther
 export getIv
-export getOption, getLeg, getMeta, getOptionMeta, getQuote
+export getOption, getLeg, getMeta, getOptionMeta, getQuote, getGreeks
 export calcQuote, calcOptQuote
 export getQuantityDir, addQuantity, withQuantity
 
@@ -42,6 +42,7 @@ function getQuote() end
 function getMeta() end
 function getOptionMeta() end
 function getLeg() end
+function getGreeks() end
 
 function toCode() end
 function toOther() end
@@ -91,8 +92,6 @@ function draw!(::Nothing) end
 function getNetOpen() end
 function getNetClose() end
 function getLegs() end
-
-function bap() end
 
 function isValid() end
 

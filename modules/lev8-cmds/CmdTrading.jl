@@ -1,8 +1,8 @@
 module CmdTrading
 using Dates, IterTools
 using Globals, BaseTypes, SH, SmallTypes, StratTypes, StatusTypes, TradeTypes, LegTradeTypes, LegMetaTypes
-using DateUtil, LogUtil, CollUtil
-using Trading, Quoting
+using DateUtil, LogUtil, CollUtil, Pricing
+using Trading
 using Calendars, Markets, Expirations, Chains, StoreTrade
 using OptionUtil
 
@@ -15,8 +15,8 @@ sor(i::Int, at::Real; kws...) = so(i; kws..., pre=false, at=PriceT(at))
 sor(r::Strat, at::Real; kws...) = so(r; kws..., pre=false, at=PriceT(at))
 so(i::Int; kws...) = so(tos(LegMeta, ar(i)); kws...)
 so(r::Coll{LegRet}; kws...) = so(tos(LegMeta, r); kws...)
-solr(lms::Coll{LegMeta}, at::Real) = so(lms; at, pre=false)
-function so(lms::Coll{LegMeta}; ratio=nothing, at=nothing, pre=true, skipConfirm=false)::Int
+solr(lms::Coll{LegMeta{Open}}, at::Real) = so(lms; at, pre=false)
+function so(lms::Coll{LegMeta{Open}}; ratio=nothing, at=nothing, pre=true, skipConfirm=false)::Int
     curQuot = market().curQuot
     canTrade(pre)
     Globals.set(:soRunLast, now(UTC))
@@ -28,7 +28,8 @@ function so(lms::Coll{LegMeta}; ratio=nothing, at=nothing, pre=true, skipConfirm
 
     # isnothing(at) && isnothing(ratio) && (ratio = 0.25)
     !isnothing(at) || ( at = bap(lms) )
-    pr = priceUse(quoter(lms), sumQuotes(getQuote.(lms)); ratio, at)
+    # pr = priceUse(quoter(lms), sumQuotes(getQuote.(lms)); ratio, at)
+    pr = priceUse(getQuote(tos(LegMeta{Open}, lms, Chains.chainLookup)), sumQuotes(getQuote.(lms)); ratio, at)
 
     if !pre && !skipConfirm && !confirm()
         println("Aborted.")
@@ -38,6 +39,9 @@ function so(lms::Coll{LegMeta}; ratio=nothing, at=nothing, pre=true, skipConfirm
     tid = pre ? submitPreview(lms, pr) : submitLive(lms, pr, curQuot)
     return pre ? 0 : tid
 end
+using LegTypes
+SH.to(::Type{LegMeta{Open}}, leg::Leg, lup) = LegMeta{Open}(leg, lup(getOption(leg)))
+SH.to(::Type{LegMeta{Open}}, lm::LegMeta{Open}, lup) = to(LegMeta{Close}, getLeg(lm), lup) # LegMeta{Close}(lup(getOption(lm)), getQuantity(lm), getSide(lm))
 
 using TradierAccount
 function tradeSize(kelly::Float64, kellyRatio::Float64 = 0.5)

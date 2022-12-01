@@ -67,9 +67,8 @@ toExpir(unix::Integer)::Date = Date(fromUnix(unix))
 function toOptionQuote(row)
     OptionQuote(
         Option(Style.T(row.style), toExpir(row.expir), reinterpret(Currency, row.strike)),
-        Quote(Action.open, reinterpret(Currency, row.bid), reinterpret(Currency, row.ask)),
-        OptionMeta(row.delta, row.theta, 0.0, row.vega, row.rho, row.gamma, row.iv, row.iv, row.iv),
-        nothing
+        Quote(reinterpret(Currency, row.bid), reinterpret(Currency, row.ask)),
+        OptionMeta(row.delta, row.theta, 0.0, row.vega, row.rho, row.gamma, row.iv, row.iv, row.iv)
     )
 end
 #endregion

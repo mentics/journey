@@ -90,6 +90,8 @@ function ntvFromVnt(vnt::Vector{NamedTuple})::NamedTuple
     return ntv
 end
 
+# ntadd(nt1::NamedTuple, nt2::NamedTuple) = NamedTuple{fieldnames(nt1)}(values(nt1) .+ values(nt2))
+
 export roll2
 function roll2(f, iter)
     prev, rest = Iterators.peel(iter)

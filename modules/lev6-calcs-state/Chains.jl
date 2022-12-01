@@ -146,6 +146,7 @@ end
 nearOqs(curp::Currency, d::Date, chs, dist::Int=20)::Vector{OptionQuote} = nearOqs(curp, chs[d].chain, dist)
 nearOqs(curp::Currency, oqs, dist::Int=20)::Vector{OptionQuote} = filter(x -> abs(getStrike(x) - curp) <= dist, oqs)
 
+chainLookup(opt::Option) = chainLookup(getExpiration(opt), getStyle(opt), getStrike(opt))
 function chainLookup(exp::Date, style::Style.T, strike::Currency)::Union{Nothing,OptionQuote}
     res = find(chain(exp).chain) do x; getStyle(x) === style && getStrike(x) === strike end
     !isnothing(res) || println("WARN: Could not quote $(exp), $(style), $(strike)")
@@ -195,13 +196,13 @@ function procChain(exp::Date, data::Vector{Dict{String,Any}})::OptionChain
             end
             continue
         end
-        qt = Quote(Action.open, C(raw["bid"]), C(raw["ask"]))
+        qt = Quote(C(raw["bid"]), C(raw["ask"]))
         opt = Option(style, exp, strike)
         # TODO: cleanup
         if !haskey(raw, "greeks") || isnothing(raw["greeks"])
             @log debug "Missing greeks" opt qt
         end
-        newOpt = OptionQuote(opt, qt, toOptionMeta(raw["greeks"]), raw)
+        newOpt = OptionQuote(opt, qt, toOptionMeta(raw["greeks"]))
         push!(res, newOpt)
     end
     sort!(res, by=x -> (getStrike(x), -Int(getStyle(x))))

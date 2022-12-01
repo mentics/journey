@@ -2,8 +2,9 @@ module SmallTypes
 using EnumX
 using SH
 
-export Style, Side, Action
+export Style, Side, Action, Dir
 export Styles, Sides
+export dirMult
 export checkDirOrder, checkDirTrade
 
 @enumx Style call=1 put=-1
@@ -50,5 +51,37 @@ isPut(o) = getStyle(o) == Style.put
 
 isLong(o) = getSide(o) == Side.long
 isShort(o) = getSide(o) == Side.short
+
+
+export DirSQA, DirSQ, dirMult
+struct DirSQ
+    side::Side.T
+    quantity::Float64
+    function DirSQ(side::Side.T, qty::Float64)
+        @assert qty > 0
+        new(side, qty)
+    end
+end
+
+struct DirSQA
+    side::Side.T
+    quantity::Float64
+    action::Action.T
+    function DirSQA(side::Side.T, qty::Float64, action::Action.T)
+        @assert qty > 0
+        new(side, qty, action)
+    end
+end
+DirSQA(dir::DirSQ, action::Action.T) = DirSQA(dir.side, dir.quantity, action)
+
+dirMult(dir::DirSQ)::Float64 = dirMult(dir.side, dir.quantity)
+dirMult(dir::DirSQA)::Float64 = dirMult(dir.side, dir.quantity, dir.action)
+function dirMult(side::Side.T, qty::Real)::Float64
+    @assert qty > 0
+    return Int(side) * qty
+end
+function dirMult(side::Side.T, qty::Real, action::Action.T)::Float64
+    return dirMult(side, qty) * (-Int(action))
+end
 
 end

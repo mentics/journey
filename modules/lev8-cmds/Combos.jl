@@ -1,7 +1,7 @@
 module Combos
 using Dates, IterTools, NamedTupleTools
 using SH, BaseTypes, SmallTypes, ChainTypes
-using Caches, DateUtil, DictUtil, OutputUtil, LogUtil
+using Caches, DateUtil, DictUtil, OutputUtil, LogUtil, Pricing
 using TradierData
 using Markets, Expirations, Chains
 import SeekingAlpha

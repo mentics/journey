@@ -2,8 +2,8 @@ module Backtests
 using Dates
 using SH, Globals, BaseTypes, SmallTypes, OptionTypes, LegTypes, LegMetaTypes, OptionMetaTypes
 using DateUtil, CollUtil, DictUtil, ChainUtil
-using Between
-# import OptionUtil
+using Pricing, Between
+import OptionUtil
 import Shorthand
 import HistSpy as hspy
 using Calendars
@@ -41,11 +41,19 @@ end
 
 function stratGiantCondor(acct)
     p = (;
-        MaxOpen = 100000,
-        XpirBdays = (;min=40, max=80),
-        Put = (;rat=0.8, off=30.0, prof=0.8, take=0.4),
-        Call = (;rat=1.12, off=20.0, prof=0.7, take=0.2),
+        MaxOpen = 10,
+        XpirBdays = (;min=40, max=60),
+        Put = (;rat=0.9, off=20.0, prof=0.8, take=0.4),
+        Call = (;rat=1.05, off=20.0, prof=0.8, take=0.4),
     )
+
+    # p = (;
+    #     MaxOpen = 10,
+    #     XpirBdays = (;min=40, max=80),
+    #     Put = (;rat=0.8, off=30.0, prof=0.4, take=0.2),
+    #     Call = (;rat=1.1, off=20.0, prof=0.4, take=0.2),
+    # )
+
     # checkClose((checkRateRatio,), acct, params)
     checkClose((checkSides,), acct, p)
 
@@ -62,26 +70,28 @@ function stratGiantCondor(acct)
     xpirs = filter(x -> xpirMin <= x <= xpirMax, acct[:xpirs])
     for xpir in xpirs
         oqss = xoqss[xpir]
-        length(acct[:poss]) < p.MaxOpen || ( println("Hit max open") ; return )
+        length(acct[:poss]) < p.MaxOpen || return # ( println("Hit max open") ; return )
         global keep = oqss
 
         # TODO: have use the recent high (period = xpir days) and require rat above that
         lms = findLongSpreadEntry(oqss, p.Put)
-        if !isnothing(lms) && getStrike(lms[2]) <= p.Put.rat * curp
+        rat = getStrike(lms[2]) / curp
+        if !isnothing(lms) && rat <= p.Put.rat
             neto = netOpen(lms)
             @assert neto > 0.0
-            openTrade(acct, lms, neto, "long spread greeks: $(getGreeks(lms))", abs(getStrike(lms[1]) - getStrike(lms[2])) - neto)
+            openTrade(acct, lms, neto, "long spread: rat=$(rond(rat)), neto=$(neto)", abs(getStrike(lms[1]) - getStrike(lms[2])) - neto)
         else
-            println("Could not find put entry")
+            # println("Could not find put entry: $(rat)")
         end
 
         lms = findShortSpreadEntry(oqss, p.Call)
-        if !isnothing(lms) && getStrike(lms[1]) >= p.Call.rat * curp
+        rat = getStrike(lms[1]) / curp
+        if !isnothing(lms) && rat >= p.Call.rat
             neto = netOpen(lms)
             @assert neto > 0.0
-            openTrade(acct, lms, neto, "short spread greeks: $(getGreeks(lms))", abs(getStrike(lms[1]) - getStrike(lms[2])) - neto)
+            openTrade(acct, lms, neto, "short spread: rat=$(rond(rat)), neto=$(neto)", abs(getStrike(lms[1]) - getStrike(lms[2])) - neto)
         else
-            println("Could not find call entry")
+            # println("Could not find call entry: $(rat)")
         end
     end
 end
@@ -93,6 +103,12 @@ function findLongSpreadEntry(oqss, p)
     isho = findfirst(oq -> getBid(oq) > p.prof, shorts)
     lo = longs[ilo]
     sho = shorts[isho]
+
+    while getStrike(sho) - getStrike(lo) > p.off
+        ilo += 1
+        lo = longs[ilo]
+    end
+
     neto = getBid(sho) - getAsk(lo) # Choosing worst case at this stage
     while neto < p.prof
         isho += 1
@@ -112,19 +128,7 @@ function findLongSpreadEntry(oqss, p)
             ilo += 1
         end
     end
-    return [to(LegMeta, longs[ilo], Side.long), to(LegMeta, shorts[isho], Side.short)]
-
-
-    ioqs = findfirst(oq -> getStrike(oq) >= p.rat * curp, oqss.put.short)
-    !isnothing(ioqs) || ( println("Could not find put oqs") ; return nothing )
-    oqs = oqss.put.short[ioqs]
-    soqs = getStrike(oqs)
-    soql = soqs - p.off
-    oqli, oql = find(oq -> getStrike(oq) <= soql + 0.25, oqss.put.long, ioqs:-1:1)
-    !isnothing(oql) || ( println("Could not find put offset oql $(soql) from oqs $(soqs)") ; return nothing )
-    @assert getStrike(oql) < getStrike(oqs) "$(getStrike(oql)) ; $(getStrike(oqs))"
-    # TODO: It appears there may be cases where theta > delta, so might be worth searching for
-    return [to(LegMeta, oql, Side.long), to(LegMeta, oqs, Side.short)]
+    return (LegMeta{Open}(lo, Side.long, 1.0), LegMeta{Open}(sho, Side.short, 1.0))
 end
 
 function findShortSpreadEntry(oqss, p)
@@ -134,6 +138,12 @@ function findShortSpreadEntry(oqss, p)
     isho = findlast(oq -> getBid(oq) > p.prof, shorts)
     lo = longs[ilo]
     sho = shorts[isho]
+
+    while getStrike(lo) - getStrike(sho) > p.off
+        ilo -= 1
+        lo = longs[ilo]
+    end
+
     neto = getBid(sho) - getAsk(lo) # Choosing worst case at this stage
     while neto < p.prof
         # @show ilo isho neto
@@ -144,6 +154,7 @@ function findShortSpreadEntry(oqss, p)
             lo = longs[ilo]
         end
         neto = getBid(sho) - getAsk(lo) # Choosing worst case at this stage
+        # @show getStrike(sho) getStrike(lo) neto
     end
     shoBid = getBid(sho)
     while true
@@ -154,24 +165,13 @@ function findShortSpreadEntry(oqss, p)
             ilo -= 1
         end
     end
-    return [to(LegMeta, sho, Side.short), to(LegMeta, lo, Side.long)]
-
-
-    ioqs = lastindex(oqss.call.short) - findfirst(oq -> getStrike(oq) <= p.rat * curp, reverse(oqss.call.short))
-    !isnothing(ioqs) || ( println("Could not find call oqs") ; return nothing )
-    oqs = oqss.call.short[ioqs]
-    soqs = getStrike(oqs)
-    soql = soqs + p.off
-    ioql, oql = find(oq -> getStrike(oq) >= soql - 0.25, oqss.call.long, ioqs:lastindex(oqss.call.long))
-    !isnothing(oql) || ( println("Could not find call offset oql $(soql) from oqs $(soqs)") ; return nothing )
-    @assert getStrike(oql) > getStrike(oqs)
-    # TODO: It appears there may be cases where theta > delta, so might be worth searching for
-    return [to(LegMeta, oqs, Side.short), to(LegMeta, oql, Side.long)]
+    return (LegMeta{Open}(sho, Side.short, 1.0), LegMeta{Open}(lo, Side.long, 1.0))
 end
 #endregion
 
 #region Process
-function run(f)
+function run(f; maxSeconds=60)
+    tstart = time()
     hspy.db()
     LogUtil.resetLog(:backtest)
     global acct = Dict(
@@ -209,8 +209,9 @@ function run(f)
         acct[:xoqss] = xoqss
         lup = lookup(xoqss)
         acct[:lup] = lup
-        acct[:greeks] = isempty(acct[:poss]) ? GreeksZero : getGreeks(acct[:poss])
-        acct[:greeksExpirs] = isempty(acct[:poss]) ? Dict{Date,GreeksType}() : greeksForExpirs(acct[:poss])
+        updatePossLmsClose(lup, acct[:poss])
+        acct[:greeks] = calcGreeks(acct[:poss]) # isempty(acct[:poss]) ? GreeksZero : getGreeks(acct[:poss])
+        # acct[:greeksExpirs] = isempty(acct[:poss]) ? Dict{Date,GreeksType}() : greeksForExpirs(lup, acct[:poss])
 
         # Run strat for this time
         f(acct)
@@ -220,8 +221,7 @@ function run(f)
             trade = acct[:poss][tind]
             xpir = getExpir(trade)
             if ts == getMarketClose(xpir)
-            # if snap() == SnapUtil.lastSnapBefore(xpir + Day(1))
-                lmsc = requote(optQuoter, trade[:lms], Action.close)
+                lmsc = tos(LegMeta{Close}, trade[:lms], lup)
                 netc = OptionUtil.netExpired(lmsc, curp)
                 if abs(curp - getStrike(lmsc[1])) < 5.0 || abs(curp - getStrike(lmsc[end])) < 5.0
                     netc -= 0.02
@@ -232,12 +232,17 @@ function run(f)
             end
         end
 
-        acct[:urpnl] = urpnl(lup, acct[:poss])
+        acct[:urpnl] = urpnl(acct[:poss])
         rate = calcRate(dateStart, date, acct[:real], acct[:riskDays] / days)
         out("End $(formatLocal(ts)): $(rond(acct[:bal])) rpnl:$(rond(acct[:real])) urpnl:$(rond(acct[:urpnl])) #open:$(length(acct[:poss])) risk:$(acct[:riskDays] / days) rate:$(rate)")
+
+        if time() > tstart + maxSeconds
+            break
+        end
     end
     total = acct[:real] + acct[:urpnl]
     days = bdays(dateStart, toDateMarket(to))
+    dateEnd = acct[:date]
     # We're going to pretend we closed everything at the last time, so don't need to add risk.
     # acct[:riskDays] += getRisk(acct[:poss]) # model it for end of last day, so only * 1 day
     rate = calcRate(dateStart, dateEnd, total, acct[:riskDays] / days)
@@ -246,6 +251,12 @@ function run(f)
     out("  Total: $(total)")
     out("  risk-days: $(acct[:riskDays])")
     out("  rate: $(rond(rate))")
+end
+
+function updatePossLmsClose(lup, trades)
+    for trade in trades
+        trade[:lmsTrack] = tos(LegMeta{Close}, trade[:legs], lup)
+    end
 end
 
 nextTradeId(acct) = acct[:lastTradeId] += 1
@@ -258,7 +269,7 @@ end
 function checkClose(fs, acct, args...)
     date = acct[:date]
     for trade in acct[:poss]
-        dateOpen = toDateMarket(trade[:tsOpen])
+        dateOpen = toDateMarket(trade[:open].ts)
         dateOpen < date || continue         # don't close today's entries
         t = tradeInfo(trade, date)
         label = check(fs, acct, t, args...)
@@ -277,39 +288,35 @@ end
 #endregion
 
 #region Actions
-function openTrade(acct, lms, neto, label, risk)
-    date = minimum(getExpiration, lms)
+function openTrade(acct, lms::Coll{LegMeta{Open}}, neto, label, risk)
+    lup = acct[:lup]
+    lmsTrack = tos(LegMeta{Close}, lms, lup)
+    targetDate = minimum(getExpiration, lms)
     trade = Dict(
         :id => nextTradeId(acct),
-        :lms => lms,
-        :neto => neto,
-        :tsOpen => acct[:ts],
-        :labelClose => label,
-        :targetDate => date,
-        :risk => risk
+        :legs => map(getLeg, lms),
+        :open => (;label, ts=acct[:ts], neto, quotes=map(getQuote, lms), metas=map(getOptionMeta, lms)),
+        :targetDate => targetDate,
+        :risk => risk,
+        :lmsTrack => lmsTrack
     )
     push!(acct[:trades], trade)
     push!(acct[:poss], trade)
     push!(acct[:todayOpens], trade)
     acct[:bal] += neto
-    gks = getGreeks(lms)
-    acct[:greeks] = greeksAdd(acct[:greeks], gks)
-    acct[:greeksExpirs][date] = greeksAdd(get!(acct[:greeksExpirs], date, GreeksZero), gks)
+    acct[:greeks] = updateGreeks(acct, targetDate, getGreeks(lms))
     out("Open #$(trade[:id]) $(Shorthand.tosh(lms, acct[:xpirs])): '$(label)' neto:$(neto)") # deltaX: $(rond(delta)) -> $(rond(deltaNew)) deltaAcct: $(rond(acct[:delta]))")
     return trade
 end
-function closeTrade(acct, trade, lms, netc, label)
-    # NOTE: snap might have already moved when called here, so don't use anything except acct
-    trade[:lmsc] = lms
-    trade[:netc] = netc
-    trade[:tsClosed] = acct[:ts]
-    trade[:labelClose] = label
+function closeTrade(acct, trade, lms::Coll{LegMeta{Close}}, netc, label)
+    trade[:close] = (;label, ts=acct[:ts], netc, quotes=map(getQuote, lms), metas=map(getOptionMeta, lms))
     push!(acct[:todayCloses], trade)
     cu.del!(x -> x[:id] == trade[:id], acct[:poss])
     acct[:bal] += netc
-    acct[:real] += trade[:neto] + netc
-    trade[:labelClose] = label
-    out("Close #$(trade[:id]) $(Shorthand.tosh(lms[1])): '$(label)' neto:$(rond(trade[:neto])) netc:$(netc) pnl=$(rond(trade[:neto] + netc)) ; $(openDur(trade)) days open, $(bdaysLeft(acct[:date], trade)) days left")
+    neto = trade[:open].neto
+    pnl = neto + netc
+    acct[:real] += pnl
+    out("Close #$(trade[:id]) $(Shorthand.tosh(lms[1])): '$(label)' neto:$(rond(neto)) netc:$(netc) pnl=$(rond(pnl)) ; $(openDur(trade)) days open, $(bdaysLeft(acct[:date], trade)) days left")
     return
 end
 #endregion
@@ -318,15 +325,15 @@ end
 getRisk(trade) = trade[:risk] # getStrike(trade[:lms][1])
 getRisk(trades::Coll) = sum(getRisk, trades; init=0.0)
 
-urpnl(lup, trades::Coll) = sum(x -> urpnl(lup, x), trades; init=0.0)
-function urpnl(lup, trade)
-    qt = calcQuote(lup, trade[:lms], Action.close)
+urpnl(trades::Coll) = sum(x -> urpnl(x), trades; init=0.0)
+function urpnl(trade)
+    qt = trade[:lmsTrack]
     netc = usePrice(qt)
-    return trade[:neto] + netc
+    return trade[:open].neto + netc
 end
 
 function lookup(xoqss)
-    return function(exp::Date, style::Style.T, strike::Currency) # ::Union{Nothing,OptionQuote}
+    function lup(exp::Date, style::Style.T, strike::Currency) # ::Union{Nothing,OptionQuote}
         try
             res = find(x -> getStrike(x) == strike, getfield(xoqss[exp], Symbol(style)).long)
             !isnothing(res) || println("WARN: Could not quote $(exp), $(style), $(strike)")
@@ -336,40 +343,64 @@ function lookup(xoqss)
             rethrow(e)
         end
     end
+    function lup(o::Option)
+        try
+            exp = getExpiration(o)
+            style = getStyle(o)
+            strike = getStrike(o)
+            res = find(x -> getStrike(x) == strike, getfield(xoqss[exp], Symbol(style)).long)
+            !isnothing(res) || println("WARN: Could not quote $(exp), $(style), $(strike)")
+            return res
+        catch e
+            @show exp style strike
+            rethrow(e)
+        end
+    end
+    return lup
 end
 
-OptionMetaTypes.getGreeks(lup, trade::TradeType) =
-        getGreeks(calcQuote(lup, trade[:lms], Action.close))
-# getGreeks(requote(optQuoter, trade[:lms], Action.close))
-
-function greeksForExpirs(trades::Coll)::Dict{Date,GreeksType}
-    d = Dict{Date,GreeksType}()
+function calcGreeks(trades)
+    d = Dict{Date,Greeks}()
+    total = GreeksZero
     for trade in trades
         date = getExpir(trade) # [:targetDate]
-        gks = getGreeks(trade)
+        gks = getGreeks(trade[:lmsTrack])
         if !haskey(d, date)
             d[date] = gks
         else
-            d[date] = greeksAdd(d[date], gks)
+            d[date] = addGreeks(d[date], gks)
         end
+        total = addGreeks(total, gks)
     end
-    return d
+    return (;total, xpirs=d)
+end
+
+function updateGreeks(acct, targetDate, gks)
+    total, xpirs = acct[:greeks]
+    total = addGreeks(total, gks)
+    if haskey(xpirs, targetDate)
+        xpirs[targetDate] = addGreeks(xpirs[targetDate], gks)
+    else
+        xpirs[targetDate] = gks
+    end
+    return (;total, xpirs)
 end
 
 function tradeInfo(trade, date)
+    op = trade[:open]
     xpir = getExpir(trade)
     daysLeft = bdays(date, xpir)
-    dateOpen = toDateMarket(trade[:tsOpen])
+    dateOpen = toDateMarket(op.ts)
     daysTotal = bdays(dateOpen, xpir)
     xpirRatio = (1 + daysLeft) / daysTotal
-    neto = trade[:neto]
-    lmsc = requote(optQuoter, trade[:lms], Action.close)
-    # TODO: maybe use lmsc instead of quoting again?
-    qt = quoter(trade[:lms], Action.close)
+    neto = op.neto
+    # lmsc = tos(LegMeta{Close}, trade[:lms])
+    lmsc = trade[:lmsTrack]
+    qt = getQuote(lmsc)
     netc = usePrice(qt)
     curVal = neto + netc
     timt = DateUtil.timult(dateOpen, date)
-    mn = min(OptionUtil.legsExtrema(trade[:lms]...)...)
+    mn = min(OptionUtil.legsExtrema(neto, trade[:legs]...)...)
     rate = timt * curVal / (-mn)
     return (; xpir, daysLeft, daysTotal, xpirRatio, neto, lmsc, qt, netc, curVal, timt, mn, rate)
 end
@@ -382,7 +413,7 @@ netOpen(lms) = sum(usePrice, lms)
 # priceOpen(trade) = usePrice(quoter(trade[:lms], Action.open))
 netClose(trade) = usePrice(quoter(trade[:lms], Action.close))
 getExpir(trade) = trade[:targetDate] # minimum(getExpiration, lms)
-openDur(trade) = bdays(toDateMarket(trade[:tsOpen]), toDateMarket(trade[:tsClosed])) + 1
+openDur(trade) = bdays(toDateMarket(trade[:open].ts), toDateMarket(trade[:close].ts)) + 1
 bdaysLeft(from, trade) = bdays(from, getExpir(trade))
 aboveRat(s, curp) = (s - curp) / s
 
@@ -416,22 +447,11 @@ end
 
 using LogUtil
 out(args...) = LogUtil.logit(:backtest, args...)
+#endregion
 
-function track(lms, start)
-    num = start
-    while SnapUtil.snapDate(num) <= getExpiration(lms)
-        snap(num)
-        print(market().curp, ": ")
-        println(quoter(lms, Action.close))
-        num += 1
-    end
-end
-
-# function findCurp(chs)
-#     chs = filter(isPut, chs)
-#     chs = sort!(chs, by=x->abs(x.meta.delta + 0.5))
-#     return getStrike(chs[1])
-# end
+#region MaybeMove
+SH.to(::Type{LegMeta{Close}}, leg::Leg, lup) = LegMeta{Close}(leg, lup(getOption(leg)))
+SH.to(::Type{LegMeta{Close}}, lm::LegMeta{Open}, lup) = to(LegMeta{Close}, getLeg(lm), lup) # LegMeta{Close}(lup(getOption(lm)), getQuantity(lm), getSide(lm))
 #endregion
 
 end

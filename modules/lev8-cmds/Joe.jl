@@ -336,7 +336,7 @@ const Msgs = Dict{Symbol,Vector{Any}}()
 
 #endregion
 
-using SnapUtil, Chains, Quoting
+using SnapUtil, Chains
 function checkLcOverTime(start=1; maxIter=1e6)
     dates = SnapUtil.snapDates()
     dateStart = dates[start]
@@ -650,7 +650,7 @@ function scoreGreeks(gkss::AVec{GreeksType}, qtys::AVec, ad::GreeksType)
 end
 
 scoreGreeks(x) = scoreGreeks(getGreeks(x))
-scoreGreeks(x, ad::GreeksType) = scoreGreeks(greeksAdd(getGreeks(x), ad))
+scoreGreeks(x, ad::GreeksType) = scoreGreeks(addGreeks(getGreeks(x), ad))
 
 scoreGreeks(gks::GreeksType) = scoreGreeks(gks.delta, gks.gamma, gks.vega)
 scoreGreeks(del, gam, veg) = abs(del) + 8 * abs(gam) + abs(veg)

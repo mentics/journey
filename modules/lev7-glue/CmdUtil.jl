@@ -184,8 +184,7 @@ end
 # SH.getGamma(trade::Trade) = SH.getGamma(Quoting.requote(optQuoter, getLegs(trade), Action.close))
 # SH.getTheta(trade::Trade) = SH.getTheta(Quoting.requote(optQuoter, getLegs(trade), Action.close))
 # SH.getVega(trade::Trade) = SH.getVega(Quoting.requote(optQuoter, getLegs(trade), Action.close))
-import Quoting
-OptionMetaTypes.getGreeks(trade::Trade)::GreeksType = getGreeks(Quoting.requote(optQuoter, getLegs(trade), Action.close))
+SH.getGreeks(trade::Trade)::Greeks = getGreeks(Quoting.requote(optQuoter, getLegs(trade), Action.close))
 
 # export deltaPos
 # function deltaPos(xprs=1:21)

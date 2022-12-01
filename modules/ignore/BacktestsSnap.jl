@@ -303,8 +303,8 @@ function openTrade(acct, lms, neto, label, risk)
     push!(acct[:todayOpens], trade)
     acct[:bal] += neto
     gks = getGreeks(lms)
-    acct[:greeks] = greeksAdd(acct[:greeks], gks)
-    acct[:greeksExpirs][date] = greeksAdd(get!(acct[:greeksExpirs], date, GreeksZero), gks)
+    acct[:greeks] = addGreeks(acct[:greeks], gks)
+    acct[:greeksExpirs][date] = addGreeks(get!(acct[:greeksExpirs], date, GreeksZero), gks)
     out("Open #$(trade[:id]) $(Shorthand.tosh(lms, acct[:xpirs])): '$(label)' neto:$(neto)") # deltaX: $(rond(delta)) -> $(rond(deltaNew)) deltaAcct: $(rond(acct[:delta]))")
     return trade
 end
@@ -335,7 +335,7 @@ function urpnl(trade)
     return trade[:neto] + netc
 end
 
-OptionMetaTypes.getGreeks(trade::TradeType) = getGreeks(requote(optQuoter, trade[:lms], Action.close))
+SH.getGreeks(trade::TradeType) = getGreeks(requote(optQuoter, trade[:lms], Action.close))
 
 function greeksForExpirs(trades::Coll)::Dict{Date,GreeksType}
     d = Dict{Date,GreeksType}()
@@ -345,7 +345,7 @@ function greeksForExpirs(trades::Coll)::Dict{Date,GreeksType}
         if !haskey(d, date)
             d[date] = gks
         else
-            d[date] = greeksAdd(d[date], gks)
+            d[date] = addGreeks(d[date], gks)
         end
     end
     return d

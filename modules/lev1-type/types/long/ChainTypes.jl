@@ -9,17 +9,16 @@ struct OptionQuote
     option::Option
     quot::Quote
     meta::OptionMeta
-    src::Union{Nothing,Dict{String,Any}}
 end
-OptionQuote(;option=Option(), quot=Quote(), meta=OptionMeta(), src=nothing) = OptionQuote(option, quot, meta, src)
-OptionQuote(oq::OptionQuote; option=getOption(oq), quot=getQuote(oq), meta=getMeta(oq)) = OptionQuote(option, quot, meta, nothing)
-OptionQuote(oq::OptionQuote, action::Action.T, side::Side.T) = OptionQuote(getOption(oq), Quote(getQuote(oq), action, side), getMeta(oq), nothing)
+OptionQuote(;option=Option(), quot=Quote(), meta=OptionMeta()) = OptionQuote(option, quot, meta)
+OptionQuote(oq::OptionQuote; option=getOption(oq), quot=getQuote(oq), meta=getOptionMeta(oq)) = OptionQuote(option, quot, meta)
+# OptionQuote(oq::OptionQuote, action::Action.T, side::Side.T) = OptionQuote(getOption(oq), Quote(getQuote(oq), action, side), getMeta(oq))
 SH.getOption(oq::OptionQuote) = oq.option
 SH.getQuote(oq::OptionQuote) = oq.quot
-SH.getQuote(oq::OptionQuote, side::Side.T) = Quote(oq.quot, side)
-SH.getQuote(oq::OptionQuote, action::Action.T, side::Side.T) = Quote(oq.quot, action, side)
-SH.getMeta(oq::OptionQuote) = oq.meta
-SH.getAction(oq::OptionQuote) = getAction(oq.quot)
+# SH.getQuote(oq::OptionQuote, side::Side.T) = Quote(oq.quot, side)
+# SH.getQuote(oq::OptionQuote, action::Action.T, side::Side.T) = Quote(oq.quot, action, side)
+SH.getOptionMeta(oq::OptionQuote) = oq.meta
+# SH.getAction(oq::OptionQuote) = getAction(oq.quot)
 
 SH.getStyle(oq::OptionQuote) = getStyle(oq.option)
 SH.getExpiration(oq::OptionQuote) = getExpiration(oq.option)
@@ -27,7 +26,7 @@ SH.getStrike(oq::OptionQuote) = getStrike(oq.option)
 SH.getBid(oq::OptionQuote) = getBid(oq.quot)
 SH.getAsk(oq::OptionQuote) = getAsk(oq.quot)
 SH.getIv(oq::OptionQuote) = oq.meta.iv
-OptionMetaTypes.getGreeks(oq::OptionQuote) = getGreeks(oq.meta)
+SH.getGreeks(oq::OptionQuote) = getGreeks(oq.meta)
 
 SH.isValid(curp::Currency) =
     oq::OptionQuote ->
