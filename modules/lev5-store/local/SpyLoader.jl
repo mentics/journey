@@ -1,6 +1,6 @@
 module SpyLoader
 using BaseTypes, SmallTypes
-using DateUtil
+using DateUtil, LogUtil
 import SqlLoader
 import HistSpy as hspy
 
@@ -63,6 +63,7 @@ function pragmasSpeed()
 end
 
 function load()
+    LogUtil.resetLog(:spyloader)
     # dropTables()
     # createTables()
     timeStart = time()
@@ -101,82 +102,102 @@ end
 
 function procLine(line, tsPrev, stmtCall, stmtPut, stmtUnder)
     try
-    # words = split(line, ',')
-    left = 1
-    right = findnext(',', line, left)
-    ts = parsem(Int, SubString(line, left:right-1))
-    left = right+1 ; right = findnext(',', line, left)
-    left = right+1 ; right = findnext(',', line, left)
-    left = right+1 ; right = findnext(',', line, left)
-    left = right+1 ; right = findnext(',', line, left)
-    under = parsem(Currency, SubString(line, left:right-1))
-    left = right+1 ; right = findnext(',', line, left)
-    left = right+1 ; right = findnext(',', line, left)
-    xpir = parsem(Int, SubString(line, left:right-1))
-    left = right+1 ; right = findnext(',', line, left)
-    left = right+1 ; right = findnext(',', line, left)
-    cDelta = parsem(Float64, SubString(line, left:right-1))
-    left = right+1 ; right = findnext(',', line, left)
-    cGamma = parsem(Float64, SubString(line, left:right-1))
-    left = right+1 ; right = findnext(',', line, left)
-    cVega = parsem(Float64, SubString(line, left:right-1))
-    left = right+1 ; right = findnext(',', line, left)
-    cTheta = parsem(Float64, SubString(line, left:right-1))
-    left = right+1 ; right = findnext(',', line, left)
-    cRho = parsem(Float64, SubString(line, left:right-1))
-    left = right+1 ; right = findnext(',', line, left)
-    cIv = parsem(Float64, SubString(line, left:right-1))
-    left = right+1 ; right = findnext(',', line, left)
-    cVol = parsem(Float64, SubString(line, left:right-1), 0.0)
-    left = right+1 ; right = findnext(',', line, left)
-    cLast = parsem(Currency, SubString(line, left:right-1))
-    left = right+1 ; right = findnext(',', line, left) # skip size
-    left = right+1 ; right = findnext(',', line, left)
-    cBid = parsem(Currency, SubString(line, left:right-1))
-    left = right+1 ; right = findnext(',', line, left)
-    cAsk = parsem(Currency, SubString(line, left:right-1))
+        left = 1
+        right = findnext(',', line, left)
+        ts = parsem(Int, SubString(line, left:right-1))
+        left = right+1 ; right = findnext(',', line, left)
+        left = right+1 ; right = findnext(',', line, left)
+        left = right+1 ; right = findnext(',', line, left)
+        left = right+1 ; right = findnext(',', line, left)
+        under = parsem(Currency, SubString(line, left:right-1))
+        left = right+1 ; right = findnext(',', line, left)
+        left = right+1 ; right = findnext(',', line, left)
+        xpir = parsem(Int, SubString(line, left:right-1))
+        left = right+1 ; right = findnext(',', line, left)
+        left = right+1 ; right = findnext(',', line, left)
+        cDelta = parsem(Float64, SubString(line, left:right-1))
+        left = right+1 ; right = findnext(',', line, left)
+        cGamma = parsem(Float64, SubString(line, left:right-1))
+        left = right+1 ; right = findnext(',', line, left)
+        cVega = parsem(Float64, SubString(line, left:right-1))
+        left = right+1 ; right = findnext(',', line, left)
+        cTheta = parsem(Float64, SubString(line, left:right-1))
+        left = right+1 ; right = findnext(',', line, left)
+        cRho = parsem(Float64, SubString(line, left:right-1))
+        left = right+1 ; right = findnext(',', line, left)
+        cIv = parsem(Float64, SubString(line, left:right-1))
+        left = right+1 ; right = findnext(',', line, left)
+        cVol = parsem(Float64, SubString(line, left:right-1), 0.0)
+        left = right+1 ; right = findnext(',', line, left)
+        cLast = parsem(Currency, SubString(line, left:right-1))
+        left = right+1 ; right = findnext(',', line, left) # skip size
+        left = right+1 ; right = findnext(',', line, left)
+        cBid = parsem(Currency, SubString(line, left:right-1))
+        left = right+1 ; right = findnext(',', line, left)
+        cAsk = parsem(Currency, SubString(line, left:right-1))
 
-    left = right+1 ; right = findnext(',', line, left)
-    strike = parsem(Currency, SubString(line, left:right-1))
+        left = right+1 ; right = findnext(',', line, left)
+        strike = parsem(Currency, SubString(line, left:right-1))
 
-    left = right+1 ; right = findnext(',', line, left)
-    pBid = parsem(Currency, SubString(line, left:right-1))
-    left = right+1 ; right = findnext(',', line, left)
-    pAsk = parsem(Currency, SubString(line, left:right-1))
-    left = right+1 ; right = findnext(',', line, left) # skip size
-    left = right+1 ; right = findnext(',', line, left)
-    pLast = parsem(Currency, SubString(line, left:right-1))
-    left = right+1 ; right = findnext(',', line, left)
-    pDelta = parsem(Float64, SubString(line, left:right-1))
-    left = right+1 ; right = findnext(',', line, left)
-    pGamma = parsem(Float64, SubString(line, left:right-1))
-    left = right+1 ; right = findnext(',', line, left)
-    pVega = parsem(Float64, SubString(line, left:right-1))
-    left = right+1 ; right = findnext(',', line, left)
-    pTheta = parsem(Float64, SubString(line, left:right-1))
-    left = right+1 ; right = findnext(',', line, left)
-    pRho = parsem(Float64, SubString(line, left:right-1))
-    left = right+1 ; right = findnext(',', line, left)
-    pIv = parsem(Float64, SubString(line, left:right-1))
-    left = right+1 ; right = findnext(',', line, left)
-    pVol = parsem(Float64, SubString(line, left:right-1), 0.0)
+        left = right+1 ; right = findnext(',', line, left)
+        pBid = parsem(Currency, SubString(line, left:right-1))
+        left = right+1 ; right = findnext(',', line, left)
+        pAsk = parsem(Currency, SubString(line, left:right-1))
+        left = right+1 ; right = findnext(',', line, left) # skip size
+        left = right+1 ; right = findnext(',', line, left)
+        pLast = parsem(Currency, SubString(line, left:right-1))
+        left = right+1 ; right = findnext(',', line, left)
+        pDelta = parsem(Float64, SubString(line, left:right-1))
+        left = right+1 ; right = findnext(',', line, left)
+        pGamma = parsem(Float64, SubString(line, left:right-1))
+        left = right+1 ; right = findnext(',', line, left)
+        pVega = parsem(Float64, SubString(line, left:right-1))
+        left = right+1 ; right = findnext(',', line, left)
+        pTheta = parsem(Float64, SubString(line, left:right-1))
+        left = right+1 ; right = findnext(',', line, left)
+        pRho = parsem(Float64, SubString(line, left:right-1))
+        left = right+1 ; right = findnext(',', line, left)
+        pIv = parsem(Float64, SubString(line, left:right-1))
+        left = right+1 ; right = findnext(',', line, left)
+        pVol = parsem(Float64, SubString(line, left:right-1), 0.0)
 
-    if !ismissing(cBid) && !ismissing(cAsk)
-        hspy.run(stmtCall, (ts, xpir, strike, cBid, cAsk, cLast, cVol, cDelta, cGamma, cVega, cTheta, cRho, cIv))
-    else
-        # skippedCalls += 1
-        println("skipped call ($(strike)): ", line)
-    end
-    if !ismissing(pBid) && !ismissing(pAsk)
-        hspy.run(stmtPut, (ts, xpir, strike, pBid, pAsk, pLast, pVol, pDelta, pGamma, pVega, pTheta, pRho, pIv))
-    else
-        println("skipped put ($(strike)): ", line)
-    end
+        if cBid > cAsk
+            @log spyloader ("WARN: Swapping bid/ask because cBid > cAsk: $(cBid) > $(cAsk) for line:\n|", line, '|')
+            tmp = cAsk
+            cAsk = cBid
+            cBid = tmp
+        end
 
-    if ts != tsPrev
-        hspy.run(stmtUnder, (ts, under))
-    end
-    return ts
+        if pBid > pAsk
+            @log spyloader ("WARN: Swapping bid/ask because pBid > pAsk: $(pBid) > $(pAsk) for line:\n|", line, '|')
+            tmp = pAsk
+            pAsk = pBid
+            pBid = tmp
+        end
+
+        if xpir < ts
+            @log spyloader ("WARN: xpir < ts: $(xpir) < $(ts) for line:\n|", line, '|')
+        end
+
+        if !(1.0 < strike < 1000.0)
+            @log spyloader ("WARN: invalid strike: $(strike) for line:\n|", line, '|')
+        end
+
+        if !ismissing(cBid) && !ismissing(cAsk)
+            hspy.run(stmtCall, (ts, xpir, strike, cBid, cAsk, cLast, cVol, cDelta, cGamma, cVega, cTheta, cRho, cIv))
+        else
+            @log spyloader ("skipped call ($(strike)):\n", line)
+        end
+        if !ismissing(pBid) && !ismissing(pAsk)
+            hspy.run(stmtPut, (ts, xpir, strike, pBid, pAsk, pLast, pVol, pDelta, pGamma, pVega, pTheta, pRho, pIv))
+        else
+            @log spyloader ("skipped put ($(strike)):\n", line)
+        end
+
+        if ts != tsPrev
+            hspy.run(stmtUnder, (ts, under))
+        end
+        return ts
     catch e
         println(line)
         rethrow(e)

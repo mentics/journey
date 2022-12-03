@@ -4,7 +4,7 @@ using Calendars, Markets, Chains, Expirations
 using Store, StoreTrade, ProcOrder
 using CmdTrading, CmdPos
 
-using Combos, SeekingAlpha, Joe ; c = Combos ; sa = SeekingAlpha ; j = Joe
+using Combos, SeekingAlpha ; c = Combos ; sa = SeekingAlpha
 
 dbChecks()
 procOrders()

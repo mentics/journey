@@ -1,13 +1,15 @@
 module CmdPos
 import Dates:Date
 using BaseTypes
-import SH:SH,v,isStatus
+import SH:SH,v,isStatus,getLeg,getLegs
 import StatusTypes:WithFilled
 import LegMetaTypes:LegMeta
+using LegTypes
 import ProbTypes:Prob
 import Rets:Ret
 import CollUtil:concat
 import CalcUtil
+using CollUtil
 import Calendars
 import Markets:market
 import Expirations:expir
@@ -23,7 +25,7 @@ cmet(prob::Prob, ret::Ret) = CalcUtil.calcMetrics(prob, ret)
 # ckel(prob::Prob, ret::Ret) = Kelly.calc(prob.vals, ret.vals ./ (-minimum(ret.vals)))
 # ckel!(buf, prob::Prob, ret::Ret, mn::Float64) = Kelly.ded!(buf, prob.vals, ret.vals, mn)
 
-export xprob, xlms, xret, xmet, xkel, xdr, x3
+export xprob, xlms, xlegs, xret, xmet, xkel, xdr, x3
 xprob(ex::Int) = xprob(expir(ex))
 function xprob(expr::Date)
     mkt = market()
@@ -39,9 +41,11 @@ function xprob(expr::Date)
     return prob
 end
 
-xlms(expr::Date)::Vector{LegMeta} = SH.combineTo(Vector{LegMeta}, ST.tradesOpen(x -> isStatus(x, WithFilled) && getTargetDate(x) == expr))
-xlms(ex::Int)::Vector{LegMeta} = xlms(expir(ex))
-xlms(ex::Int, add::Coll{LegMeta})::Vector{LegMeta} = concat(xlms(ex), add)
+xlms(xpir::Date)::Vector{LegMeta} = SH.combineTo(Vector{LegMeta}, ST.tradesOpen(x -> isStatus(x, WithFilled) && getTargetDate(x) == xpir))
+xlms(xpr::Int)::Vector{LegMeta} = xlms(expir(xpr))
+xlms(xpr::Int, add::Coll{LegMeta})::Vector{LegMeta} = concat(xlms(xpr), add)
+xlegs(xpir::Date)::Vector{Leg} = collect(mapflatmap(getLeg, getLegs, ST.tradesOpen(x -> isStatus(x, WithFilled) && getTargetDate(x) == xpir)))
+xlegs(xpr::Int)::Vector{Leg} = xlegs(expir(xpr))
 
 xret(ex::Int, curp::Currency=market().curp)::Ret = cret(xlms(ex), curp)
 xret(ex::Int, add::Coll{LegMeta}, curp::Currency=market().curp)::Ret = cret(xlms(ex, add), curp)

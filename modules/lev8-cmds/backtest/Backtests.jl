@@ -1,5 +1,6 @@
 module Backtests
 using Dates
+import StatsBase
 using SH, Globals, BaseTypes, SmallTypes, OptionTypes, LegTypes, LegMetaTypes, OptionMetaTypes
 using DateUtil, CollUtil, DictUtil, ChainUtil
 using Pricing, Between
@@ -35,133 +36,14 @@ function checkSides(acct, t, p)
     return nothing
 end
 
-function stratGiantCondor(acct)
-    p = (;
-        MaxOpen = 10,
-        XpirBdays = (;min=40, max=60),
-        Put = (;rat=0.9, off=20.0, prof=0.8, take=0.4),
-        Call = (;rat=1.05, off=20.0, prof=0.8, take=0.4),
-    )
-
-    # p = (;
-    #     MaxOpen = 10,
-    #     XpirBdays = (;min=40, max=80),
-    #     Put = (;rat=0.8, off=30.0, prof=0.4, take=0.2),
-    #     Call = (;rat=1.1, off=20.0, prof=0.4, take=0.2),
-    # )
-
-    # checkClose((checkRateRatio,), acct, params)
-    checkClose((checkSides,), acct, p)
-
-    # ts = acct[:ts]
-    date = acct[:date]
-    curp = acct[:curp]
-    xoqss = acct[:xoqss]
-
-    # isLegAllowed = entryFilterOption(acct)
-    # posLms = collect(cu.flatmap(x -> x[:lms], acct[:poss]))
-
-    xpirMin = bdaysAfter(date, p.XpirBdays.min)
-    xpirMax = bdaysAfter(date, p.XpirBdays.max)
-    xpirs = filter(x -> xpirMin <= x <= xpirMax, acct[:xpirs])
-    for xpir in xpirs
-        oqss = xoqss[xpir]
-        length(acct[:poss]) < p.MaxOpen || return # ( println("Hit max open") ; return )
-        global keep = oqss
-
-        # TODO: have use the recent high (period = xpir days) and require rat above that
-        lms = findLongSpreadEntry(oqss, p.Put)
-        rat = getStrike(lms[2]) / curp
-        if !isnothing(lms) && rat <= p.Put.rat
-            neto = netOpen(lms)
-            @assert neto > 0.0
-            openTrade(acct, lms, neto, "long spread: rat=$(rond(rat)), neto=$(neto)", abs(getStrike(lms[1]) - getStrike(lms[2])) - neto)
-        else
-            # println("Could not find put entry: $(rat)")
-        end
-
-        lms = findShortSpreadEntry(oqss, p.Call)
-        rat = getStrike(lms[1]) / curp
-        if !isnothing(lms) && rat >= p.Call.rat
-            neto = netOpen(lms)
-            @assert neto > 0.0
-            openTrade(acct, lms, neto, "short spread: rat=$(rond(rat)), neto=$(neto)", abs(getStrike(lms[1]) - getStrike(lms[2])) - neto)
-        else
-            # println("Could not find call entry: $(rat)")
-        end
-    end
+function lyzeRisk()
+    closed = filter(t -> haskey(t, :close), acct[:trades])
+    risks = map(getTradeRate, closed)
 end
-
-function findLongSpreadEntry(oqss, p)
-    shorts = oqss.put.short
-    longs = oqss.put.long
-    ilo = 1
-    isho = findfirst(oq -> getBid(oq) > p.prof, shorts)
-    lo = longs[ilo]
-    sho = shorts[isho]
-
-    while getStrike(sho) - getStrike(lo) > p.off
-        ilo += 1
-        lo = longs[ilo]
-    end
-
-    neto = getBid(sho) - getAsk(lo) # Choosing worst case at this stage
-    while neto < p.prof
-        isho += 1
-        sho = shorts[isho]
-        while getStrike(sho) - getStrike(lo) > p.off
-            ilo += 1
-            lo = longs[ilo]
-        end
-        neto = getBid(sho) - getAsk(lo) # Choosing worst case at this stage
-    end
-    shoBid = getBid(sho)
-    while true
-        if shoBid - getAsk(longs[ilo+1]) < p.prof
-            lo = longs[ilo]
-            break
-        else
-            ilo += 1
-        end
-    end
-    return (LegMetaOpen(lo, Side.long, 1.0), LegMetaOpen(sho, Side.short, 1.0))
-end
-
-function findShortSpreadEntry(oqss, p)
-    shorts = oqss.call.short
-    longs = oqss.call.long
-    ilo = lastindex(longs)
-    isho = findlast(oq -> getBid(oq) > p.prof, shorts)
-    lo = longs[ilo]
-    sho = shorts[isho]
-
-    while getStrike(lo) - getStrike(sho) > p.off
-        ilo -= 1
-        lo = longs[ilo]
-    end
-
-    neto = getBid(sho) - getAsk(lo) # Choosing worst case at this stage
-    while neto < p.prof
-        # @show ilo isho neto
-        isho -= 1
-        sho = shorts[isho]
-        while getStrike(lo) - getStrike(sho) > p.off
-            ilo -= 1
-            lo = longs[ilo]
-        end
-        neto = getBid(sho) - getAsk(lo) # Choosing worst case at this stage
-        # @show getStrike(sho) getStrike(lo) neto
-    end
-    shoBid = getBid(sho)
-    while true
-        if shoBid - getAsk(longs[ilo-1]) < p.prof
-            lo = longs[ilo]
-            break
-        else
-            ilo -= 1
-        end
-    end
-    return (LegMetaOpen(sho, Side.short, 1.0), LegMetaOpen(lo, Side.long, 1.0))
+function getTradeRate(trade)
+    pnl = trade[:open][:neto] + trade[:close][:netc]
+    # @show toDateMarket(trade[:open][:ts]), toDateMarket(trade[:close][:ts]), pnl, trade[:risk]
+    return calcRate(toDateMarket(trade[:open][:ts]), toDateMarket(trade[:close][:ts]), pnl, trade[:risk])
 end
 #endregion
 
@@ -177,8 +59,9 @@ function run(f; maxSeconds=60)
         :poss => Vector{TradeType}(),
         :todayOpens => Vector{TradeType}(),
         :todayCloses => Vector{TradeType}(),
-        :riskDays => 0.0,
-        :lastTradeId => 0
+        # :riskDays => 0.0,
+        :lastTradeId => 0,
+        :rates => Vector{Float64}()
     )
     from, to = hspy.getRange()
     dateStart = toDateMarket(from)
@@ -189,7 +72,7 @@ function run(f; maxSeconds=60)
 
         if date != datePrev
             # TODO: closing and opening on same day might affect this a little, but I think buying power allows this so maybe it's ok
-            acct[:riskDays] += (date - datePrev).value * getRisk(acct[:poss])
+            # acct[:riskDays] += (date - datePrev).value * getRisk(acct[:poss])
             empty!(acct[:todayOpens])
             empty!(acct[:todayCloses])
             datePrev = date
@@ -201,9 +84,11 @@ function run(f; maxSeconds=60)
         acct[:date] = date
         acct[:curp] = curp
         acct[:xpirs] = hspy.getExpirs(ts)
-        xoqss = hspy.getXoqss(ts, curp)
+        xoqss = hspy.getXoqss(ts, curp, collect(flatmap(x -> x[:legs], acct[:poss])))
+        # TODO: opt
+        unxoqss = hspy.getXoqss(ts, curp)
         acct[:xoqss] = xoqss
-        lup = lookup(xoqss)
+        lup = lookup(unxoqss)
         acct[:lup] = lup
         updatePossLmsClose(lup, acct[:poss])
         acct[:greeks] = calcGreeks(acct[:poss]) # isempty(acct[:poss]) ? GreeksZero : getGreeks(acct[:poss])
@@ -217,20 +102,22 @@ function run(f; maxSeconds=60)
             trade = acct[:poss][tind]
             xpir = getExpir(trade)
             if ts == getMarketClose(xpir)
-                lmsc = tos(LegMetaClose, trade[:lms], lup)
+                lmsc = tosLLMC(trade[:lms], lup)
                 netc = OptionUtil.netExpired(lmsc, curp)
                 if abs(curp - getStrike(lmsc[1])) < 5.0 || abs(curp - getStrike(lmsc[end])) < 5.0
-                    netc -= 0.02
+                    netc -= 0.02 # adjust to pay to close and not just let expire
                 end
-                closeTrade(acct, trade, lmsc, netc, "expired $(netClose(trade))")
+                closeTrade(acct, trade, lmsc, netc, "expired $(getQuote(trade[:lmsTrack]))")
             else
                 tind += 1
             end
         end
 
         acct[:urpnl] = urpnl(acct[:poss])
-        rate = calcRate(dateStart, date, acct[:real], acct[:riskDays] / days)
-        out("End $(formatLocal(ts)): $(rond(acct[:bal])) rpnl:$(rond(acct[:real])) urpnl:$(rond(acct[:urpnl])) #open:$(length(acct[:poss])) risk:$(acct[:riskDays] / days) rate:$(rate)")
+        # rate = calcRate(dateStart, date, acct[:real], acct[:riskDays] / days)
+        # risk:$(acct[:riskDays] / days)
+        rate = StatsBase.mean(acct[:rates])
+        out("End $(formatLocal(ts)): $(rond(acct[:bal])) rpnl:$(rond(acct[:real])) urpnl:$(rond(acct[:urpnl])) #open:$(length(acct[:poss])) rateAvg:$(rond(rate))")
 
         if time() > tstart + maxSeconds
             break
@@ -241,17 +128,26 @@ function run(f; maxSeconds=60)
     dateEnd = acct[:date]
     # We're going to pretend we closed everything at the last time, so don't need to add risk.
     # acct[:riskDays] += getRisk(acct[:poss]) # model it for end of last day, so only * 1 day
-    rate = calcRate(dateStart, dateEnd, total, acct[:riskDays] / days)
+    # rate = calcRate(dateStart, dateEnd, total, acct[:riskDays] / days)
+    rate = StatsBase.mean(acct[:rates])
     out("Summary $(dateStart) - $(dateEnd):")
     out("  rpnl = $(acct[:real]), urpnl = $(acct[:urpnl])")
     out("  Total: $(total)")
-    out("  risk-days: $(acct[:riskDays])")
+    # out("  risk-days: $(acct[:riskDays])")
     out("  rate: $(rond(rate))")
 end
 
 function updatePossLmsClose(lup, trades)
+    i = 1
     for trade in trades
-        trade[:lmsTrack] = tos(LegMetaClose, trade[:legs], lup)
+        try
+            trade[:lmsTrack] = tosLMC(trade[:legs], lup)
+            # trade[:lmsTrack] = map(leg -> LegMetaClose(leg, lup(getOption(leg)), trade[:legs]))
+        catch e
+            println("Trade $(i): ", trade)
+            rethrow(e)
+        end
+        i += 1
     end
 end
 
@@ -286,7 +182,7 @@ end
 #region Actions
 function openTrade(acct, lms::Coll{LegMetaOpen}, neto, label, risk)
     lup = acct[:lup]
-    lmsTrack = tos(LegMetaClose, lms, lup)
+    lmsTrack = tosLLMC(lms, lup)
     targetDate = minimum(getExpiration, lms)
     trade = Dict(
         :id => nextTradeId(acct),
@@ -311,7 +207,10 @@ function closeTrade(acct, trade, lms::Coll{LegMetaClose}, netc, label)
     acct[:bal] += netc
     neto = trade[:open].neto
     pnl = neto + netc
+    # trade[:pnl] = pnl
     acct[:real] += pnl
+    push!(acct[:rates], getTradeRate(trade))
+    show rate?
     out("Close #$(trade[:id]) $(Shorthand.tosh(lms[1])): '$(label)' neto:$(rond(neto)) netc:$(netc) pnl=$(rond(pnl)) ; $(openDur(trade)) days open, $(bdaysLeft(acct[:date], trade)) days left")
     return
 end
@@ -324,7 +223,7 @@ getRisk(trades::Coll) = sum(getRisk, trades; init=0.0)
 urpnl(trades::Coll) = sum(x -> urpnl(x), trades; init=0.0)
 function urpnl(trade)
     qt = trade[:lmsTrack]
-    netc = usePrice(qt)
+    netc = bap(qt, .1)
     return trade[:open].neto + netc
 end
 
@@ -332,7 +231,7 @@ function lookup(xoqss)
     function lup(exp::Date, style::Style.T, strike::Currency) # ::Union{Nothing,OptionQuote}
         try
             res = find(x -> getStrike(x) == strike, getfield(xoqss[exp], Symbol(style)).long)
-            !isnothing(res) || println("WARN: Could not quote $(exp), $(style), $(strike)")
+            !isnothing(res) || println("WARN: Backtest could not quote $(exp), $(style), $(strike)")
             return res
         catch e
             @show exp style strike
@@ -345,7 +244,7 @@ function lookup(xoqss)
             style = getStyle(o)
             strike = getStrike(o)
             res = find(x -> getStrike(x) == strike, getfield(xoqss[exp], Symbol(style)).long)
-            !isnothing(res) || println("WARN: Could not quote $(exp), $(style), $(strike)")
+            !isnothing(res) || println("WARN: Backtest could not quote $(exp), $(style), $(strike)")
             return res
         catch e
             @show exp style strike
@@ -393,7 +292,7 @@ function tradeInfo(trade, date)
     # lmsc = tos(LegMetaClose, trade[:lms])
     lmsc = trade[:lmsTrack]
     qt = getQuote(lmsc)
-    netc = usePrice(qt)
+    netc = bap(qt, .1)
     curVal = neto + netc
     timt = DateUtil.timult(dateOpen, date)
     mn = min(OptionUtil.legsExtrema(neto, trade[:legs]...)...)
@@ -404,22 +303,23 @@ end
 
 #region Utils
 rond(x::Real) = round(x; digits=4)
-usePrice(q) = bap(q, .2) # getBid(q)
-netOpen(lms) = sum(usePrice, lms)
+# usePrice(q) = bap(q, .2) # getBid(q)
+# netOpen(lms) = sum(usePrice, lms)
 # priceOpen(trade) = usePrice(quoter(trade[:lms], Action.open))
-netClose(trade) = usePrice(quoter(trade[:lms], Action.close))
+# netClose(trade) = usePrice(quoter(trade[:lms], Action.close))
 getExpir(trade) = trade[:targetDate] # minimum(getExpiration, lms)
 openDur(trade) = bdays(toDateMarket(trade[:open].ts), toDateMarket(trade[:close].ts)) + 1
 bdaysLeft(from, trade) = bdays(from, getExpir(trade))
-aboveRat(s, curp) = (s - curp) / s
+# aboveRat(s, curp) = (s - curp) / s
 
-function entryFilterOption(acct)
-    d = entryFilterLookup(acct)
-    return function(opt, side)
-        status = get(d, getOption(opt), 0)
-        return !(status != 0 && (status == 2 || status != Int(side)))
-    end
-end
+# NOTE: I think this is handled by the filtering in getOqss
+# function entryFilterOption(acct)
+#     d = entryFilterLookup(acct)
+#     return function(opt, side)
+#         status = get(d, getOption(opt), 0)
+#         return !(status != 0 && (status == 2 || status != Int(side)))
+#     end
+# end
 
 function entryFilterLookup(acct)
     # can't go opposite current poss and today's opens and closes
@@ -446,8 +346,10 @@ out(args...) = LogUtil.logit(:backtest, args...)
 #endregion
 
 #region MaybeMove
-SH.to(::Type{LegMetaClose}, leg::Leg, lup) = LegMetaClose(leg, lup(getOption(leg)))
-SH.to(::Type{LegMetaClose}, lm::LegMetaOpen, lup) = to(LegMetaClose, getLeg(lm), lup) # LegMetaClose(lup(getOption(lm)), getQuantity(lm), getSide(lm))
+toLMC(leg::Leg, lup) = LegMetaClose(leg, lup(getOption(leg)))
+toLMC(lm::LegMetaOpen, lup) = toLMC(getLeg(lm), lup)
+tosLLMC(lms, lup) = map(lm -> toLMC(getLeg(lm), lup), lms)
+tosLMC(legs, lup) = map(leg -> toLMC(leg, lup), legs)
 #endregion
 
 end

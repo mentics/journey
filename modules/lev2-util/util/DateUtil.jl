@@ -34,6 +34,7 @@ bdaysPerYear() = 252.0
 durRisk(from::Date, to::Date) = 1 + bdays(from, to)
 timult(from::Date, to::Date) = bdaysPerYear() / durRisk(from, to)
 calcRate(from::Date, to::Date, ret, risk) = (ret / risk) * timult(from, to)
+calcRate(tmult, ret, risk) = (Float64(ret) / Float64(risk)) * tmult
 
 #region Basic
 const SECOND_ZERO = Second(0)
@@ -122,6 +123,12 @@ lastTradingDay(d::Date)::Date = tobday(:USNYSE, d; forward=false)
 nextTradingDay(d::Date)::Date = tobday(:USNYSE, d; forward=true)
 bdaysBefore(d::Date, n::Int)::Date = advancebdays(:USNYSE, lastTradingDay(d), -n)
 bdaysAfter(d::Date, n::Int)::Date = advancebdays(:USNYSE, lastTradingDay(d), n)
+
+function matchAfter(from::Date, dates, bdays)
+    dateMin = bdaysAfter(from, first(bdays))
+    dateMax = bdaysAfter(from, last(bdays))
+    return filter(x -> dateMin <= x <= dateMax, dates)
+end
 
 # NOTE: crossing daylight savings time changes will make this off by an hour, but we don't do much in the middle of the night on a weekend.
 # const ZEROT = Time(0,0,0)

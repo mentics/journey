@@ -7,6 +7,12 @@ using Calendars
 import ChainUtil
 
 #region Public
+# TODO: UNION vs UNION ALL?
+# NOTE: only call when iterating only once
+# function getQuotes(ts::DateTime)::Vector{OptionQuote}
+#     u = toUnix(ts)
+#     return Iterators.map(toOptionQuote, sel("select 1 as style, * from Call where ts=? UNION select -1 as style, * from Put where ts=?", u, u))
+# end
 getQuotes(ts::DateTime, xpir::Date)::Vector{OptionQuote} =
         sort!(vcat(getCalls(ts, xpir), getPuts(ts, xpir)); by=getStrike)
 getCalls(ts::DateTime, xpir::Date)::Vector{OptionQuote} =
@@ -15,6 +21,9 @@ getPuts(ts::DateTime, xpir::Date)::Vector{OptionQuote} =
         collect(map(toOptionQuote, sel("select -1 as style, * from Put where ts=? and expir=? order by strike", toUnix(ts), toUnix(getMarketClose(xpir)))))
 getUnder(ts::DateTime)::Currency =
         reinterpret(Currency, (sel1("select under from Under where ts=?", toUnix(ts)).under))
+
+getQuote(ts::DateTime, xpir::Date, style::Style.T, strike::Currency)::OptionQuote =
+        toOptionQuote(sel1("select 1 as style, * from $(style) where ts=? and expir=? and strike=?", toUnix(ts), toUnix(getMarketClose(xpir)), Int(strike)))
 
 getTss() = [fromUnix(first(x)) for x in sel("select distinct ts from (select distinct ts from call union all select distinct ts from put) order by ts")]
 getExpirs(ts::DateTime) = [toExpir(first(x)) for x in sel("select distinct expir from (select expir from call where ts=? union all select expir from put where ts=?) order by expir", toUnix(ts), toUnix(ts))]
