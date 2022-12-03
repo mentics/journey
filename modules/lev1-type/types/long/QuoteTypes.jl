@@ -10,9 +10,11 @@ end
 Quote(;bid=C(1.17), ask=C(1.19)) = Quote(bid, ask)
 Quote(v::Currency) = Quote(v, v)
 function newQuote(q::Quote, dir::DirSQA)::Quote # side::Side.T, qty::Integer, action::Action.T)::Quote
-    # m = dirMult(side, qty, action)
+    @assert getBid(q) > 0 && getAsk(q) > 0
     m = dirMult(dir)
-    return Quote(m * q.bid, m * q.ask)
+    q = m > 0 ? Quote(m * q.bid, m * q.ask) : Quote(m * q.ask, m * q.bid)
+    @assert getBid(q) < getAsk(q)
+    return q
 end
 
 # Quote(quot::Quote, side::Side.T) = Quote(getAction(quot), side, getBid(quot), getAsk(quot))

@@ -32,8 +32,6 @@ using SH, BaseTypes, SmallTypes, QuoteTypes, LegTypes, LegTradeTypes, LegMetaTyp
 #     return isnothing(oq) ? nothing : OptionQuote(oq, act, getSide(leg))
 # end
 
-# function SH.calcQuote(lookup, lms::Coll{T}, act::Action.T=Action.open)::Quote where T<:Union{Leg,LegMeta,<:LegTrade}
-#     sumQuotes(getQuote(calcOptQuote(lookup, lm, act)) for lm in lms)
-# end
+
 
 end

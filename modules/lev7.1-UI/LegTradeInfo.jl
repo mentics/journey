@@ -26,7 +26,7 @@ function Base.string(leg::LegTrade)
     return res
 end
 
-function SH.to(NamedTuple, lt::LegTrade)
+function SH.to(::Type{NamedTuple}, lt::LegTrade)
     open = getNetOpen(lt)
     netc = getNetClose(lt)
     if ismissing(netc)

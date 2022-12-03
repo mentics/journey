@@ -45,7 +45,7 @@ SH.getIv(o::LegTrade) = getIv(o.meta)
 SH.getPrillDirOpen(o::LegTrade) = o.prillDirOpen
 SH.getPrillDirClose(o::LegTrade) = o.prillDirClose
 SH.getMeta(o::LegTrade) = o.meta
-SH.getNetOpen(o::LegTrade) = isnothing(o.prillDirOpen) ? missing : getQuantity(o) * o.prillDirOpen
+SH.getNetOpen(o::LegTrade)::Currency = isnothing(o.prillDirOpen) ? missing : getQuantity(o) * o.prillDirOpen
 SH.getNetClose(o::LegTrade) = isnothing(o.prillDirClose) ? missing : getQuantity(o) * o.prillDirClose
 # TODO: store all the greeks
 SH.getOptionMeta(lt::LegTrade) = getOptionMeta(lt.meta)

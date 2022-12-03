@@ -11,11 +11,11 @@ export makeRet, estAtPrice, combineRetVals!, combineRets, combineRetsC, combineR
 function makeRet(leg, neto::Currency, sp::Currency)::Ret
     return atExp(getStyle(leg), Float64(getStrike(leg)), getSide(leg), getQuantity(leg), Float64(neto), Float64(sp))
 end
-function makeRet(leg::Leg, m::OptionMeta, neto::Currency, targetDate::Date, sp::Currency, vtyRatio::Float64=Globals.get(:vtyRatio))::Ret
+function makeRet(leg::Leg, iv::Float64, neto::Currency, targetDate::Date, sp::Currency, vtyRatio::Float64=Globals.get(:vtyRatio))::Ret
     if getExpiration(leg) === targetDate
         return atExp(getStyle(leg), Float64(getStrike(leg)), getSide(leg), getQuantity(leg), Float64(neto), Float64(sp))
     else
-        return afterExp(leg, m, Float64(neto), targetDate, Float64(sp), vtyRatio)
+        return afterExp(leg, iv, Float64(neto), targetDate, Float64(sp), vtyRatio)
     end
 end
 
@@ -121,12 +121,12 @@ function atExp(style::Style.T, strike::Float64, side::Side.T, qty::Float64, neto
     return Ret(vals, sp, 1)
 end
 
-function afterExp(leg::Leg, m::OptionMeta, neto::Float64, targetDate::Date, sp::Float64, vtyRatio::Float64)::Ret
+function afterExp(leg::Leg, iv::Float64, neto::Float64, targetDate::Date, sp::Float64, vtyRatio::Float64)::Ret
     exp = getExpiration(leg)
     if exp == targetDate
         error("Wrong segment called with same exp", exp, targetDate)
     else
-        vty = vtyRatio * getIv(m)
+        vty = vtyRatio * iv
         if !(.05 < vty < .5)
             @log debug "Invalid vty in segPricing, using global average" vty leg
             vty = vtyRatio * Globals.get(:vtyAvg)[exp]

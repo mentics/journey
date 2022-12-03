@@ -1,11 +1,12 @@
 module TradeInfo
 using SH, BaseTypes, StatusTypes, TradeTypes
-using DateUtil
+using DateUtil, OptionUtil
 using Markets, Chains
 using OutputUtil
 
 using Globals, RetTypes
-minMaxPnl(trad::Trade)::Tuple{Currency,Currency} = C.(extrema(getVals(combineTo(Ret, [trad], getTargetDate(trad), market().startPrice, Globals.get(:vtyRatio)))))
+# minMaxPnl(trad::Trade)::Tuple{Currency,Currency} = C.(extrema(getVals(combineTo(Ret, [trad], getTargetDate(trad), market().startPrice, Globals.get(:vtyRatio)))))
+minMaxPnl(trad::Trade)::Tuple{Currency,Currency} = C.(extrema(OptionUtil.legsExtrema(getNetOpen(trad), getLegs(trad)...)))
 
 # getMaxClose(trad::Trade)::Currency = getMaxClose(getLegs(trad))
 # findPriceOpen(trad) = (dt = Date(tsOpen(trad)); dt == today() ? market().open : priceOpen(dt))
@@ -46,7 +47,8 @@ function Base.string(trad::Trade{S}) where S
                 # TODO: clean up?
                 mkt = market()
                 # TODO: include this info in legs and original IV and current IV and prices based on those
-                sat = C(valAtPrice(combineTo(Ret, [trad], getTargetDate(trad), mkt.startPrice, Globals.get(:vtyRatio)), mkt.curp))
+                # sat = C(valAtPrice(combineTo(Ret, [trad], getTargetDate(trad), mkt.startPrice, Globals.get(:vtyRatio)), mkt.curp))
+                sat = C(valAtPrice(combineTo(Ret, [trad], mkt.startPrice), mkt.curp))
 
                 res *= " @$(SEC(sat))/($(maxl),$(maxp))"
             else

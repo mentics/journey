@@ -96,6 +96,19 @@ end
 canQuoteXpr(xpr::Date)::Bool = xpr >= market().startDay
 quoter(x, act::Action.T=Action.open)::Quote = calcQuote(chainLookup, x, act)
 optQuoter(x, act::Action.T=Action.open)::Union{Nothing,OptionQuote} = calcOptQuote(chainLookup, x, act)
+function SH.calcQuote(lookup, legs::Coll, act::Action.T=Action.open)::Quote
+    sumQuotes(calcQuote(lookup, leg, act) for leg in legs)
+end
+function SH.calcQuote(lookup, leg::T, act::Action.T=Action.open)::Quote where T # <:Union{Leg,LegMeta,<:LegTrade}
+    oq = lookup(getExpiration(leg), getStyle(leg), getStrike(leg))
+    dir = DirSQA(getSide(leg), getQuantity(leg), act)
+    return newQuote(getQuote(oq), dir)
+end
+function SH.calcOptQuote(lookup, leg::T, act::Action.T=Action.open)::OptionQuote where T # <:Union{Leg,LegMeta,<:LegTrade}
+    oq = lookup(getExpiration(leg), getStyle(leg), getStrike(leg))
+    dir = DirSQ(getSide(leg), getQuantity(leg))
+    return OptionQuote(getOption(leg), newQuote(getQuote(oq), DirSQA(dir, act)), newOptionMeta(getOptionMeta(oq), dir))
+end
 # isQuotable(o::Option)::Bool = isQuotable(getStyle(o), getExpiration(o), getStrike(o))
 # function isQuotable(style::Style.T, exp::Date, strike::Currency)::Bool
 #     res = find(chains()[exp].chain) do x; getStyle(x) === style && getStrike(x) === strike end

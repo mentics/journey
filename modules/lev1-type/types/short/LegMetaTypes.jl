@@ -1,7 +1,7 @@
 module LegMetaTypes
 using SH, BaseTypes, SmallTypes, QuoteTypes, LegTypes, OptionMetaTypes, ChainTypes
 
-export LegMeta, Open, Close
+export LegMeta, LegMetaOpen, LegMetaClose
 
 abstract type Open end
 abstract type Close end
@@ -25,18 +25,20 @@ struct LegMeta{S}
     #     return new(leg, newQuote, meta)
     # end
 end
+const LegMetaOpen = LegMeta{Open}
+const LegMetaClose = LegMeta{Close}
 function LegMeta{Open}(oq::OptionQuote, side::Side.T, qty::Float64)
     dir = DirSQ(side, qty)
-    return LegMeta{Open}(Leg(getOption(oq), dir), newQuote(getQuote(oq), DirSQA(dir, Action.open)), newOptionMeta(getOptionMeta(oq), dir))
+    return LegMetaOpen(Leg(getOption(oq), dir), newQuote(getQuote(oq), DirSQA(dir, Action.open)), newOptionMeta(getOptionMeta(oq), dir))
 end
 function LegMeta{Close}(oq::OptionQuote, side::Side.T, qty::Float64)
     dir = DirSQA(side, qty, Action.close)
-    return LegMeta{Close}(Leg(getOption(oq), dir), newQuote(getQuote(oq), DirSQA(dir, Action.open)), newOptionMeta(getOptionMeta(oq), dir))
+    return LegMetaClose(Leg(getOption(oq), dir), newQuote(getQuote(oq), DirSQA(dir, Action.open)), newOptionMeta(getOptionMeta(oq), dir))
 end
 
 function LegMeta{Close}(leg::Leg, oq::OptionQuote)
     dir = DirSQ(getSide(leg), getQuantity(leg))
-    return LegMeta{Close}(leg, newQuote(getQuote(oq), DirSQA(dir, Action.close)), newOptionMeta(getOptionMeta(oq), dir))
+    return LegMetaClose(leg, newQuote(getQuote(oq), DirSQA(dir, Action.close)), newOptionMeta(getOptionMeta(oq), dir))
 end
 
 # LegMeta(;leg=Leg(), quot=Quote(), meta=OptionMeta()) = LegMeta(leg, quot, meta)

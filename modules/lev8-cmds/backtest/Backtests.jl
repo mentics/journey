@@ -8,16 +8,12 @@ import Shorthand
 import HistSpy as hspy
 using Calendars
 
-export bt
-const bt = @__MODULE__
-
 #= Explore pricing
 lmss = bt.findLongSpreadEntry(expir(16), market().curp, (;rat=.8, off=30.0))
 lmss2 = bt.findLongSpreadEntry(expir(16), market().curp, (;rat=1.0, off=5.0))
 priceOption(market().curp, texPY(market().tsMarket, lmss[2]), lmss[2], .35)
 priceOption(market().curp, texPY(market().tsMarket, lmss2[1]), lmss2[1], .276)
 =#
-
 
 const TradeType = Dict{Symbol,Any}
 
@@ -128,7 +124,7 @@ function findLongSpreadEntry(oqss, p)
             ilo += 1
         end
     end
-    return (LegMeta{Open}(lo, Side.long, 1.0), LegMeta{Open}(sho, Side.short, 1.0))
+    return (LegMetaOpen(lo, Side.long, 1.0), LegMetaOpen(sho, Side.short, 1.0))
 end
 
 function findShortSpreadEntry(oqss, p)
@@ -165,7 +161,7 @@ function findShortSpreadEntry(oqss, p)
             ilo -= 1
         end
     end
-    return (LegMeta{Open}(sho, Side.short, 1.0), LegMeta{Open}(lo, Side.long, 1.0))
+    return (LegMetaOpen(sho, Side.short, 1.0), LegMetaOpen(lo, Side.long, 1.0))
 end
 #endregion
 
@@ -221,7 +217,7 @@ function run(f; maxSeconds=60)
             trade = acct[:poss][tind]
             xpir = getExpir(trade)
             if ts == getMarketClose(xpir)
-                lmsc = tos(LegMeta{Close}, trade[:lms], lup)
+                lmsc = tos(LegMetaClose, trade[:lms], lup)
                 netc = OptionUtil.netExpired(lmsc, curp)
                 if abs(curp - getStrike(lmsc[1])) < 5.0 || abs(curp - getStrike(lmsc[end])) < 5.0
                     netc -= 0.02
@@ -255,7 +251,7 @@ end
 
 function updatePossLmsClose(lup, trades)
     for trade in trades
-        trade[:lmsTrack] = tos(LegMeta{Close}, trade[:legs], lup)
+        trade[:lmsTrack] = tos(LegMetaClose, trade[:legs], lup)
     end
 end
 
@@ -288,9 +284,9 @@ end
 #endregion
 
 #region Actions
-function openTrade(acct, lms::Coll{LegMeta{Open}}, neto, label, risk)
+function openTrade(acct, lms::Coll{LegMetaOpen}, neto, label, risk)
     lup = acct[:lup]
-    lmsTrack = tos(LegMeta{Close}, lms, lup)
+    lmsTrack = tos(LegMetaClose, lms, lup)
     targetDate = minimum(getExpiration, lms)
     trade = Dict(
         :id => nextTradeId(acct),
@@ -308,7 +304,7 @@ function openTrade(acct, lms::Coll{LegMeta{Open}}, neto, label, risk)
     out("Open #$(trade[:id]) $(Shorthand.tosh(lms, acct[:xpirs])): '$(label)' neto:$(neto)") # deltaX: $(rond(delta)) -> $(rond(deltaNew)) deltaAcct: $(rond(acct[:delta]))")
     return trade
 end
-function closeTrade(acct, trade, lms::Coll{LegMeta{Close}}, netc, label)
+function closeTrade(acct, trade, lms::Coll{LegMetaClose}, netc, label)
     trade[:close] = (;label, ts=acct[:ts], netc, quotes=map(getQuote, lms), metas=map(getOptionMeta, lms))
     push!(acct[:todayCloses], trade)
     cu.del!(x -> x[:id] == trade[:id], acct[:poss])
@@ -394,7 +390,7 @@ function tradeInfo(trade, date)
     daysTotal = bdays(dateOpen, xpir)
     xpirRatio = (1 + daysLeft) / daysTotal
     neto = op.neto
-    # lmsc = tos(LegMeta{Close}, trade[:lms])
+    # lmsc = tos(LegMetaClose, trade[:lms])
     lmsc = trade[:lmsTrack]
     qt = getQuote(lmsc)
     netc = usePrice(qt)
@@ -450,8 +446,8 @@ out(args...) = LogUtil.logit(:backtest, args...)
 #endregion
 
 #region MaybeMove
-SH.to(::Type{LegMeta{Close}}, leg::Leg, lup) = LegMeta{Close}(leg, lup(getOption(leg)))
-SH.to(::Type{LegMeta{Close}}, lm::LegMeta{Open}, lup) = to(LegMeta{Close}, getLeg(lm), lup) # LegMeta{Close}(lup(getOption(lm)), getQuantity(lm), getSide(lm))
+SH.to(::Type{LegMetaClose}, leg::Leg, lup) = LegMetaClose(leg, lup(getOption(leg)))
+SH.to(::Type{LegMetaClose}, lm::LegMetaOpen, lup) = to(LegMetaClose, getLeg(lm), lup) # LegMetaClose(lup(getOption(lm)), getQuantity(lm), getSide(lm))
 #endregion
 
 end

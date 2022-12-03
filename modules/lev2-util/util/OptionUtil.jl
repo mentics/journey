@@ -103,8 +103,8 @@ end
 function legsExtrema(neto, legs::NTuple{4})
     # @assert getStrike(cond[1][2]) <= getStrike(cond[2][1]) "$(getStrike.(cond[1])) $(getStrike.(cond[2]))" # issorted(legs; by=getStrike)
     @assert issorted(legs; by=getStrike)
-    levLeft = spreadLevels(neto, longShort(legs[1], legs[2])...)
-    levRight = spreadLevels(neto, longShort(legs[3], legs[4])...)
+    levLeft = spreadLevels(neto/2, longShort(legs[1], legs[2])...)
+    levRight = spreadLevels(neto/2, longShort(legs[3], legs[4])...)
     # println(levLeft, levRight)
     left = levLeft[1] + levRight[1]
     mid = levLeft[2] + levRight[1]

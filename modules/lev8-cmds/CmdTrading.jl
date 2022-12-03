@@ -15,8 +15,8 @@ sor(i::Int, at::Real; kws...) = so(i; kws..., pre=false, at=PriceT(at))
 sor(r::Strat, at::Real; kws...) = so(r; kws..., pre=false, at=PriceT(at))
 so(i::Int; kws...) = so(tos(LegMeta, ar(i)); kws...)
 so(r::Coll{LegRet}; kws...) = so(tos(LegMeta, r); kws...)
-solr(lms::Coll{LegMeta{Open}}, at::Real) = so(lms; at, pre=false)
-function so(lms::Coll{LegMeta{Open}}; ratio=nothing, at=nothing, pre=true, skipConfirm=false)::Int
+solr(lms::Coll{LegMetaOpen}, at::Real) = so(lms; at, pre=false)
+function so(lms::Coll{LegMetaOpen}; ratio=nothing, at=nothing, pre=true, skipConfirm=false)::Int
     curQuot = market().curQuot
     canTrade(pre)
     Globals.set(:soRunLast, now(UTC))
@@ -29,7 +29,8 @@ function so(lms::Coll{LegMeta{Open}}; ratio=nothing, at=nothing, pre=true, skipC
     # isnothing(at) && isnothing(ratio) && (ratio = 0.25)
     !isnothing(at) || ( at = bap(lms) )
     # pr = priceUse(quoter(lms), sumQuotes(getQuote.(lms)); ratio, at)
-    pr = priceUse(getQuote(tos(LegMeta{Open}, lms, Chains.chainLookup)), sumQuotes(getQuote.(lms)); ratio, at)
+    # pr = priceUse(getQuote(tos(LegMetaOpen, lms, Chains.chainLookup)), sumQuotes(getQuote.(lms)); ratio, at)
+    pr = priceUse(quoter(lms, Action.open), sumQuotes(getQuote.(lms)); ratio, at)
 
     if !pre && !skipConfirm && !confirm()
         println("Aborted.")
@@ -40,8 +41,8 @@ function so(lms::Coll{LegMeta{Open}}; ratio=nothing, at=nothing, pre=true, skipC
     return pre ? 0 : tid
 end
 using LegTypes
-SH.to(::Type{LegMeta{Open}}, leg::Leg, lup) = LegMeta{Open}(leg, lup(getOption(leg)))
-SH.to(::Type{LegMeta{Open}}, lm::LegMeta{Open}, lup) = to(LegMeta{Close}, getLeg(lm), lup) # LegMeta{Close}(lup(getOption(lm)), getQuantity(lm), getSide(lm))
+SH.to(::Type{LegMetaOpen}, leg::Leg, lup) = LegMetaOpen(leg, lup(getOption(leg)))
+SH.to(::Type{LegMetaOpen}, lm::LegMetaOpen, lup) = to(LegMetaClose, getLeg(lm), lup) # LegMetaClose(lup(getOption(lm)), getQuantity(lm), getSide(lm))
 
 using TradierAccount
 function tradeSize(kelly::Float64, kellyRatio::Float64 = 0.5)
@@ -107,7 +108,7 @@ function toc(rateMin=0.5) # findTradesToClose
             # timult = 1 / Calendars.texToYear(tex)
             dur = DateUtil.durRisk(toDateMarket(ts), todayDate)
             timt = DateUtil.timult(toDateMarket(ts), todayDate)
-            mn = min(OptionUtil.legsExtrema(getLegs(trade)...)...)
+            mn = min(OptionUtil.legsExtrema(neto, getLegs(trade)...)...)
             rate = timt * curVal / (-mn)
             # @show rate timt curVal (-mn)
             if rate > rateMin
@@ -223,7 +224,7 @@ end
 #endregion
 
 ct(trad::Trade{<:Closeable}; kws...) = closePos(trad; kws..., pre=true)
-ct(tid::Int; kws...) = ct(tradeOpen(tid); kws...)
+ct(tid::Int; kws...) = ct(ST.getTradeOpen(tid); kws...)
 # pre=true, legs=nothing, skipMin=false
 ctr(trad::Trade{<:Closeable}, primitDir::Real; kws...) = closePos(trad; kws..., pre=false, at=PriceT(primitDir))
 ctr(tid::Int, primitDir::Real; kws...) = ctr(ST.getTradeOpen(tid), primitDir; kws...)

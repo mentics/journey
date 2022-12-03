@@ -89,7 +89,7 @@ function draw(::Nothing) end
 function draw!(::Nothing) end
 
 # these are for prill's * quantity
-function getNetOpen() end
+getNetOpen(itr) = sum(getNetOpen, itr)
 function getNetClose() end
 function getLegs() end
 
