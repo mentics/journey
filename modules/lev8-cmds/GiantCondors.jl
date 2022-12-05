@@ -11,8 +11,8 @@ import Backtests:rond
 function getParams()
     return (;
         MaxOpen = 100000,
-        Put = (;xbdays=20:64, moveMin=.22, offMax=40.0, profMin=0.8, take=0.12),
-        Call = (;xbdays=20:64, moveMin=.18, offMax=40.0, profMin=0.6, take=0.12),
+        Put = (;xbdays=20:64, moveMin=.18, offMax=40.0, profMin=0.4, take=0.12),
+        Call = (;xbdays=20:64, moveMin=.14, offMax=40.0, profMin=0.3, take=0.1),
     )
 end
 
@@ -120,6 +120,7 @@ function findLongSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt)
     isho = findfirst(oq -> getBid(oq) > profMin, shorts)
     sho = shorts[isho]
     getStrike(sho) <= strikeExt || return nothing
+    # @show ilo isho getStrike(lo) getStrike(sho) strikeExt netoqL(lo) netoqS(sho)
 
     # move ilo to min by strike
     while getStrike(sho) - getStrike(lo) > offMax
@@ -129,9 +130,10 @@ function findLongSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt)
 
     # find isho such that profMin is satisfied
     neto = netoq2(lo, sho)
-    @show neto ilo isho getStrike(sho) getStrike(lo)
+    # @show neto ilo isho getStrike(lo) getStrike(sho) strikeExt netoqL(lo) netoqS(sho)
     while neto < profMin
-        # move isho up to get more prof
+        # move isho up to get more prof while still under strikeExt
+        getStrike(shorts[isho+1]) <= strikeExt || return nothing
         isho += 1
         sho = shorts[isho]
         # move ilo to make it valid
@@ -140,12 +142,14 @@ function findLongSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt)
             lo = longs[ilo]
         end
         neto = netoq2(lo, sho)
-        @show neto ilo isho getStrike(sho) getStrike(lo)
+        # @show neto ilo isho getStrike(lo) getStrike(sho) strikeExt netoqL(lo) netoqS(sho)
     end
     # lo,sho now have valid values, strike is narrow enough and profMin is satisfied
     @assert getStrike(sho) - getStrike(lo) <= offMax
     @assert neto >= profMin
-    best = (calcScore(lo, sho), lo, sho)
+    score = calcScore(lo, sho)
+    best = (score, lo, sho)
+    # @show score neto getStrike(lo) getStrike(sho) strikeExt
 
     # Loop through all the other valid states and score them
     while true
@@ -155,13 +159,11 @@ function findLongSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt)
             ilo += 1
             lo = longs[ilo]
             score = calcScore(lo, sho)
+            # neto = netoq2(lo, sho) ; @show score neto getStrike(lo) getStrike(sho) strikeExt
             if score > best[1]
                 best = (score, lo, sho)
             end
         end
-        neto = netoq2(lo, sho)
-        @show getStrike(sho) getStrike(lo) neto
-
 
         # Try next sho if there are more
         if getStrike(shorts[isho+1]) <= strikeExt
@@ -186,49 +188,64 @@ function findShortSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt)
         return nothing
     end
     ilo = lastindex(longs)
-    isho = findlast(oq -> getBid(oq) > profMin, shorts)
     lo = longs[ilo]
+    isho = findlast(oq -> getBid(oq) > profMin, shorts)
     sho = shorts[isho]
     getStrike(sho) >= strikeExt || return nothing
 
+    # @show ilo isho getStrike(lo) getStrike(sho) strikeExt netoqL(lo) netoqS(sho)
+    # move ilo to min by strike
     while getStrike(lo) - getStrike(sho) > offMax
         ilo -= 1
         lo = longs[ilo]
     end
-    best = (calcScore(lo, sho), lo, sho)
 
+    # find isho such that profMin is satisfied
     neto = netoq2(lo, sho)
+    # @show neto ilo isho getStrike(lo) getStrike(sho) strikeExt netoqL(lo) netoqS(sho)
     while neto < profMin
-        # @show ilo isho neto
+        # move isho down to get more prof while still above strikeExt
+        getStrike(shorts[isho-1]) >= strikeExt || return nothing
         isho -= 1
         sho = shorts[isho]
+        # move ilo to make it valid
         while getStrike(lo) - getStrike(sho) > offMax
             ilo -= 1
             lo = longs[ilo]
         end
         neto = netoq2(lo, sho)
-        # @show getStrike(sho) getStrike(lo) neto
+        # @show neto ilo isho getStrike(lo) getStrike(sho) strikeExt netoqL(lo) netoqS(sho)
     end
+    # lo,sho now have valid values, strike is narrow enough and profMin is satisfied
+    @assert getStrike(lo) - getStrike(sho) <= offMax
+    @assert neto >= profMin
+    score = calcScore(lo, sho)
+    best = (score, lo, sho)
+    # @show score neto getStrike(lo) getStrike(sho) strikeExt
 
-    while getStrike(sho) >= strikeExt
+    # Loop through all the other valid states and score them
+    while true
         netSho = netoqS(sho)
-        while true
-            if netSho + netoqL(longs[ilo-1]) < profMin
-                lo = longs[ilo]
-                break
-            else
-                ilo -= 1
+        # Loop through ilos and score valid ones
+        while netSho + netoqL(longs[ilo-1]) >= profMin
+            ilo -= 1
+            lo = longs[ilo]
+            score = calcScore(lo, sho)
+            # neto = netoq2(lo, sho) ; @show score neto getStrike(lo) getStrike(sho) strikeExt
+            if score > best[1]
+                best = (score, lo, sho)
             end
         end
 
-        score = calcScore(lo, sho)
-        if score > best[1]
-            best = (score, lo, sho)
+        # Try next sho if there are more
+        if getStrike(shorts[isho-1]) <= strikeExt
+            isho -= 1
+            sho = shorts[isho]
+        else
+            break
         end
-        isho -= 1
-        sho = shorts[isho]
     end
-    return (best[1], LegMetaOpen(best[3], Side.short, 1.0), LegMetaOpen(best[2], Side.long, 1.0))
+    return (best[1], LegMetaOpen(best[2], Side.long, 1.0), LegMetaOpen(best[3], Side.short, 1.0))
 end
 #endregion
 
