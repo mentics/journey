@@ -1,7 +1,7 @@
 module GiantCondors
 using Dates
 using SH, BaseTypes, SmallTypes, LegMetaTypes
-using DateUtil, ChainUtil, Pricing
+using DateUtil, ChainUtil, LogUtil, Pricing
 using Markets, Expirations, Chains
 import CmdPos:xlegs
 import Backtests as bt
@@ -11,8 +11,8 @@ import Backtests:rond
 function getParams()
     return (;
         MaxOpen = 100000,
-        Put = (;xbdays=20:64, moveMin=.18, offMax=40.0, profMin=0.6, take=0.12),
-        Call = (;xbdays=20:64, moveMin=.14, offMax=40.0, profMin=0.4, take=0.1),
+        Put = (;xbdays=20:84, moveMin=.18, offMax=20.0, profMin=0.4, take=0.12),
+        Call = (;xbdays=20:84, moveMin=.14, offMax=20.0, profMin=0.3, take=0.1),
     )
 end
 
@@ -89,9 +89,9 @@ netoqS(sho) = bap(sho, .1)
 import Kelly, QuoteTypes
 function calcScore1(tmult, lo, sho)
     # TODO: consider greeks?
-    theta = getGreeks(lo).theta - getGreeks(sho).theta
+    # theta = getGreeks(lo).theta - getGreeks(sho).theta
     # @show getGreeks(sho).theta getGreeks(lo).theta theta
-    theta >= 0.01 || return -1000.0
+    # theta >= 0.01 || return -1000.0
     risk = F(abs(getStrike(lo) - getStrike(sho)))
     # Wrong: ret = F(bap(sho, .1) - bap(lo, .1))
     ret = F(netoq2(lo, sho))
@@ -173,6 +173,11 @@ function findLongSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt)
             break
         end
     end
+    if netoq2(lo, sho) <= 0.0
+        # global keep = (;lo, sho, neto, )
+        @log error "long entry returning loss" lo sho
+        return nothing
+    end
     return (best[1], LegMetaOpen(best[2], Side.long, 1.0), LegMetaOpen(best[3], Side.short, 1.0))
 end
 
@@ -244,6 +249,11 @@ function findShortSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt)
         else
             break
         end
+    end
+    if netoq2(lo, sho) <= 0.0
+        # global keep = (;lo, sho, neto, )
+        @log error "short entry returning loss" lo sho
+        return nothing
     end
     return (best[1], LegMetaOpen(best[3], Side.short, 1.0), LegMetaOpen(best[2], Side.long, 1.0))
 end
