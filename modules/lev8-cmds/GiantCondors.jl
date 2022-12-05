@@ -146,6 +146,7 @@ function findLongSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt)
     end
     # lo,sho now have valid values, strike is narrow enough and profMin is satisfied
     @assert getStrike(sho) - getStrike(lo) <= offMax
+    @assert getStrike(lo) < getStrike(sho)
     @assert neto >= profMin
     score = calcScore(lo, sho)
     best = (score, lo, sho)
@@ -155,7 +156,7 @@ function findLongSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt)
     while true
         netSho = netoqS(sho)
         # Loop through ilos and score valid ones
-        while netSho + netoqL(longs[ilo+1]) >= profMin
+        while netSho + netoqL(longs[ilo+1]) >= profMin && ilo+1 < isho
             ilo += 1
             lo = longs[ilo]
             score = calcScore(lo, sho)
@@ -178,7 +179,11 @@ function findLongSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt)
         @log error "long entry returning loss" lo sho
         return nothing
     end
-    return (best[1], LegMetaOpen(best[2], Side.long, 1.0), LegMetaOpen(best[3], Side.short, 1.0))
+    @assert getStrike(best[2]) < getStrike(best[3])
+    b = (best[1], LegMetaOpen(best[2], Side.long, 1.0), LegMetaOpen(best[3], Side.short, 1.0))
+    neto = bap(b[2:3], .1)
+    @assert neto > 0.0 "neto > 0.0: $(neto)  $(b)"
+    return b
 end
 
 function findShortSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt)
@@ -223,6 +228,7 @@ function findShortSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt)
     end
     # lo,sho now have valid values, strike is narrow enough and profMin is satisfied
     @assert getStrike(lo) - getStrike(sho) <= offMax
+    @assert getStrike(lo) > getStrike(sho)
     @assert neto >= profMin
     score = calcScore(lo, sho)
     best = (score, lo, sho)
@@ -232,7 +238,7 @@ function findShortSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt)
     while true
         netSho = netoqS(sho)
         # Loop through ilos and score valid ones
-        while netSho + netoqL(longs[ilo-1]) >= profMin
+        while netSho + netoqL(longs[ilo-1]) >= profMin && ilo-1 > isho
             ilo -= 1
             lo = longs[ilo]
             score = calcScore(lo, sho)
@@ -255,6 +261,7 @@ function findShortSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt)
         @log error "short entry returning loss" lo sho
         return nothing
     end
+    @assert getStrike(best[3]) < getStrike(best[2])
     return (best[1], LegMetaOpen(best[3], Side.short, 1.0), LegMetaOpen(best[2], Side.long, 1.0))
 end
 #endregion
