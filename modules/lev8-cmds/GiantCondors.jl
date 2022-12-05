@@ -11,9 +11,8 @@ import Backtests:rond
 function getParams()
     return (;
         MaxOpen = 100000,
-        XpirBdays = 42:64,
-        Put = (;moveMin=.2, offMax=20.0, profMin=0.4, take=0.12),
-        Call = (;moveMin=.14, offMax=20.0, profMin=0.4, take=0.12),
+        Put = (;xbdays=20:64, moveMin=.22, offMax=40.0, profMin=0.8, take=0.12),
+        Call = (;xbdays=20:64, moveMin=.18, offMax=40.0, profMin=0.6, take=0.12),
     )
 end
 
@@ -24,8 +23,9 @@ function live(side=Side.long) # ; xbdays=40:80, offMax=40.0, profMin=0.8, moveMi
     curp = market().curp
     strikeExt = curp * (side == Side.long ? (1.0 - ps.moveMin) : (1.0 + ps.moveMin))
     getOqss = xpir -> ChainUtil.getOqss(chain(xpir).chain, curp, xlegs(xpir))
-    xpirs = DateUtil.matchAfter(date, expirs(), xbdays)
-    findGC(getOqss, xpirs, date, side, ps.offMax, ps.profMin, strikeExt)
+    xpirs = DateUtil.matchAfter(date, expirs(), ps.xbdays)
+    res = findGC(getOqss, xpirs, date, side, ps.offMax, ps.profMin, strikeExt)
+    return isnothing(res) ? nothing : collect(res)
 end
 
 function strat(acct)
@@ -35,14 +35,14 @@ function strat(acct)
     length(acct[:poss]) < p.MaxOpen || return # ( println("Hit max open") ; return )
     curp = acct[:curp]
 
-    lms = back(acct, Side.long; xbdays=p.XpirBdays, p.Put...)
+    lms = back(acct, Side.long; p.Put...)
     if !isnothing(lms)
         neto = bap(lms, .1)
         @assert neto > 0.0
         rat = getStrike(lms[2]) / curp
         bt.openTrade(acct, lms, neto, "long spread: rat=$(rond(rat)), neto=$(neto)", abs(getStrike(lms[1]) - getStrike(lms[2])) - neto)
     end
-    lms = back(acct, Side.short; xbdays=p.XpirBdays, p.Call...)
+    lms = back(acct, Side.short; p.Call...)
     if !isnothing(lms)
         neto = bap(lms, .1)
         @assert neto > 0.0
@@ -82,16 +82,20 @@ function findGC(getOqss, xpirs, date, side, offMax, profMin, strikeExt)
     return lmsBest
 end
 
+netoq2(lo, sho) = netoqL(lo) + netoqS(sho)
+netoqL(lo) = bap(QuoteTypes.newQuote(getQuote(lo), DirSQA(Side.long, 1.0, Action.open)), .1)
+netoqS(sho) = bap(sho, .1)
+
 import Kelly, QuoteTypes
 function calcScore1(tmult, lo, sho)
     # TODO: consider greeks?
-    # theta = getGreeks(lo).theta - getGreeks(sho).theta
+    theta = getGreeks(lo).theta - getGreeks(sho).theta
     # @show getGreeks(sho).theta getGreeks(lo).theta theta
-    # theta >= 0.01 || return -1000.0
+    theta >= 0.01 || return -1000.0
     risk = F(abs(getStrike(lo) - getStrike(sho)))
     # Wrong: ret = F(bap(sho, .1) - bap(lo, .1))
-    ret = F(bap(sho, .1)) + F(bap(QuoteTypes.newQuote(getQuote(lo), DirSQA(Side.long, 1.0, Action.open)), .1))
-    ret > 0.0 || return -100.0
+    ret = F(netoq2(lo, sho))
+    ret > 0.0 || ( println("Found ret < 0.0") ; return -100.0 )
     rate = calcRate(tmult, ret, risk)
     kel = Kelly.simple(0.99, ret, risk)
     score = rate * kel
@@ -103,48 +107,69 @@ end
 function findLongSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt)
     shorts = oqss.put.short
     longs = oqss.put.long
+    if isempty(longs)
+        println("oqss.put.long was empty")
+        return nothing
+    end
+    if isempty(shorts)
+        println("oqss.put.short was empty")
+        return nothing
+    end
     ilo = 1
     lo = longs[ilo]
     isho = findfirst(oq -> getBid(oq) > profMin, shorts)
     sho = shorts[isho]
     getStrike(sho) <= strikeExt || return nothing
 
+    # move ilo to min by strike
     while getStrike(sho) - getStrike(lo) > offMax
         ilo += 1
         lo = longs[ilo]
     end
-    best = (calcScore(lo, sho), lo, sho)
 
-    neto = getBid(sho) - getAsk(lo) # Choosing worst case at this stage
+    # find isho such that profMin is satisfied
+    neto = netoq2(lo, sho)
+    @show neto ilo isho getStrike(sho) getStrike(lo)
     while neto < profMin
-        # @show ilo isho neto
+        # move isho up to get more prof
         isho += 1
         sho = shorts[isho]
+        # move ilo to make it valid
         while getStrike(sho) - getStrike(lo) > offMax
             ilo += 1
             lo = longs[ilo]
         end
-        neto = getBid(sho) - getAsk(lo) # Choosing worst case at this stage
-        # @show getStrike(sho) getStrike(lo) neto
+        neto = netoq2(lo, sho)
+        @show neto ilo isho getStrike(sho) getStrike(lo)
     end
+    # lo,sho now have valid values, strike is narrow enough and profMin is satisfied
+    @assert getStrike(sho) - getStrike(lo) <= offMax
+    @assert neto >= profMin
+    best = (calcScore(lo, sho), lo, sho)
 
-    while getStrike(sho) <= strikeExt
-        shoBid = getBid(sho)
-        while true
-            if shoBid - getAsk(longs[ilo+1]) < profMin
-                lo = longs[ilo]
-                break
-            else
-                ilo += 1
+    # Loop through all the other valid states and score them
+    while true
+        netSho = netoqS(sho)
+        # Loop through ilos and score valid ones
+        while netSho + netoqL(longs[ilo+1]) >= profMin
+            ilo += 1
+            lo = longs[ilo]
+            score = calcScore(lo, sho)
+            if score > best[1]
+                best = (score, lo, sho)
             end
         end
+        neto = netoq2(lo, sho)
+        @show getStrike(sho) getStrike(lo) neto
 
-        score = calcScore(lo, sho)
-        if score > best[1]
-            best = (score, lo, sho)
+
+        # Try next sho if there are more
+        if getStrike(shorts[isho+1]) <= strikeExt
+            isho += 1
+            sho = shorts[isho]
+        else
+            break
         end
-        isho += 1
-        sho = shorts[isho]
     end
     return (best[1], LegMetaOpen(best[2], Side.long, 1.0), LegMetaOpen(best[3], Side.short, 1.0))
 end
@@ -152,6 +177,14 @@ end
 function findShortSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt)
     shorts = oqss.call.short
     longs = oqss.call.long
+    if isempty(longs)
+        println("oqss.call.long was empty")
+        return nothing
+    end
+    if isempty(shorts)
+        println("oqss.call.short was empty")
+        return nothing
+    end
     ilo = lastindex(longs)
     isho = findlast(oq -> getBid(oq) > profMin, shorts)
     lo = longs[ilo]
@@ -164,7 +197,7 @@ function findShortSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt)
     end
     best = (calcScore(lo, sho), lo, sho)
 
-    neto = getBid(sho) - getAsk(lo) # Choosing worst case at this stage
+    neto = netoq2(lo, sho)
     while neto < profMin
         # @show ilo isho neto
         isho -= 1
@@ -173,14 +206,14 @@ function findShortSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt)
             ilo -= 1
             lo = longs[ilo]
         end
-        neto = getBid(sho) - getAsk(lo) # Choosing worst case at this stage
+        neto = netoq2(lo, sho)
         # @show getStrike(sho) getStrike(lo) neto
     end
 
     while getStrike(sho) >= strikeExt
-        shoBid = getBid(sho)
+        netSho = netoqS(sho)
         while true
-            if shoBid - getAsk(longs[ilo-1]) < profMin
+            if netSho + netoqL(longs[ilo-1]) < profMin
                 lo = longs[ilo]
                 break
             else

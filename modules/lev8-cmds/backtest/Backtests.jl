@@ -18,6 +18,28 @@ priceOption(market().curp, texPY(market().tsMarket, lmss2[1]), lmss2[1], .276)
 
 const TradeType = Dict{Symbol,Any}
 
+import Statistics:quantile
+function lyze()
+    closes = filter(t -> haskey(t, :close), acct[:trades])
+    calls = filter(t -> getTradeStyle(t) == Style.call, closes)
+    puts = filter(t -> getTradeStyle(t) == Style.put, closes)
+    println("Total: $(length(closes)), calls: $(length(calls)), puts: $(length(puts))")
+    wins = filter(t -> getTradePnl(t) > 0.0, closes)
+    losses = filter(t -> getTradePnl(t) <= 0.0, closes)
+    @assert length(closes) == length(wins) + length(losses)
+    loscall = filter(t -> getTradeStyle(t) == Style.call, losses)
+    losput = filter(t -> getTradeStyle(t) == Style.put, losses)
+    println("Losses: $(length(loscall)) calls, $(length(losput)) puts")
+    ratecall = map(getTradeRate, calls)
+    rateput = map(getTradeRate, puts)
+    println("Call rate quantile:\n$(quantile(ratecall))")
+    println("Put rate quantile:\n$(quantile(rateput))")
+    expdurcall = map(getTradeExpDur, calls)
+    expdurput = map(getTradeExpDur, puts)
+    println("Call expdur quantile:\n$(quantile(expdurcall))")
+    println("Put expdur quantile:\n$(quantile(expdurput))")
+end
+
 #region CurStrat
 checkRateRatio(acct, t, p) = t.rate >= (t.xpirRatio * p.RateMin) ? "rate: $(rond(t.rate))" : nothing
 checkProfit(acct, t, p) = t.curVal >= p.MinTakeProfit ? "take min profit" : nothing
@@ -36,11 +58,6 @@ function checkSides(acct, t, p)
     return nothing
 end
 
-function lyzeRisk()
-    closed = filter(t -> haskey(t, :close), acct[:trades])
-    risks = map(getTradeRate, closed)
-end
-
 getTradeGreeks(trade) = getGreeks(trade[:lmsTrack])
 getTradePnl(trade) = trade[:open][:neto] + trade[:close][:netc]
 function getTradeRate(trade)
@@ -48,8 +65,8 @@ function getTradeRate(trade)
     # @show toDateMarket(trade[:open][:ts]), toDateMarket(trade[:close][:ts]), pnl, trade[:risk]
     return calcRate(toDateMarket(trade[:open][:ts]), toDateMarket(trade[:close][:ts]), pnl, trade[:risk])
 end
-getStyl(trade::Dict{Symbol,Any}) = getStyle(trade[:legs][1])
-getTradeRat(trade) = getStyl(trade) == Style.call ? getStrike(trade[:legs][1]) / trade[:curp] : getStrike(trade[:legs][2]) / trade[:curp]
+getTradeStyle(trade::Dict{Symbol,Any}) = getStyle(trade[:legs][1])
+getTradeRat(trade) = getTradeStyle(trade) == Style.call ? getStrike(trade[:legs][1]) / trade[:curp] : getStrike(trade[:legs][2]) / trade[:curp]
 getTradeRisk(trade) = trade[:risk]
 getTradeExpDur(trade) = bdays(Date(trade[:open][:ts]), Date(trade[:targetDate]))
 #endregion
