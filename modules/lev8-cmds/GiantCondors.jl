@@ -11,8 +11,8 @@ import Backtests:rond
 function getParams()
     return (;
         MaxOpen = 100000,
-        Put = (;xbdays=20:64, moveMin=.18, offMax=40.0, profMin=0.4, take=0.12),
-        Call = (;xbdays=20:64, moveMin=.14, offMax=40.0, profMin=0.3, take=0.1),
+        Put = (;xbdays=20:64, moveMin=.18, offMax=40.0, profMin=0.6, take=0.12),
+        Call = (;xbdays=20:64, moveMin=.14, offMax=40.0, profMin=0.4, take=0.1),
     )
 end
 
@@ -238,14 +238,14 @@ function findShortSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt)
         end
 
         # Try next sho if there are more
-        if getStrike(shorts[isho-1]) <= strikeExt
+        if getStrike(shorts[isho-1]) >= strikeExt
             isho -= 1
             sho = shorts[isho]
         else
             break
         end
     end
-    return (best[1], LegMetaOpen(best[2], Side.long, 1.0), LegMetaOpen(best[3], Side.short, 1.0))
+    return (best[1], LegMetaOpen(best[3], Side.short, 1.0), LegMetaOpen(best[2], Side.long, 1.0))
 end
 #endregion
 
