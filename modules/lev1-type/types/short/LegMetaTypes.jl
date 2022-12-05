@@ -67,6 +67,7 @@ SH.getIv(lm::LegMeta) = getIv(lm.meta)
 # TODO: still not sure if abs is right here
 # SH.to(OptionQuote, lm::LegMeta) = OptionQuote(getOption(lm), abs(getQuote(lm)), getMeta(lm), nothing)
 
-SH.getGreeks(lm::LegMeta)::Greeks = multGreeks(getQuantityDir(getLeg(lm)), getGreeks(getOptionMeta(lm)))
+# SH.getGreeks(lm::LegMeta)::Greeks = multGreeks(getQuantityDir(getLeg(lm)), getGreeks(getOptionMeta(lm)))
+SH.getGreeks(lm::LegMeta)::Greeks = lm.meta.greeks #multGreeks(getQuantityDir(getLeg(lm)), getGreeks(getOptionMeta(lm)))
 
 end

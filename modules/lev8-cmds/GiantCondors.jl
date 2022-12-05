@@ -8,45 +8,41 @@ import Backtests as bt
 import Backtests:rond
 
 #region Public
-function live(side=Side.long; xbdays=40:80, offMax=40.0, profMin=0.8, moveMin=0.2)
+function getParams()
+    return (;
+        MaxOpen = 100000,
+        XpirBdays = 42:64,
+        Put = (;moveMin=.2, offMax=20.0, profMin=0.4, take=0.12),
+        Call = (;moveMin=.14, offMax=20.0, profMin=0.4, take=0.12),
+    )
+end
+
+function live(side=Side.long) # ; xbdays=40:80, offMax=40.0, profMin=0.8, moveMin=0.2)
+    p = getParams()
+    ps = side == Side.long ? p.Put : p.Call
     date = market().startDay
     curp = market().curp
-    strikeExt = curp * (side == Side.long ? (1.0 - moveMin) : (1.0 + moveMin))
+    strikeExt = curp * (side == Side.long ? (1.0 - ps.moveMin) : (1.0 + ps.moveMin))
     getOqss = xpir -> ChainUtil.getOqss(chain(xpir).chain, curp, xlegs(xpir))
     xpirs = DateUtil.matchAfter(date, expirs(), xbdays)
-    findGC(getOqss, xpirs, date, side, offMax, profMin, strikeExt)
+    findGC(getOqss, xpirs, date, side, ps.offMax, ps.profMin, strikeExt)
 end
 
 function strat(acct)
-    p = (;
-        MaxOpen = 10000,
-        XpirBdays = 40:80,
-        Put = (;moveMin=.2, offMax=30.0, profMin=0.8, take=0.4),
-        Call = (;moveMin=.14, off=30.0, profMin=0.8, take=0.4),
-    )
+    p = getParams()
     bt.checkClose((bt.checkSides,), acct, p)
 
     length(acct[:poss]) < p.MaxOpen || return # ( println("Hit max open") ; return )
     curp = acct[:curp]
 
-    lms = back(acct, Side.long; p.Put...)
+    lms = back(acct, Side.long; xbdays=p.XpirBdays, p.Put...)
     if !isnothing(lms)
         neto = bap(lms, .1)
-        # TODO:
-        # julia> bt.run(gc.strat; maxSeconds=99999999)
-        # ERROR: AssertionError: neto > 0.0
-        # Stacktrace:
-        #  [1] strat(acct::Dict{Symbol, Any})
-        #    @ GiantCondors C:\data\julia\journey\modules\lev8-cmds\GiantCondors.jl:35
-        #  [2] run(f::typeof(GiantCondors.strat); maxSeconds::Int64)
-        #    @ Backtests C:\data\julia\journey\modules\lev8-cmds\backtest\Backtests.jl:98
-        #  [3] top-level scope
-        #    @ REPL[146]:1
         @assert neto > 0.0
         rat = getStrike(lms[2]) / curp
         bt.openTrade(acct, lms, neto, "long spread: rat=$(rond(rat)), neto=$(neto)", abs(getStrike(lms[1]) - getStrike(lms[2])) - neto)
     end
-    lms = back(acct, Side.short; p.Call...)
+    lms = back(acct, Side.short; xbdays=p.XpirBdays, p.Call...)
     if !isnothing(lms)
         neto = bap(lms, .1)
         @assert neto > 0.0
@@ -55,7 +51,7 @@ function strat(acct)
     end
 end
 
-function back(acct, side; xbdays=40:80, offMax=40.0, profMin=0.8, moveMin=0.2, kws...)
+function back(acct, side; xbdays, offMax, profMin, moveMin, kws...)
     date = acct[:date]
     xoqss = acct[:xoqss]
     getOqss = xpir -> xoqss[xpir]
@@ -86,11 +82,16 @@ function findGC(getOqss, xpirs, date, side, offMax, profMin, strikeExt)
     return lmsBest
 end
 
-import Kelly
+import Kelly, QuoteTypes
 function calcScore1(tmult, lo, sho)
     # TODO: consider greeks?
+    # theta = getGreeks(lo).theta - getGreeks(sho).theta
+    # @show getGreeks(sho).theta getGreeks(lo).theta theta
+    # theta >= 0.01 || return -1000.0
     risk = F(abs(getStrike(lo) - getStrike(sho)))
-    ret = F(bap(sho, .1) - bap(lo, .1))
+    # Wrong: ret = F(bap(sho, .1) - bap(lo, .1))
+    ret = F(bap(sho, .1)) + F(bap(QuoteTypes.newQuote(getQuote(lo), DirSQA(Side.long, 1.0, Action.open)), .1))
+    ret > 0.0 || return -100.0
     rate = calcRate(tmult, ret, risk)
     kel = Kelly.simple(0.99, ret, risk)
     score = rate * kel
@@ -116,6 +117,7 @@ function findLongSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt)
 
     neto = getBid(sho) - getAsk(lo) # Choosing worst case at this stage
     while neto < profMin
+        # @show ilo isho neto
         isho += 1
         sho = shorts[isho]
         while getStrike(sho) - getStrike(lo) > offMax
@@ -123,6 +125,7 @@ function findLongSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt)
             lo = longs[ilo]
         end
         neto = getBid(sho) - getAsk(lo) # Choosing worst case at this stage
+        # @show getStrike(sho) getStrike(lo) neto
     end
 
     while getStrike(sho) <= strikeExt

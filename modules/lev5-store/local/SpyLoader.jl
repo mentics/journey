@@ -1,4 +1,5 @@
 module SpyLoader
+using Dates
 using BaseTypes, SmallTypes
 using DateUtil, LogUtil
 import SqlLoader
@@ -74,7 +75,9 @@ function load()
     stmtPut = hspy.prep("insert or ignore into Put (ts, expir, strike, bid, ask, last, vol, delta, gamma, vega, theta, rho, iv) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
     stmtUnder = hspy.prep("insert or ignore into under values (?, ?)")
     try
-        csvPaths = ["C:/data/market/optionsdx/spy_15x_20220$(month).txt" for month in 1:8]
+        yearMonths = Dates.format.([Date(2020,1,1) + Month(i) for i in 0:11], DateFormat("yyyymm"))
+        # csvPaths = ["C:/data/market/optionsdx/spy_15x_20220$(month).txt" for month in 1:8]
+        csvPaths = ["C:/data/market/optionsdx/spy_15x_$(ym).txt" for ym in yearMonths[3:12]]
         for csvPath in csvPaths
             println("Loading $(csvPath)...")
             line, itr = Iterators.peel(Iterators.drop(eachline(csvPath), 1))
@@ -97,7 +100,7 @@ function load()
     timeEnd = time()
     println("End: ", nowz())
     println("Elapsed seconds: ", timeEnd - timeStart)
-    return first(hspy.select("select (select count(*) as cnt from call) as calls, (select count(*) as cnt from put) as puts, (select count(*) as cnt from under) as unders"))
+    return first(hspy.sel("select (select count(*) as cnt from call) as calls, (select count(*) as cnt from put) as puts, (select count(*) as cnt from under) as unders"))
 end
 
 function procLine(line, tsPrev, stmtCall, stmtPut, stmtUnder)

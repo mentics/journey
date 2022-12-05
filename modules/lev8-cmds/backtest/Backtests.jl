@@ -40,11 +40,18 @@ function lyzeRisk()
     closed = filter(t -> haskey(t, :close), acct[:trades])
     risks = map(getTradeRate, closed)
 end
+
+getTradeGreeks(trade) = getGreeks(trade[:lmsTrack])
+getTradePnl(trade) = trade[:open][:neto] + trade[:close][:netc]
 function getTradeRate(trade)
-    pnl = trade[:open][:neto] + trade[:close][:netc]
+    pnl = getTradePnl(trade)
     # @show toDateMarket(trade[:open][:ts]), toDateMarket(trade[:close][:ts]), pnl, trade[:risk]
     return calcRate(toDateMarket(trade[:open][:ts]), toDateMarket(trade[:close][:ts]), pnl, trade[:risk])
 end
+getStyl(trade::Dict{Symbol,Any}) = getStyle(trade[:legs][1])
+getTradeRat(trade) = getStyl(trade) == Style.call ? getStrike(trade[:legs][1]) / trade[:curp] : getStrike(trade[:legs][2]) / trade[:curp]
+getTradeRisk(trade) = trade[:risk]
+getTradeExpDur(trade) = bdays(Date(trade[:open][:ts]), Date(trade[:targetDate]))
 #endregion
 
 #region Process
@@ -63,12 +70,16 @@ function run(f; maxSeconds=60)
         :lastTradeId => 0,
         :rates => Vector{Float64}()
     )
-    from, to = hspy.getRange()
-    dateStart = toDateMarket(from)
+    tss = filter!(sort(hspy.getTss())) do x
+        # Don't run on first and last (other if inside loop) ts of the day
+        return DateTime(2019,12,31) < x < DateTime(2021,1,1) &&
+            Time(x) != Time(getMarketOpen(Date(x))) + Second(10)
+    end
+    dateStart = toDateMarket(tss[1])
     datePrev = Date(0)
-    for ts in hspy.getTss()
+    for ts in tss
         date = toDateMarket(ts)
-        days = bdays(dateStart, date)
+        # days = bdays(dateStart, date)
 
         if date != datePrev
             # TODO: closing and opening on same day might affect this a little, but I think buying power allows this so maybe it's ok
@@ -91,26 +102,30 @@ function run(f; maxSeconds=60)
         lup = lookup(unxoqss)
         acct[:lup] = lup
         updatePossLmsClose(lup, acct[:poss])
-        acct[:greeks] = calcGreeks(acct[:poss]) # isempty(acct[:poss]) ? GreeksZero : getGreeks(acct[:poss])
+        # acct[:greeks] = calcGreeks(acct[:poss]) # isempty(acct[:poss]) ? GreeksZero : getGreeks(acct[:poss])
         # acct[:greeksExpirs] = isempty(acct[:poss]) ? Dict{Date,GreeksType}() : greeksForExpirs(lup, acct[:poss])
 
         # Run strat for this time
-        f(acct)
 
-        tind = 1
-        while tind <= length(acct[:poss])
-            trade = acct[:poss][tind]
-            xpir = getExpir(trade)
-            if ts == getMarketClose(xpir)
-                lmsc = tosLLMC(trade[:lms], lup)
-                netc = OptionUtil.netExpired(lmsc, curp)
-                if abs(curp - getStrike(lmsc[1])) < 5.0 || abs(curp - getStrike(lmsc[end])) < 5.0
-                    netc -= 0.02 # adjust to pay to close and not just let expire
+        if ts == getMarketClose(date)
+            tind = 1
+            while tind <= length(acct[:poss])
+                trade = acct[:poss][tind]
+                xpir = getExpir(trade)
+                if ts == getMarketClose(xpir)
+                    # lmsc = tosLLMC(trade[:lmsTrack], lup)
+                    lmsc = trade[:lmsTrack]
+                    netc = OptionUtil.netExpired(lmsc, curp)
+                    if abs(curp - getStrike(lmsc[1])) < 5.0 || abs(curp - getStrike(lmsc[end])) < 5.0
+                        netc -= 0.02 # adjust to pay to close and not just let expire
+                    end
+                    closeTrade(acct, trade, lmsc, netc, "expired $(getQuote(trade[:lmsTrack]))")
+                else
+                    tind += 1
                 end
-                closeTrade(acct, trade, lmsc, netc, "expired $(getQuote(trade[:lmsTrack]))")
-            else
-                tind += 1
             end
+        else
+            f(acct)
         end
 
         acct[:urpnl] = urpnl(acct[:poss])
@@ -124,7 +139,7 @@ function run(f; maxSeconds=60)
         end
     end
     total = acct[:real] + acct[:urpnl]
-    days = bdays(dateStart, toDateMarket(to))
+    # days = bdays(dateStart, toDateMarket(to))
     dateEnd = acct[:date]
     # We're going to pretend we closed everything at the last time, so don't need to add risk.
     # acct[:riskDays] += getRisk(acct[:poss]) # model it for end of last day, so only * 1 day
@@ -190,13 +205,15 @@ function openTrade(acct, lms::Coll{LegMetaOpen}, neto, label, risk)
         :open => (;label, ts=acct[:ts], neto, quotes=map(getQuote, lms), metas=map(getOptionMeta, lms)),
         :targetDate => targetDate,
         :risk => risk,
-        :lmsTrack => lmsTrack
+        :lmsTrack => lmsTrack,
+        :curp => acct[:curp]
     )
+    trade[:rat] = getTradeRat(trade)
     push!(acct[:trades], trade)
     push!(acct[:poss], trade)
     push!(acct[:todayOpens], trade)
     acct[:bal] += neto
-    acct[:greeks] = updateGreeks(acct, targetDate, getGreeks(lms))
+    # acct[:greeks] = updateGreeks(acct, targetDate, getGreeks(lms))
     out("Open #$(trade[:id]) $(Shorthand.tosh(lms, acct[:xpirs])): '$(label)' neto:$(neto)") # deltaX: $(rond(delta)) -> $(rond(deltaNew)) deltaAcct: $(rond(acct[:delta]))")
     return trade
 end
@@ -210,8 +227,7 @@ function closeTrade(acct, trade, lms::Coll{LegMetaClose}, netc, label)
     # trade[:pnl] = pnl
     acct[:real] += pnl
     push!(acct[:rates], getTradeRate(trade))
-    show rate?
-    out("Close #$(trade[:id]) $(Shorthand.tosh(lms[1])): '$(label)' neto:$(rond(neto)) netc:$(netc) pnl=$(rond(pnl)) ; $(openDur(trade)) days open, $(bdaysLeft(acct[:date], trade)) days left")
+    out("Close #$(trade[:id]) $(Shorthand.tosh(lms[1])): '$(label)' neto:$(rond(neto)) netc:$(netc) pnl=$(rond(pnl)) rate=$(getTradeRate(trade)) ; $(openDur(trade)) days open, $(bdaysLeft(acct[:date], trade)) days left")
     return
 end
 #endregion
@@ -270,16 +286,16 @@ function calcGreeks(trades)
     return (;total, xpirs=d)
 end
 
-function updateGreeks(acct, targetDate, gks)
-    total, xpirs = acct[:greeks]
-    total = addGreeks(total, gks)
-    if haskey(xpirs, targetDate)
-        xpirs[targetDate] = addGreeks(xpirs[targetDate], gks)
-    else
-        xpirs[targetDate] = gks
-    end
-    return (;total, xpirs)
-end
+# function updateGreeks(acct, targetDate, gks)
+#     total, xpirs = acct[:greeks]
+#     total = addGreeks(total, gks)
+#     if haskey(xpirs, targetDate)
+#         xpirs[targetDate] = addGreeks(xpirs[targetDate], gks)
+#     else
+#         xpirs[targetDate] = gks
+#     end
+#     return (;total, xpirs)
+# end
 
 function tradeInfo(trade, date)
     op = trade[:open]

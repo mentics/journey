@@ -27,11 +27,11 @@ getQuote(ts::DateTime, xpir::Date, style::Style.T, strike::Currency)::OptionQuot
 
 getTss() = [fromUnix(first(x)) for x in sel("select distinct ts from (select distinct ts from call union all select distinct ts from put) order by ts")]
 getExpirs(ts::DateTime) = [toExpir(first(x)) for x in sel("select distinct expir from (select expir from call where ts=? union all select expir from put where ts=?) order by expir", toUnix(ts), toUnix(ts))]
-function getRange()
-    # r = sel("select min(ts) as 'from', max(ts) as 'to' from call")[1]
-    r = sel1("select (select min(ts) from call) as 'from', (select max(ts) from call) as 'to'")
-    return (;from=fromUnix(r.from), to=fromUnix(r.to))
-end
+# function getRange()
+#     # r = sel("select min(ts) as 'from', max(ts) as 'to' from call")[1]
+#     r = sel1("select (select min(ts) from call) as 'from', (select max(ts) from call) as 'to'")
+#     return (;from=fromUnix(r.from), to=fromUnix(r.to))
+# end
 
 getOqss(ts::DateTime, xpir, curp::Currency, args...)::Oqss = ChainUtil.getOqss(getQuotes(ts, xpir), curp, args...)
 
