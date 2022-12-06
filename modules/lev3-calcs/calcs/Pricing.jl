@@ -8,8 +8,8 @@ export bap, improve
 # RAT2 = .2
 bap(hasQuote, r=.2)::Currency = round(improve(getQuote(hasQuote), r), RoundDown; digits=2)
 bap(qt::Quote, r=.2)::Currency = round(improve(qt, r), RoundDown; digits=2)
-# SH.bap(hasQuotes::Coll, r=.2)::Currency = round(sum(bap.(getQuote.(hasQuotes), r)), RoundDown; digits=2)
-bap(hasQuotes::Coll, r=.2)::Currency = round(bap(sumQuotes(getQuote.(hasQuotes)), r), RoundDown; digits=2)
+# bap(hasQuotes::Coll, r=.2)::Currency = round(bap(sumQuotes(getQuote.(hasQuotes)), r), RoundDown; digits=2)
+bap(hasQuotes::Coll, r=.2)::Currency = round(sum(bap.(getQuote.(hasQuotes), r)), RoundDown; digits=2)
 
 # improve(q::Quote, r::Float64)::Currency = getBid(q) + r * (getAsk(q) - getBid(q))
 function improve(q::Quote, r::Float64)::Currency

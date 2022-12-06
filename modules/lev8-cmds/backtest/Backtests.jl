@@ -27,17 +27,19 @@ function lyze()
     wins = filter(t -> getTradePnl(t) > 0.0, closes)
     losses = filter(t -> getTradePnl(t) <= 0.0, closes)
     @assert length(closes) == length(wins) + length(losses)
-    loscall = filter(t -> getTradeStyle(t) == Style.call, losses)
-    losput = filter(t -> getTradeStyle(t) == Style.put, losses)
+    global loscall = filter(t -> getTradeStyle(t) == Style.call, losses)
+    global wincall = filter(t -> getTradeStyle(t) == Style.call, wins)
+    global losput = filter(t -> getTradeStyle(t) == Style.put, losses)
+    global winput = filter(t -> getTradeStyle(t) == Style.put, wins)
     println("Losses: $(length(loscall)) calls, $(length(losput)) puts")
     ratecall = map(getTradeRate, calls)
     rateput = map(getTradeRate, puts)
-    println("Call rate quantile:\n$(quantile(ratecall))")
-    println("Put rate quantile:\n$(quantile(rateput))")
+    println("Call rate quantile:\n$(quantile(ratecall, .1:.1:.9))")
+    println("Put rate quantile:\n$(quantile(rateput, .1:.1:.9))")
     expdurcall = map(getTradeExpDur, calls)
     expdurput = map(getTradeExpDur, puts)
-    println("Call expdur quantile:\n$(quantile(expdurcall))")
-    println("Put expdur quantile:\n$(quantile(expdurput))")
+    println("Call expdur quantile:\n$(quantile(expdurcall, .1:.1:.9))")
+    println("Put expdur quantile:\n$(quantile(expdurput, .1:.1:.9))")
 end
 
 #region CurStrat
@@ -72,7 +74,7 @@ getTradeExpDur(trade) = bdays(Date(trade[:open][:ts]), Date(trade[:targetDate]))
 #endregion
 
 #region Process
-function run(f; maxSeconds=60)
+function run(f, years; maxSeconds=10)
     tstart = time()
     hspy.db()
     LogUtil.resetLog(:backtest)
@@ -89,7 +91,8 @@ function run(f; maxSeconds=60)
     )
     tss = filter!(sort(hspy.getTss())) do x
         # Don't run on first and last (other if inside loop) ts of the day
-        return DateTime(2019,12,31) < x < DateTime(2021,1,1) &&
+        return year(x) in years
+            # DateTime(2019,12,31) < x < DateTime(2021,1,1) &&
             Time(x) != Time(getMarketOpen(Date(x))) + Second(10)
     end
     dateStart = toDateMarket(tss[1])
@@ -250,9 +253,6 @@ end
 #endregion
 
 #region GetData
-getRisk(trade) = trade[:risk] # getStrike(trade[:lms][1])
-getRisk(trades::Coll) = sum(getRisk, trades; init=0.0)
-
 urpnl(trades::Coll) = sum(x -> urpnl(x), trades; init=0.0)
 function urpnl(trade)
     qt = trade[:lmsTrack]

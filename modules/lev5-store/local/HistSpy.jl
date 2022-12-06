@@ -26,7 +26,11 @@ getQuote(ts::DateTime, xpir::Date, style::Style.T, strike::Currency)::OptionQuot
         toOptionQuote(sel1("select 1 as style, * from $(style) where ts=? and expir=? and strike=?", toUnix(ts), toUnix(getMarketClose(xpir)), Int(strike)))
 
 getTss() = [fromUnix(first(x)) for x in sel("select distinct ts from (select distinct ts from call union all select distinct ts from put) order by ts")]
-getExpirs(ts::DateTime) = [toExpir(first(x)) for x in sel("select distinct expir from (select expir from call where ts=? union all select expir from put where ts=?) order by expir", toUnix(ts), toUnix(ts))]
+function getExpirs(ts::DateTime)
+    xpirs = [toExpir(first(x)) for x in sel("select distinct expir from (select expir from call where ts=? union all select expir from put where ts=?) order by expir", toUnix(ts), toUnix(ts))]
+    # NOTE: It appears we can't get calendar from tradier API too far in future, so we'll filter out beyond 2 years in the future
+    return filter!(x -> x <= today() + Year(2) + Week(2), xpirs)
+end
 # function getRange()
 #     # r = sel("select min(ts) as 'from', max(ts) as 'to' from call")[1]
 #     r = sel1("select (select min(ts) from call) as 'from', (select max(ts) from call) as 'to'")

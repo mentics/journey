@@ -8,16 +8,25 @@ import Backtests as bt
 import Backtests:rond
 
 #region Public
+function getParamsLive()
+    # TODO: When we find better ones from testing, copy them to here
+    return (;
+        MaxOpen = 100000,
+        Put = (;xbdays=20:84, moveMin=.16, offMax=30.0, profMin=0.8, take=0.22),
+        Call = (;xbdays=20:84, moveMin=.12, offMax=30.0, profMin=0.6, take=0.12),
+    )
+end
+
 function getParams()
     return (;
         MaxOpen = 100000,
-        Put = (;xbdays=20:84, moveMin=.18, offMax=20.0, profMin=0.4, take=0.12),
-        Call = (;xbdays=20:84, moveMin=.14, offMax=20.0, profMin=0.3, take=0.1),
+        Put = (;xbdays=20:84, moveMin=.16, offMax=30.0, profMin=0.8, take=0.22),
+        Call = (;xbdays=20:84, moveMin=.12, offMax=30.0, profMin=0.6, take=0.12),
     )
 end
 
 function live(side=Side.long) # ; xbdays=40:80, offMax=40.0, profMin=0.8, moveMin=0.2)
-    p = getParams()
+    p = getParamsLive()
     ps = side == Side.long ? p.Put : p.Call
     date = market().startDay
     curp = market().curp
@@ -38,16 +47,20 @@ function strat(acct)
     lms = back(acct, Side.long; p.Put...)
     if !isnothing(lms)
         neto = bap(lms, .1)
+        risk = abs(getStrike(lms[1]) - getStrike(lms[2])) - neto
         @assert neto > 0.0
+        @assert risk <= p.offMax
         rat = getStrike(lms[2]) / curp
-        bt.openTrade(acct, lms, neto, "long spread: rat=$(rond(rat)), neto=$(neto)", abs(getStrike(lms[1]) - getStrike(lms[2])) - neto)
+        bt.openTrade(acct, lms, neto, "long spread: rat=$(rond(rat)), neto=$(neto)", risk)
     end
     lms = back(acct, Side.short; p.Call...)
     if !isnothing(lms)
         neto = bap(lms, .1)
+        risk = abs(getStrike(lms[1]) - getStrike(lms[2])) - neto
         @assert neto > 0.0
+        @assert risk <= p.offMax
         rat = getStrike(lms[1]) / curp
-        bt.openTrade(acct, lms, neto, "short spread: rat=$(rond(rat)), neto=$(neto)", abs(getStrike(lms[1]) - getStrike(lms[2])) - neto)
+        bt.openTrade(acct, lms, neto, "short spread: rat=$(rond(rat)), neto=$(neto)", risk)
     end
 end
 
@@ -118,6 +131,12 @@ function findLongSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt)
     ilo = 1
     lo = longs[ilo]
     isho = findfirst(oq -> getBid(oq) > profMin, shorts)
+    if isnothing(isho)
+        # TODO: why would this happen?
+        global keepLongShoNothing = (profMin, shorts)
+        println("Long isho was nothing")
+        return nothing
+    end
     sho = shorts[isho]
     getStrike(sho) <= strikeExt || return nothing
     # @show ilo isho getStrike(lo) getStrike(sho) strikeExt netoqL(lo) netoqS(sho)
@@ -182,6 +201,9 @@ function findLongSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt)
     @assert getStrike(best[2]) < getStrike(best[3])
     b = (best[1], LegMetaOpen(best[2], Side.long, 1.0), LegMetaOpen(best[3], Side.short, 1.0))
     neto = bap(b[2:3], .1)
+    if neto <= 0.0
+        global keepBest1 = b
+    end
     @assert neto > 0.0 "neto > 0.0: $(neto)  $(b)"
     return b
 end
@@ -200,6 +222,12 @@ function findShortSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt)
     ilo = lastindex(longs)
     lo = longs[ilo]
     isho = findlast(oq -> getBid(oq) > profMin, shorts)
+    if isnothing(isho)
+        # TODO: why would this happen?
+        global keepShortShoNothing = (profMin, shorts)
+        println("Short isho was nothing")
+        return nothing
+    end
     sho = shorts[isho]
     getStrike(sho) >= strikeExt || return nothing
 
