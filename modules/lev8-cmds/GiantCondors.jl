@@ -20,8 +20,8 @@ end
 function getParams()
     return (;
         MaxOpen = 100000,
-        Put = (;xbdays=20:84, moveMin=.16, offMax=30.0, profMin=0.8, take=0.22),
-        Call = (;xbdays=20:84, moveMin=.12, offMax=30.0, profMin=0.6, take=0.12),
+        Put = (;xbdays=20:84, moveMin=.18, offMax=30.0, profMin=0.8, take=0.22),
+        Call = (;xbdays=20:84, moveMin=.14, offMax=30.0, profMin=0.6, take=0.12),
     )
 end
 
@@ -49,7 +49,7 @@ function strat(acct)
         neto = bap(lms, .1)
         risk = abs(getStrike(lms[1]) - getStrike(lms[2])) - neto
         @assert neto > 0.0
-        @assert risk <= p.offMax
+        @assert risk <= p.Put.offMax
         rat = getStrike(lms[2]) / curp
         bt.openTrade(acct, lms, neto, "long spread: rat=$(rond(rat)), neto=$(neto)", risk)
     end
@@ -58,7 +58,7 @@ function strat(acct)
         neto = bap(lms, .1)
         risk = abs(getStrike(lms[1]) - getStrike(lms[2])) - neto
         @assert neto > 0.0
-        @assert risk <= p.offMax
+        @assert risk <= p.Call.offMax
         rat = getStrike(lms[1]) / curp
         bt.openTrade(acct, lms, neto, "short spread: rat=$(rond(rat)), neto=$(neto)", risk)
     end
