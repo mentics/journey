@@ -12,8 +12,8 @@ function getParamsLive()
     # TODO: When we find better ones from testing, copy them to here
     return (;
         MaxOpen = 100000,
-        Put = (;xbdays=20:84, moveMin=.16, offMax=30.0, profMin=0.8, take=0.22),
-        Call = (;xbdays=20:84, moveMin=.12, offMax=30.0, profMin=0.6, take=0.12),
+        Put = (;xbdays=20:84, moveMin=.18, offMax=30.0, profMin=0.8, take=0.22),
+        Call = (;xbdays=20:84, moveMin=.16, offMax=20.0, profMin=0.4, take=0.12),
     )
 end
 
@@ -23,6 +23,26 @@ function getParams()
         Put = (;xbdays=20:84, moveMin=.18, offMax=30.0, profMin=0.8, take=0.22),
         Call = (;xbdays=20:84, moveMin=.14, offMax=30.0, profMin=0.6, take=0.12),
     )
+end
+
+import Kelly, QuoteTypes
+function calcScore1(tmult, lo, sho)
+    # # TODO: consider greeks?
+    # theta = getGreeks(lo).theta - getGreeks(sho).theta
+    # delta = getGreeks(lo).delta - getGreeks(sho).delta
+    # # @show getGreeks(sho).theta getGreeks(lo).theta theta
+    # # theta >= 0.01 || return -1000.0
+    # theta >= abs(delta)/2 || return -1000.0
+    risk = F(abs(getStrike(lo) - getStrike(sho)))
+    # Wrong: ret = F(bap(sho, .1) - bap(lo, .1))
+    ret = F(netoq2(lo, sho))
+    ret > 0.0 || ( println("Found ret < 0.0") ; return -100.0 )
+    rate = calcRate(tmult, ret, risk)
+    kel = Kelly.simple(0.99, ret, risk)
+    score = rate * kel
+    # println("calcScore:")
+    # @show tmult ret risk rate kel score
+    return score
 end
 
 function live(side=Side.long) # ; xbdays=40:80, offMax=40.0, profMin=0.8, moveMin=0.2)
@@ -99,25 +119,7 @@ netoq2(lo, sho) = netoqL(lo) + netoqS(sho)
 netoqL(lo) = bap(QuoteTypes.newQuote(getQuote(lo), DirSQA(Side.long, 1.0, Action.open)), .1)
 netoqS(sho) = bap(sho, .1)
 
-import Kelly, QuoteTypes
-function calcScore1(tmult, lo, sho)
-    # TODO: consider greeks?
-    # theta = getGreeks(lo).theta - getGreeks(sho).theta
-    # @show getGreeks(sho).theta getGreeks(lo).theta theta
-    # theta >= 0.01 || return -1000.0
-    risk = F(abs(getStrike(lo) - getStrike(sho)))
-    # Wrong: ret = F(bap(sho, .1) - bap(lo, .1))
-    ret = F(netoq2(lo, sho))
-    ret > 0.0 || ( println("Found ret < 0.0") ; return -100.0 )
-    rate = calcRate(tmult, ret, risk)
-    kel = Kelly.simple(0.99, ret, risk)
-    score = rate * kel
-    # println("calcScore:")
-    # @show tmult ret risk rate kel score
-    return score
-end
-
-function findLongSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt)
+function findLongSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt, debug=false)
     shorts = oqss.put.short
     longs = oqss.put.long
     if isempty(longs)
@@ -132,14 +134,14 @@ function findLongSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt)
     lo = longs[ilo]
     isho = findfirst(oq -> getBid(oq) > profMin, shorts)
     if isnothing(isho)
-        # TODO: why would this happen?
+        # TODO: why would this happen? I think because it used up all the options and so they're filtered out (ie. in poss)
         global keepLongShoNothing = (profMin, shorts)
         println("Long isho was nothing")
         return nothing
     end
     sho = shorts[isho]
     getStrike(sho) <= strikeExt || return nothing
-    # @show ilo isho getStrike(lo) getStrike(sho) strikeExt netoqL(lo) netoqS(sho)
+    debug && @show ilo isho getStrike(lo) getStrike(sho) strikeExt netoqL(lo) netoqS(sho)
 
     # move ilo to min by strike
     while getStrike(sho) - getStrike(lo) > offMax
@@ -149,7 +151,7 @@ function findLongSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt)
 
     # find isho such that profMin is satisfied
     neto = netoq2(lo, sho)
-    # @show neto ilo isho getStrike(lo) getStrike(sho) strikeExt netoqL(lo) netoqS(sho)
+    debug && @show neto ilo isho getStrike(lo) getStrike(sho) strikeExt netoqL(lo) netoqS(sho)
     while neto < profMin
         # move isho up to get more prof while still under strikeExt
         getStrike(shorts[isho+1]) <= strikeExt || return nothing
@@ -161,7 +163,7 @@ function findLongSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt)
             lo = longs[ilo]
         end
         neto = netoq2(lo, sho)
-        # @show neto ilo isho getStrike(lo) getStrike(sho) strikeExt netoqL(lo) netoqS(sho)
+        debug && @show neto ilo isho getStrike(lo) getStrike(sho) strikeExt netoqL(lo) netoqS(sho)
     end
     # lo,sho now have valid values, strike is narrow enough and profMin is satisfied
     @assert getStrike(sho) - getStrike(lo) <= offMax
@@ -169,7 +171,7 @@ function findLongSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt)
     @assert neto >= profMin
     score = calcScore(lo, sho)
     best = (score, lo, sho)
-    # @show score neto getStrike(lo) getStrike(sho) strikeExt
+    debug && @show score neto getStrike(lo) getStrike(sho) strikeExt
 
     # Loop through all the other valid states and score them
     while true
@@ -179,7 +181,7 @@ function findLongSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt)
             ilo += 1
             lo = longs[ilo]
             score = calcScore(lo, sho)
-            # neto = netoq2(lo, sho) ; @show score neto getStrike(lo) getStrike(sho) strikeExt
+            debug && ( neto = netoq2(lo, sho) ; @show score neto getStrike(lo) getStrike(sho) strikeExt )
             if score > best[1]
                 best = (score, lo, sho)
             end
@@ -200,15 +202,31 @@ function findLongSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt)
     end
     @assert getStrike(best[2]) < getStrike(best[3])
     b = (best[1], LegMetaOpen(best[2], Side.long, 1.0), LegMetaOpen(best[3], Side.short, 1.0))
-    neto = bap(b[2:3], .1)
-    if neto <= 0.0
-        global keepBest1 = b
+
+    if !debug
+        neto = bap(b[2:3], .1)
+        if neto < profMin
+            global kerrBest1 = b
+            println("ERROR: (long) invalid neto < profMin $(neto) for profMin $(profMin)")
+            findLongSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt, true)
+            error("stop")
+        end
+        # @assert neto >= profMin "neto > 0.0: $(neto), $(profMin), $(b)"
+
+        strikeWidth = abs(getStrike(best[2]) - getStrike(best[3]))
+        risk = abs(getStrike(best[2]) - getStrike(best[3])) - neto
+        if strikeWidth > offMax || risk > offMax
+            global kerrBest2 = b
+            println("ERROR: (long) invalid strike width $(strikeWidth) or risk $(risk) for offMax $(offMax)")
+            findShortSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt, true)
+            error("stop")
+        end
     end
-    @assert neto > 0.0 "neto > 0.0: $(neto)  $(b)"
+
     return b
 end
 
-function findShortSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt)
+function findShortSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt, debug=false)
     shorts = oqss.call.short
     longs = oqss.call.long
     if isempty(longs)
@@ -223,7 +241,7 @@ function findShortSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt)
     lo = longs[ilo]
     isho = findlast(oq -> getBid(oq) > profMin, shorts)
     if isnothing(isho)
-        # TODO: why would this happen?
+        # TODO: why would this happen? I think because it used up all the options and so they're filtered out (ie. in poss)
         global keepShortShoNothing = (profMin, shorts)
         println("Short isho was nothing")
         return nothing
@@ -231,7 +249,7 @@ function findShortSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt)
     sho = shorts[isho]
     getStrike(sho) >= strikeExt || return nothing
 
-    # @show ilo isho getStrike(lo) getStrike(sho) strikeExt netoqL(lo) netoqS(sho)
+    debug && @show ilo isho getStrike(lo) getStrike(sho) strikeExt netoqL(lo) netoqS(sho)
     # move ilo to min by strike
     while getStrike(lo) - getStrike(sho) > offMax
         ilo -= 1
@@ -240,7 +258,7 @@ function findShortSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt)
 
     # find isho such that profMin is satisfied
     neto = netoq2(lo, sho)
-    # @show neto ilo isho getStrike(lo) getStrike(sho) strikeExt netoqL(lo) netoqS(sho)
+    debug && @show neto ilo isho getStrike(lo) getStrike(sho) strikeExt netoqL(lo) netoqS(sho)
     while neto < profMin
         # move isho down to get more prof while still above strikeExt
         getStrike(shorts[isho-1]) >= strikeExt || return nothing
@@ -252,7 +270,7 @@ function findShortSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt)
             lo = longs[ilo]
         end
         neto = netoq2(lo, sho)
-        # @show neto ilo isho getStrike(lo) getStrike(sho) strikeExt netoqL(lo) netoqS(sho)
+        debug && @show neto ilo isho getStrike(lo) getStrike(sho) strikeExt netoqL(lo) netoqS(sho)
     end
     # lo,sho now have valid values, strike is narrow enough and profMin is satisfied
     @assert getStrike(lo) - getStrike(sho) <= offMax
@@ -260,7 +278,7 @@ function findShortSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt)
     @assert neto >= profMin
     score = calcScore(lo, sho)
     best = (score, lo, sho)
-    # @show score neto getStrike(lo) getStrike(sho) strikeExt
+    debug && @show score neto getStrike(lo) getStrike(sho) strikeExt
 
     # Loop through all the other valid states and score them
     while true
@@ -270,7 +288,7 @@ function findShortSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt)
             ilo -= 1
             lo = longs[ilo]
             score = calcScore(lo, sho)
-            # neto = netoq2(lo, sho) ; @show score neto getStrike(lo) getStrike(sho) strikeExt
+            debug && ( neto = netoq2(lo, sho) ; @show score neto getStrike(lo) getStrike(sho) strikeExt )
             if score > best[1]
                 best = (score, lo, sho)
             end
@@ -290,7 +308,29 @@ function findShortSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt)
         return nothing
     end
     @assert getStrike(best[3]) < getStrike(best[2])
-    return (best[1], LegMetaOpen(best[3], Side.short, 1.0), LegMetaOpen(best[2], Side.long, 1.0))
+    b = (best[1], LegMetaOpen(best[3], Side.short, 1.0), LegMetaOpen(best[2], Side.long, 1.0))
+
+    if !debug
+        neto = bap(b[2:3], .1)
+        if neto < profMin
+            global kerrBest1 = b
+            println("ERROR: (short) invalid neto < profMin $(neto) for profMin $(profMin)")
+            findShortSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt, true)
+            error("stop")
+        end
+        # @assert neto >= profMin "neto > 0.0: $(neto), $(profMin), $(b)"
+
+        strikeWidth = abs(getStrike(best[2]) - getStrike(best[3]))
+        risk = abs(getStrike(best[2]) - getStrike(best[3])) - neto
+        if strikeWidth > offMax || risk > offMax
+            global kerrBest2 = b
+            println("ERROR: (short) invalid strike width $(strikeWidth) or risk $(risk) for offMax $(offMax)")
+            findShortSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt, true)
+            error("stop")
+        end
+    end
+
+    return b
 end
 #endregion
 

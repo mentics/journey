@@ -21,6 +21,20 @@ SH.to(::Type{Ret}, trade::Trade, curp::Currency)::Ret = combineTo(Ret, getLegs(t
 SH.combineTo(::Type{Ret}, ::Type{<:ElType{<:Trade}}, trades, sp::Currency)::Ret = combineRets(tos(Ret, trades, sp))
 #endregion
 
+# export requote
+function reqlm(lup, leg::Leg, act::Action.T)
+    oq = lup(leg)
+    return act == Action.open ? LegMetaOpen(leg, oq) : LegMetaClose(leg, oq)
+end
+function reqlms(lup, legs::Coll, act::Action.T)
+    map(x -> reqlm(lup, x, act), legs)
+end
+function reqlms(lup, hasLegs, act::Action.T)
+    map(x -> reqlm(lup, getLeg(x), act), getLegs(hasLegs))
+end
+
+
+
 # SH.to(::Type{LegMeta}, leg::Leg, oqter)::LegMeta = ( (oq, side) = (oqter(leg), getSide(leg)) ; LegMeta(Leg(getOption(leg), getQuantity(leg), side), getQuote(oq, side), getMeta(oq)) )
 # SH.to(::Type{LegMeta}, oq::OptionQuote, side::Side.T) = LegMeta(Leg(getOption(oq), 1.0, side), getQuote(oq, side), getMeta(oq))
 

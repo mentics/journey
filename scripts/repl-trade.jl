@@ -4,7 +4,8 @@ using Calendars, Markets, Chains, Expirations
 using Store, StoreTrade, ProcOrder
 using CmdTrading, CmdPos
 
-using Combos, SeekingAlpha ; c = Combos ; sa = SeekingAlpha
+import Combos as c, SeekingAlpha as sa
+import Backtests as bt, GiantCondors as gc
 
 dbChecks()
 procOrders()

@@ -159,6 +159,7 @@ end
 nearOqs(curp::Currency, d::Date, chs, dist::Int=20)::Vector{OptionQuote} = nearOqs(curp, chs[d].chain, dist)
 nearOqs(curp::Currency, oqs, dist::Int=20)::Vector{OptionQuote} = filter(x -> abs(getStrike(x) - curp) <= dist, oqs)
 
+chainLookup(hasOpt) = chainLookup(getOption(hasOpt))
 chainLookup(opt::Option) = chainLookup(getExpiration(opt), getStyle(opt), getStrike(opt))
 function chainLookup(exp::Date, style::Style.T, strike::Currency)::Union{Nothing,OptionQuote}
     res = find(chain(exp).chain) do x; getStyle(x) === style && getStrike(x) === strike end

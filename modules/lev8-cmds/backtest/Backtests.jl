@@ -379,7 +379,8 @@ out(args...) = LogUtil.logit(:backtest, args...)
 #endregion
 
 #region MaybeMove
-toLMC(leg::Leg, lup) = LegMetaClose(leg, lup(getOption(leg)))
+toLMC(leg, lup) = LegMetaClose(leg, lup(getOption(leg)))
+# toLMC(leg::Leg, lup) = LegMetaClose(leg, lup(getOption(leg)))
 toLMC(lm::LegMetaOpen, lup) = toLMC(getLeg(lm), lup)
 tosLLMC(lms, lup) = map(lm -> toLMC(getLeg(lm), lup), lms)
 tosLMC(legs, lup) = map(leg -> toLMC(leg, lup), legs)
