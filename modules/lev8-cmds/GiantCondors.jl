@@ -12,8 +12,8 @@ function getParamsLive()
     # TODO: When we find better ones from testing, copy them to here
     return (;
         MaxOpen = 100000,
-        Put = (;xbdays=20:84, moveMin=.18, offMax=30.0, profMin=0.8, take=0.22),
-        Call = (;xbdays=20:84, moveMin=.16, offMax=20.0, profMin=0.4, take=0.12),
+        Put = (;xbdays=20:84, moveMin=.18, offMax=20.0, profMin=0.8, take=0.22),
+        Call = (;xbdays=20:184, moveMin=.18, offMax=20.0, profMin=0.4, take=0.12),
     )
 end
 
@@ -26,24 +26,37 @@ function getParams()
 end
 
 import Kelly, QuoteTypes
-function calcScore1(tmult, lo, sho)
+function calcScore1(ctx, tmult, lo, sho)
     # # TODO: consider greeks?
-    # theta = getGreeks(lo).theta - getGreeks(sho).theta
-    # delta = getGreeks(lo).delta - getGreeks(sho).delta
+    theta = getGreeks(lo).theta - getGreeks(sho).theta
+    delta = getGreeks(lo).delta - getGreeks(sho).delta
     # # @show getGreeks(sho).theta getGreeks(lo).theta theta
     # # theta >= 0.01 || return -1000.0
-    # theta >= abs(delta)/2 || return -1000.0
-    risk = F(abs(getStrike(lo) - getStrike(sho)))
+    theta >= abs(delta)/3 || return -1000.0
+    strlo = getStrike(lo)
+    strsho = getStrike(sho)
+    risk = F(abs(strlo - strsho))
     # Wrong: ret = F(bap(sho, .1) - bap(lo, .1))
     ret = F(netoq2(lo, sho))
     ret > 0.0 || ( println("Found ret < 0.0") ; return -100.0 )
     rate = calcRate(tmult, ret, risk)
-    kel = Kelly.simple(0.99, ret, risk)
+
+    move = strlo < ctx.curp ?
+        (1.0 - strsho / ctx.curp) :
+        (strsho / ctx.curp - 1.0)
+    TopMove = .2
+    moveBonus = (move - .16) / (TopMove - .16)
+    winRate = 0.96 + .0399*moveBonus
+    kel = Kelly.simple(winRate, ret, risk)
     score = rate * kel
     # println("calcScore:")
-    # @show tmult ret risk rate kel score
+    # @show tmult ret risk rate move moveBonus winRate kel score (move - .16) (TopMove - .16)
     return score
 end
+
+makeCtx(acct) = (;
+    curp = acct[:curp]
+)
 
 function live(side=Side.long) # ; xbdays=40:80, offMax=40.0, profMin=0.8, moveMin=0.2)
     p = getParamsLive()
@@ -53,7 +66,7 @@ function live(side=Side.long) # ; xbdays=40:80, offMax=40.0, profMin=0.8, moveMi
     strikeExt = curp * (side == Side.long ? (1.0 - ps.moveMin) : (1.0 + ps.moveMin))
     getOqss = xpir -> ChainUtil.getOqss(chain(xpir).chain, curp, xlegs(xpir))
     xpirs = DateUtil.matchAfter(date, expirs(), ps.xbdays)
-    res = findGC(getOqss, xpirs, date, side, ps.offMax, ps.profMin, strikeExt)
+    res = findGC((;curp), getOqss, xpirs, date, side, ps.offMax, ps.profMin, strikeExt)
     return isnothing(res) ? nothing : collect(res)
 end
 
@@ -91,18 +104,18 @@ function back(acct, side; xbdays, offMax, profMin, moveMin, kws...)
     xpirs = DateUtil.matchAfter(date, acct[:xpirs], xbdays)
     # TODO: have use the recent high (period = xpir days) and require rat above that
     strikeExt = acct[:curp] * (side == Side.long ? (1.0 - moveMin) : (1.0 + moveMin))
-    return findGC(getOqss, xpirs, date, side, offMax, profMin, strikeExt)
+    return findGC(makeCtx(acct), getOqss, xpirs, date, side, offMax, profMin, strikeExt)
 end
 #endregion
 
 #region Local
-function findGC(getOqss, xpirs, date, side, offMax, profMin, strikeExt)
+function findGC(ctx, getOqss, xpirs, date, side, offMax, profMin, strikeExt)
     findEntry = side == Side.long ? findLongSpreadEntry : findShortSpreadEntry
     lmsBest = nothing
     scoreBest = 0.0
     for xpir in xpirs
         tmult = timult(date, xpir)
-        calcScore = (lo, sho) -> calcScore1(tmult, lo, sho)
+        calcScore = (lo, sho) -> calcScore1(ctx, tmult, lo, sho)
         oqss = getOqss(xpir)
         res = findEntry(oqss, calcScore, offMax, profMin, strikeExt)
         !isnothing(res) || continue

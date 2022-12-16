@@ -29,6 +29,12 @@ ll = c.lookAll()
 
 ==========
 
+Automate it all! after confirming with backtesting
+
+For the min move for giant condors, use the recent high/low
+
+Just need to make sure I'm evenly hedged (or have cash) for giant condors
+
 Mark results from toc() when there is already an order for it
 
 Check how greeks neutral pos changes values and greeks over snaps

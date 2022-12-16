@@ -122,6 +122,10 @@ function toc(rateMin=0.5) # findTradesToClose
     end
 end
 ordinfo(tord) = "oid:$(tord["id"]) status:$(tord["status"]) price:$(tord["price"])"
+
+tradeRate(trade::Trade{Filled}, to::Date, netc) = calcRate(getDateFilled(trade), to, getNetOpen(trade) + netc, tradeRisk(trade))
+tradeRate(trade::Trade{Closed}) = calcRate(getDateFilled(trade), getDateClosed(trade), getPnl(trade), tradeRisk(trade))
+tradeRisk(trade) = -min(OptionUtil.legsExtrema(getNetOpen(trade), getLegs(trade)...)...)
 #endregion
 
 #region CurrentPosition
@@ -256,7 +260,10 @@ function pnls(since=bdaysBefore(today(), 20))
     tbl = map(trades) do trade
         pnl = getPnl(trade)
         bal += pnl
-        (;closed=tsClosed(trade), expir=getTargetDate(trade), tid=getId(trade), pnl, bal)
+        opened = getDateFilled(trade)
+        closed = getDateClosed(trade)
+        dur = DateUtil.durRisk(opened, closed)
+        (; expir=getTargetDate(trade), opened, closed, dur, tid=getId(trade), rate=tradeRate(trade), pnl, risk=tradeRisk(trade), bal)
     end
     pretyble(tbl)
 end
