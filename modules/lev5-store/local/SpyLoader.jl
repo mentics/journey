@@ -52,7 +52,40 @@ function createTables()
     """
     hspy.exec("create table if not exists Call" * colSpec)
     hspy.exec("create table if not exists Put" * colSpec)
-    hspy.exec("create table if not exists Under (ts int not null primary key, under int not null) strict")
+    # High and low are the hi/lo for the day up until that entry (including the entry itself)
+    hspy.exec("""
+        create table if not exists Under (
+            ts int not null primary key,
+            under int not null,
+            open int not null,
+            high int not null,
+            low int not null
+        ) strict
+    """)
+    # hspy.exec("alter table Under add column open int not null default (0)")
+    # hspy.exec("alter table Under add column high int not null default (0)")
+    # hspy.exec("alter table Under add column low int not null default (0)")
+    # hspy.exec("alter table Under add column dat date not null default (date(0))")
+end
+
+function decorate()
+#     hspy.exec("""
+# update Under set open=q.open from (
+#    select dd.ts, (select under from Under where ts=(select min(ts) from Under where date(ts, 'unixepoch')=dt)) as open
+#    from (select ts, under, date(ts, 'unixepoch') as dt from Under order by ts) dd
+# ) q
+# where Under.ts=q.ts
+#     """)
+
+#     hspy.exec("""
+# update Under set high=q.high, low=q.low from (
+#     select dd.ts, dd.dt,
+#         (select max(under) from Under where date(ts,'unixepoch')=dt and ts<=dd.ts) as high,
+#         (select min(under) from Under where date(ts,'unixepoch')=dt and ts<=dd.ts) as low
+#     from (select ts, under, date(ts, 'unixepoch') as dt from Under order by ts) dd
+# ) q
+# where Under.ts=q.ts
+#     """)
 end
 
 function pragmasSpeed()
@@ -108,6 +141,9 @@ function procLine(line, tsPrev, stmtCall, stmtPut, stmtUnder)
         left = 1
         right = findnext(',', line, left)
         ts = parsem(Int, SubString(line, left:right-1))
+        if !isBusDay(Date(unix2datetime(ts)))
+            return
+        end
         left = right+1 ; right = findnext(',', line, left)
         left = right+1 ; right = findnext(',', line, left)
         left = right+1 ; right = findnext(',', line, left)
@@ -232,5 +268,33 @@ parsem(type::Type{Currency}, s, mis=missing) = isempty(s) ? mis : Int(parse(type
 #     end
 #     return (c, p)
 # end
+
+function checkData()
+    rows = hspy.sel("""
+    select *, date(ts,'unixepoch') as dt from under where ts in
+        (select max(ts)
+            from (select ts, under, date(ts,'unixepoch') as dt from Under order by ts)
+        group by dt)
+        and high=low
+    """)
+    for row in rows
+        println(Date(row.dt), ":-:", isBusDay(Date(row.dt)))
+    end
+
+    rows = hspy.sel("select distinct date(ts,'unixepoch') as dt from Under")
+    for row in rows
+        d = Date(row.dt)
+        if !isBusDay(d)
+            println(Date(row.dt))
+        end
+    end
+
+    #=
+Data incorrectly included these holidays:
+    # hspy.exec("delete from under where ts in (select ts from under where date(ts,'unixepoch') in ('2022-01-17','2022-02-21','2022-04-15','2022-05-30','2022-06-20','2022-07-04','2022-09-05'))")
+    # hspy.exec("delete from Call where ts in (select ts from Call where date(ts,'unixepoch') in ('2022-01-17','2022-02-21','2022-04-15','2022-05-30','2022-06-20','2022-07-04','2022-09-05'))")
+    # hspy.exec("delete from Put where ts in (select ts from Put where date(ts,'unixepoch') in ('2022-01-17','2022-02-21','2022-04-15','2022-05-30','2022-06-20','2022-07-04','2022-09-05'))")
+=#
+end
 
 end

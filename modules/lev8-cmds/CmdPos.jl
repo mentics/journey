@@ -41,7 +41,8 @@ function xprob(expr::Date)
     return prob
 end
 
-xlms(xpir::Date)::Vector{LegMeta} = SH.combineTo(Vector{LegMeta}, ST.tradesOpen(x -> isStatus(x, WithFilled) && getTargetDate(x) == xpir))
+# xlms(xpir::Date)::Vector{LegMeta} = SH.combineTo(Vector{LegMeta}, ST.tradesOpen(x -> isStatus(x, WithFilled) && getTargetDate(x) == xpir))
+xlms(xpir::Date)::Vector{LegMeta} = Between.tradesToLMOs(ST.tradesOpen(x -> isStatus(x, WithFilled) && getTargetDate(x) == xpir))
 xlms(xpr::Int)::Vector{LegMeta} = xlms(expir(xpr))
 xlms(xpr::Int, add::Coll{LegMeta})::Vector{LegMeta} = concat(xlms(xpr), add)
 xlegs(xpir::Date)::Vector{Leg} = collect(mapflatmap(getLeg, getLegs, ST.tradesOpen(x -> isStatus(x, WithFilled) && getTargetDate(x) == xpir)))

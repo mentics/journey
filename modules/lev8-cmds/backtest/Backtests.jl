@@ -7,6 +7,7 @@ using Pricing, Between
 import OptionUtil
 import Shorthand
 import HistSpy as hspy
+import HistData
 using Calendars
 
 #= Explore pricing
@@ -34,11 +35,11 @@ function lyze()
     println("Losses: $(length(loscall)) calls, $(length(losput)) puts")
     ratecall = map(getTradeRate, calls)
     rateput = map(getTradeRate, puts)
-    println("Call rate quantile:\n$(quantile(ratecall, .1:.1:.9))")
+    println("Call rate quantile:\n$(!isempty(ratecall) ? quantile(ratecall, .1:.1:.9) : "no calls")")
     println("Put rate quantile:\n$(quantile(rateput, .1:.1:.9))")
     expdurcall = map(getTradeExpDur, calls)
     expdurput = map(getTradeExpDur, puts)
-    println("Call expdur quantile:\n$(quantile(expdurcall, .1:.1:.9))")
+    println("Call expdur quantile:\n$(!isempty(expdurcall) ? quantile(expdurcall, .1:.1:.9) : "no calls")")
     println("Put expdur quantile:\n$(quantile(expdurput, .1:.1:.9))")
 end
 
@@ -74,10 +75,18 @@ getTradeExpDur(trade) = bdays(Date(trade[:open][:ts]), Date(trade[:targetDate]))
 #endregion
 
 #region Process
-function run(f, years; maxSeconds=10)
+function run(f, fday, years; maxSeconds=10, extremaBdays=40)
     tstart = time()
     hspy.db()
     LogUtil.resetLog(:backtest)
+    tss = filter!(sort(hspy.getTss())) do x
+        # Don't run on first and last (other if inside loop) ts of the day
+        return year(x) in years
+            # DateTime(2019,12,31) < x < DateTime(2021,1,1) &&
+            Time(x) != Time(getMarketOpen(Date(x))) + Second(10)
+    end
+    dateStart = toDateMarket(tss[1])
+
     global acct = Dict(
         :bal => C(0.0),
         :real => C(0.0),
@@ -89,27 +98,32 @@ function run(f, years; maxSeconds=10)
         :lastTradeId => 0,
         :rates => Vector{Float64}()
     )
-    tss = filter!(sort(hspy.getTss())) do x
-        # Don't run on first and last (other if inside loop) ts of the day
-        return year(x) in years
-            # DateTime(2019,12,31) < x < DateTime(2021,1,1) &&
-            Time(x) != Time(getMarketOpen(Date(x))) + Second(10)
-    end
-    dateStart = toDateMarket(tss[1])
+
     datePrev = Date(0)
     for ts in tss
         date = toDateMarket(ts)
         # days = bdays(dateStart, date)
 
+        curp = hspy.getUnder(ts)
+
         if date != datePrev
+            fday(acct)
+            # acct[:urpnl] = urpnl(acct[:poss])
+            # rate = calcRate(dateStart, date, acct[:real], acct[:riskDays] / days)
+            # risk:$(acct[:riskDays] / days)
+            rate = StatsBase.mean(acct[:rates])
+            out("End $(formatLocal(ts)): $(rond(acct[:bal])) rpnl:$(rond(acct[:real])) urpnl:$(rond(urpnl(acct[:poss]))) #open:$(length(acct[:poss])) rateAvg:$(rond(rate))")
+
             # TODO: closing and opening on same day might affect this a little, but I think buying power allows this so maybe it's ok
             # acct[:riskDays] += (date - datePrev).value * getRisk(acct[:poss])
             empty!(acct[:todayOpens])
             empty!(acct[:todayCloses])
+            acct[:extrema] = HistData.extrema(bdaysBefore(dateStart, extremaBdays), dateStart-Day(1), curp, curp)
             datePrev = date
+        else
+            updateExtrema(acct, curp)
         end
 
-        curp = hspy.getUnder(ts)
         out("Start $(formatLocal(ts)) SPY: $(curp)") # TODO: , VIX: $(mkt.vix)")
         acct[:ts] = ts
         acct[:date] = date
@@ -121,7 +135,7 @@ function run(f, years; maxSeconds=10)
         acct[:xoqss] = xoqss
         lup = lookup(unxoqss)
         acct[:lup] = lup
-        updatePossLmsClose(lup, acct[:poss])
+        updatePossLmsTrack(lup, acct[:poss])
         # acct[:greeks] = calcGreeks(acct[:poss]) # isempty(acct[:poss]) ? GreeksZero : getGreeks(acct[:poss])
         # acct[:greeksExpirs] = isempty(acct[:poss]) ? Dict{Date,GreeksType}() : greeksForExpirs(lup, acct[:poss])
 
@@ -148,17 +162,13 @@ function run(f, years; maxSeconds=10)
             f(acct)
         end
 
-        acct[:urpnl] = urpnl(acct[:poss])
-        # rate = calcRate(dateStart, date, acct[:real], acct[:riskDays] / days)
-        # risk:$(acct[:riskDays] / days)
-        rate = StatsBase.mean(acct[:rates])
-        out("End $(formatLocal(ts)): $(rond(acct[:bal])) rpnl:$(rond(acct[:real])) urpnl:$(rond(acct[:urpnl])) #open:$(length(acct[:poss])) rateAvg:$(rond(rate))")
-
         if time() > tstart + maxSeconds
             break
         end
     end
-    total = acct[:real] + acct[:urpnl]
+    real = acct[:real]
+    unreal = urpnl(acct[:poss])
+    total = real + unreal
     # days = bdays(dateStart, toDateMarket(to))
     dateEnd = acct[:date]
     # We're going to pretend we closed everything at the last time, so don't need to add risk.
@@ -166,13 +176,13 @@ function run(f, years; maxSeconds=10)
     # rate = calcRate(dateStart, dateEnd, total, acct[:riskDays] / days)
     rate = StatsBase.mean(acct[:rates])
     out("Summary $(dateStart) - $(dateEnd):")
-    out("  rpnl = $(acct[:real]), urpnl = $(acct[:urpnl])")
+    out("  rpnl = $(real), urpnl = $(unreal)")
     out("  Total: $(total)")
     # out("  risk-days: $(acct[:riskDays])")
     out("  rate: $(rond(rate))")
 end
 
-function updatePossLmsClose(lup, trades)
+function updatePossLmsTrack(lup, trades)
     i = 1
     for trade in trades
         try
@@ -183,6 +193,13 @@ function updatePossLmsClose(lup, trades)
             rethrow(e)
         end
         i += 1
+    end
+end
+
+function updateExtrema(acct, curp)
+    x = acct[:extrema]
+    if curp > x.hi || curp < x.lo
+        acct[:extrema] = (;hi=max(x.hi, curp), lo=min(x.lo, curp))
     end
 end
 

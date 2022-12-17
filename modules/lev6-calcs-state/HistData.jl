@@ -30,6 +30,29 @@ function dataDay(d::Date, sym::AStr="SPY")::DailyRowType
     daily[i]
 end
 
+# const PRICE_MAX = C(1e9)
+# const PRICE_ZERO = C(0.0)
+
+function extrema(from::Date, to::Date, hi1, lo1, sym::AStr="SPY")
+    daily = dataDaily(from, to, sym)
+    hi = hi1
+    lo = lo1
+    # loDate = to + Day(1)
+    # hiDate = to+ Day(1)
+    for d in daily
+        if d.high > hi
+            hi = d.high
+            # hiDate = d.date
+        end
+        if d.low < lo
+            lo = d.low
+            # loDate = d.date
+        end
+    end
+    # return (;hi, lo, hiDate, loDate)
+    return (;hi, lo)
+end
+
 # daily is in descending date order.
 # pass in a view if you want to save a separate out-of-sample set.
 function makeRetsExpirs(daily, maxInterval::Int)::NamedTuple

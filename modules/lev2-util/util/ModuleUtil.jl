@@ -49,19 +49,30 @@ function findUsings(base, fil)
         if length(spl) > 1
             line = spl[1]
         end
-        if startswith(line, "using")
-            append!(res, split(line, r"[,\s]+")[2:end])
-        elseif startswith(line, "import")
-            if !occursin(":", line)
+        # if startswith(line, "using")
+        if startswith(line, "using") || startswith(line, "import")
+            if !occursin(":", line) && !occursin(" as ", line)
                 append!(res, split(line, r"[,\s]+")[2:end])
             else
-                m = match(r"\s(.+?)(?:\:|$)", line)
+                m = match(r"\s(.+?)(?:\:|$| as)", line)
                 if isnothing(m)
                     error(line)
                 end
                 push!(res, m[1])
             end
         end
+        # elseif startswith(line, "import")
+        #     println(line)
+        #     if !occursin(":", line) && !occursin(" as ", line)
+        #         append!(res, split(line, r"[,\s]+")[2:end])
+        #     else
+        #         m = match(r"\s(.+?)(?:\:|$| as)", line)
+        #         if isnothing(m)
+        #             error(line)
+        #         end
+        #         push!(res, m[1])
+        #     end
+        # end
     end
     return res
 end

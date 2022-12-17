@@ -3,7 +3,7 @@ using Dates
 #Crayons
 using ThreadUtil
 
-export nstr, @log, @logret, @logerr, resetLog, @tail
+export nstr, @log, @logret, @logerr, resetLog, @tail, @logboth
 export prout, prerr
 
 function prout(args...)
@@ -34,6 +34,12 @@ end
 
 macro log(exs...)
     prblk = Expr(:call, :logit)
+    inner(exs, prblk)
+    return Expr(:block, prblk)
+end
+
+macro logboth(exs...)
+    prblk = Expr(:call, :logboth)
     inner(exs, prblk)
     return Expr(:block, prblk)
 end

@@ -1,6 +1,7 @@
 module Between
 using Dates
 using SH, BaseTypes, SmallTypes, QuoteTypes, OptionMetaTypes, StratTypes, LegMetaTypes, RetTypes, StatusTypes, ChainTypes
+using CollUtil
 using Rets, LegTypes, TradeTypes, LegTradeTypes, Pricing
 
 #region ToRet
@@ -49,12 +50,15 @@ end
 # SH.combineTo(::Type{Vals}, ::Type{<:ElType{<:LegRet}}, lrs::Coll{LegRet})::Vals = combineRetVals(tos(Ret, lrs))
 
 #region Trades
-# SH.to(::Type{LegMetaOpen}, lg::LegTrade)::LegMeta = LegMetaOpen(Leg(getOption(lg), getQuantity(lg), getSide(lg)), Quote(getPrillDirOpen(lg)), getOptionMeta(lg))
 
 # SH.combineTo(::Type{Ret}, trades::AVec{<:Trade}, forDate::Date, sp::Currency, vtyRatio::Float64)::Ret = combineTo(Ret, combineTo(Vector{LegMetaOpen}, trades), forDate, sp, vtyRatio)
 
+# SH.to(::Type{LegMetaOpen}, lg::LegTrade)::LegMeta = LegMetaOpen(Leg(getOption(lg), getQuantity(lg), getSide(lg)), Quote(getPrillDirOpen(lg)), getOptionMeta(lg))
+legTradeToLMO(lg) = LegMetaOpen(Leg(getOption(lg), getQuantity(lg), getSide(lg)), Quote(getPrillDirOpen(lg)), getOptionMeta(lg))
+
 # SH.to(::Type{Vector{LegMeta}}, trade::Trade)::Vector{LegMeta} = collect(mapFlattenTo(getLegs, LegMeta, [trade])) # TODO: cleanup, don't reuse wrongly
 # SH.combineTo(::Type{Vector{LegMetaOpen}}, ::Type{<:ElType{<:Trade}}, trades)::Vector{LegMetaOpen} = collect(mapFlattenTo(getLegs, LegMetaOpen, trades))
+tradesToLMOs(trades) = collect(mapflatmap(getLegs, legTradeToLMO, trades))
 #endregion
 
 # SH.combineTo(::Type{Ret}, ::Type{<:ElType{<:LegTrade}}, legs, forDate::Date, curp::Currency, vtyRatio::Float64=1.0)::Ret = combineRets(tos(Ret, legs, forDate, curp, vtyRatio))
@@ -76,10 +80,10 @@ end
 # using Globals, Expirations, Markets
 # SH.to(::Type{Ret}, lg::Leg, sp::Currency=market().startPrice) = toRet(toLegMeta(lg), expir(1), sp, Globals.get(:vtyRatio))
 
-# SH.combineTo(::Type{Ret}, lms::Coll{LegMeta}, forDate::Date, sp::Currency, vtyRatio::Float64=1.0)::Ret = combineRets(tos(Ret, lms, forDate, sp, vtyRatio))
-# SH.combineTo(::Type{Ret}, lms::Coll{LegMeta}, sp::Currency)::Ret = isempty(lms) ? Ret(sp) : combineRets(tos(Ret, lms, sp))
-
-# SH.combineTo(::Type{Ret}, legs::Coll{Leg,4}, oqter, forDate::Date, sp::Currency, vtyRatio::Float64)::Ret = combineRets(tos(Ret, tos(LegMeta, legs, oqter), forDate, sp, vtyRatio))
+# TODO: do this differently?
+SH.combineTo(::Type{Ret}, lms::Coll{LegMeta}, forDate::Date, sp::Currency, vtyRatio::Float64=1.0)::Ret = combineRets(tos(Ret, lms, forDate, sp, vtyRatio))
+SH.combineTo(::Type{Ret}, lms::Coll{LegMeta}, sp::Currency)::Ret = isempty(lms) ? Ret(sp) : combineRets(tos(Ret, lms, sp))
+SH.combineTo(::Type{Ret}, legs::Coll{Leg,4}, oqter, forDate::Date, sp::Currency, vtyRatio::Float64)::Ret = combineRets(tos(Ret, tos(LegMeta, legs, oqter), forDate, sp, vtyRatio))
 
 # (SH.to(::Type{LegMeta}, lg::T)::LegMeta) where T<:LegTrade = LegMeta(Leg(getOption(lg), getQuantity(lg), getSide(lg)), Quote(Action.open, getNetOpen(lg)), OptionMeta(getIv(lg)))
 

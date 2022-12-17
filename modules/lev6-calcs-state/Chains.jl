@@ -12,8 +12,8 @@ export chains, chain, ivs, calcNearIv
 export quoter, optQuoter, isQuotable
 
 using ChainUtil
-getOqss(i::Int, curp::Currency, legsCheck=LegMeta[])::Oqss = ChainUtil.getOqss(chain(expir(i)).chain, curp, legsCheck)
-getOqss(expr::Date, curp::Currency, legsCheck=LegMeta[])::Oqss = ChainUtil.getOqss(chain(expr).chain, curp, legsCheck)
+# getOqss(i::Int, curp::Currency, legsCheck=LegMeta[])::Oqss = ChainUtil.getOqss(chain(expir(i)).chain, curp, legsCheck)
+# getOqss(expr::Date, curp::Currency, legsCheck=LegMeta[])::Oqss = ChainUtil.getOqss(chain(expr).chain, curp, legsCheck)
 
 # ftrue(_) = true
 

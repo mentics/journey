@@ -1,6 +1,7 @@
 using Revise
 
 include("inc.jl")
+include("logs.jl")
 
 try
 using LogUtil
@@ -10,6 +11,6 @@ catch
   # ignore
 end
 
-save = Dict()
+# save = Dict()
 # save[:dir] = 1
 nothing

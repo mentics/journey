@@ -17,6 +17,13 @@ xdr(5)
 
 c.findRoll("F", 14, .12, Style.put)
 
+# devon()
+# so(r.lms)
+# devoff()
+
+gc.live(Side.long)
+bt.run(gc.strat, gc.stratDay, 2022; maxSeconds=2)
+
 # jorn(1:2)
 # jorn(2:3; all=true)
 # i = 2 ; r = j.ress[i][1] ; xdr(i, r.lms)

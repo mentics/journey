@@ -2,6 +2,7 @@ module GiantCondors
 using Dates
 using SH, BaseTypes, SmallTypes, LegMetaTypes
 using DateUtil, ChainUtil, LogUtil, Pricing
+import HistData as hd
 using Markets, Expirations, Chains
 import CmdPos:xlegs
 import Backtests as bt
@@ -11,28 +12,30 @@ import Backtests:rond
 function getParamsLive()
     # TODO: When we find better ones from testing, copy them to here
     return (;
-        MaxOpen = 100000,
-        Put = (;xbdays=20:84, moveMin=.18, offMax=20.0, profMin=0.8, take=0.22),
-        Call = (;xbdays=20:184, moveMin=.18, offMax=20.0, profMin=0.4, take=0.12),
+        MaxOpen = 100,
+        Put = (;xbdays=10:84, moveMin=.08, offMax=20.0, profMin=0.6, take=0.12),
+        Call = (;xbdays=10:84, moveMin=.06, offMax=20.0, profMin=0.4, take=0.12),
     )
 end
 
+# TODO: max open take into account long and short balance
 function getParams()
     return (;
-        MaxOpen = 100000,
-        Put = (;xbdays=20:84, moveMin=.18, offMax=30.0, profMin=0.8, take=0.22),
-        Call = (;xbdays=20:84, moveMin=.14, offMax=30.0, profMin=0.6, take=0.12),
+        MaxOpen = 100,
+        Put = (;xbdays=10:84, moveMin=.14, offMax=30.0, profMin=.8, take=0.16),
+        Call = (;xbdays=10:84, moveMin=.12, offMax=30.0, profMin=.8, take=0.16),
     )
 end
 
 import Kelly, QuoteTypes
 function calcScore1(ctx, tmult, lo, sho)
     # # TODO: consider greeks?
-    theta = getGreeks(lo).theta - getGreeks(sho).theta
-    delta = getGreeks(lo).delta - getGreeks(sho).delta
+    # theta = getGreeks(lo).theta - getGreeks(sho).theta
+    # delta = getGreeks(lo).delta - getGreeks(sho).delta
     # # @show getGreeks(sho).theta getGreeks(lo).theta theta
     # # theta >= 0.01 || return -1000.0
-    theta >= abs(delta)/3 || return -1000.0
+    # theta >= abs(delta)/3 || return -1000.0
+    # println("delta: $(delta) theta: $(theta)")
     strlo = getStrike(lo)
     strsho = getStrike(sho)
     risk = F(abs(strlo - strsho))
@@ -63,6 +66,7 @@ function live(side=Side.long) # ; xbdays=40:80, offMax=40.0, profMin=0.8, moveMi
     ps = side == Side.long ? p.Put : p.Call
     date = market().startDay
     curp = market().curp
+    # TODO: get current day high/low
     strikeExt = curp * (side == Side.long ? (1.0 - ps.moveMin) : (1.0 + ps.moveMin))
     getOqss = xpir -> ChainUtil.getOqss(chain(xpir).chain, curp, xlegs(xpir))
     xpirs = DateUtil.matchAfter(date, expirs(), ps.xbdays)
@@ -70,40 +74,56 @@ function live(side=Side.long) # ; xbdays=40:80, offMax=40.0, profMin=0.8, moveMi
     return isnothing(res) ? nothing : collect(res)
 end
 
+function stratDay(acct)
+    acct[:openLong] = nothing
+    acct[:openShort] = nothing
+end
+
 function strat(acct)
     p = getParams()
     bt.checkClose((bt.checkSides,), acct, p)
 
     length(acct[:poss]) < p.MaxOpen || return # ( println("Hit max open") ; return )
-    curp = acct[:curp]
+    # length(acct[:todayOpens]) < 2 || return # Only one open per side per day
+    # curp = acct[:curp]
 
-    lms = back(acct, Side.long; p.Put...)
-    if !isnothing(lms)
-        neto = bap(lms, .1)
-        risk = abs(getStrike(lms[1]) - getStrike(lms[2])) - neto
-        @assert neto > 0.0
-        @assert risk <= p.Put.offMax
-        rat = getStrike(lms[2]) / curp
-        bt.openTrade(acct, lms, neto, "long spread: rat=$(rond(rat)), neto=$(neto)", risk)
+    if isnothing(acct[:openLong])
+        lo = acct[:extrema].lo
+        strikeExt = lo * (1.0 - p.Put.moveMin)
+        # @show "long" lo strikeExt
+        lms = back(acct, Side.long, strikeExt; p.Put...)
+        if !isnothing(lms)
+            neto = bap(lms, .1)
+            risk = abs(getStrike(lms[1]) - getStrike(lms[2])) - neto
+            @assert neto > 0.0
+            @assert risk <= p.Put.offMax
+            # rat = getStrike(lms[2]) / curp
+            rat = getStrike(lms[2]) / lo
+            acct[:openLong] = bt.openTrade(acct, lms, neto, "long spread: rat=$(rond(rat)), neto=$(neto)", risk)
+        end
     end
-    lms = back(acct, Side.short; p.Call...)
-    if !isnothing(lms)
-        neto = bap(lms, .1)
-        risk = abs(getStrike(lms[1]) - getStrike(lms[2])) - neto
-        @assert neto > 0.0
-        @assert risk <= p.Call.offMax
-        rat = getStrike(lms[1]) / curp
-        bt.openTrade(acct, lms, neto, "short spread: rat=$(rond(rat)), neto=$(neto)", risk)
+    if isnothing(acct[:openShort])
+        hi = acct[:extrema].hi
+        strikeExt = hi * (1.0 + p.Call.moveMin)
+        lms = back(acct, Side.short, strikeExt; p.Call...)
+        # println("short $(acct[:curp]) $(hi) $(strikeExt) $(isnothing(lms))")
+        if !isnothing(lms)
+            neto = bap(lms, .1)
+            risk = abs(getStrike(lms[1]) - getStrike(lms[2])) - neto
+            @assert neto > 0.0
+            @assert risk <= p.Call.offMax
+            # rat = getStrike(lms[1]) / curp
+            rat = getStrike(lms[1]) / hi
+            acct[:openShort] = bt.openTrade(acct, lms, neto, "short spread: rat=$(rond(rat)), neto=$(neto)", risk)
+        end
     end
 end
 
-function back(acct, side; xbdays, offMax, profMin, moveMin, kws...)
+function back(acct, side, strikeExt; xbdays, offMax, profMin, kws...)
     date = acct[:date]
     xoqss = acct[:xoqss]
     getOqss = xpir -> xoqss[xpir]
     xpirs = DateUtil.matchAfter(date, acct[:xpirs], xbdays)
-    # TODO: have use the recent high (period = xpir days) and require rat above that
-    strikeExt = acct[:curp] * (side == Side.long ? (1.0 - moveMin) : (1.0 + moveMin))
     return findGC(makeCtx(acct), getOqss, xpirs, date, side, offMax, profMin, strikeExt)
 end
 #endregion
@@ -120,6 +140,7 @@ function findGC(ctx, getOqss, xpirs, date, side, offMax, profMin, strikeExt)
         res = findEntry(oqss, calcScore, offMax, profMin, strikeExt)
         !isnothing(res) || continue
         score, lm1, lm2 = res
+        # println("findGC: findEntry was not nothing $(score)")
         if score > scoreBest
             lmsBest = (lm1, lm2)
             scoreBest = score
@@ -222,7 +243,8 @@ function findLongSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt, debug=
             global kerrBest1 = b
             println("ERROR: (long) invalid neto < profMin $(neto) for profMin $(profMin)")
             findLongSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt, true)
-            error("stop")
+            # error("stop")
+            return nothing
         end
         # @assert neto >= profMin "neto > 0.0: $(neto), $(profMin), $(b)"
 
@@ -231,8 +253,9 @@ function findLongSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt, debug=
         if strikeWidth > offMax || risk > offMax
             global kerrBest2 = b
             println("ERROR: (long) invalid strike width $(strikeWidth) or risk $(risk) for offMax $(offMax)")
-            findShortSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt, true)
-            error("stop")
+            findLongSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt, true)
+            # error("stop")
+            return nothing
         end
     end
 
@@ -250,6 +273,7 @@ function findShortSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt, debug
         println("oqss.call.short was empty")
         return nothing
     end
+    # println("short entry: $(length(shorts)) $(length(longs))")
     ilo = lastindex(longs)
     lo = longs[ilo]
     isho = findlast(oq -> getBid(oq) > profMin, shorts)
@@ -260,7 +284,7 @@ function findShortSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt, debug
         return nothing
     end
     sho = shorts[isho]
-    getStrike(sho) >= strikeExt || return nothing
+    getStrike(sho) >= strikeExt || return nothing # ( println("strike not enough $(getStrike(sho)) $(sho)") ; return nothing )
 
     debug && @show ilo isho getStrike(lo) getStrike(sho) strikeExt netoqL(lo) netoqS(sho)
     # move ilo to min by strike
@@ -274,7 +298,7 @@ function findShortSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt, debug
     debug && @show neto ilo isho getStrike(lo) getStrike(sho) strikeExt netoqL(lo) netoqS(sho)
     while neto < profMin
         # move isho down to get more prof while still above strikeExt
-        getStrike(shorts[isho-1]) >= strikeExt || return nothing
+        getStrike(shorts[isho-1]) >= strikeExt || ( println("short: Ran out of strikes to get profMin $(profMin)") ; return nothing )
         isho -= 1
         sho = shorts[isho]
         # move ilo to make it valid
@@ -317,7 +341,7 @@ function findShortSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt, debug
     end
     if netoq2(lo, sho) <= 0.0
         # global keep = (;lo, sho, neto, )
-        @log error "short entry returning loss" lo sho
+        @logboth error "short entry returning loss" lo sho
         return nothing
     end
     @assert getStrike(best[3]) < getStrike(best[2])
@@ -329,7 +353,8 @@ function findShortSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt, debug
             global kerrBest1 = b
             println("ERROR: (short) invalid neto < profMin $(neto) for profMin $(profMin)")
             findShortSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt, true)
-            error("stop")
+            # error("stop")
+            return nothing
         end
         # @assert neto >= profMin "neto > 0.0: $(neto), $(profMin), $(b)"
 
@@ -339,10 +364,12 @@ function findShortSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt, debug
             global kerrBest2 = b
             println("ERROR: (short) invalid strike width $(strikeWidth) or risk $(risk) for offMax $(offMax)")
             findShortSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt, true)
-            error("stop")
+            # error("stop")
+            return nothing
         end
     end
 
+    # println("short: returning b")
     return b
 end
 #endregion
