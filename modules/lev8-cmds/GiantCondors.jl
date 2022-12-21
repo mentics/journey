@@ -5,25 +5,26 @@ using DateUtil, ChainUtil, LogUtil, Pricing
 import HistData as hd
 using Markets, Expirations, Chains
 import CmdPos:xlegs
-import Backtests as bt
-import Backtests:rond
+import BacktestSimple as bt
+import BacktestSimple:rond
 
 #region Public
 function getParamsLive()
-    # TODO: When we find better ones from testing, copy them to here
+    # TODO: When we find better parameters from testing, copy them to here
     return (;
-        MaxOpen = 100,
-        Put = (;xbdays=10:84, moveMin=.08, offMax=20.0, profMin=0.6, take=0.12),
-        Call = (;xbdays=10:84, moveMin=.06, offMax=20.0, profMin=0.4, take=0.12),
+        MaxMargin = C(100000/100 - 15/2),
+        ExtremaBdays = 40,
+        Put = (;xbdays=40:84, moveMin=.16, offMax=30.0, profMinRat=.8/400, takeRat=0.24/400),
+        Call = (;xbdays=40:112, moveMin=.12, offMax=20.0, profMinRat=.6/400, takeRat=0.18/400),
     )
 end
 
-# TODO: max open take into account long and short balance
 function getParams()
     return (;
-        MaxOpen = 100,
-        Put = (;xbdays=10:84, moveMin=.14, offMax=30.0, profMin=.8, take=0.16),
-        Call = (;xbdays=10:84, moveMin=.12, offMax=30.0, profMin=.8, take=0.16),
+        MaxMargin = C(100000/100 - 15/2),
+        ExtremaBdays = 40,
+        Put = (;xbdays=40:84, moveMin=.16, offMax=30.0, profMinRat=.8/400, takeRat=0.24/400),
+        Call = (;xbdays=40:112, moveMin=.12, offMax=20.0, profMinRat=.6/400, takeRat=0.18/400),
     )
 end
 
@@ -61,37 +62,45 @@ makeCtx(acct) = (;
     curp = acct[:curp]
 )
 
-function live(side=Side.long) # ; xbdays=40:80, offMax=40.0, profMin=0.8, moveMin=0.2)
+import HistData
+function live(side=Side.long)
     p = getParamsLive()
     ps = side == Side.long ? p.Put : p.Call
     date = market().startDay
     curp = market().curp
-    # TODO: get current day high/low
-    strikeExt = curp * (side == Side.long ? (1.0 - ps.moveMin) : (1.0 + ps.moveMin))
-    getOqss = xpir -> ChainUtil.getOqss(chain(xpir).chain, curp, xlegs(xpir))
+
+    # TODO: should use today's hi/lo to start with, not curp
+    hi, lo = HistData.extrema(bdaysBefore(date, p.ExtremaBdays), date-Day(1), curp, curp)
+    # strikeExt = curp * (side == Side.long ? (1.0 - ps.moveMin) : (1.0 + ps.moveMin))
+    strikeExt = side == Side.long ? lo * (1.0 - p.Put.moveMin) : hi * (1.0 + p.Call.moveMin)
+
+    getOqss = xpir -> ChainUtil.filtEntry(chain(xpir).chain, curp, xlegs(xpir))
     xpirs = DateUtil.matchAfter(date, expirs(), ps.xbdays)
-    res = findGC((;curp), getOqss, xpirs, date, side, ps.offMax, ps.profMin, strikeExt)
+    res = findGC((;curp), getOqss, xpirs, date, side, ps.offMax, curp * ps.profMinRat, strikeExt)
     return isnothing(res) ? nothing : collect(res)
 end
 
 function stratDay(acct)
     acct[:openLong] = nothing
     acct[:openShort] = nothing
+    # acct[:margin] < getParams().MaxMargin || ( acct[:missed] += 1 )
 end
 
 function strat(acct)
     p = getParams()
     bt.checkClose((bt.checkSides,), acct, p)
 
-    length(acct[:poss]) < p.MaxOpen || return # ( println("Hit max open") ; return )
+    acct[:margin] < p.MaxMargin || return # ( println("Hit max open") ; return )
     # length(acct[:todayOpens]) < 2 || return # Only one open per side per day
-    # curp = acct[:curp]
+    curp = acct[:curp]
+
+    # TODO: maybe be more precise about last trade under margin: could check margin during candidate search
 
     if isnothing(acct[:openLong])
         lo = acct[:extrema].lo
         strikeExt = lo * (1.0 - p.Put.moveMin)
         # @show "long" lo strikeExt
-        lms = back(acct, Side.long, strikeExt; p.Put...)
+        lms = back(acct, Side.long, strikeExt; profMin=curp * p.Put.profMinRat, p.Put...)
         if !isnothing(lms)
             neto = bap(lms, .1)
             risk = abs(getStrike(lms[1]) - getStrike(lms[2])) - neto
@@ -105,7 +114,7 @@ function strat(acct)
     if isnothing(acct[:openShort])
         hi = acct[:extrema].hi
         strikeExt = hi * (1.0 + p.Call.moveMin)
-        lms = back(acct, Side.short, strikeExt; p.Call...)
+        lms = back(acct, Side.short, strikeExt; profMin=curp * p.Call.profMinRat, p.Call...)
         # println("short $(acct[:curp]) $(hi) $(strikeExt) $(isnothing(lms))")
         if !isnothing(lms)
             neto = bap(lms, .1)
@@ -122,7 +131,7 @@ end
 function back(acct, side, strikeExt; xbdays, offMax, profMin, kws...)
     date = acct[:date]
     xoqss = acct[:xoqss]
-    getOqss = xpir -> xoqss[xpir]
+    getOqss = xpir -> xoqss[xpir].entry
     xpirs = DateUtil.matchAfter(date, acct[:xpirs], xbdays)
     return findGC(makeCtx(acct), getOqss, xpirs, date, side, offMax, profMin, strikeExt)
 end

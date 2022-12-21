@@ -1,4 +1,4 @@
-module Backtests
+module BacktestSimple
 using Dates
 import StatsBase
 using SH, Globals, BaseTypes, SmallTypes, OptionTypes, LegTypes, LegMetaTypes, OptionMetaTypes
@@ -6,8 +6,8 @@ using DateUtil, CollUtil, DictUtil, ChainUtil
 using Pricing, Between
 import OptionUtil
 import Shorthand
-import HistSpy as hspy
 import HistData
+import SimpleStore as SS
 using Calendars
 
 #= Explore pricing
@@ -54,9 +54,9 @@ end
 
 function checkSides(acct, t, p)
     if getStyle(t.lmsc[1]) == Style.call
-        t.curVal >= p.Call.take && return "Call take min profit"
+        t.curVal >= acct[:curp] * p.Call.takeRat && return "Call take min profit"
     else
-        t.curVal >= p.Put.take && return "Put take min profit"
+        t.curVal >= acct[:curp] * p.Put.takeRat && return "Put take min profit"
     end
     return nothing
 end
@@ -75,19 +75,11 @@ getTradeExpDur(trade) = bdays(Date(trade[:open][:ts]), Date(trade[:targetDate]))
 #endregion
 
 #region Process
-function run(f, fday, params, years; maxSeconds=10)
-    tstart = time()
-    hspy.db()
+function run(f, fday, params, months; maxSeconds=10)
     LogUtil.resetLog(:backtest)
-    tss = filter!(sort(hspy.getTss())) do x
-        # Don't run on first and last (other if inside loop) ts of the day
-        return year(x) in years
-            # DateTime(2019,12,31) < x < DateTime(2021,1,1) &&
-            Time(x) != Time(getMarketOpen(Date(x))) + Second(10)
-    end
-    dateStart = toDateMarket(tss[1])
 
     global acct = Dict(
+        :start => time(),
         :bal => C(0.0),
         :real => C(0.0),
         :trades => Vector{TradeType}(),
@@ -96,29 +88,61 @@ function run(f, fday, params, years; maxSeconds=10)
         :todayCloses => Vector{TradeType}(),
         # :riskDays => 0.0,
         :lastTradeId => 0,
-        :rates => Vector{Float64}()
+        :rates => Vector{Float64}(),
+        :margin => C(0),
+        :maxMargin => C(0),
+        :maxOpen => 0,
+        # :missed => 0,
     )
+
+    dateStart = nextTradingDay(first(months))
+    # @show dateStart months
+    for m in months
+        # @show m
+        procMonth(f, fday, year(m), month(m), params, maxSeconds)
+    end
+
+    real = acct[:real]
+    unreal = urpnl(acct[:poss])
+    total = real + unreal
+    days = bdays(dateStart, acct[:date])
+    dateEnd = acct[:date]
+    # We're going to pretend we closed everything at the last time, so don't need to add risk.
+    # acct[:riskDays] += getRisk(acct[:poss]) # model it for end of last day, so only * 1 day
+    # rate = calcRate(dateStart, dateEnd, total, acct[:riskDays] / days)
+    rate = StatsBase.mean(acct[:rates])
+    out("Summary $(dateStart) - $(dateEnd) (ran $(days) bdays):")
+    out("  rpnl = $(real), urpnl = $(unreal)")
+    out("  Total: $(total)")
+    # out("  risk-days: $(acct[:riskDays])")
+    out("  rate: $(rond(rate))")
+    out("  maxOpen: $(acct[:maxOpen])")
+    out("  maxMargin: $(acct[:maxMargin])")
+end
+
+function procMonth(f, fday, y, m, params, maxSeconds)
+    data = SS.load(y, m)
+    # Don't run on first and last (other if inside loop) ts of the day
+    tss = filter!(SS.getTss(data)) do x
+        return Time(x) != Time(getMarketOpen(Date(x))) + Second(10)
+    end
 
     datePrev = Date(0)
     for ts in tss
         date = toDateMarket(ts)
-        # days = bdays(dateStart, date)
 
-        curp = hspy.getUnder(ts)
+        curp = SS.getUnder(data, ts).under
 
         if date != datePrev
             fday(acct)
-            # acct[:urpnl] = urpnl(acct[:poss])
-            # rate = calcRate(dateStart, date, acct[:real], acct[:riskDays] / days)
-            # risk:$(acct[:riskDays] / days)
             rate = StatsBase.mean(acct[:rates])
-            out("End $(formatLocal(ts)): $(rond(acct[:bal])) rpnl:$(rond(acct[:real])) urpnl:$(rond(urpnl(acct[:poss]))) #open:$(length(acct[:poss])) rateAvg:$(rond(rate))")
+            out("End $(datePrev): $(rond(acct[:bal])) rpnl:$(rond(acct[:real])) urpnl:$(rond(urpnl(acct[:poss]))) #open:$(length(acct[:poss])) rateAvg:$(rond(rate))")
 
             # TODO: closing and opening on same day might affect this a little, but I think buying power allows this so maybe it's ok
             # acct[:riskDays] += (date - datePrev).value * getRisk(acct[:poss])
             empty!(acct[:todayOpens])
             empty!(acct[:todayCloses])
-            acct[:extrema] = HistData.extrema(bdaysBefore(dateStart, params.ExtremaBdays), dateStart-Day(1), curp, curp)
+            acct[:extrema] = HistData.extrema(bdaysBefore(date, params.ExtremaBdays), date-Day(1), curp, curp)
             datePrev = date
         else
             updateExtrema(acct, curp)
@@ -128,12 +152,12 @@ function run(f, fday, params, years; maxSeconds=10)
         acct[:ts] = ts
         acct[:date] = date
         acct[:curp] = curp
-        acct[:xpirs] = hspy.getExpirs(ts)
-        xoqss = hspy.getXoqss(ts, curp, collect(flatmap(x -> x[:legs], acct[:poss])))
-        # TODO: opt
-        unxoqss = hspy.getXoqss(ts, curp)
+        xpirs = SS.getExpirs(data, ts)
+        acct[:xpirs] = xpirs
+        posLegs = collect(flatmap(x -> x[:legs], acct[:poss]))
+        xoqss = SS.getXoqss(data, ts, xpirs, curp, posLegs)
         acct[:xoqss] = xoqss
-        lup = lookup(unxoqss)
+        lup = lookup(xoqss)
         acct[:lup] = lup
         updatePossLmsTrack(lup, acct[:poss])
         # acct[:greeks] = calcGreeks(acct[:poss]) # isempty(acct[:poss]) ? GreeksZero : getGreeks(acct[:poss])
@@ -162,24 +186,10 @@ function run(f, fday, params, years; maxSeconds=10)
             f(acct)
         end
 
-        if time() > tstart + maxSeconds
+        if time() > acct[:start] + maxSeconds
             break
         end
     end
-    real = acct[:real]
-    unreal = urpnl(acct[:poss])
-    total = real + unreal
-    # days = bdays(dateStart, toDateMarket(to))
-    dateEnd = acct[:date]
-    # We're going to pretend we closed everything at the last time, so don't need to add risk.
-    # acct[:riskDays] += getRisk(acct[:poss]) # model it for end of last day, so only * 1 day
-    # rate = calcRate(dateStart, dateEnd, total, acct[:riskDays] / days)
-    rate = StatsBase.mean(acct[:rates])
-    out("Summary $(dateStart) - $(dateEnd):")
-    out("  rpnl = $(real), urpnl = $(unreal)")
-    out("  Total: $(total)")
-    # out("  risk-days: $(acct[:riskDays])")
-    out("  rate: $(rond(rate))")
 end
 
 function updatePossLmsTrack(lup, trades)
@@ -250,6 +260,15 @@ function openTrade(acct, lms::Coll{LegMetaOpen}, neto, label, risk)
     push!(acct[:poss], trade)
     push!(acct[:todayOpens], trade)
     acct[:bal] += neto
+    margin = recalcMargin(acct[:poss])
+    acct[:margin] = margin
+    if margin > acct[:maxMargin]
+        acct[:maxMargin] = margin
+    end
+    openCount = length(acct[:poss])
+    if openCount > acct[:maxOpen]
+        acct[:maxOpen] = openCount
+    end
     # acct[:greeks] = updateGreeks(acct, targetDate, getGreeks(lms))
     out("Open #$(trade[:id]) $(Shorthand.tosh(lms, acct[:xpirs])): '$(label)' neto:$(neto)") # deltaX: $(rond(delta)) -> $(rond(deltaNew)) deltaAcct: $(rond(acct[:delta]))")
     return trade
@@ -263,6 +282,7 @@ function closeTrade(acct, trade, lms::Coll{LegMetaClose}, netc, label)
     pnl = neto + netc
     # trade[:pnl] = pnl
     acct[:real] += pnl
+    acct[:margin] = recalcMargin(acct[:poss])
     push!(acct[:rates], getTradeRate(trade))
     out("Close #$(trade[:id]) $(Shorthand.tosh(lms, acct[:xpirs])): '$(label)' neto:$(rond(neto)) netc:$(netc) pnl=$(rond(pnl)) rate=$(getTradeRate(trade)) ; $(openDur(trade)) days open, $(bdaysLeft(acct[:date], trade)) days left")
     return
@@ -278,26 +298,26 @@ function urpnl(trade)
 end
 
 function lookup(xoqss)
-    function lup(exp::Date, style::Style.T, strike::Currency) # ::Union{Nothing,OptionQuote}
+    function lup(xpir::Date, style::Style.T, strike::Currency) # ::Union{Nothing,OptionQuote}
         try
-            res = find(x -> getStrike(x) == strike, getfield(xoqss[exp], Symbol(style)).long)
-            !isnothing(res) || println("WARN: Backtest could not quote $(exp), $(style), $(strike)")
+            res = find(x -> getStrike(x) == strike, getfield(xoqss[xpir].all, Symbol(style)).long)
+            !isnothing(res) || println("WARN: Backtest could not quote $(xpir), $(style), $(strike)")
             return res
         catch e
-            @show exp style strike
+            @show xpir style strike
             rethrow(e)
         end
     end
     function lup(o::Option)
         try
-            exp = getExpiration(o)
+            xpir = getExpiration(o)
             style = getStyle(o)
             strike = getStrike(o)
-            res = find(x -> getStrike(x) == strike, getfield(xoqss[exp], Symbol(style)).long)
-            !isnothing(res) || println("WARN: Backtest could not quote $(exp), $(style), $(strike)")
+            res = find(x -> getStrike(x) == strike, getfield(xoqss[xpir].all, Symbol(style)).long)
+            !isnothing(res) || println("WARN: Backtest could not quote $(xpir), $(style), $(strike)")
             return res
         catch e
-            @show exp style strike
+            @show o
             rethrow(e)
         end
     end
@@ -393,6 +413,28 @@ end
 
 using LogUtil
 out(args...) = LogUtil.logit(:backtest, args...)
+
+function recalcMargin(poss)
+    # Brokerage might consider margin offsets only for the same expiration, but for me, the risk is across all expirations, so I'll count it that way.
+    len = length(poss)
+    risks = Vector{Currency}(undef, len)
+    callCount = 0
+    i = 0
+    for trade in poss
+        i += 1
+        risks[i] = getTradeRisk(trade)
+        if getTradeStyle(trade) == Style.call
+            callCount += 1
+        end
+    end
+    sort!(risks; rev=true)
+    keep = max(callCount, len-callCount)
+    resize!(risks, keep)
+    margin = sum(risks)
+    # println("Calced new margin: ", margin)
+    return margin
+end
+
 #endregion
 
 #region MaybeMove

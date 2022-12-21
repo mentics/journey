@@ -19,63 +19,77 @@ using Globals, BaseTypes, SmallTypes, OptionTypes, LegTypes, LegMetaTypes, Chain
 #     return Styles(Sides(oqsCallLong, oqsCallShort), Sides(oqsPutLong, oqsPutShort))
 # end
 
-function getOqss(oqs, curp::Currency, legsCheck=LEGS_EMPTY)::Oqss
-    lc = Vector{OptionQuote}()
-    sc = Vector{OptionQuote}()
-    lp = Vector{OptionQuote}()
-    sp = Vector{OptionQuote}()
-    oqss = Styles(Sides(lc, sc), Sides(lp, sp))
-    fConL = !isConflict(legsCheck, Side.long)
-    fConS = !isConflict(legsCheck, Side.short)
-    fCanS = canShort(Globals.get(:Strats), curp)
-    # oqs = Iterators.filter(isValid(curp), oqs)
+# function getOqss(oqs, curp::Currency, legsCheck=LEGS_EMPTY)::Oqss
+#     lc = Vector{OptionQuote}()
+#     sc = Vector{OptionQuote}()
+#     lp = Vector{OptionQuote}()
+#     sp = Vector{OptionQuote}()
+#     oqss = Styles(Sides(lc, sc), Sides(lp, sp))
+#     fConL = !isConflict(legsCheck, Side.long)
+#     fConS = !isConflict(legsCheck, Side.short)
+#     fCanS = canShort(Globals.get(:Strats), curp)
+#     # oqs = Iterators.filter(isValid(curp), oqs)
+#     for oq in oqs
+#         canL = fConL(oq)
+#         canS = fCanS(oq) && fConS(oq)
+#         if SmallTypes.isCall(oq)
+#             canL && push!(lc, oq)
+#             canS && push!(sc, oq)
+#         else
+#             canL && push!(lp, oq)
+#             canS && push!(sp, oq)
+#         end
+#     end
+#     return oqss
+# end
+
+function oqssAll(oqs)::Oqss
+    c = Vector{OptionQuote}()
+    sizehint!(c, 100)
+    p = Vector{OptionQuote}()
+    sizehint!(p, 100)
+    oqss = Styles(Sides(c, c), Sides(p, p))
     for oq in oqs
-        canL = fConL(oq)
-        canS = fCanS(oq) && fConS(oq)
         if SmallTypes.isCall(oq)
-            canL && push!(lc, oq)
-            canS && push!(sc, oq)
+            push!(c, oq)
         else
-            canL && push!(lp, oq)
-            canS && push!(sp, oq)
+            push!(p, oq)
         end
     end
     return oqss
 end
 
-# function getOqss(oqsIn::Vector{OptionQuote}, curp::Currency)::Oqss
-#     # oqs = filter(oq -> distRatio(getStrike(oq), curp) < Bins.SPAN/2, oqsIn)
-#     oqsValid = Iterators.filter(isValid, oqs)
+filtEntry(oqs, curp, legs)::Oqss = filtOqss(filtLong(legs), filtShort(curp, legs), oqssAll(oqs))
 
-#     oqsLong = oqsValid # Iterators.filter(isLong, oqsValid)
-#     oqsShort = oqsValid # Iterators.filter(isShort, oqsValid)
+filtOqss(fl::Function, fs::Function, oqss::Oqss) =
+        Styles(Sides(filter(fl, oqss.call.long), filter(fl, oqss.call.short)), Sides(filter(fs, oqss.put.long), filter(fs, oqss.put.short)))
 
-#     oqsCallLong = collect(Iterators.filter(SmallTypes.isCall, oqsLong))
-#     oqsPutLong = collect(Iterators.filter(SmallTypes.isPut, oqsLong))
-#     oqsCallShort = collect(Iterators.filter(SmallTypes.isCall, oqsShort))
-#     oqsPutShort = collect(Iterators.filter(SmallTypes.isPut, oqsShort))
-#     return Styles(Sides(oqsCallLong, oqsCallShort), Sides(oqsPutLong, oqsPutShort))
+function filtLong(legsCheck)
+    isok = !isConflict(legsCheck, Side.long)
+    return oq -> isok(oq)
+end
+
+function filtShort(curp, legsCheck)
+    cans = canShort(Globals.get(:Strats), curp)
+    isok = !isConflict(legsCheck, Side.short)
+    return oq -> isok(oq) && cans(oq)
+end
+
+# function findOqs(oqs, curp::Currency, dists; maxDiff=1.0)
+#     res = Vector{OptionQuote}(undef, length(dists))
+#     diffs = fill(Inf, length(dists)) # Vector{Currency}(Inf, length(dists))
+#     for oq in oqs
+#         dist = getStrike(oq) - curp
+#         for i in eachindex(diffs)
+#             diff = abs(dists[i] - dist)
+#             if diff < diffs[i]
+#                 diffs[i] = diff
+#                 res[i] = oq
+#             end
+#         end
+#     end
+#     isnothing(findfirst(x -> x > maxDiff, diffs)) || return nothing
+#     return res
 # end
-export filtOqss
-function filtOqss(f::Function, oqss::Oqss)
-    return Styles(Sides(filter(f, oqss.call.long), filter(f, oqss.call.short)), Sides(filter(f, oqss.put.long), filter(f, oqss.put.short)))
-end
-
-function findOqs(oqs, curp::Currency, dists; maxDiff=1.0)
-    res = Vector{OptionQuote}(undef, length(dists))
-    diffs = fill(Inf, length(dists)) # Vector{Currency}(Inf, length(dists))
-    for oq in oqs
-        dist = getStrike(oq) - curp
-        for i in eachindex(diffs)
-            diff = abs(dists[i] - dist)
-            if diff < diffs[i]
-                diffs[i] = diff
-                res[i] = oq
-            end
-        end
-    end
-    isnothing(findfirst(x -> x > maxDiff, diffs)) || return nothing
-    return res
-end
 
 end

@@ -33,7 +33,7 @@ end
 # const PRICE_MAX = C(1e9)
 # const PRICE_ZERO = C(0.0)
 
-function extrema(from::Date, to::Date, hi1, lo1, sym::AStr="SPY")
+function extrema(from::Date, to::Date, hi1::Real, lo1::Real, sym::AStr="SPY")
     daily = dataDaily(from, to, sym)
     hi = hi1
     lo = lo1

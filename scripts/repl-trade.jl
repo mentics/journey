@@ -5,7 +5,7 @@ using Store, StoreTrade, ProcOrder
 using CmdTrading, CmdPos
 
 import Combos as c, SeekingAlpha as sa
-import Backtests as bt, GiantCondors as gc
+import Backtests as bt, GiantCondors as gc, HistSpy as hspy, SpyLoader as sl
 
 dbChecks()
 procOrders()

@@ -5,6 +5,12 @@ using DateUtil, LogUtil
 import SqlLoader
 import HistSpy as hspy
 
+# TODO: check that every business day across the loaded dates has a reasonable number of entries in the db
+
+# after 2021-2:3 - (calls = 62657987, puts = 62657987, unders = 13476)
+# after 2021-4:12 - (calls = 89271717, puts = 89271717, unders = 18626)
+# after 2019-1:12 - (calls = 111746529, puts = 111746529, unders = 25306)
+
 # using CSV, Tables
 # function loadSample()
 #     csvPath = "C:/data/market/optionsdx/spy_sample-1.csv"
@@ -96,7 +102,26 @@ function pragmasSpeed()
     hspy.exec("PRAGMA temp_store = MEMORY")
 end
 
-function load()
+const BaseDir = "C:/data/market/optionsdx/"
+const DF_FILE = DateFormat("yyyymm")
+function findFile(year, month)
+    dateStr = Dates.format(Date(year,month,1), DF_FILE)
+    rx = Regex("spy.+$(dateStr).txt")
+    for (root, dirs, files) in walkdir(BaseDir)
+        for file in files
+            m = match(rx, file)
+            # println("Checking $(file), $(isnothing(m)), $(rx)")
+            isnothing(m) || return joinpath(root, file)
+        end
+    end
+    # yearMonths = Dates.format.([Date(year,1,1) + Month(i) for i in 0:11], DateFormat("yyyymm"))
+    # # csvPaths = ["C:/data/market/optionsdx/spy_15x_20220$(month).txt" for month in 1:8]
+    # csvPaths = ["C:/data/market/optionsdx/spy_15x_$(ym).txt" for ym in yearMonths[3:12]]
+end
+
+sameDate(ts1::Integer, ts2::Integer) = Date(unix2datetime(ts1)) == Date(unix2datetime(ts2))
+
+function load(year, months=1:12)
     LogUtil.resetLog(:spyloader)
     # dropTables()
     # createTables()
@@ -106,18 +131,38 @@ function load()
     pragmasSpeed()
     stmtCall = hspy.prep("insert or ignore into Call (ts, expir, strike, bid, ask, last, vol, delta, gamma, vega, theta, rho, iv) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
     stmtPut = hspy.prep("insert or ignore into Put (ts, expir, strike, bid, ask, last, vol, delta, gamma, vega, theta, rho, iv) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-    stmtUnder = hspy.prep("insert or ignore into under values (?, ?)")
+    stmtUnder = hspy.prep("insert or ignore into Under values (?, ?, ?, ?, ?)")
     try
-        yearMonths = Dates.format.([Date(2020,1,1) + Month(i) for i in 0:11], DateFormat("yyyymm"))
-        # csvPaths = ["C:/data/market/optionsdx/spy_15x_20220$(month).txt" for month in 1:8]
-        csvPaths = ["C:/data/market/optionsdx/spy_15x_$(ym).txt" for ym in yearMonths[3:12]]
-        for csvPath in csvPaths
+        for month in months
+            csvPath = findFile(year, month)
             println("Loading $(csvPath)...")
             line, itr = Iterators.peel(Iterators.drop(eachline(csvPath), 1))
-            tsPrev = procLine(line, 0, stmtCall, stmtPut, stmtUnder)
+            _, open = procLine(line, stmtCall, stmtPut)
+            hi = open ; lo = open
+            tsPrev = 0
             i = 1
             for line in itr
-                tsPrev = procLine(line, tsPrev, stmtCall, stmtPut, stmtUnder)
+                res = procLine(line, stmtCall, stmtPut)
+                !isnothing(res) || continue
+                tsNew, under = res
+                if tsNew != tsPrev
+                    if !sameDate(tsPrev, tsNew)
+                        open = under
+                        hi = under
+                        lo = under
+                    else
+                        if under > hi
+                            hi = under
+                        end
+                        if under < lo
+                            lo = under
+                        end
+                    end
+
+                    hspy.run(stmtUnder, (tsNew, under, open, hi, lo))
+                    tsPrev = tsNew
+                end
+
                 i += 1
                 if i % 10000 == 0
                     println(i)
@@ -133,10 +178,11 @@ function load()
     timeEnd = time()
     println("End: ", nowz())
     println("Elapsed seconds: ", timeEnd - timeStart)
-    return first(hspy.sel("select (select count(*) as cnt from call) as calls, (select count(*) as cnt from put) as puts, (select count(*) as cnt from under) as unders"))
+    # return first(hspy.sel("select (select count(*) as cnt from call) as calls, (select count(*) as cnt from put) as puts, (select count(*) as cnt from under) as unders"))
+    return
 end
 
-function procLine(line, tsPrev, stmtCall, stmtPut, stmtUnder)
+function procLine(line, stmtCall, stmtPut)
     try
         left = 1
         right = findnext(',', line, left)
@@ -233,10 +279,7 @@ function procLine(line, tsPrev, stmtCall, stmtPut, stmtUnder)
             @log spyloader ("skipped put ($(strike)):\n", line)
         end
 
-        if ts != tsPrev
-            hspy.run(stmtUnder, (ts, under))
-        end
-        return ts
+        return (ts, under)
     catch e
         println(line)
         rethrow(e)
