@@ -30,6 +30,7 @@ Base.show(io::IO, q::Quote) = print(io, q.bid === q.ask ? "($(q.bid))" : "($(q.b
 # Base.:(+)(q::Quote, addend::Real) = Quote(q.action, q.bid + addend, q.ask + addend)
 Base.:(+)(addend::Real, q::Quote) = Quote(q.bid + addend, q.ask + addend)
 Base.:(-)(q1::Quote, q2::Quote) = Quote(q1.bid - q2.bid, q1.ask - q2.ask)
+Base.:(*)(mult::Float64, q::Quote) = Quote(mult*q.bid, mult*q.ask)
 
 SH.getQuote(itr) = sumQuotes(map(getQuote, itr))
 

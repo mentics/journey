@@ -61,8 +61,10 @@ SH.getIv(lm::LegMeta) = getIv(lm.meta)
 
 # SH.addQuantity(lm::LegMeta, addend::Real) =
 #     LegMeta(Leg(lm.leg; quantity=getQuantity(lm.leg) + addend), lm.quot, lm.meta)
-# SH.withQuantity(lm::LegMeta, qty::Real) =
-#     LegMeta(Leg(lm.leg; quantity=qty), lm.quot, lm.meta)
+function SH.withQuantity(lm::LegMeta{T}, qty::Float64) where T
+    rat = qty / getQuantity(lm)
+    LegMeta{T}(Leg(lm.leg; quantity=qty), rat * lm.quot, rat * lm.meta)
+end
 
 # TODO: still not sure if abs is right here
 # SH.to(OptionQuote, lm::LegMeta) = OptionQuote(getOption(lm), abs(getQuote(lm)), getMeta(lm), nothing)

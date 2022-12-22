@@ -133,6 +133,7 @@ function loglog(typ::Symbol, content)
         prout(out.stream, content...)
         flush(out.stream)
     end
+    return
 end
 
 function init(sym::Symbol)

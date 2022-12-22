@@ -1,7 +1,7 @@
 module SimpleStore
 using Dates
 using BaseTypes, SmallTypes, OptionTypes, QuoteTypes, OptionMetaTypes, ChainTypes
-using DateUtil, DictUtil, ChainUtil
+using DateUtil, DictUtil
 
 const HINT_TSS = 24 * 28
 const HINT_OQS = 100
@@ -30,7 +30,7 @@ end
 
 # const DataType = Dict{DateTime,Dict{Date,Vector{OptionQuote}}}
 
-function getChain(data::HistChain, ts::DateTime, xpir::Date)::Vector{OptionQuote}
+function getOqs(data::HistChain, ts::DateTime, xpir::Date)::Vector{OptionQuote}
     return data.chain[ts][xpir]
 end
 
@@ -42,13 +42,13 @@ function getTss(data::HistChain)
     return sort(collect(keys(data.under)))
 end
 
-function getXoqss(data, ts::DateTime, xpirs, curp::Currency, legsCheck=LEGS_EMPTY)
-    dictFromKeys(xpirs) do xpir
-        all = ChainUtil.oqssAll(getChain(data, ts, xpir))
-        entry = ChainUtil.filtEntry(all, curp, legsCheck)
-        return (;all, entry)
-    end
-end
+# function getXoqss(data, ts::DateTime, xpirs, curp::Currency, legsCheck=LEGS_EMPTY)
+#     dictFromKeys(xpirs) do xpir
+#         all = ChainUtil.oqssAll(getChain(data, ts, xpir))
+#         entry = ChainUtil.filtEntry(all, curp, legsCheck)
+#         return (;all, entry)
+#     end
+# end
 
 function paths(y, m)
     dateStr = Dates.format(Date(y, m, 1), DF_FILE)
@@ -60,7 +60,6 @@ function paths(y, m)
 end
 
 function load(y, m)::HistChain
-    println("Loading $(y) $(m)")
     data = HistChain()
     pathCall, pathPut, pathUnder = paths(y, m)
     loadOpt(proc(data, Style.call), pathCall)

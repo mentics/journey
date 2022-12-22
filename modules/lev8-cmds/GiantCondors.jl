@@ -1,7 +1,7 @@
 module GiantCondors
 using Dates
 using SH, BaseTypes, SmallTypes, LegMetaTypes
-using DateUtil, ChainUtil, LogUtil, Pricing
+using DateUtil, ChainUtil, Pricing
 import HistData as hd
 using Markets, Expirations, Chains
 import CmdPos:xlegs
@@ -12,19 +12,23 @@ import BacktestSimple:rond
 function getParamsLive()
     # TODO: When we find better parameters from testing, copy them to here
     return (;
-        MaxMargin = C(100000/100 - 15/2),
+        balInit = 78,
         ExtremaBdays = 40,
-        Put = (;xbdays=40:84, moveMin=.16, offMax=30.0, profMinRat=.8/400, takeRat=0.24/400),
-        Call = (;xbdays=40:112, moveMin=.12, offMax=20.0, profMinRat=.6/400, takeRat=0.18/400),
+        marginMaxRat = 0.95,
+        marginPerDayRat = 1.0,
+        Put = (;xbdays=40:84, moveMin=.14, offMaxRat=30/400, profMinRat=1.2/400, takeRat=0.24/400),
+        Call = (;xbdays=40:84, moveMin=.12, offMaxRat=50/400, profMinRat=.6/400, takeRat=0.12/400),
     )
 end
 
 function getParams()
     return (;
-        MaxMargin = C(100000/100 - 15/2),
+        balInit = 1000,
         ExtremaBdays = 40,
-        Put = (;xbdays=40:84, moveMin=.16, offMax=30.0, profMinRat=.8/400, takeRat=0.24/400),
-        Call = (;xbdays=40:112, moveMin=.12, offMax=20.0, profMinRat=.6/400, takeRat=0.18/400),
+        marginMaxRat = 0.95,
+        marginPerDayRat = 1.0,
+        Put = (;xbdays=40:84, moveMin=.14, offMaxRat=40/400, profMinRat=1.2/400, takeRat=0.24/400),
+        Call = (;xbdays=40:84, moveMin=.12, offMaxRat=50/400, profMinRat=.6/400, takeRat=0.12/400),
     )
 end
 
@@ -42,7 +46,7 @@ function calcScore1(ctx, tmult, lo, sho)
     risk = F(abs(strlo - strsho))
     # Wrong: ret = F(bap(sho, .1) - bap(lo, .1))
     ret = F(netoq2(lo, sho))
-    ret > 0.0 || ( println("Found ret < 0.0") ; return -100.0 )
+    ret > 0.0 || ( bt.log("ERROR: Found ret < 0.0", ret) ; return -100.0 )
     rate = calcRate(tmult, ret, risk)
 
     move = strlo < ctx.curp ?
@@ -74,53 +78,63 @@ function live(side=Side.long)
     # strikeExt = curp * (side == Side.long ? (1.0 - ps.moveMin) : (1.0 + ps.moveMin))
     strikeExt = side == Side.long ? lo * (1.0 - p.Put.moveMin) : hi * (1.0 + p.Call.moveMin)
 
-    getOqss = xpir -> ChainUtil.filtEntry(chain(xpir).chain, curp, xlegs(xpir))
+    getOqss = xpir -> ChainUtil.oqssEntry(chain(xpir).chain, curp, xlegs(xpir))
     xpirs = DateUtil.matchAfter(date, expirs(), ps.xbdays)
-    res = findGC((;curp), getOqss, xpirs, date, side, ps.offMax, curp * ps.profMinRat, strikeExt)
+    res = findGC((;curp), getOqss, xpirs, date, side, curp * ps.offMaxRat, curp * ps.profMinRat, strikeExt)
     return isnothing(res) ? nothing : collect(res)
 end
+
+marginPerDay(acct) = acct[:params].marginPerDayRat * acct[:bal]
 
 function stratDay(acct)
     acct[:openLong] = nothing
     acct[:openShort] = nothing
-    # acct[:margin] < getParams().MaxMargin || ( acct[:missed] += 1 )
+    # acct[:margin] < getParams().marginMax || ( acct[:missed] += 1 )
 end
 
 function strat(acct)
-    p = getParams()
+    p = acct[:params]
     bt.checkClose((bt.checkSides,), acct, p)
 
-    acct[:margin] < p.MaxMargin || return # ( println("Hit max open") ; return )
+    acct[:margin] < acct[:bal] * p.marginMaxRat || ( bt.log("Hit max margin") ; return )
+    # acct[:margin] < p.marginMax || return # ( println("Hit max open") ; return )
     # length(acct[:todayOpens]) < 2 || return # Only one open per side per day
     curp = acct[:curp]
 
     # TODO: maybe be more precise about last trade under margin: could check margin during candidate search
+    # TODO: could be more accurate about marginDay: allowing other side that doesn't increase margin.
+    # Though for now, I could always allow calls because those are always fewer
 
-    if isnothing(acct[:openLong])
+    offMax = curp*p.Put.offMaxRat
+    # if isnothing(acct[:openLong])
+    if acct[:marginDay] < marginPerDay(acct)
         lo = acct[:extrema].lo
         strikeExt = lo * (1.0 - p.Put.moveMin)
         # @show "long" lo strikeExt
-        lms = back(acct, Side.long, strikeExt; profMin=curp * p.Put.profMinRat, p.Put...)
+        lms = back(acct, Side.long, strikeExt; offMax, profMin=curp * p.Put.profMinRat, p.Put...)
         if !isnothing(lms)
             neto = bap(lms, .1)
             risk = abs(getStrike(lms[1]) - getStrike(lms[2])) - neto
             @assert neto > 0.0
-            @assert risk <= p.Put.offMax
+            @assert risk <= offMax
             # rat = getStrike(lms[2]) / curp
             rat = getStrike(lms[2]) / lo
             acct[:openLong] = bt.openTrade(acct, lms, neto, "long spread: rat=$(rond(rat)), neto=$(neto)", risk)
         end
+    else
+        bt.log("ran out of day margin $(acct[:marginDay]) $(marginPerDay(acct))")
     end
-    if isnothing(acct[:openShort])
+    # Not checking margin because it always had less shorts than longs. TODO: if that changes...
+    if true
         hi = acct[:extrema].hi
         strikeExt = hi * (1.0 + p.Call.moveMin)
-        lms = back(acct, Side.short, strikeExt; profMin=curp * p.Call.profMinRat, p.Call...)
+        lms = back(acct, Side.short, strikeExt; offMax, profMin=curp * p.Call.profMinRat, p.Call...)
         # println("short $(acct[:curp]) $(hi) $(strikeExt) $(isnothing(lms))")
         if !isnothing(lms)
             neto = bap(lms, .1)
             risk = abs(getStrike(lms[1]) - getStrike(lms[2])) - neto
             @assert neto > 0.0
-            @assert risk <= p.Call.offMax
+            @assert risk <= offMax
             # rat = getStrike(lms[1]) / curp
             rat = getStrike(lms[1]) / hi
             acct[:openShort] = bt.openTrade(acct, lms, neto, "short spread: rat=$(rond(rat)), neto=$(neto)", risk)
@@ -131,9 +145,11 @@ end
 function back(acct, side, strikeExt; xbdays, offMax, profMin, kws...)
     date = acct[:date]
     xoqss = acct[:xoqss]
-    getOqss = xpir -> xoqss[xpir].entry
+    getOqss = xpir -> xoqss[xpir]
     xpirs = DateUtil.matchAfter(date, acct[:xpirs], xbdays)
-    return findGC(makeCtx(acct), getOqss, xpirs, date, side, offMax, profMin, strikeExt)
+    lms = findGC(makeCtx(acct), getOqss, xpirs, date, side, offMax, profMin, strikeExt)
+    # return isnothing(lms) ? nothing : withQuantity.(lms, 2.0)
+    return lms
 end
 #endregion
 
@@ -166,11 +182,11 @@ function findLongSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt, debug=
     shorts = oqss.put.short
     longs = oqss.put.long
     if isempty(longs)
-        println("oqss.put.long was empty")
+        bt.log("WARN: oqss.put.long was empty")
         return nothing
     end
     if isempty(shorts)
-        println("oqss.put.short was empty")
+        bt.log("WARN: oqss.put.short was empty")
         return nothing
     end
     ilo = 1
@@ -178,13 +194,13 @@ function findLongSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt, debug=
     isho = findfirst(oq -> getBid(oq) > profMin, shorts)
     if isnothing(isho)
         # TODO: why would this happen? I think because it used up all the options and so they're filtered out (ie. in poss)
-        global keepLongShoNothing = (profMin, shorts)
-        println("Long isho was nothing")
+        # global keepLongShoNothing = (profMin, shorts)
+        bt.log("WARN: Long isho was nothing")
         return nothing
     end
     sho = shorts[isho]
     getStrike(sho) <= strikeExt || return nothing
-    debug && @show ilo isho getStrike(lo) getStrike(sho) strikeExt netoqL(lo) netoqS(sho)
+    debug && bt.log(@str ilo isho getStrike(lo) getStrike(sho) strikeExt netoqL(lo) netoqS(sho))
 
     # move ilo to min by strike
     while getStrike(sho) - getStrike(lo) > offMax
@@ -194,10 +210,10 @@ function findLongSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt, debug=
 
     # find isho such that profMin is satisfied
     neto = netoq2(lo, sho)
-    debug && @show neto ilo isho getStrike(lo) getStrike(sho) strikeExt netoqL(lo) netoqS(sho)
+    debug && bt.log(@str neto ilo isho getStrike(lo) getStrike(sho) strikeExt netoqL(lo) netoqS(sho))
     while neto < profMin
         # move isho up to get more prof while still under strikeExt
-        getStrike(shorts[isho+1]) <= strikeExt || return nothing
+        getStrike(shorts[isho+1]) <= strikeExt || ( bt.log("WARN: long: Ran out of strikes to get profMin $(profMin)") ; return nothing )
         isho += 1
         sho = shorts[isho]
         # move ilo to make it valid
@@ -206,7 +222,7 @@ function findLongSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt, debug=
             lo = longs[ilo]
         end
         neto = netoq2(lo, sho)
-        debug && @show neto ilo isho getStrike(lo) getStrike(sho) strikeExt netoqL(lo) netoqS(sho)
+        debug && bt.log(@str neto ilo isho getStrike(lo) getStrike(sho) strikeExt netoqL(lo) netoqS(sho))
     end
     # lo,sho now have valid values, strike is narrow enough and profMin is satisfied
     @assert getStrike(sho) - getStrike(lo) <= offMax
@@ -214,7 +230,7 @@ function findLongSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt, debug=
     @assert neto >= profMin
     score = calcScore(lo, sho)
     best = (score, lo, sho)
-    debug && @show score neto getStrike(lo) getStrike(sho) strikeExt
+    debug && bt.log(@str score neto getStrike(lo) getStrike(sho) strikeExt)
 
     # Loop through all the other valid states and score them
     while true
@@ -224,7 +240,7 @@ function findLongSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt, debug=
             ilo += 1
             lo = longs[ilo]
             score = calcScore(lo, sho)
-            debug && ( neto = netoq2(lo, sho) ; @show score neto getStrike(lo) getStrike(sho) strikeExt )
+            debug && ( neto = netoq2(lo, sho) ; bt.log(@str score neto getStrike(lo) getStrike(sho) strikeExt) )
             if score > best[1]
                 best = (score, lo, sho)
             end
@@ -240,7 +256,7 @@ function findLongSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt, debug=
     end
     if netoq2(lo, sho) <= 0.0
         # global keep = (;lo, sho, neto, )
-        @log error "long entry returning loss" lo sho
+        bt.log("ERROR: long entry returning loss", lo, sho)
         return nothing
     end
     @assert getStrike(best[2]) < getStrike(best[3])
@@ -250,7 +266,7 @@ function findLongSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt, debug=
         neto = bap(b[2:3], .1)
         if neto < profMin
             global kerrBest1 = b
-            println("ERROR: (long) invalid neto < profMin $(neto) for profMin $(profMin)")
+            bt.log("ERROR: (long) invalid neto < profMin $(neto) for profMin $(profMin)")
             findLongSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt, true)
             # error("stop")
             return nothing
@@ -261,7 +277,7 @@ function findLongSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt, debug=
         risk = abs(getStrike(best[2]) - getStrike(best[3])) - neto
         if strikeWidth > offMax || risk > offMax
             global kerrBest2 = b
-            println("ERROR: (long) invalid strike width $(strikeWidth) or risk $(risk) for offMax $(offMax)")
+            bt.log("ERROR: (long) invalid strike width $(strikeWidth) or risk $(risk) for offMax $(offMax)")
             findLongSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt, true)
             # error("stop")
             return nothing
@@ -275,11 +291,11 @@ function findShortSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt, debug
     shorts = oqss.call.short
     longs = oqss.call.long
     if isempty(longs)
-        println("oqss.call.long was empty")
+        bt.log("WARN: oqss.call.long was empty")
         return nothing
     end
     if isempty(shorts)
-        println("oqss.call.short was empty")
+        bt.log("WARN: oqss.call.short was empty")
         return nothing
     end
     # println("short entry: $(length(shorts)) $(length(longs))")
@@ -289,13 +305,13 @@ function findShortSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt, debug
     if isnothing(isho)
         # TODO: why would this happen? I think because it used up all the options and so they're filtered out (ie. in poss)
         global keepShortShoNothing = (profMin, shorts)
-        println("Short isho was nothing")
+        bt.log("WARN: Short isho was nothing")
         return nothing
     end
     sho = shorts[isho]
     getStrike(sho) >= strikeExt || return nothing # ( println("strike not enough $(getStrike(sho)) $(sho)") ; return nothing )
 
-    debug && @show ilo isho getStrike(lo) getStrike(sho) strikeExt netoqL(lo) netoqS(sho)
+    debug && bt.log(@str ilo isho getStrike(lo) getStrike(sho) strikeExt netoqL(lo) netoqS(sho))
     # move ilo to min by strike
     while getStrike(lo) - getStrike(sho) > offMax
         ilo -= 1
@@ -304,10 +320,10 @@ function findShortSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt, debug
 
     # find isho such that profMin is satisfied
     neto = netoq2(lo, sho)
-    debug && @show neto ilo isho getStrike(lo) getStrike(sho) strikeExt netoqL(lo) netoqS(sho)
+    debug && bt.log(@str neto ilo isho getStrike(lo) getStrike(sho) strikeExt netoqL(lo) netoqS(sho))
     while neto < profMin
         # move isho down to get more prof while still above strikeExt
-        getStrike(shorts[isho-1]) >= strikeExt || ( println("short: Ran out of strikes to get profMin $(profMin)") ; return nothing )
+        getStrike(shorts[isho-1]) >= strikeExt || ( bt.log("WARN: short: Ran out of strikes to get profMin $(profMin)") ; return nothing )
         isho -= 1
         sho = shorts[isho]
         # move ilo to make it valid
@@ -316,7 +332,7 @@ function findShortSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt, debug
             lo = longs[ilo]
         end
         neto = netoq2(lo, sho)
-        debug && @show neto ilo isho getStrike(lo) getStrike(sho) strikeExt netoqL(lo) netoqS(sho)
+        debug && bt.log(@str neto ilo isho getStrike(lo) getStrike(sho) strikeExt netoqL(lo) netoqS(sho))
     end
     # lo,sho now have valid values, strike is narrow enough and profMin is satisfied
     @assert getStrike(lo) - getStrike(sho) <= offMax
@@ -324,7 +340,7 @@ function findShortSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt, debug
     @assert neto >= profMin
     score = calcScore(lo, sho)
     best = (score, lo, sho)
-    debug && @show score neto getStrike(lo) getStrike(sho) strikeExt
+    debug && bt.log(@str score neto getStrike(lo) getStrike(sho) strikeExt)
 
     # Loop through all the other valid states and score them
     while true
@@ -334,7 +350,7 @@ function findShortSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt, debug
             ilo -= 1
             lo = longs[ilo]
             score = calcScore(lo, sho)
-            debug && ( neto = netoq2(lo, sho) ; @show score neto getStrike(lo) getStrike(sho) strikeExt )
+            debug && ( neto = netoq2(lo, sho) ; bt.log(@str score neto getStrike(lo) getStrike(sho) strikeExt) )
             if score > best[1]
                 best = (score, lo, sho)
             end
@@ -350,7 +366,7 @@ function findShortSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt, debug
     end
     if netoq2(lo, sho) <= 0.0
         # global keep = (;lo, sho, neto, )
-        @logboth error "short entry returning loss" lo sho
+        bt.log("ERROR: short entry returning loss", lo, sho)
         return nothing
     end
     @assert getStrike(best[3]) < getStrike(best[2])
@@ -360,7 +376,7 @@ function findShortSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt, debug
         neto = bap(b[2:3], .1)
         if neto < profMin
             global kerrBest1 = b
-            println("ERROR: (short) invalid neto < profMin $(neto) for profMin $(profMin)")
+            bt.log("ERROR: (short) invalid neto < profMin $(neto) for profMin $(profMin)")
             findShortSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt, true)
             # error("stop")
             return nothing
@@ -371,7 +387,7 @@ function findShortSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt, debug
         risk = abs(getStrike(best[2]) - getStrike(best[3])) - neto
         if strikeWidth > offMax || risk > offMax
             global kerrBest2 = b
-            println("ERROR: (short) invalid strike width $(strikeWidth) or risk $(risk) for offMax $(offMax)")
+            bt.log("ERROR: (short) invalid strike width $(strikeWidth) or risk $(risk) for offMax $(offMax)")
             findShortSpreadEntry(oqss, calcScore, offMax, profMin, strikeExt, true)
             # error("stop")
             return nothing

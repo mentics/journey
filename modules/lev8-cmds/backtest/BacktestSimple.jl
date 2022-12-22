@@ -1,7 +1,7 @@
 module BacktestSimple
 using Dates
 import StatsBase
-using SH, Globals, BaseTypes, SmallTypes, OptionTypes, LegTypes, LegMetaTypes, OptionMetaTypes
+using SH, Globals, BaseTypes, SmallTypes, OptionTypes, LegTypes, LegMetaTypes, OptionMetaTypes, ChainTypes
 using DateUtil, CollUtil, DictUtil, ChainUtil
 using Pricing, Between
 import OptionUtil
@@ -28,10 +28,10 @@ function lyze()
     wins = filter(t -> getTradePnl(t) > 0.0, closes)
     losses = filter(t -> getTradePnl(t) <= 0.0, closes)
     @assert length(closes) == length(wins) + length(losses)
-    global loscall = filter(t -> getTradeStyle(t) == Style.call, losses)
-    global wincall = filter(t -> getTradeStyle(t) == Style.call, wins)
-    global losput = filter(t -> getTradeStyle(t) == Style.put, losses)
-    global winput = filter(t -> getTradeStyle(t) == Style.put, wins)
+    loscall = filter(t -> getTradeStyle(t) == Style.call, losses)
+    wincall = filter(t -> getTradeStyle(t) == Style.call, wins)
+    losput = filter(t -> getTradeStyle(t) == Style.put, losses)
+    winput = filter(t -> getTradeStyle(t) == Style.put, wins)
     println("Losses: $(length(loscall)) calls, $(length(losput)) puts")
     ratecall = map(getTradeRate, calls)
     rateput = map(getTradeRate, puts)
@@ -75,23 +75,25 @@ getTradeExpDur(trade) = bdays(Date(trade[:open][:ts]), Date(trade[:targetDate]))
 #endregion
 
 #region Process
+run(f, fday, params, months::Int; maxSeconds=10) = run(f, fday, params, (Date(2022,9)-Month(months-1)):Month(1):Date(2022,9); maxSeconds)
 function run(f, fday, params, months; maxSeconds=10)
     LogUtil.resetLog(:backtest)
 
     global acct = Dict(
+        :params => params,
         :start => time(),
-        :bal => C(0.0),
+        :bal => C(params.balInit),
         :real => C(0.0),
         :trades => Vector{TradeType}(),
         :poss => Vector{TradeType}(),
         :todayOpens => Vector{TradeType}(),
         :todayCloses => Vector{TradeType}(),
-        # :riskDays => 0.0,
         :lastTradeId => 0,
         :rates => Vector{Float64}(),
         :margin => C(0),
-        :maxMargin => C(0),
-        :maxOpen => 0,
+        :marginDay => 0,
+        :marginMax => C(0),
+        :openMax => 0,
         # :missed => 0,
     )
 
@@ -99,7 +101,7 @@ function run(f, fday, params, months; maxSeconds=10)
     # @show dateStart months
     for m in months
         # @show m
-        procMonth(f, fday, year(m), month(m), params, maxSeconds)
+        procMonth(f, fday, year(m), month(m), params, maxSeconds) || break
     end
 
     real = acct[:real]
@@ -111,53 +113,91 @@ function run(f, fday, params, months; maxSeconds=10)
     # acct[:riskDays] += getRisk(acct[:poss]) # model it for end of last day, so only * 1 day
     # rate = calcRate(dateStart, dateEnd, total, acct[:riskDays] / days)
     rate = StatsBase.mean(acct[:rates])
-    out("Summary $(dateStart) - $(dateEnd) (ran $(days) bdays):")
-    out("  rpnl = $(real), urpnl = $(unreal)")
-    out("  Total: $(total)")
-    # out("  risk-days: $(acct[:riskDays])")
-    out("  rate: $(rond(rate))")
-    out("  maxOpen: $(acct[:maxOpen])")
-    out("  maxMargin: $(acct[:maxMargin])")
+    log("Summary $(dateStart) - $(dateEnd) (ran $(days) bdays):")
+    log("  bal = $(acct[:bal]), rpnl = $(real), urpnl = $(unreal)")
+    log("  Total: $(total)")
+    log("  rate: $(rond(rate))")
+    log("  openMax: $(acct[:openMax])")
+    log("  marginMax: $(acct[:marginMax])")
+
+    println("Summary $(dateStart) - $(dateEnd) (ran $(days) bdays):")
+    println("  bal = $(acct[:bal]), rpnl = $(real), urpnl = $(unreal)")
+    println("  Total: $(total)")
+    println("  rate: $(rond(rate))")
+    println("  openMax: $(acct[:openMax])")
+    println("  marginMax: $(acct[:marginMax])")
+    lyze()
 end
 
 function procMonth(f, fday, y, m, params, maxSeconds)
     data = SS.load(y, m)
+    log("Loaded $(y) $(m)")
     # Don't run on first and last (other if inside loop) ts of the day
     tss = filter!(SS.getTss(data)) do x
-        return Time(x) != Time(getMarketOpen(Date(x))) + Second(10)
+        # For consistency, just do every 30 minutes because that's what we have data for 10 years
+        return minute(x) != 15 && minute(x) != 45 && Time(x) != Time(getMarketOpen(Date(x))) + Second(10)
     end
 
     datePrev = Date(0)
+    curp = C(0)
     for ts in tss
+        log("Looping ts=$(ts)")
         date = toDateMarket(ts)
 
-        curp = SS.getUnder(data, ts).under
-
         if date != datePrev
+            tind = 1
+            while tind <= length(acct[:poss])
+                trade = acct[:poss][tind]
+                if getExpir(trade) < date
+                    lmsc = trade[:lmsTrack]
+                    netc = OptionUtil.netExpired(lmsc, curp)
+                    if abs(curp - getStrike(lmsc[1])) < 5.0 || abs(curp - getStrike(lmsc[end])) < 5.0
+                        netc -= 0.02 # adjust to pay to close and not just let expire
+                    end
+                    log("ERROR: Found expired trade: ", trade)
+                    closeTrade(acct, trade, lmsc, netc, "(missed) expired $(getQuote(trade[:lmsTrack]))")
+                else
+                    tind += 1
+                end
+            end
+
+            # for trade in acct[:poss]
+            #     if getExpir(trade) < date
+            #         println("Found expired trade: ", trade)
+            #         @show datePrev acct[:ts] ts
+            #         error("stop")
+            #     end
+            # end
+
+            curp = SS.getUnder(data, ts).under
+
             fday(acct)
             rate = StatsBase.mean(acct[:rates])
-            out("End $(datePrev): $(rond(acct[:bal])) rpnl:$(rond(acct[:real])) urpnl:$(rond(urpnl(acct[:poss]))) #open:$(length(acct[:poss])) rateAvg:$(rond(rate))")
+            log("End $(datePrev): bal:$(rond(acct[:bal])) margin:$(acct[:margin]) rpnl:$(rond(acct[:real])) urpnl:$(rond(urpnl(acct[:poss]))) #open:$(length(acct[:poss])) rateAvg:$(rond(rate))")
 
             # TODO: closing and opening on same day might affect this a little, but I think buying power allows this so maybe it's ok
             # acct[:riskDays] += (date - datePrev).value * getRisk(acct[:poss])
             empty!(acct[:todayOpens])
             empty!(acct[:todayCloses])
+            acct[:marginDay] = C(0)
             acct[:extrema] = HistData.extrema(bdaysBefore(date, params.ExtremaBdays), date-Day(1), curp, curp)
             datePrev = date
         else
+            curp = SS.getUnder(data, ts).under
             updateExtrema(acct, curp)
         end
 
-        out("Start $(formatLocal(ts)) SPY: $(curp)") # TODO: , VIX: $(mkt.vix)")
+        log("Start $(formatLocal(ts)) SPY: $(curp)") # TODO: , VIX: $(mkt.vix)")
         acct[:ts] = ts
         acct[:date] = date
         acct[:curp] = curp
         xpirs = SS.getExpirs(data, ts)
         acct[:xpirs] = xpirs
         posLegs = collect(flatmap(x -> x[:legs], acct[:poss]))
-        xoqss = SS.getXoqss(data, ts, xpirs, curp, posLegs)
-        acct[:xoqss] = xoqss
-        lup = lookup(xoqss)
+        all, entry = getChains(data, ts, xpirs, curp, posLegs)
+        acct[:xoqss] = entry
+        # lup = (xpir, args...) -> flookup(all) # @coalesce ChainUtil.lup(all[xpir], args...) log("ERROR: Backtest could not quote $(xpir), $(style), $(strike)")
+        lup = flookup(all)
         acct[:lup] = lup
         updatePossLmsTrack(lup, acct[:poss])
         # acct[:greeks] = calcGreeks(acct[:poss]) # isempty(acct[:poss]) ? GreeksZero : getGreeks(acct[:poss])
@@ -187,9 +227,21 @@ function procMonth(f, fday, y, m, params, maxSeconds)
         end
 
         if time() > acct[:start] + maxSeconds
-            break
+            return false
         end
     end
+    return true
+end
+
+function getChains(data, ts::DateTime, xpirs, curp::Currency, legsCheck)
+    all = Dict{Date,ChainLookup}()
+    entry = Dict{Date,Oqss}()
+    for xpir in xpirs
+        oqs = SS.getOqs(data, ts, xpir)
+        all[xpir] = ChainUtil.tolup(oqs)
+        entry[xpir] = ChainUtil.oqssEntry(oqs, curp, legsCheck)
+    end
+    return (;all, entry)
 end
 
 function updatePossLmsTrack(lup, trades)
@@ -199,8 +251,8 @@ function updatePossLmsTrack(lup, trades)
             trade[:lmsTrack] = tosLMC(trade[:legs], lup)
             # trade[:lmsTrack] = map(leg -> LegMetaClose(leg, lup(getOption(leg)), trade[:legs]))
         catch e
-            println("Trade $(i): ", trade)
-            rethrow(e)
+            log("Could not quote trade", i, trade)
+            # rethrow(e)
         end
         i += 1
     end
@@ -260,17 +312,18 @@ function openTrade(acct, lms::Coll{LegMetaOpen}, neto, label, risk)
     push!(acct[:poss], trade)
     push!(acct[:todayOpens], trade)
     acct[:bal] += neto
+    acct[:marginDay] = recalcMargin(acct[:todayOpens]) - recalcMargin(acct[:todayCloses])
     margin = recalcMargin(acct[:poss])
     acct[:margin] = margin
-    if margin > acct[:maxMargin]
-        acct[:maxMargin] = margin
+    if margin > acct[:marginMax]
+        acct[:marginMax] = margin
     end
     openCount = length(acct[:poss])
-    if openCount > acct[:maxOpen]
-        acct[:maxOpen] = openCount
+    if openCount > acct[:openMax]
+        acct[:openMax] = openCount
     end
     # acct[:greeks] = updateGreeks(acct, targetDate, getGreeks(lms))
-    out("Open #$(trade[:id]) $(Shorthand.tosh(lms, acct[:xpirs])): '$(label)' neto:$(neto)") # deltaX: $(rond(delta)) -> $(rond(deltaNew)) deltaAcct: $(rond(acct[:delta]))")
+    log("Open #$(trade[:id]) $(Shorthand.tosh(lms, acct[:xpirs])): '$(label)' neto:$(neto)") # deltaX: $(rond(delta)) -> $(rond(deltaNew)) deltaAcct: $(rond(acct[:delta]))")
     return trade
 end
 function closeTrade(acct, trade, lms::Coll{LegMetaClose}, netc, label)
@@ -282,9 +335,10 @@ function closeTrade(acct, trade, lms::Coll{LegMetaClose}, netc, label)
     pnl = neto + netc
     # trade[:pnl] = pnl
     acct[:real] += pnl
+    acct[:marginDay] = recalcMargin(acct[:todayOpens]) - recalcMargin(acct[:todayCloses])
     acct[:margin] = recalcMargin(acct[:poss])
     push!(acct[:rates], getTradeRate(trade))
-    out("Close #$(trade[:id]) $(Shorthand.tosh(lms, acct[:xpirs])): '$(label)' neto:$(rond(neto)) netc:$(netc) pnl=$(rond(pnl)) rate=$(getTradeRate(trade)) ; $(openDur(trade)) days open, $(bdaysLeft(acct[:date], trade)) days left")
+    log("Close #$(trade[:id]) $(Shorthand.tosh(lms, acct[:xpirs])): '$(label)' neto:$(rond(neto)) netc:$(netc) pnl=$(rond(pnl)) rate=$(getTradeRate(trade)) ; $(openDur(trade)) days open, $(bdaysLeft(acct[:date], trade)) days left")
     return
 end
 #endregion
@@ -297,32 +351,42 @@ function urpnl(trade)
     return trade[:open].neto + netc
 end
 
-function lookup(xoqss)
-    function lup(xpir::Date, style::Style.T, strike::Currency) # ::Union{Nothing,OptionQuote}
-        try
-            res = find(x -> getStrike(x) == strike, getfield(xoqss[xpir].all, Symbol(style)).long)
-            !isnothing(res) || println("WARN: Backtest could not quote $(xpir), $(style), $(strike)")
-            return res
-        catch e
-            @show xpir style strike
-            rethrow(e)
-        end
+function flookup(data)
+    function lup(xpir::Date, style::Style.T, strike::Currency) # ::Union{OptionQuote,Missing}
+        @coalesce ChainUtil.lup(data[xpir], style, strike) log("ERROR: Backtest could not quote $(xpir), $(style), $(strike)")
     end
-    function lup(o::Option)
-        try
-            xpir = getExpiration(o)
-            style = getStyle(o)
-            strike = getStrike(o)
-            res = find(x -> getStrike(x) == strike, getfield(xoqss[xpir].all, Symbol(style)).long)
-            !isnothing(res) || println("WARN: Backtest could not quote $(xpir), $(style), $(strike)")
-            return res
-        catch e
-            @show o
-            rethrow(e)
-        end
+    function lup(opt::Option) # ::Union{OptionQuote,Missing}
+        @coalesce ChainUtil.lup(data[getExpiration(opt)], opt) log("ERROR: Backtest could not quote $(opt)")
     end
     return lup
 end
+
+# function lookup(xoqss)
+#     function lup(xpir::Date, style::Style.T, strike::Currency) # ::Union{Nothing,OptionQuote}
+#         try
+#             res = find(x -> getStrike(x) == strike, getfield(xoqss[xpir].all, Symbol(style)).long)
+#             !isnothing(res) || log("ERROR: Backtest could not quote $(xpir), $(style), $(strike)")
+#             return res
+#         catch e
+#             @show xpir style strike
+#             rethrow(e)
+#         end
+#     end
+#     function lup(o::Option)
+#         try
+#             xpir = getExpiration(o)
+#             style = getStyle(o)
+#             strike = getStrike(o)
+#             res = find(x -> getStrike(x) == strike, getfield(xoqss[xpir].all, Symbol(style)).long)
+#             !isnothing(res) || log("ERROR: Backtest could not quote $(xpir), $(style), $(strike)")
+#             return res
+#         catch e
+#             @show o
+#             rethrow(e)
+#         end
+#     end
+#     return lup
+# end
 
 function calcGreeks(trades)
     d = Dict{Date,Greeks}()
@@ -393,10 +457,10 @@ bdaysLeft(from, trade) = bdays(from, getExpir(trade))
 
 function entryFilterLookup(acct)
     # can't go opposite current poss and today's opens and closes
-    global legsPos = cu.mapflatmap(getLeg, x -> x[:lms], acct[:poss])
-    global legsOpens = cu.mapflatmap(getLeg, x -> x[:lms], acct[:todayOpens])
-    global legsCloses = cu.mapflatmap(x -> LegTypes.switchSide(getLeg(x)), x -> x[:lms], acct[:todayCloses])
-    global d = Dict{Option,Int}()
+    legsPos = cu.mapflatmap(getLeg, x -> x[:lms], acct[:poss])
+    legsOpens = cu.mapflatmap(getLeg, x -> x[:lms], acct[:todayOpens])
+    legsCloses = cu.mapflatmap(x -> LegTypes.switchSide(getLeg(x)), x -> x[:lms], acct[:todayCloses])
+    d = Dict{Option,Int}()
     for leg in flat(legsPos, legsOpens, legsCloses)
         opt = getOption(leg)
         side = Int(getSide(leg))
@@ -410,9 +474,6 @@ function entryFilterLookup(acct)
     end
     return d
 end
-
-using LogUtil
-out(args...) = LogUtil.logit(:backtest, args...)
 
 function recalcMargin(poss)
     # Brokerage might consider margin offsets only for the same expiration, but for me, the risk is across all expirations, so I'll count it that way.
@@ -435,6 +496,9 @@ function recalcMargin(poss)
     return margin
 end
 
+using LogUtil
+# log(args...) = LogUtil.logit(:backtest, args...)
+log(args...) = LogUtil.logit(:backtest, args...)
 #endregion
 
 #region MaybeMove
