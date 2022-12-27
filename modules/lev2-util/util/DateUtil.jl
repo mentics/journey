@@ -35,6 +35,7 @@ durRisk(from::Date, to::Date) = 1 + bdays(from, to)
 timult(from::Date, to::Date) = bdaysPerYear() / durRisk(from, to)
 calcRate(from::Date, to::Date, ret, risk) = (ret / risk) * timult(from, to)
 calcRate(tmult, ret, risk) = (Float64(ret) / Float64(risk)) * tmult
+vixToSdev(vix, bdays) = vix / sqrt(bdaysPerYear() / bdays)
 
 #region Basic
 const SECOND_ZERO = Second(0)

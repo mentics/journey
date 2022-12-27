@@ -6,7 +6,7 @@ using DateUtil, CollUtil, DictUtil, ChainUtil
 using Pricing, Between
 import OptionUtil
 import Shorthand
-import HistData
+import HistData as HD
 import SimpleStore as SS
 using Calendars
 
@@ -21,6 +21,7 @@ const TradeType = Dict{Symbol,Any}
 
 import Statistics:quantile
 function lyze()
+    acct = ac
     closes = filter(t -> haskey(t, :close), acct[:trades])
     calls = filter(t -> getTradeStyle(t) == Style.call, closes)
     puts = filter(t -> getTradeStyle(t) == Style.put, closes)
@@ -36,11 +37,11 @@ function lyze()
     ratecall = map(getTradeRate, calls)
     rateput = map(getTradeRate, puts)
     println("Call rate quantile:\n$(!isempty(ratecall) ? quantile(ratecall, .1:.1:.9) : "no calls")")
-    println("Put rate quantile:\n$(quantile(rateput, .1:.1:.9))")
+    println("Put rate quantile:\n$(!isempty(rateput) ? quantile(rateput, .1:.1:.9) : "no puts")")
     expdurcall = map(getTradeExpDur, calls)
     expdurput = map(getTradeExpDur, puts)
     println("Call expdur quantile:\n$(!isempty(expdurcall) ? quantile(expdurcall, .1:.1:.9) : "no calls")")
-    println("Put expdur quantile:\n$(quantile(expdurput, .1:.1:.9))")
+    println("Put expdur quantile:\n$(!isempty(expdurput) ? quantile(expdurput, .1:.1:.9) : "no puts")")
 end
 
 #region CurStrat
@@ -53,10 +54,13 @@ function checkThreaten(acct, t, p)
 end
 
 function checkSides(acct, t, p)
+    # vix = acct[:vix]
+    # t.rate >= (.8 - vix)/.6 && return "rate >= 1.0"
+    t.rate >= .6 && return "rate high enough $(t.rate)"
     if getStyle(t.lmsc[1]) == Style.call
-        t.curVal >= acct[:curp] * p.Call.takeRat && return "Call take min profit"
+        t.curVal >= t.trade[:curp] * p.Call.takeRat && return "Call take min profit"
     else
-        t.curVal >= acct[:curp] * p.Put.takeRat && return "Put take min profit"
+        t.curVal >= t.trade[:curp] * p.Put.takeRat && return "Put take min profit"
     end
     return nothing
 end
@@ -79,7 +83,14 @@ run(f, fday, params, months::Int; maxSeconds=10) = run(f, fday, params, (Date(20
 function run(f, fday, params, months; maxSeconds=10)
     LogUtil.resetLog(:backtest)
 
-    global acct = Dict(
+    vix = Dict{Date,Currency}()
+    vix1 = HD.dailyDict(first(months), last(months)+Month(1), "VIX")
+    for (k, v) in vix1
+        vix[k] = v.open
+    end
+    daily = HD.dataDaily()
+
+    acct = Dict(
         :params => params,
         :start => time(),
         :bal => C(params.balInit),
@@ -90,18 +101,20 @@ function run(f, fday, params, months; maxSeconds=10)
         :todayCloses => Vector{TradeType}(),
         :lastTradeId => 0,
         :rates => Vector{Float64}(),
-        :margin => C(0),
-        :marginDay => 0,
-        :marginMax => C(0),
+        :margin => marginZero(),
+        :marginDay => marginZero(),
+        :marginMax => marginZero(),
         :openMax => 0,
+        :vix => 0,
         # :missed => 0,
     )
+    global ac = acct
 
     dateStart = nextTradingDay(first(months))
     # @show dateStart months
     for m in months
         # @show m
-        procMonth(f, fday, year(m), month(m), params, maxSeconds) || break
+        procMonth(f, fday, year(m), month(m), params, maxSeconds, acct, daily, vix) || break
     end
 
     real = acct[:real]
@@ -112,24 +125,27 @@ function run(f, fday, params, months; maxSeconds=10)
     # We're going to pretend we closed everything at the last time, so don't need to add risk.
     # acct[:riskDays] += getRisk(acct[:poss]) # model it for end of last day, so only * 1 day
     # rate = calcRate(dateStart, dateEnd, total, acct[:riskDays] / days)
-    rate = StatsBase.mean(acct[:rates])
+    rateMean = StatsBase.mean(acct[:rates])
+    rr = (1 + real / params.balInit) ^ (1 / (days / DateUtil.bdaysPerYear()))
     log("Summary $(dateStart) - $(dateEnd) (ran $(days) bdays):")
     log("  bal = $(acct[:bal]), rpnl = $(real), urpnl = $(unreal)")
     log("  Total: $(total)")
-    log("  rate: $(rond(rate))")
+    log("  overall realized rate: $(rond(rr))")
+    log("  trade rate mean: $(rond(rateMean))")
     log("  openMax: $(acct[:openMax])")
     log("  marginMax: $(acct[:marginMax])")
 
     println("Summary $(dateStart) - $(dateEnd) (ran $(days) bdays):")
     println("  bal = $(acct[:bal]), rpnl = $(real), urpnl = $(unreal)")
     println("  Total: $(total)")
-    println("  rate: $(rond(rate))")
+    println("  overall realized rate: $(rond(rr))")
+    println("  trade rate mean: $(rond(rateMean))")
     println("  openMax: $(acct[:openMax])")
     println("  marginMax: $(acct[:marginMax])")
     lyze()
 end
 
-function procMonth(f, fday, y, m, params, maxSeconds)
+function procMonth(f, fday, y, m, params, maxSeconds, acct, daily, vix)
     data = SS.load(y, m)
     log("Loaded $(y) $(m)")
     # Don't run on first and last (other if inside loop) ts of the day
@@ -143,6 +159,7 @@ function procMonth(f, fday, y, m, params, maxSeconds)
     for ts in tss
         log("Looping ts=$(ts)")
         date = toDateMarket(ts)
+        acct[:vix] = vix[date] / 100
 
         if date != datePrev
             tind = 1
@@ -179,8 +196,8 @@ function procMonth(f, fday, y, m, params, maxSeconds)
             # acct[:riskDays] += (date - datePrev).value * getRisk(acct[:poss])
             empty!(acct[:todayOpens])
             empty!(acct[:todayCloses])
-            acct[:marginDay] = C(0)
-            acct[:extrema] = HistData.extrema(bdaysBefore(date, params.ExtremaBdays), date-Day(1), curp, curp)
+            acct[:marginDay] = marginZero()
+            acct[:extrema] = HD.extrema(daily, bdaysBefore(date, params.ExtremaBdays), date-Day(1), curp, curp)
             datePrev = date
         else
             curp = SS.getUnder(data, ts).under
@@ -251,7 +268,7 @@ function updatePossLmsTrack(lup, trades)
             trade[:lmsTrack] = tosLMC(trade[:legs], lup)
             # trade[:lmsTrack] = map(leg -> LegMetaClose(leg, lup(getOption(leg)), trade[:legs]))
         catch e
-            log("Could not quote trade", i, trade)
+            log("Could not quote trade ", trade[:id], trade)
             # rethrow(e)
         end
         i += 1
@@ -312,10 +329,10 @@ function openTrade(acct, lms::Coll{LegMetaOpen}, neto, label, risk)
     push!(acct[:poss], trade)
     push!(acct[:todayOpens], trade)
     acct[:bal] += neto
-    acct[:marginDay] = recalcMargin(acct[:todayOpens]) - recalcMargin(acct[:todayCloses])
+    acct[:marginDay] = recalcMargin(acct[:todayOpens]) # - recalcMargin(acct[:todayCloses])
     margin = recalcMargin(acct[:poss])
     acct[:margin] = margin
-    if margin > acct[:marginMax]
+    if margin.risk > acct[:marginMax].risk
         acct[:marginMax] = margin
     end
     openCount = length(acct[:poss])
@@ -335,7 +352,7 @@ function closeTrade(acct, trade, lms::Coll{LegMetaClose}, netc, label)
     pnl = neto + netc
     # trade[:pnl] = pnl
     acct[:real] += pnl
-    acct[:marginDay] = recalcMargin(acct[:todayOpens]) - recalcMargin(acct[:todayCloses])
+    acct[:marginDay] = recalcMargin(acct[:todayOpens]) # - recalcMargin(acct[:todayCloses])
     acct[:margin] = recalcMargin(acct[:poss])
     push!(acct[:rates], getTradeRate(trade))
     log("Close #$(trade[:id]) $(Shorthand.tosh(lms, acct[:xpirs])): '$(label)' neto:$(rond(neto)) netc:$(netc) pnl=$(rond(pnl)) rate=$(getTradeRate(trade)) ; $(openDur(trade)) days open, $(bdaysLeft(acct[:date], trade)) days left")
@@ -426,12 +443,12 @@ function tradeInfo(trade, date)
     # lmsc = tos(LegMetaClose, trade[:lms])
     lmsc = trade[:lmsTrack]
     qt = getQuote(lmsc)
-    netc = bap(qt, .1)
+    netc = bap(qt, .0)
     curVal = neto + netc
     timt = DateUtil.timult(dateOpen, date)
     mn = min(OptionUtil.legsExtrema(neto, trade[:legs]...)...)
     rate = timt * curVal / (-mn)
-    return (; xpir, daysLeft, daysTotal, xpirRatio, neto, lmsc, qt, netc, curVal, timt, mn, rate)
+    return (; xpir, daysLeft, daysTotal, xpirRatio, neto, lmsc, qt, netc, curVal, timt, mn, rate, trade)
 end
 #endregion
 
@@ -480,21 +497,28 @@ function recalcMargin(poss)
     len = length(poss)
     risks = Vector{Currency}(undef, len)
     callCount = 0
-    i = 0
-    for trade in poss
-        i += 1
-        risks[i] = getTradeRisk(trade)
+    callRisk = 0.
+    putRisk = 0.
+    for i in eachindex(poss)
+        trade = poss[i]
+        risk = getTradeRisk(trade)
+        risks[i] = risk
         if getTradeStyle(trade) == Style.call
             callCount += 1
+            callRisk += risk
+        else
+            putRisk += risk
         end
     end
     sort!(risks; rev=true)
     keep = max(callCount, len-callCount)
     resize!(risks, keep)
-    margin = sum(risks)
+    risk = sum(risks)
     # println("Calced new margin: ", margin)
-    return margin
+    return (;risk, call=(;risk=callRisk, count), put=(;risk=putRisk, count=len-callCount))
 end
+const CZ = C(0)
+marginZero() = (;risk=CZ, call=(;risk=CZ, count=0), put=(;risk=CZ, count=0))
 
 using LogUtil
 # log(args...) = LogUtil.logit(:backtest, args...)

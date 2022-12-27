@@ -21,5 +21,6 @@ pdff(nd::NormDist) = x -> pdf(nd, x)
 # Adapted from https://github.com/JuliaStats/StatsFuns.jl/blob/master/src/distrs/norm.jl#L45
 cdf(d::NormDist, x::Float64)::Float64 = erfc(-(x - d.μ)/d.σ * INV_ROOT2) / 2
 cdff(d::NormDist) = x -> cdf(d, x)
+cdf(sdev::Float64, x::Float64)::Float64 = erfc(-x/sdev * INV_ROOT2) / 2
 
 end

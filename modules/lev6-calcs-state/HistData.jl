@@ -33,13 +33,15 @@ end
 # const PRICE_MAX = C(1e9)
 # const PRICE_ZERO = C(0.0)
 
-function extrema(from::Date, to::Date, hi1::Real, lo1::Real, sym::AStr="SPY")
-    daily = dataDaily(from, to, sym)
+function extrema(daily, from::Date, to::Date, hi1::Real, lo1::Real, sym::AStr="SPY")
+    # daily = dataDaily(from, to, sym)
     hi = hi1
     lo = lo1
     # loDate = to + Day(1)
     # hiDate = to+ Day(1)
-    for d in daily
+    for d in Iterators.reverse(daily)
+        d.date >= from || continue
+        d.date <= to || break
         if d.high > hi
             hi = d.high
             # hiDate = d.date
