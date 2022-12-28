@@ -72,12 +72,12 @@ function checkSides(acct, t, p)
     # vix = acct[:vix]
     # t.rate >= (.8 - vix)/.6 && return "rate >= 1.0"
     t.rate >= .4 && return "rate high enough $(t.rate)"
-    qty = getQuantity(t.lmsc[1])
-    if t.style == Style.call
-        t.curVal >= qty * t.trade[:curp] * p.Call.takeRat && return "Call take min profit"
-    else
-        t.curVal >= qty * t.trade[:curp] * p.Put.takeRat && return "Put take min profit"
-    end
+    # qty = getQuantity(t.lmsc[1])
+    # if t.style == Style.call
+    #     t.curVal >= qty * t.trade[:curp] * p.Call.takeRat && return "Call take min profit"
+    # else
+    #     t.curVal >= qty * t.trade[:curp] * p.Put.takeRat && return "Put take min profit"
+    # end
     return nothing
 end
 

@@ -16,6 +16,7 @@ function getParamsLive()
         ExtremaBdays = 20,
         marginMaxRat = 0.98,
         marginPerDayRat = 0.2,
+        maxPerTrade = 100,
         Put = (;xbdays=10:124, moveMin=.15, moveSdevs=1.5, offMaxRat=30/400, profMinRat=.8/400, takeRat=0.2/400),
         Call = (;xbdays=10:124, moveMin=.12, moveSdevs=1.5, offMaxRat=30/400, profMinRat=.6/400, takeRat=0.16/400),
     )
@@ -27,6 +28,7 @@ function getParams()
         ExtremaBdays = 20,
         marginMaxRat = 0.98,
         marginPerDayRat = 0.2,
+        maxPerTrade = 100,
         Put = (;xbdays=10:124, moveMin=.1, moveSdevs=2., offMaxRat=40/400, profMinRat=.8/400, takeRat=0.24/400),
         Call = (;xbdays=10:124, moveMin=.1, moveSdevs=2., offMaxRat=40/400, profMinRat=.8/400, takeRat=0.24/400),
     )
@@ -191,9 +193,7 @@ function back(acct, side; xbdays, offMax, profMin, moveMin, moveSdevs, kws...)
     res = findGC(makeCtx(acct), getOqss, xpirs, date, side, offMax, profMin, acct[:vix], acct[:extrema], moveMin, moveSdevs)
     if !isnothing(res)
         lms, r = res
-        risk = side == Side.long ? acct[:margin].put.risk : acct[:margin].call.risk
-        avail = acct[:bal] * acct[:params].marginMaxRat - risk
-        qty = qtyForMargin(resRisk(r), avail, acct[:bal] * acct[:params].marginMaxRat)
+        qty = qtyForMargin(acct, side, resRisk(r))
         if qty > 0
             return (withQuantity.(lms, F(qty)), r)
         end
@@ -202,9 +202,14 @@ function back(acct, side; xbdays, offMax, profMin, moveMin, moveSdevs, kws...)
     return nothing
 end
 
-function qtyForMargin(risk, avail, bal)
-    avail = min(avail, bal * .1)
-    return min(10, round(Int, avail / risk, RoundDown))
+function qtyForMargin(acct, side, risk)
+    margin = side == Side.long ? acct[:margin].put.risk : acct[:margin].call.risk
+    marginDay = side == Side.long ? acct[:marginDay].put.risk : acct[:marginDay].call.risk
+    params = acct[:params]
+    bal = acct[:bal]
+    avail = bal * params.marginMaxRat - margin
+    availDay = bal * params.marginPerDayRat - marginDay
+    return min(params.maxPerTrade, round(Int, min(avail, availDay) / risk, RoundDown))
 end
 #endregion
 
