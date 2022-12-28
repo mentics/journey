@@ -115,7 +115,7 @@ end
 
 function strat(acct)
     p = acct[:params]
-    bt.checkClose((bt.checkSides,), acct, p)
+    bt.checkClose((bt.checkSides,bt.checkThreaten), acct, p)
     curp = acct[:curp]
 
     # TODO: maybe be more precise about last trade under margin: could check margin during candidate search
@@ -203,8 +203,8 @@ function back(acct, side; xbdays, offMax, profMin, moveMin, moveSdevs, kws...)
 end
 
 function qtyForMargin(risk, avail, bal)
-    avail = min(avail, bal * .2)
-    return round(Int, avail / risk, RoundDown)
+    avail = min(avail, bal * .1)
+    return min(10, round(Int, avail / risk, RoundDown))
 end
 #endregion
 
@@ -220,9 +220,9 @@ function findGC(ctx, getOqss, xpirs, date, side, offMax, profMin, vix, hilo, mov
 
         prob = ProbKde.probToClose(F(ctx.curp), 100*F(vix), ctx.ts, xpir)
         if side == Side.long
-            strikeExt, _ = ProbUtil.probFromRight(prob, .99)
+            strikeExt, _ = ProbUtil.probFromRight(prob, .999)
         else
-            strikeExt, _ = ProbUtil.probFromLeft(prob, .99)
+            strikeExt, _ = ProbUtil.probFromLeft(prob, .999)
         end
 
         calcScore = (lo, sho, innerStrike) -> calcScore3(ctx, prob, side, tmult, innerStrike, lo, sho)

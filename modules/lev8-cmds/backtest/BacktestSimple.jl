@@ -48,16 +48,31 @@ end
 checkRateRatio(acct, t, p) = t.rate >= (t.xpirRatio * p.RateMin) ? "rate: $(rond(t.rate))" : nothing
 checkProfit(acct, t, p) = t.curVal >= p.MinTakeProfit ? "take min profit" : nothing
 function checkThreaten(acct, t, p)
-    s = getStrike(t.lmsc[1])
-    threat = (s - acct[:curp]) / s
-    return threat <= p.ThreatenPercent ? "threat: $(threat)" : nothing
+    curp = acct[:curp]
+    if t.style == Style.put
+        threat = curp / getStrike(t.lmsc[2])
+        if threat < 1.001
+            log("checkThreaten put #$(t.id): $(threat) theta:$(getGreeks(t.lmsc).theta) curval:$(t.curVal)")
+            # return "threat: $(threat)"
+        end
+    else
+        threat = getStrike(t.lmsc[1]) / curp
+        if threat < 1.001
+            log("checkThreaten call #$(t.id): $(threat) theta:$(getGreeks(t.lmsc).theta) curval:$(t.curVal)")
+            # return "threat: $(threat)"
+        end
+    end
+    return nothing
+    # s = getStrike(t.lmsc[1])
+    # threat = (s - acct[:curp]) / s
+    # return threat <= p.ThreatenPercent ? "threat: $(threat)" : nothing
 end
 
 function checkSides(acct, t, p)
     # vix = acct[:vix]
     # t.rate >= (.8 - vix)/.6 && return "rate >= 1.0"
-    t.rate >= .6 && return "rate high enough $(t.rate)"
-    qty = getQuantity(t.trade[:lmsTrack][1])
+    t.rate >= .4 && return "rate high enough $(t.rate)"
+    qty = getQuantity(t.lmsc[1])
     if t.style == Style.call
         t.curVal >= qty * t.trade[:curp] * p.Call.takeRat && return "Call take min profit"
     else
@@ -457,7 +472,7 @@ function tradeInfo(trade, date)
     @assert mn < 0 "mn:$(mn) qty:$(qty)"
     rate = tmult * curVal / (-mn)
     # return (; xpir, daysLeft, daysTotal, xpirRatio, neto, lmsc, qt, netc, curVal, timt, mn, rate, qty, trade)
-    return (; style=getStyle(lmsc[1]), netc, curVal, tmult, mn, rate, trade)
+    return (; id=trade[:id], style=getStyle(lmsc[1]), netc, curVal, tmult, mn, rate, trade, lmsc)
 end
 #endregion
 
