@@ -41,9 +41,7 @@ function calcScore1(ctx, tmult, lo, sho)
     # # theta >= 0.01 || return -1000.0
     theta >= abs(delta)/3 || return -1000.0
     # println("delta: $(delta) theta: $(theta)")
-    strlo = getStrike(lo)
-    strsho = getStrike(sho)
-    risk = F(abs(strlo - strsho))
+    risk = calcRisk(lo, sho)
     # Wrong: ret = F(bap(sho, .1) - bap(lo, .1))
     ret = F(netoq2(lo, sho))
     ret > 0.0 || ( bt.log("ERROR: Found ret < 0.0", ret) ; return -100.0 )
@@ -62,37 +60,29 @@ function calcScore1(ctx, tmult, lo, sho)
     return score * (theta / delta)
 end
 
-import NormDists as ND
-function calcScore2(ctx, tmult, lo, sho)
-    theta = getGreeks(lo).theta - getGreeks(sho).theta
-    # delta = getGreeks(lo).delta - getGreeks(sho).delta
-    # theta >= abs(delta)/3 || return -1000.0
-    strlo = getStrike(lo)
-    strsho = getStrike(sho)
-    risk = F(abs(strlo - strsho))
-    # Wrong: ret = F(bap(sho, .1) - bap(lo, .1))
-    ret = F(netoq2(lo, sho))
-    ret > 0.0 || ( bt.log("ERROR: Found ret < 0.0", ret) ; return -100.0 )
+function calcScore3(ctx, prob, side, tmult, innerStrike::Float64, lo, sho)
+    neto, risk = openInfo(lo, sho)
+    neto > 0.0 || return nothing
+
+    # Subtract out the worth of the money over time to adjust for the kelly calc
+    ret = neto - .01 - risk * (.1 / tmult)
     rate = calcRate(tmult, ret, risk)
 
-    move = strsho / ctx.curp - 1.0
-    sdev = ctx.vix / sqrt(tmult) # DateUtil.vixToSdev(ctx.vix, )
-    # TODO: consider using calculated distribution instead of normal
-    winRate = ND.cdf(sdev, move)
-    strsho > ctx.curp || ( winRate = 1.0 - winRate )
-    winRate = winRate^(1/2)
-    kel = Kelly.simple(winRate, ret, risk)
-    kel > 0 || return -1000
-    # score = rate * kel
-    # println("calcScore:")
-    # @show tmult ret risk rate move sdev winRate kel score
-    # return score * abs(theta / delta)
-    return kel * (100*theta)^2
+    mov = innerStrike / ctx.curp
+    winRate = side == Side.long ? ProbUtil.cdfFromRight(prob, mov) : ProbUtil.cdfFromLeft(prob, mov)
+    kel = Kelly.simple(winRate, F(ret), F(risk))
+    kel > 0 || return nothing
+
+    return (kel * rate, neto, risk, ret, rate)
 end
+resScore(r)::Float64 = isnothing(r) ? -1 : r[1]
+resNeto(r)::Float64 = r[2]
+resRisk(r)::Float64 = r[3]
 
 makeCtx(acct) = (;
-    curp = acct[:curp],
-    vix = acct[:vix]
+    ts = acct[:ts],
+    curp = F(acct[:curp]),
+    vix = F(acct[:vix])
 )
 
 function live(side=Side.long)
@@ -134,29 +124,29 @@ function strat(acct)
 
     if canOpenPut(acct, marginAvail)
         offMax = curp*p.Put.offMaxRat
-        lms = back(acct, Side.long; offMax, profMin=curp * p.Put.profMinRat, p.Put...)
-        if !isnothing(lms)
-            neto = bap(lms, .1)
-            risk = abs(getStrike(lms[1]) - getStrike(lms[2])) - neto
-            @assert neto > 0.0
-            @assert risk <= offMax
-            lo = acct[:extrema].lo
-            rat = getStrike(lms[2]) / lo
-            acct[:openLong] = bt.openTrade(acct, lms, neto, "long spread: rat=$(rond(rat)), neto=$(neto)", risk)
+        res = back(acct, Side.long; offMax, profMin=curp * p.Put.profMinRat, p.Put...)
+        if !isnothing(res)
+            lms, r = res
+            # @assert neto > 0.0 "neto:$(neto), risk:$(risk)"
+            # @assert risk / getQuantity(lms[1]) <= offMax
+            # lo = acct[:extrema].lo
+            # mov = getStrike(lms[2]) / lo
+            mov = getStrike(lms[2]) / curp
+            bt.openTrade(acct, lms, "long spread: mov=$(rond(mov)) r=$(r)")
         end
     end
 
     if canOpenCall(acct, marginAvail)
         offMax = curp*p.Call.offMaxRat
-        lms = back(acct, Side.short; offMax, profMin=curp * p.Call.profMinRat, p.Call...)
-        if !isnothing(lms)
-            neto = bap(lms, .1)
-            risk = abs(getStrike(lms[1]) - getStrike(lms[2])) - neto
-            @assert neto > 0.0
-            @assert risk <= offMax
-            hi = acct[:extrema].hi
-            rat = getStrike(lms[1]) / hi
-            acct[:openShort] = bt.openTrade(acct, lms, neto, "short spread: rat=$(rond(rat)), neto=$(neto)", risk)
+        res = back(acct, Side.short; offMax, profMin=curp * p.Call.profMinRat, p.Call...)
+        if !isnothing(res)
+            lms, r = res
+            # @assert neto > 0.0 "neto:$(neto), risk:$(risk)"
+            # @assert risk <= offMax
+            # hi = acct[:extrema].hi
+            # mov = getStrike(lms[1]) / hi
+            mov = getStrike(lms[1]) / curp
+            bt.openTrade(acct, lms, "short spread: mov=$(rond(mov))")
         end
     end
 end
@@ -198,47 +188,146 @@ function back(acct, side; xbdays, offMax, profMin, moveMin, moveSdevs, kws...)
     xoqss = acct[:xoqss]
     getOqss = xpir -> xoqss[xpir]
     xpirs = DateUtil.matchAfter(date, acct[:xpirs], xbdays)
-    lms = findGC(makeCtx(acct), getOqss, xpirs, date, side, offMax, profMin, acct[:vix], acct[:extrema], moveMin, moveSdevs)
-    # return isnothing(lms) ? nothing : withQuantity.(lms, 2.0)
-    return lms
+    res = findGC(makeCtx(acct), getOqss, xpirs, date, side, offMax, profMin, acct[:vix], acct[:extrema], moveMin, moveSdevs)
+    if !isnothing(res)
+        lms, r = res
+        risk = side == Side.long ? acct[:margin].put.risk : acct[:margin].call.risk
+        avail = acct[:bal] * acct[:params].marginMaxRat - risk
+        qty = qtyForMargin(resRisk(r), avail, acct[:bal] * acct[:params].marginMaxRat)
+        if qty > 0
+            return (withQuantity.(lms, F(qty)), r)
+        end
+        # return res
+    end
+    return nothing
+end
+
+function qtyForMargin(risk, avail, bal)
+    avail = min(avail, bal * .2)
+    return round(Int, avail / risk, RoundDown)
 end
 #endregion
 
 #region Local
+import ProbKde, ProbUtil
 function findGC(ctx, getOqss, xpirs, date, side, offMax, profMin, vix, hilo, moveMin, moveSdevs)
-    findEntry = side == Side.long ? findLongSpreadEntry : findShortSpreadEntry
-    lmsBest = nothing
-    scoreBest = 0.0
+    findEntry = side == Side.long ? findSpreadEntryLong : findSpreadEntryShort
+    best = nothing
+    bestScore = 0.0
 
     for xpir in xpirs
         tmult = timult(date, xpir)
-        calcScore = (lo, sho) -> calcScore2(ctx, tmult, lo, sho)
+
+        prob = ProbKde.probToClose(F(ctx.curp), 100*F(vix), ctx.ts, xpir)
+        if side == Side.long
+            strikeExt, _ = ProbUtil.probFromRight(prob, .99)
+        else
+            strikeExt, _ = ProbUtil.probFromLeft(prob, .99)
+        end
+
+        calcScore = (lo, sho, innerStrike) -> calcScore3(ctx, prob, side, tmult, innerStrike, lo, sho)
         oqss = getOqss(xpir)
 
-        moveMin = max(moveSdevs * vix / sqrt(tmult), moveMin)
-        if side == Side.long
-            strikeExt = hilo.lo * (1.0 - moveMin)
-        else
-            strikeExt = hilo.hi * (1.0 + moveMin)
-        end
         res = findEntry(oqss, calcScore, offMax, profMin, strikeExt)
-        # @show "findEntry" ctx.curp strikeExt hilo offMax profMin vix moveMin tmult isnothing(res)
         !isnothing(res) || continue
-        score, lm1, lm2 = res
-        # println("findGC: findEntry was not nothing $(score)")
-        if score > scoreBest
-            lmsBest = (lm1, lm2)
-            scoreBest = score
+        score = resScore(res)
+        if score > bestScore
+            best = res[2]
+            bestScore = score
         end
     end
-    return lmsBest
+    return best
 end
+
+function findSpreadEntryLong(oqss, calcScore, offMax, profMinRaw, strikeExt, debug=false)
+    shorts = oqss.put.short
+    longs = oqss.put.long
+    if isempty(longs)
+        bt.log("WARN: oqss.put.long was empty")
+        return nothing
+    end
+    if isempty(shorts)
+        bt.log("WARN: oqss.put.short was empty")
+        return nothing
+    end
+
+    best = nothing
+    bestScore = 0.0
+    for ilo in eachindex(longs)
+        lo = longs[ilo]
+        lostr = getStrike(lo)
+        lostr <= strikeExt || break
+        # TODO: optimize, it's looping over more than necessary
+        for isho in eachindex(shorts)
+            sho = shorts[isho]
+            shostr = getStrike(sho)
+            shostr > lostr || continue
+            shostr <= strikeExt || break
+
+            res = calcScore(lo, sho, F(shostr))
+            score = resScore(res)
+            if score > bestScore
+                bestScore = score
+                best = (res, lo, sho)
+            end
+        end
+    end
+
+    if isnothing(best)
+        return nothing
+    else
+        return (bestScore, ((LegMetaOpen(best[2], Side.long, 1.0), LegMetaOpen(best[3], Side.short, 1.0)), best[1]))
+    end
+end
+
+function findSpreadEntryShort(oqss, calcScore, offMax, profMinRaw, strikeExt, debug=false)
+    shorts = oqss.put.short
+    longs = oqss.put.long
+    if isempty(longs)
+        bt.log("WARN: oqss.put.long was empty")
+        return nothing
+    end
+    if isempty(shorts)
+        bt.log("WARN: oqss.put.short was empty")
+        return nothing
+    end
+
+    best = nothing
+    bestScore = 0.0
+    for ilo in Iterators.reverse(eachindex(longs))
+        lo = longs[ilo]
+        lostr = getStrike(lo)
+        lostr >= strikeExt || break
+        # TODO: optimize, it's looping over more than necessary
+        for isho in Iterators.reverse(eachindex(shorts))
+            sho = shorts[isho]
+            shostr = getStrike(sho)
+            shostr < lostr || continue
+            shostr >= strikeExt || break
+
+            res = calcScore(lo, sho, F(shostr))
+            score = resScore(res)
+            if score > bestScore
+                bestScore = score
+                best = (res, lo, sho)
+            end
+        end
+    end
+
+    if isnothing(best)
+        return nothing
+    else
+        return (bestScore, ((LegMetaOpen(best[3], Side.short, 1.0), LegMetaOpen(best[2], Side.long, 1.0)), best[1]))
+    end
+end
+
+
 
 netoq2(lo, sho) = netoqL(lo) + netoqS(sho)
 netoqL(lo) = bap(QuoteTypes.newQuote(getQuote(lo), DirSQA(Side.long, 1.0, Action.open)), .1)
 netoqS(sho) = bap(sho, .1)
 
-function findLongSpreadEntry(oqss, calcScore, offMax, profMinRaw, strikeExt, debug=false)
+function findLongSpreadEntry2(oqss, calcScore, offMax, profMinRaw, strikeExt, debug=false)
     profMin = round(profMinRaw; digits=2)
     shorts = oqss.put.short
     longs = oqss.put.long
@@ -354,7 +443,7 @@ function findLongSpreadEntry(oqss, calcScore, offMax, profMinRaw, strikeExt, deb
     return b
 end
 
-function findShortSpreadEntry(oqss, calcScore, offMax, profMinRaw, strikeExt, debug=false)
+function findShortSpreadEntry2(oqss, calcScore, offMax, profMinRaw, strikeExt, debug=false)
     profMin = round(profMinRaw; digits=2)
     shorts = oqss.call.short
     longs = oqss.call.long
@@ -469,6 +558,17 @@ function findShortSpreadEntry(oqss, calcScore, offMax, profMinRaw, strikeExt, de
 
     # println("short: returning b")
     return b
+end
+#endregion
+
+#region Calcs
+function openInfo(lo, sho)::Tuple{Currency,Currency} # NamedTuple{(:neto,:risk), Tuple{Currency,Currency}}
+    neto = netoq2(lo, sho)
+    neto > 0 || return (neto, CZ)
+    if neto > 0
+        risk = abs(getStrike(lo) - getStrike(sho)) - neto
+    end
+    return (neto, risk)
 end
 #endregion
 

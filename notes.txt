@@ -1,3 +1,8 @@
+No numeric params, all based on probs, except maybe a 99% sort of thing
+Use calced probkde, will need to expand Bins to 20% or more
+Do adaptive sizing: at least kel% of account or full account whichever less
+Exit:
+
 Process:
 1) Find SPY trades by running the following for expr from 1 to whatever (saw some > .74 cases even at 10 or more). Consider roi > 1.0 and prob > .75 is ok. TODO: kelly?
 using Joe

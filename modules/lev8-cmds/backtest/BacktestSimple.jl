@@ -57,10 +57,11 @@ function checkSides(acct, t, p)
     # vix = acct[:vix]
     # t.rate >= (.8 - vix)/.6 && return "rate >= 1.0"
     t.rate >= .6 && return "rate high enough $(t.rate)"
-    if getStyle(t.lmsc[1]) == Style.call
-        t.curVal >= t.trade[:curp] * p.Call.takeRat && return "Call take min profit"
+    qty = getQuantity(t.trade[:lmsTrack][1])
+    if t.style == Style.call
+        t.curVal >= qty * t.trade[:curp] * p.Call.takeRat && return "Call take min profit"
     else
-        t.curVal >= t.trade[:curp] * p.Put.takeRat && return "Put take min profit"
+        t.curVal >= qty * t.trade[:curp] * p.Put.takeRat && return "Put take min profit"
     end
     return nothing
 end
@@ -232,7 +233,8 @@ function procMonth(f, fday, y, m, params, maxSeconds, acct, daily, vix)
                     lmsc = trade[:lmsTrack]
                     netc = OptionUtil.netExpired(lmsc, curp)
                     if abs(curp - getStrike(lmsc[1])) < 5.0 || abs(curp - getStrike(lmsc[end])) < 5.0
-                        netc -= 0.02 # adjust to pay to close and not just let expire
+                        qty = getQuantity(lmsc[1])
+                        netc -= qty * 0.02 # adjust to pay to close and not just let expire
                     end
                     closeTrade(acct, trade, lmsc, netc, "expired $(getQuote(trade[:lmsTrack]))")
                 else
@@ -304,14 +306,19 @@ function checkClose(fs, acct, args...)
         # #     label = "loss < -max profit: $(curVal) <= $(-trade[:met].mx)"
         # end
         if !isnothing(label)
-            closeTrade(acct, trade, t.lmsc, t.netc, label)
+            closeTrade(acct, trade, trade[:lmsTrack], t.netc, label)
         end
     end
 end
 #endregion
 
 #region Actions
-function openTrade(acct, lms::Coll{LegMetaOpen}, neto, label, risk)
+function openTrade(acct, lms::Coll{LegMetaOpen}, label)
+    @assert getQuantity(lms[1]) == getQuantity(lms[2])
+    neto = bap(lms, .1)
+    risk = getQuantity(lms[1]) * abs(getStrike(lms[1]) - getStrike(lms[2])) - neto
+    @assert risk > 0.0
+    @assert neto > 0.0
     lup = acct[:lup]
     lmsTrack = tosLLMC(lms, lup)
     targetDate = minimum(getExpiration, lms)
@@ -340,7 +347,7 @@ function openTrade(acct, lms::Coll{LegMetaOpen}, neto, label, risk)
         acct[:openMax] = openCount
     end
     # acct[:greeks] = updateGreeks(acct, targetDate, getGreeks(lms))
-    log("Open #$(trade[:id]) $(Shorthand.tosh(lms, acct[:xpirs])): '$(label)' neto:$(neto)") # deltaX: $(rond(delta)) -> $(rond(deltaNew)) deltaAcct: $(rond(acct[:delta]))")
+    log("Open #$(trade[:id]) $(Shorthand.tosh(lms, acct[:xpirs])): qty:$(getQuantity(lms[1])) neto:$(neto) risk:$(rond(risk)) '$(label)'") # deltaX: $(rond(delta)) -> $(rond(deltaNew)) deltaAcct: $(rond(acct[:delta]))")
     return trade
 end
 function closeTrade(acct, trade, lms::Coll{LegMetaClose}, netc, label)
@@ -355,7 +362,7 @@ function closeTrade(acct, trade, lms::Coll{LegMetaClose}, netc, label)
     acct[:marginDay] = recalcMargin(acct[:todayOpens]) # - recalcMargin(acct[:todayCloses])
     acct[:margin] = recalcMargin(acct[:poss])
     push!(acct[:rates], getTradeRate(trade))
-    log("Close #$(trade[:id]) $(Shorthand.tosh(lms, acct[:xpirs])): '$(label)' neto:$(rond(neto)) netc:$(netc) pnl=$(rond(pnl)) rate=$(getTradeRate(trade)) ; $(openDur(trade)) days open, $(bdaysLeft(acct[:date], trade)) days left")
+    log("Close #$(trade[:id]) $(Shorthand.tosh(lms, acct[:xpirs])): qty:$(getQuantity(lms[1])) neto:$(rond(neto)) netc:$(netc) pnl=$(rond(pnl)) risk=$(rond(getTradeRisk(trade))) rate=$(getTradeRate(trade)) '$(label)' ; $(openDur(trade)) days open, $(bdaysLeft(acct[:date], trade)) days left")
     return
 end
 #endregion
@@ -434,21 +441,23 @@ end
 
 function tradeInfo(trade, date)
     op = trade[:open]
-    xpir = getExpir(trade)
-    daysLeft = bdays(date, xpir)
+    # xpir = getExpir(trade)
+    # daysLeft = bdays(date, xpir)
     dateOpen = toDateMarket(op.ts)
-    daysTotal = bdays(dateOpen, xpir)
-    xpirRatio = (1 + daysLeft) / daysTotal
-    neto = op.neto
-    # lmsc = tos(LegMetaClose, trade[:lms])
+    # daysTotal = bdays(dateOpen, xpir)
+    # xpirRatio = (1 + daysLeft) / daysTotal
     lmsc = trade[:lmsTrack]
+    qty = getQuantity(lmsc[1])
     qt = getQuote(lmsc)
+    neto = op.neto
     netc = bap(qt, .0)
     curVal = neto + netc
-    timt = DateUtil.timult(dateOpen, date)
-    mn = min(OptionUtil.legsExtrema(neto, trade[:legs]...)...)
-    rate = timt * curVal / (-mn)
-    return (; xpir, daysLeft, daysTotal, xpirRatio, neto, lmsc, qt, netc, curVal, timt, mn, rate, trade)
+    tmult = DateUtil.timult(dateOpen, date)
+    mn = qty * min(OptionUtil.legsExtrema(neto/qty, trade[:legs]...)...)
+    @assert mn < 0 "mn:$(mn) qty:$(qty)"
+    rate = tmult * curVal / (-mn)
+    # return (; xpir, daysLeft, daysTotal, xpirRatio, neto, lmsc, qt, netc, curVal, timt, mn, rate, qty, trade)
+    return (; style=getStyle(lmsc[1]), netc, curVal, tmult, mn, rate, trade)
 end
 #endregion
 
@@ -517,7 +526,6 @@ function recalcMargin(poss)
     # println("Calced new margin: ", margin)
     return (;risk, call=(;risk=callRisk, count), put=(;risk=putRisk, count=len-callCount))
 end
-const CZ = C(0)
 marginZero() = (;risk=CZ, call=(;risk=CZ, count=0), put=(;risk=CZ, count=0))
 
 using LogUtil

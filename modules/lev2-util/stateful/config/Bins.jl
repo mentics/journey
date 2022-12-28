@@ -14,16 +14,16 @@ r(x::Float64) = round(x; sigdigits=8)
 # const BIN_WIDTH = .00025
 # const BINS_XS = # WRONG: collect(.92475:.00025:1.07525)
 
-const NUM = 601 # needs to be odd so we have a center
-const SPAN = 0.3
+const NUM = 501 # needs to be odd so we have a center
+const SPAN = 0.5
 
 const VNUM = NUM + 2
-const WIDTH = r(SPAN / (NUM - 1))         ; @assert WIDTH == 0.0005
-const MFIRST = r(1.0 - 0.5 * SPAN)        ; @assert MFIRST == 0.85 # 0.9
-const MLAST = r(1.0 + 0.5 * SPAN)         ; @assert MLAST == 1.15 # 1.1
-const WIDTH_HALF = WIDTH / 2              ; @assert WIDTH_HALF == 0.00025
-const XLEFT = r(MFIRST - WIDTH_HALF)      ; @assert XLEFT == 0.84975 # 0.89975 "XLEFT not match $(XLEFT)"
-const XRIGHT = r(MLAST + WIDTH_HALF)      ; @assert XRIGHT == 1.15025 # 1.10025
+const WIDTH = r(SPAN / (NUM - 1))         ; @assert WIDTH == 0.001
+const MFIRST = r(1.0 - 0.5 * SPAN)        ; @assert MFIRST == 0.75 # 0.85 # 0.9
+const MLAST = r(1.0 + 0.5 * SPAN)         ; @assert MLAST == 1.25 # 1.15 # 1.1
+const WIDTH_HALF = WIDTH / 2              ; @assert WIDTH_HALF == 0.0005
+const XLEFT = r(MFIRST - WIDTH_HALF)      ; @assert XLEFT == 0.7495 # 0.84975 # 0.89975 "XLEFT not match $(XLEFT)"
+const XRIGHT = r(MLAST + WIDTH_HALF)      ; @assert XRIGHT == 1.2505 # 1.10025
 const MIDS = collect(MFIRST:WIDTH:MLAST)  ; @assert length(MIDS) == NUM "length(MIDS) == NUM $(length(MIDS)) != $(NUM)"
 const XS = vcat(XLEFT, MIDS, XRIGHT)      ; @assert length(XS) == NUM+2
 const XSI = collect(zip(1:VNUM, XS))

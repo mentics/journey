@@ -1,7 +1,7 @@
 module BaseTypes
 using FixedPointDecimals
 
-export AStr, Coll, CollN, AVec, Currency, C, PriceT, P, F
+export AStr, Coll, CollN, AVec, Currency, C, CZ, PriceT, P, F
 
 const AStr = AbstractString
 const AVec = AbstractVector
@@ -11,6 +11,7 @@ const CollN{N} = Union{AVec{T},NTuple{N,T}} where T
 const Currency = FixedDecimal{Int,3}
 C(x::Real) = Currency(x)
 Base.Int(x::Currency) = FixedPointDecimals.value(x)
+const CZ = C(0)
 
 const PriceT = FixedDecimal{Int,2}
 P(x::Real) = PriceT(x)

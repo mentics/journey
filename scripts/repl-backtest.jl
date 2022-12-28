@@ -1,4 +1,4 @@
-include("repl-base.jl")
+include("repl-simple.jl")
 
 using Calendars
 import BacktestSimple as bt, GiantCondors as gc

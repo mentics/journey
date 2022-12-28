@@ -66,7 +66,7 @@ extrinSub(style::Style.T, strike::Real, curp::Real)::Bool = xor(Style.call == st
 netExpired(lms, curp) = sum(x -> netExpired1(x, curp), lms)
 function netExpired1(lm, curp)
     s = getStrike(lm)
-    return extrinSub(getStyle(lm), s, curp) ? Int(getSide(lm)) * abs(curp - s) : 0.0
+    return getQuantity(lm) * (extrinSub(getStyle(lm), s, curp) ? Int(getSide(lm)) * abs(curp - s) : 0.0)
 end
 
 legsExtrema(neto, legs::NTuple{2}) = spreadExtrema(neto, longShort(legs[1], legs[2])...)

@@ -235,7 +235,7 @@ makePath(sym::Symbol) = joinpath(BaseDir, "kde-$(sym).ser")
 # JSON3.StructType(::Type{KernelDensity.InterpKDE{KernelDensity.BivariateKDE{StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64}, StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64}}, Interpolations.FilledExtrapolation{Float64, 2, Interpolations.ScaledInterpolation{Float64, 2, Interpolations.BSplineInterpolation{Float64, 2, OffsetArrays.OffsetMatrix{Float64, Matrix{Float64}}, Interpolations.BSpline{Interpolations.Quadratic{Interpolations.Line{Interpolations.OnGrid}}}, Tuple{Base.OneTo{Int64}, Base.OneTo{Int64}}}, Interpolations.BSpline{Interpolations.Quadratic{Interpolations.Line{Interpolations.OnGrid}}}, Tuple{StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64}, StepRangeLen{Float64, Base.TwicePrecision{Float64}, Base.TwicePrecision{Float64}, Int64}}}, Interpolations.BSpline{Interpolations.Quadratic{Interpolations.Line{Interpolations.OnGrid}}}, Float64}}}) = JSON3.Struct()
 
 function update()
-    ( path = makePath(:kdes) ; isfile(path) && unix2datetime(mtime(path)) > (now(UTC) - Hour(8)) && (loadData() ; return) )
+    # ( path = makePath(:kdes) ; isfile(path) && unix2datetime(mtime(path)) > (now(UTC) - Hour(8)) && (loadData() ; return) )
     println("Calculating ProbKde")
     forDate = market().startDay
     dailySpy = dataDaily(forDate, "SPY")
@@ -334,9 +334,9 @@ function findVarBin(val::Float64)
 end
 
 function calcKde(data::NTuple{2,Vector{Float64}})::BivariateKDE
-    bws = (1.0, Bins.width())
+    bws = (1.0, 10*Bins.width())
     bounds = (0.0, 1.1 * maximum(data[1])), (0.8, 1.1) .* extrema(data[2])
-    println(bounds)
+    println("bounds: ", bounds)
     return KernelDensity.kde(data; bandwidth=bws, boundary=bounds)
 end
 
@@ -361,7 +361,7 @@ function makePdv(tex::Float64, var::Float64)
         pd = pdf(ik, tex, x)
         # TODO: Why can this be negative? Ask on discourse?
         @assert pd > -1e-4 "pd too negative $(pd) tex=$(tex), var=$(var), varBin=$(varBin), i=$(i), x=$(x), kpdf=$(pdf(k, tex, x))"
-        pd >= 0.01 * Bins.binPercent() || (pd = 0.0)
+        # pd >= 0.01 * Bins.binPercent() || (pd = 0.0)
         vals[i] = Bins.width() * pd
     end
     # TODO: messy
