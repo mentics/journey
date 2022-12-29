@@ -10,17 +10,28 @@ import BacktestSimple:rond
 
 #region Public
 function getParamsLive()
-    # TODO: When we find better parameters from testing, copy them to here
     return (;
-        balInit = 78,
+        balInit = 100,
         ExtremaBdays = 20,
         marginMaxRat = 0.98,
         marginPerDayRat = 0.2,
         maxPerTrade = 100,
-        Put = (;xbdays=10:124, moveMin=.15, moveSdevs=1.5, offMaxRat=30/400, profMinRat=.8/400, takeRat=0.2/400),
-        Call = (;xbdays=10:124, moveMin=.12, moveSdevs=1.5, offMaxRat=30/400, profMinRat=.6/400, takeRat=0.16/400),
+        Put = (;xbdays=10:84, probMin=.99, takeRateMin=.2),
+        Call = (;xbdays=10:84, probMin=.95, takeRateMin=.2),
     )
 end
+
+# function getParams()
+#     return (;
+#         balInit = 1000,
+#         ExtremaBdays = 20,
+#         marginMaxRat = 0.98,
+#         marginPerDayRat = 0.2,
+#         maxPerTrade = 100,
+#         Put = (;xbdays=10:124, moveMin=.1, moveSdevs=2., offMaxRat=40/400, profMinRat=.8/400, takeRat=0.24/400),
+#         Call = (;xbdays=10:124, moveMin=.1, moveSdevs=2., offMaxRat=40/400, profMinRat=.8/400, takeRat=0.24/400),
+#     )
+# end
 
 function getParams()
     return (;
@@ -29,8 +40,8 @@ function getParams()
         marginMaxRat = 0.98,
         marginPerDayRat = 0.2,
         maxPerTrade = 100,
-        Put = (;xbdays=10:124, moveMin=.1, moveSdevs=2., offMaxRat=40/400, profMinRat=.8/400, takeRat=0.24/400),
-        Call = (;xbdays=10:124, moveMin=.1, moveSdevs=2., offMaxRat=40/400, profMinRat=.8/400, takeRat=0.24/400),
+        Put = (;xbdays=10:84, probMin=.999, takeRateMin=.2),
+        Call = (;xbdays=10:84, probMin=.95, takeRateMin=.2),
     )
 end
 
@@ -93,17 +104,25 @@ function live(side=Side.long)
     mkt = market()
     date = mkt.startDay
     curp = mkt.curp
-    vix = mkt.vix
+    vix = mkt.vix/100
 
     # TODO: should use today's hi/lo to start with, not curp
     # hi, lo = HD.extrema(bdaysBefore(date, p.ExtremaBdays), date-Day(1), curp, curp)
 
     getOqss = xpir -> ChainUtil.oqssEntry(chain(xpir).chain, curp, xlegs(xpir))
     xpirs = DateUtil.matchAfter(date, expirs(), ps.xbdays)
-    offMax = curp * ps.offMaxRat
-    profMin = curp * ps.profMinRat
-    extrema = HD.extrema(HD.dataDaily(), bdaysBefore(date, p.ExtremaBdays), date - Day(1), curp, curp)
-    lms = findGC((;curp, vix), getOqss, xpirs, date, side, offMax, profMin, vix, extrema, ps.moveMin, ps.moveSdevs)
+    # offMax = curp * ps.offMaxRat
+    # profMin = curp * ps.profMinRat
+    # extrema = HD.extrema(HD.dataDaily(), bdaysBefore(date, p.ExtremaBdays), date - Day(1), curp, curp)
+    # lms = findGC((;curp, vix), getOqss, xpirs, date, side, offMax, profMin, vix, extrema, ps.moveMin, ps.moveSdevs)
+
+    res = findGC((;ts=mkt.tsMarket, curp, vix), getOqss, xpirs, date, side, vix, ps.probMin)
+    if !isnothing(res)
+        lms, r = res
+        return (collect(lms), r)
+    else
+        return
+    end
     return isnothing(lms) ? nothing : collect(lms)
 end
 
@@ -117,7 +136,8 @@ end
 
 function strat(acct)
     p = acct[:params]
-    bt.checkClose((bt.checkSides,bt.checkThreaten), acct, p)
+    # bt.checkClose((bt.checkSides, bt.checkThreaten), acct, p)
+    bt.checkClose((bt.checkSides,), acct, p)
     curp = acct[:curp]
 
     # TODO: maybe be more precise about last trade under margin: could check margin during candidate search
@@ -125,8 +145,8 @@ function strat(acct)
     marginAvail = acct[:bal] * p.marginMaxRat
 
     if canOpenPut(acct, marginAvail)
-        offMax = curp*p.Put.offMaxRat
-        res = back(acct, Side.long; offMax, profMin=curp * p.Put.profMinRat, p.Put...)
+        # offMax = curp*p.Put.offMaxRat
+        res = back(acct, Side.long; p.Put...) # offMax, profMin=curp * p.Put.profMinRat,
         if !isnothing(res)
             lms, r = res
             # @assert neto > 0.0 "neto:$(neto), risk:$(risk)"
@@ -139,8 +159,8 @@ function strat(acct)
     end
 
     if canOpenCall(acct, marginAvail)
-        offMax = curp*p.Call.offMaxRat
-        res = back(acct, Side.short; offMax, profMin=curp * p.Call.profMinRat, p.Call...)
+        # offMax = curp*p.Call.offMaxRat
+        res = back(acct, Side.short; p.Call...) # offMax, profMin=curp * p.Call.profMinRat,
         if !isnothing(res)
             lms, r = res
             # @assert neto > 0.0 "neto:$(neto), risk:$(risk)"
@@ -185,12 +205,12 @@ function canOpenPut(acct, mx)
     return true
 end
 
-function back(acct, side; xbdays, offMax, profMin, moveMin, moveSdevs, kws...)
+function back(acct, side; xbdays, probMin, kws...) # , offMax, profMin, moveMin, moveSdevs, kws...)
     date = acct[:date]
     xoqss = acct[:xoqss]
     getOqss = xpir -> xoqss[xpir]
     xpirs = DateUtil.matchAfter(date, acct[:xpirs], xbdays)
-    res = findGC(makeCtx(acct), getOqss, xpirs, date, side, offMax, profMin, acct[:vix], acct[:extrema], moveMin, moveSdevs)
+    res = findGC(makeCtx(acct), getOqss, xpirs, date, side, acct[:vix], probMin) # , offMax, profMin, acct[:extrema], moveMin, moveSdevs)
     if !isnothing(res)
         lms, r = res
         qty = qtyForMargin(acct, side, resRisk(r))
@@ -215,7 +235,7 @@ end
 
 #region Local
 import ProbKde, ProbUtil
-function findGC(ctx, getOqss, xpirs, date, side, offMax, profMin, vix, hilo, moveMin, moveSdevs)
+function findGC(ctx, getOqss, xpirs, date, side, vix, probMin) # , offMax, profMin, hilo, moveMin, moveSdevs)
     findEntry = side == Side.long ? findSpreadEntryLong : findSpreadEntryShort
     best = nothing
     bestScore = 0.0
@@ -225,15 +245,15 @@ function findGC(ctx, getOqss, xpirs, date, side, offMax, profMin, vix, hilo, mov
 
         prob = ProbKde.probToClose(F(ctx.curp), 100*F(vix), ctx.ts, xpir)
         if side == Side.long
-            strikeExt, _ = ProbUtil.probFromRight(prob, .999)
+            strikeExt, _ = ProbUtil.probFromRight(prob, probMin)
         else
-            strikeExt, _ = ProbUtil.probFromLeft(prob, .999)
+            strikeExt, _ = ProbUtil.probFromLeft(prob, probMin)
         end
 
         calcScore = (lo, sho, innerStrike) -> calcScore3(ctx, prob, side, tmult, innerStrike, lo, sho)
         oqss = getOqss(xpir)
 
-        res = findEntry(oqss, calcScore, offMax, profMin, strikeExt)
+        res = findEntry(oqss, calcScore, strikeExt) # , offMax, profMin
         !isnothing(res) || continue
         score = resScore(res)
         if score > bestScore
@@ -244,7 +264,7 @@ function findGC(ctx, getOqss, xpirs, date, side, offMax, profMin, vix, hilo, mov
     return best
 end
 
-function findSpreadEntryLong(oqss, calcScore, offMax, profMinRaw, strikeExt, debug=false)
+function findSpreadEntryLong(oqss, calcScore, strikeExt, debug=false) # , offMax, profMinRaw)
     shorts = oqss.put.short
     longs = oqss.put.long
     if isempty(longs)
@@ -285,7 +305,7 @@ function findSpreadEntryLong(oqss, calcScore, offMax, profMinRaw, strikeExt, deb
     end
 end
 
-function findSpreadEntryShort(oqss, calcScore, offMax, profMinRaw, strikeExt, debug=false)
+function findSpreadEntryShort(oqss, calcScore, strikeExt, debug=false) # , offMax, profMinRaw
     shorts = oqss.put.short
     longs = oqss.put.long
     if isempty(longs)

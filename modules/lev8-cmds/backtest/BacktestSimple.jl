@@ -71,7 +71,7 @@ end
 function checkSides(acct, t, p)
     # vix = acct[:vix]
     # t.rate >= (.8 - vix)/.6 && return "rate >= 1.0"
-    t.rate >= .4 && return "rate high enough $(t.rate)"
+    t.rate >= p.takeRateMin && return "rate high enough $(t.rate)"
     # qty = getQuantity(t.lmsc[1])
     # if t.style == Style.call
     #     t.curVal >= qty * t.trade[:curp] * p.Call.takeRat && return "Call take min profit"
@@ -306,13 +306,13 @@ function check(fs, args...)
     return isempty(ss) ? nothing : join(ss, " ; ")
 end
 
-function checkClose(fs, acct, args...)
+function checkClose(fs, acct, params, args...)
     date = acct[:date]
     for trade in acct[:poss]
         dateOpen = toDateMarket(trade[:open].ts)
         dateOpen < date || continue         # don't close today's entries
         t = tradeInfo(trade, date)
-        label = check(fs, acct, t, args...)
+        label = check(fs, acct, t, t.style == Style.put ? params.Put : params.Call, args...)
         # # elseif daysLeft <= 2
         # #     label = "daysLeft"
         # # elseif theta < -0.015
