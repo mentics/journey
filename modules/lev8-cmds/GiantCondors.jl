@@ -14,10 +14,10 @@ function getParamsLive()
         balInit = 100,
         ExtremaBdays = 20,
         marginMaxRat = 0.98,
-        marginPerDayRat = 0.2,
-        maxPerTrade = 100,
-        Put = (;xbdays=10:84, probMin=.99, takeRateMin=.2),
-        Call = (;xbdays=10:84, probMin=.95, takeRateMin=.2),
+        marginPerDayRat = 0.1,
+        maxPerTrade = 10,
+        Put = (;xbdays=16:84, probMin=.99, takeRateMin=.4),
+        Call = (;xbdays=16:84, probMin=.99, takeRateMin=.4),
     )
 end
 
@@ -38,10 +38,10 @@ function getParams()
         balInit = 1000,
         ExtremaBdays = 20,
         marginMaxRat = 0.98,
-        marginPerDayRat = 0.2,
-        maxPerTrade = 100,
-        Put = (;xbdays=10:84, probMin=.999, takeRateMin=.2),
-        Call = (;xbdays=10:84, probMin=.95, takeRateMin=.2),
+        marginPerDayRat = 0.1,
+        maxPerTrade = 10,
+        Put = (;xbdays=16:84, probMin=.99, takeRateMin=.4),
+        Call = (;xbdays=16:84, probMin=.99, takeRateMin=.4),
     )
 end
 
@@ -75,18 +75,22 @@ end
 
 function calcScore3(ctx, prob, side, tmult, innerStrike::Float64, lo, sho)
     neto, risk = openInfo(lo, sho)
-    neto > 0.0 || return nothing
+    neto > 0.04 || return nothing
 
     # Subtract out the worth of the money over time to adjust for the kelly calc
-    ret = neto - .01 - risk * (.1 / tmult)
+    # which is using 10% here.
+    # And 0.01 buy back
+    ret = round(neto - .01 - risk * (.1 / tmult); digits=2)
     rate = calcRate(tmult, ret, risk)
+    rate > 0.1 || return nothing
 
     mov = innerStrike / ctx.curp
-    winRate = side == Side.long ? ProbUtil.cdfFromRight(prob, mov) : ProbUtil.cdfFromLeft(prob, mov)
+    winRate = side == Side.long ? ProbUtil.cdfFromRight(prob, innerStrike) : ProbUtil.cdfFromLeft(prob, innerStrike)
     kel = Kelly.simple(winRate, F(ret), F(risk))
     kel > 0 || return nothing
 
-    return (kel * rate, neto, risk, ret, rate)
+    # return (;score=kel * rate, neto, risk, ret, kel, rate, winRate, mov, prob)
+    return (;score=kel * rate, neto, risk, ret, kel, rate, winRate, mov)
 end
 resScore(r)::Float64 = isnothing(r) ? -1 : r[1]
 resNeto(r)::Float64 = r[2]
@@ -123,7 +127,7 @@ function live(side=Side.long)
     else
         return
     end
-    return isnothing(lms) ? nothing : collect(lms)
+    # return isnothing(lms) ? nothing : collect(lms)
 end
 
 marginPerDay(acct) = acct[:params].marginPerDayRat * acct[:bal]
@@ -137,7 +141,7 @@ end
 function strat(acct)
     p = acct[:params]
     # bt.checkClose((bt.checkSides, bt.checkThreaten), acct, p)
-    bt.checkClose((bt.checkSides,), acct, p)
+    bt.checkClose((bt.checkSides, bt.checkExit), acct, p)
     curp = acct[:curp]
 
     # TODO: maybe be more precise about last trade under margin: could check margin during candidate search

@@ -44,6 +44,22 @@ function lyze()
     println("Put expdur quantile:\n$(!isempty(expdurput) ? quantile(expdurput, .1:.1:.9) : "no puts")")
 end
 
+import DrawUtil
+function realBals(acct)
+    reals = get(acct, :realBals) do
+        reals = Vector{Tuple{DateTime,Currency}}()
+        bal = 0.0
+        for trade in acct[:trades]
+            if haskey(trade, :close)
+                bal += getTradePnl(trade)
+                push!(reals, (trade[:close].ts, bal))
+            end
+        end
+    end
+    DrawUtil.draw([(tofrac(x[1] - DateTime(acct[:dateStart])), x[2]) for x in reals])
+end
+tofrac(x::Millisecond) = Dates.value(x) * 1e-3 / 3600 / 24
+
 #region CurStrat
 checkRateRatio(acct, t, p) = t.rate >= (t.xpirRatio * p.RateMin) ? "rate: $(rond(t.rate))" : nothing
 checkProfit(acct, t, p) = t.curVal >= p.MinTakeProfit ? "take min profit" : nothing
@@ -66,6 +82,22 @@ function checkThreaten(acct, t, p)
     # s = getStrike(t.lmsc[1])
     # threat = (s - acct[:curp]) / s
     # return threat <= p.ThreatenPercent ? "threat: $(threat)" : nothing
+end
+
+function checkExit(acct, t, p)
+    # TODO: use prob to determine if > % chance of being a worse loss than current loss
+    # theta = getGreeks(t.lmsc).theta
+    curp = acct[:curp]
+    date = acct[:date]
+    rat = .1 * bdays(t.dateOpen, t.xpir)
+    thresh = max(2, rat)
+    if bdays(date, t.xpir) <= thresh
+        netXpir = OptionUtil.netExpired(t.lmsc, curp)
+        log("checkExit #$(t.id): $((;rat, thresh, t.netc, netXpir))")
+        if t.netc > netXpir
+            return "checkExit $((;rat, thresh, t.netc, netXpir))"
+        end
+    end
 end
 
 function checkSides(acct, t, p)
@@ -106,11 +138,13 @@ function run(f, fday, params, months; maxSeconds=10)
     end
     daily = HD.dataDaily()
 
+    dateStart = nextTradingDay(first(months))
     acct = Dict(
+        :dateStart => dateStart,
         :params => params,
         :start => time(),
         :bal => C(params.balInit),
-        :real => C(0.0),
+        :real => CZ,
         :trades => Vector{TradeType}(),
         :poss => Vector{TradeType}(),
         :todayOpens => Vector{TradeType}(),
@@ -122,12 +156,12 @@ function run(f, fday, params, months; maxSeconds=10)
         :marginMax => marginZero(),
         :openMax => 0,
         :vix => 0,
+        :realBal => CZ,
+        :realBals => Vector{Tuple{DateTime,Currency}}(),
         # :missed => 0,
     )
     global ac = acct
 
-    dateStart = nextTradingDay(first(months))
-    # @show dateStart months
     for m in months
         # @show m
         procMonth(f, fday, year(m), month(m), params, maxSeconds, acct, daily, vix) || break
@@ -377,6 +411,9 @@ function closeTrade(acct, trade, lms::Coll{LegMetaClose}, netc, label)
     acct[:marginDay] = recalcMargin(acct[:todayOpens]) # - recalcMargin(acct[:todayCloses])
     acct[:margin] = recalcMargin(acct[:poss])
     push!(acct[:rates], getTradeRate(trade))
+    realBal = acct[:realBal] + pnl
+    acct[:realBal] = realBal
+    push!(acct[:realBals], (acct[:ts], realBal))
     log("Close #$(trade[:id]) $(Shorthand.tosh(lms, acct[:xpirs])): qty:$(getQuantity(lms[1])) neto:$(rond(neto)) netc:$(netc) pnl=$(rond(pnl)) risk=$(rond(getTradeRisk(trade))) rate=$(getTradeRate(trade)) '$(label)' ; $(openDur(trade)) days open, $(bdaysLeft(acct[:date], trade)) days left")
     return
 end
@@ -456,8 +493,8 @@ end
 
 function tradeInfo(trade, date)
     op = trade[:open]
-    # xpir = getExpir(trade)
-    # daysLeft = bdays(date, xpir)
+    xpir = getExpir(trade)
+    daysLeft = bdays(date, xpir)
     dateOpen = toDateMarket(op.ts)
     # daysTotal = bdays(dateOpen, xpir)
     # xpirRatio = (1 + daysLeft) / daysTotal
@@ -472,7 +509,7 @@ function tradeInfo(trade, date)
     @assert mn < 0 "mn:$(mn) qty:$(qty)"
     rate = tmult * curVal / (-mn)
     # return (; xpir, daysLeft, daysTotal, xpirRatio, neto, lmsc, qt, netc, curVal, timt, mn, rate, qty, trade)
-    return (; id=trade[:id], style=getStyle(lmsc[1]), netc, curVal, tmult, mn, rate, trade, lmsc)
+    return (; id=trade[:id], style=getStyle(lmsc[1]), dateOpen, xpir, daysLeft, netc, curVal, tmult, mn, rate, trade, lmsc)
 end
 #endregion
 
