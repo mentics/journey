@@ -86,7 +86,7 @@ function tradeSize2(kelly::Float64, kellyRatio::Float64 = 0.5)
 end
 
 import ProcOrder
-function toc(rateMin=0.5) # findTradesToClose
+function toc(rateMin=0.0) # findTradesToClose
     @assert isnothing(snap()) "toc() doesn't work when snapped"
     trades = sort!(StoreTrade.tradesOpen(); by=getTargetDate)
     # ords = filter!(x->!SH.isStatus(x, Deleted), tos(Order, ta.tradierOrders()))

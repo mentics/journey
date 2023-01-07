@@ -75,23 +75,27 @@ end
 
 function calcScore3(ctx, prob, side, tmult, innerStrike::Float64, lo, sho)
     neto, risk = openInfo(lo, sho)
-    neto > 0.04 || return nothing
+    neto > 0.04 || ( deb("neto $(neto)") ; return nothing )
+
+    theta = getGreeks(lo).theta - getGreeks(sho).theta
 
     # Subtract out the worth of the money over time to adjust for the kelly calc
     # which is using 10% here.
     # And 0.01 buy back
-    ret = round(neto - .01 - risk * (.1 / tmult); digits=2)
-    rate = calcRate(tmult, ret, risk)
-    rate > 0.1 || return nothing
+    ret = round(neto - .01 - risk * (.05 / tmult), RoundDown; digits=2)
+    rate = calcRate(tmult, neto, risk)
+    rateAdj = calcRate(tmult, ret, risk)
+    rateAdj > 0.0 || ( deb("rate $(rate) $(rateAdj) $(ret)") ; return nothing )
 
     mov = innerStrike / ctx.curp
     winRate = side == Side.long ? ProbUtil.cdfFromRight(prob, innerStrike) : ProbUtil.cdfFromLeft(prob, innerStrike)
     kel = Kelly.simple(winRate, F(ret), F(risk))
-    kel > 0 || return nothing
+    kel > 0 || ( deb("kel $(kel)") ; return nothing )
 
     # return (;score=kel * rate, neto, risk, ret, kel, rate, winRate, mov, prob)
-    return (;score=kel * rate, neto, risk, ret, kel, rate, winRate, mov)
+    return (;score=kel * rate * theta, neto, risk, ret, kel, rate, rateAdj, winRate, mov, theta)
 end
+deb(str) = return # println(str)
 resScore(r)::Float64 = isnothing(r) ? -1 : r[1]
 resNeto(r)::Float64 = r[2]
 resRisk(r)::Float64 = r[3]
@@ -253,7 +257,7 @@ function findGC(ctx, getOqss, xpirs, date, side, vix, probMin) # , offMax, profM
         else
             strikeExt, _ = ProbUtil.probFromLeft(prob, probMin)
         end
-
+        @show xpir strikeExt
         calcScore = (lo, sho, innerStrike) -> calcScore3(ctx, prob, side, tmult, innerStrike, lo, sho)
         oqss = getOqss(xpir)
 
