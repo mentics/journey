@@ -1,4 +1,6 @@
-
+What if instead of exiting, we roll? Considering how far it would have fallen to get there, it seems very likely it would be safe to do so.
+Except 2000 drop, and the current drop is about a year. But if we try to lower the strike price gradually... it at least means we could probably preserve capital
+and maybe make a few percent.
 
 No numeric params, all based on probs, except maybe a 99% sort of thing
 Use calced probkde, will need to expand Bins to 20% or more

@@ -7,6 +7,7 @@ using Markets, Expirations, Chains
 import CmdPos:xlegs
 import BacktestSimple as bt
 import BacktestSimple:rond
+import OptionUtil
 
 #region Public
 function getParamsLive()
@@ -21,27 +22,15 @@ function getParamsLive()
     )
 end
 
-# function getParams()
-#     return (;
-#         balInit = 1000,
-#         ExtremaBdays = 20,
-#         marginMaxRat = 0.98,
-#         marginPerDayRat = 0.2,
-#         maxPerTrade = 100,
-#         Put = (;xbdays=10:124, moveMin=.1, moveSdevs=2., offMaxRat=40/400, profMinRat=.8/400, takeRat=0.24/400),
-#         Call = (;xbdays=10:124, moveMin=.1, moveSdevs=2., offMaxRat=40/400, profMinRat=.8/400, takeRat=0.24/400),
-#     )
-# end
-
 function getParams()
     return (;
         balInit = 1000,
         ExtremaBdays = 20,
         marginMaxRat = 0.98,
-        marginPerDayRat = 0.1,
-        maxPerTrade = 10,
-        Put = (;xbdays=16:84, probMin=.99, takeRateMin=.4),
-        Call = (;xbdays=16:84, probMin=.99, takeRateMin=.4),
+        marginPerDayRat = .98,
+        maxPerTrade = 10000,
+        Put = (;xbdays=16:84, probMin=.99),
+        Call = (;xbdays=16:84, probMin=.99),
     )
 end
 
@@ -75,35 +64,40 @@ end
 
 function calcScore3(ctx, prob, side, tmult, innerStrike::Float64, lo, sho)
     neto, risk = openInfo(lo, sho)
-    neto > 0.04 || ( deb("neto $(neto)") ; return nothing )
+    neto >= 0.1 || ( deb("neto $(neto) < .1") ; return nothing )
 
-    theta = getGreeks(lo).theta - getGreeks(sho).theta
-
+    rate = calcRate(tmult, neto, risk)
+    rate >= 0.1 || ( deb("rate $(rate) < .1") ; return nothing )
     # Subtract out the worth of the money over time to adjust for the kelly calc
     # which is using 10% here.
     # And 0.01 buy back
-    ret = round(neto - .01 - risk * (.05 / tmult), RoundDown; digits=2)
-    rate = calcRate(tmult, neto, risk)
+    ExpDurRatioAvg = 0.5
+    MoneyValueAPR = 0.05
+    ret = round(neto - .01 - risk * (MoneyValueAPR * ExpDurRatioAvg / tmult), RoundDown; digits=2)
     rateAdj = calcRate(tmult, ret, risk)
-    rateAdj > 0.0 || ( deb("rate $(rate) $(rateAdj) $(ret)") ; return nothing )
+    rateAdj > 0.05 || ( deb("rateAdj $(rateAdj) <= 1 $(rate) $(ret)") ; return nothing )
 
     mov = innerStrike / ctx.curp
     winRate = side == Side.long ? ProbUtil.cdfFromRight(prob, innerStrike) : ProbUtil.cdfFromLeft(prob, innerStrike)
     kel = Kelly.simple(winRate, F(ret), F(risk))
     kel > 0 || ( deb("kel $(kel)") ; return nothing )
 
+    theta = getGreeks(lo).theta - getGreeks(sho).theta
+
     # return (;score=kel * rate, neto, risk, ret, kel, rate, winRate, mov, prob)
-    return (;score=kel * rate * theta, neto, risk, ret, kel, rate, rateAdj, winRate, mov, theta)
+    return (;score=kel * rate * theta, neto, risk, kel, ret, rate, rateAdj, winRate, mov, theta)
 end
-deb(str) = return # println(str)
+deb(str) = startswith(str, "rateAdj") ? println(str) : return
 resScore(r)::Float64 = isnothing(r) ? -1 : r[1]
 resNeto(r)::Float64 = r[2]
 resRisk(r)::Float64 = r[3]
+resKel(r)::Float64 = r[4]
 
-makeCtx(acct) = (;
-    ts = acct[:ts],
-    curp = F(acct[:curp]),
-    vix = F(acct[:vix])
+makeCtx(side, acct) = (;
+    ts = acct.ts,
+    curp = F(acct.curp),
+    vix = F(acct.vix),
+    fromPrice = side == Side.long ? acct.extrema.lo : acct.extrema.hi,
 )
 
 function live(side=Side.long)
@@ -134,35 +128,70 @@ function live(side=Side.long)
     # return isnothing(lms) ? nothing : collect(lms)
 end
 
-marginPerDay(acct) = acct[:params].marginPerDayRat * acct[:bal]
+marginPerDay(acct) = acct.params.marginPerDayRat * acct.bal
+
+function checkExit(acct, trade, params)
+    rateCur = bt.getTradeCurRate(trade, acct.date)
+    if rateCur > 1.5 * trade.open.rate
+        return "cur trade rate $(rateCur) > trade.open.rate $(trade.open.rate)"
+    end
+
+    # trade.rate >= p.takeRateMin && return "rate high enough $(t.rate)"
+
+    # TODO: use prob to determine if > % chance of being a worse loss than current loss
+    # theta = getGreeks(t.lmsc).theta
+    curp = acct.curp
+    date = acct.date
+    cutoffDays = .5 * bdays(trade.open.date, trade.targetDate)
+    thresh = max(2, cutoffDays)
+    if bdays(date, trade.targetDate) <= thresh
+        netcXpir = OptionUtil.netExpired(trade.lmsTrack[], curp)
+        netcCur = bt.getTradeCurClose(trade)
+        bt.log("checkExit #$(trade.id): $((;xpir=bt.getExpir(trade), cutoffDays, thresh, netcCur, netcXpir))")
+        if netcCur > netcXpir
+            return "checkExit $((;cutoffDays, thresh, netcCur, netcXpir))"
+        end
+    end
+
+    # vix = acct.vix
+    # t.rate >= (.8 - vix)/.6 && return "rate >= 1.0"
+    # qty = getQuantity(t.lmsc[1])
+    # if t.style == Style.call
+    #     t.curVal >= qty * t.trade[:curp] * p.Call.takeRat && return "Call take min profit"
+    # else
+    #     t.curVal >= qty * t.trade[:curp] * p.Put.takeRat && return "Put take min profit"
+    # end
+    return nothing
+end
 
 function stratDay(acct)
-    # acct[:openLong] = nothing
-    # acct[:openShort] = nothing
-    # acct[:margin] < getParams().marginMax || ( acct[:missed] += 1 )
+    # acct.openLong = nothing
+    # acct.openShort = nothing
+    # acct.margin < getParams().marginMax || ( acct.missed += 1 )
 end
 
 function strat(acct)
-    p = acct[:params]
+    p = acct.params
     # bt.checkClose((bt.checkSides, bt.checkThreaten), acct, p)
-    bt.checkClose((bt.checkSides, bt.checkExit), acct, p)
-    curp = acct[:curp]
+    # bt.checkClose((bt.checkSides, bt.checkExit), acct, p)
+    bt.checkClose((checkExit,), acct, p)
+    curp = acct.curp
 
     # TODO: maybe be more precise about last trade under margin: could check margin during candidate search
 
-    marginAvail = acct[:bal] * p.marginMaxRat
+    marginAvail = acct.bal * p.marginMaxRat
 
     if canOpenPut(acct, marginAvail)
         # offMax = curp*p.Put.offMaxRat
         res = back(acct, Side.long; p.Put...) # offMax, profMin=curp * p.Put.profMinRat,
         if !isnothing(res)
-            lms, r = res
+            multiple, lms, r = res
             # @assert neto > 0.0 "neto:$(neto), risk:$(risk)"
             # @assert risk / getQuantity(lms[1]) <= offMax
-            # lo = acct[:extrema].lo
+            # lo = acct.extrema.lo
             # mov = getStrike(lms[2]) / lo
             mov = getStrike(lms[2]) / curp
-            bt.openTrade(acct, lms, "long spread: mov=$(rond(mov)) r=$(r)")
+            bt.openTrade(acct, lms, multiple, "long spread: mov=$(rond(mov)) r=$(r)")
         end
     end
 
@@ -170,26 +199,26 @@ function strat(acct)
         # offMax = curp*p.Call.offMaxRat
         res = back(acct, Side.short; p.Call...) # offMax, profMin=curp * p.Call.profMinRat,
         if !isnothing(res)
-            lms, r = res
+            multiple, lms, r = res
             # @assert neto > 0.0 "neto:$(neto), risk:$(risk)"
             # @assert risk <= offMax
-            # hi = acct[:extrema].hi
+            # hi = acct.extrema.hi
             # mov = getStrike(lms[1]) / hi
             mov = getStrike(lms[1]) / curp
-            bt.openTrade(acct, lms, "short spread: mov=$(rond(mov))")
+            bt.openTrade(acct, lms, multiple, "short spread: mov=$(rond(mov))")
         end
     end
 end
 
 function canOpenCall(acct, mx)
-    risk = acct[:marginDay].call.risk
+    risk = acct.marginDay.call.risk
     avail = marginPerDay(acct)
     if risk >= avail
         # bt.log("Hit max margin day: call $(risk) / $(avail)")
         return false
     end
 
-    risk = acct[:margin].call.risk
+    risk = acct.margin.call.risk
     if risk >= mx
         # bt.log("Hit max margin: call $(risk) / $(avail)")
         return false
@@ -198,14 +227,14 @@ function canOpenCall(acct, mx)
 end
 
 function canOpenPut(acct, mx)
-    risk = acct[:marginDay].put.risk
+    risk = acct.marginDay.put.risk
     avail = marginPerDay(acct)
     if risk >= avail
         # bt.log("Hit max margin day: put $(risk) / $(avail)")
         return false
     end
 
-    risk = acct[:margin].put.risk
+    risk = acct.margin.put.risk
     if risk >= mx
         # bt.log("Hit max margin: put $(risk) / $(avail)")
         return false
@@ -214,50 +243,51 @@ function canOpenPut(acct, mx)
 end
 
 function back(acct, side; xbdays, probMin, kws...) # , offMax, profMin, moveMin, moveSdevs, kws...)
-    date = acct[:date]
-    xoqss = acct[:xoqss]
+    date = acct.date
+    xoqss = acct.xoqss
     getOqss = xpir -> xoqss[xpir]
-    xpirs = DateUtil.matchAfter(date, acct[:xpirs], xbdays)
-    res = findGC(makeCtx(acct), getOqss, xpirs, date, side, acct[:vix], probMin) # , offMax, profMin, acct[:extrema], moveMin, moveSdevs)
+    xpirs = DateUtil.matchAfter(date, acct.xpirs, xbdays)
+    res = findGC(makeCtx(side, acct), getOqss, xpirs, date, side, acct.vix, probMin) # , offMax, profMin, acct.extrema, moveMin, moveSdevs)
     if !isnothing(res)
         lms, r = res
-        qty = qtyForMargin(acct, side, resRisk(r))
+        qty = qtyForMargin(acct, side, resRisk(r), resKel(r))
         if qty > 0
-            return (withQuantity.(lms, F(qty)), r)
+            return (qty, lms, r)
         end
         # return res
     end
     return nothing
 end
 
-function qtyForMargin(acct, side, risk)
-    margin = side == Side.long ? acct[:margin].put.risk : acct[:margin].call.risk
-    marginDay = side == Side.long ? acct[:marginDay].put.risk : acct[:marginDay].call.risk
-    params = acct[:params]
-    bal = acct[:bal]
+function qtyForMargin(acct, side, risk, kel)
+    margin = side == Side.long ? acct.margin.put.risk : acct.margin.call.risk
+    marginDay = side == Side.long ? acct.marginDay.put.risk : acct.marginDay.call.risk
+    params = acct.params
+    bal = acct.bal
     avail = bal * params.marginMaxRat - margin
     availDay = bal * params.marginPerDayRat - marginDay
-    return min(params.maxPerTrade, round(Int, min(avail, availDay) / risk, RoundDown))
+    return min(params.maxPerTrade, round(Int, min(kel * avail, availDay) / risk, RoundDown))
 end
 #endregion
 
 #region Local
 import ProbKde, ProbUtil
-function findGC(ctx, getOqss, xpirs, date, side, vix, probMin) # , offMax, profMin, hilo, moveMin, moveSdevs)
+function findGC(ctx, getOqss, xpirs, date, side, vixrat, probMin) # , offMax, profMin, hilo, moveMin, moveSdevs)
     findEntry = side == Side.long ? findSpreadEntryLong : findSpreadEntryShort
     best = nothing
     bestScore = 0.0
+    vix = 100 * F(vixrat)
 
     for xpir in xpirs
         tmult = timult(date, xpir)
 
-        prob = ProbKde.probToClose(F(ctx.curp), 100*F(vix), ctx.ts, xpir)
+        prob = ProbKde.probToClose(F(ctx.fromPrice), vix, ctx.ts, xpir)
         if side == Side.long
             strikeExt, _ = ProbUtil.probFromRight(prob, probMin)
         else
             strikeExt, _ = ProbUtil.probFromLeft(prob, probMin)
         end
-        @show xpir strikeExt
+        # @show side xpir strikeExt ctx.curp ctx.fromPrice
         calcScore = (lo, sho, innerStrike) -> calcScore3(ctx, prob, side, tmult, innerStrike, lo, sho)
         oqss = getOqss(xpir)
 

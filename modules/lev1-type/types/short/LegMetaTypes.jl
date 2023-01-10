@@ -57,19 +57,11 @@ SH.getBid(lm::LegMeta) = getBid(lm.quot)
 SH.getAsk(lm::LegMeta) = getAsk(lm.quot)
 SH.getIv(lm::LegMeta) = getIv(lm.meta)
 
-# SH.getNetOpen(lm::LegMeta) = getQuantity(lm.leg) * bap(lm) # getBid(lm.quot)
+# function SH.withQuantity(lm::LegMeta{T}, qty::Float64) where T
+#     rat = qty / getQuantity(lm)
+#     LegMeta{T}(Leg(lm.leg; quantity=qty), rat * lm.quot, rat * lm.meta)
+# end
 
-# SH.addQuantity(lm::LegMeta, addend::Real) =
-#     LegMeta(Leg(lm.leg; quantity=getQuantity(lm.leg) + addend), lm.quot, lm.meta)
-function SH.withQuantity(lm::LegMeta{T}, qty::Float64) where T
-    rat = qty / getQuantity(lm)
-    LegMeta{T}(Leg(lm.leg; quantity=qty), rat * lm.quot, rat * lm.meta)
-end
-
-# TODO: still not sure if abs is right here
-# SH.to(OptionQuote, lm::LegMeta) = OptionQuote(getOption(lm), abs(getQuote(lm)), getMeta(lm), nothing)
-
-# SH.getGreeks(lm::LegMeta)::Greeks = multGreeks(getQuantityDir(getLeg(lm)), getGreeks(getOptionMeta(lm)))
-SH.getGreeks(lm::LegMeta)::Greeks = lm.meta.greeks #multGreeks(getQuantityDir(getLeg(lm)), getGreeks(getOptionMeta(lm)))
+SH.getGreeks(lm::LegMeta)::Greeks = lm.meta.greeks
 
 end

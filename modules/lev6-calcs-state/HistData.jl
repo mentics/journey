@@ -52,7 +52,7 @@ function extrema(daily, from::Date, to::Date, hi1::Real, lo1::Real, sym::AStr="S
         end
     end
     # return (;hi, lo, hiDate, loDate)
-    return (;hi, lo)
+    return (;hi = C(hi), lo = C(lo))
 end
 
 # daily is in descending date order.
