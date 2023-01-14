@@ -293,7 +293,7 @@ function openTradeRoll(acct, trade)
         bt.openTrade(acct, lms, trade.multiple, "rolling to $(xpir) changedStrikes:($(changedStrikes1),$(changedStrikes2))")
         return
     end
-    log("ERROR: Failed to roll trade: $(trade.id)")
+    bt.log("ERROR: Failed to roll trade: $(trade.id)")
     return
 end
 
