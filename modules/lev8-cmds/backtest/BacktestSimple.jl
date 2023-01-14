@@ -121,6 +121,7 @@ function getTradeRate(trade)
     return calcRate(toDateMarket(trade.open.ts), toDateMarket(trade.close[].ts), pnl, trade.risk)
 end
 getTradeStyle(trade) = getStyle(trade.legs[1])
+getTradeSide(trade) = getSide(trade.legs[1])
 getTradeRat(trade)::Float64 = getTradeStyle(trade) == Style.call ? F(getStrike(trade.legs[1])) / trade.curp : F(getStrike(trade.legs[2])) / trade.curp
 getTradeRisk1(trade) = trade.risk
 getTradeRiskAll(trade) = trade.multiple * trade.risk
@@ -235,9 +236,10 @@ function procMonth(f, fday, y, m, params, maxSeconds, acct, daily, vix)
         acct.vix = vix[date] / 100
 
         if date != datePrev
-            tind = 1
-            while tind <= length(acct.poss)
-                trade = acct.poss[tind]
+            # tind = 1
+            # while tind <= length(acct.poss)
+            #     trade = acct.poss[tind]
+            loopPoss(acct) do trade
                 if getExpir(trade) < date
                     lmsc = trade.lmsTrack[]
                     netc = OptionUtil.netExpired(lmsc, curp)
@@ -246,18 +248,11 @@ function procMonth(f, fday, y, m, params, maxSeconds, acct, daily, vix)
                     end
                     log("ERROR: Found expired trade: ", trade)
                     closeTrade(acct, trade, lmsc, netc, "(missed) expired $(getQuote(trade.lmsTrack[]))")
+                    return true
                 else
-                    tind += 1
+                    return false
                 end
             end
-
-            # for trade in acct.poss
-            #     if getExpir(trade) < date
-            #         println("Found expired trade: ", trade)
-            #         @show datePrev acct.ts ts
-            #         error("stop")
-            #     end
-            # end
 
             curp = SS.getUnder(data, ts).under
 
@@ -296,12 +291,12 @@ function procMonth(f, fday, y, m, params, maxSeconds, acct, daily, vix)
         # Run strat for this time
 
         if ts == getMarketClose(date)
-            tind = 1
-            while tind <= length(acct.poss)
-                trade = acct.poss[tind]
+            # tind = 1
+            # while tind <= length(acct.poss)
+            #     trade = acct.poss[tind]
+            loopPoss(acct) do trade
                 xpir = getExpir(trade)
                 if ts == getMarketClose(xpir)
-                    # lmsc = tosLLMC(trade.lmsTrack, lup)
                     lmsc = trade.lmsTrack[]
                     netc = OptionUtil.netExpired(lmsc, curp)
                     if abs(curp - getStrike(lmsc[1])) < 5.0 || abs(curp - getStrike(lmsc[end])) < 5.0
@@ -309,8 +304,9 @@ function procMonth(f, fday, y, m, params, maxSeconds, acct, daily, vix)
                         netc -= .01 * sum(getQuantity, lmsc)
                     end
                     closeTrade(acct, trade, lmsc, netc, "expired $(getQuote(trade.lmsTrack))")
+                    return true
                 else
-                    tind += 1
+                    return false
                 end
             end
         else
@@ -363,18 +359,34 @@ function check(fs, args...)
     return isempty(ss) ? nothing : join(ss, " ; ")
 end
 
+function loopPoss(f, acct)
+    deleteat!(acct.poss, map(f, acct.poss))
+    acct.marginDay = recalcMargin(acct.todayOpens) # - recalcMargin(acct.todayCloses)
+    acct.margin = recalcMargin(acct.poss)
+end
+
 function checkClose(fs, acct, params, args...)
     date = acct.date
-    for trade in acct.poss
+    origCount = length(acct.poss)
+    checkedCount = 0
+    numDelete = 0
+    loopPoss(acct) do trade
+        checkedCount += 1
         dateOpen = toDateMarket(trade.open.ts)
-        dateOpen < date || continue         # don't close today's entries
-        # t = tradeInfo(trade, date)
+        # don't close today's entries
+        dateOpen < date || return false
         label = check(fs, acct, trade, getTradeStyle(trade) == Style.put ? params.Put : params.Call, args...)
         if !isnothing(label)
             lms = trade.lmsTrack[]
             closeTrade(acct, trade, lms, getTradeCurClose(trade), label)
+            numDelete += 1
+            return true
         end
+        return false
     end
+    @assert checkedCount == origCount
+    @assert length(acct.poss) == (origCount - numDelete)
+    # println("checkClose $(origCount) - $(numDelete) = $(length(acct.poss))")
 end
 #endregion
 
@@ -433,11 +445,8 @@ function closeTrade(acct, trade, lms::Coll{LegMetaClose}, netc, label)
     trade.close[] = (;label, ts=acct.ts, netc, quotes=map(getQuote, lms), metas=map(getOptionMeta, lms))
     trade.pnlAll[] = pnlAll
     push!(acct.todayCloses, trade)
-    cu.del!(x -> x[:id] == trade.id, acct.poss)
     acct.bal += netc * multiple
     acct.real += pnlAll
-    acct.marginDay = recalcMargin(acct.todayOpens) # - recalcMargin(acct.todayCloses)
-    acct.margin = recalcMargin(acct.poss)
     push!(acct.rates, getTradeRate(trade))
     realBal = acct.realBal + pnlAll
     acct.realBal = realBal

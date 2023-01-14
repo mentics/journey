@@ -17,6 +17,7 @@ function getParamsLive()
         marginMaxRat = 0.98,
         marginPerDayRat = 0.1,
         maxPerTrade = 10,
+        rollDay = 1,
         Put = (;xbdays=16:84, probMin=.99, takeRateMin=.4),
         Call = (;xbdays=16:84, probMin=.99, takeRateMin=.4),
     )
@@ -29,8 +30,8 @@ function getParams()
         marginMaxRat = 0.98,
         marginPerDayRat = .98,
         maxPerTrade = 10000,
-        Put = (;xbdays=16:84, probMin=.99),
-        Call = (;xbdays=16:84, probMin=.99),
+        Put = (;xbdays=16:84, probMin=.99, rollDay = 1),
+        Call = (;xbdays=16:84, probMin=.99, rollDay = 1),
     )
 end
 
@@ -140,18 +141,19 @@ function checkExit(acct, trade, params)
 
     # TODO: use prob to determine if > % chance of being a worse loss than current loss
     # theta = getGreeks(t.lmsc).theta
-    curp = acct.curp
     date = acct.date
-    cutoffDays = .5 * bdays(trade.open.date, trade.targetDate)
-    thresh = max(2, cutoffDays)
-    if bdays(date, trade.targetDate) <= thresh
-        netcXpir = OptionUtil.netExpired(trade.lmsTrack[], curp)
-        netcCur = bt.getTradeCurClose(trade)
-        bt.log("checkExit #$(trade.id): $((;xpir=bt.getExpir(trade), cutoffDays, thresh, netcCur, netcXpir))")
-        if netcCur > netcXpir
-            return "checkExit $((;cutoffDays, thresh, netcCur, netcXpir))"
-        end
-    end
+    # curp = acct.curp
+    # cutoffDays = .5 * bdays(trade.open.date, trade.targetDate)
+    # thresh = max(2, cutoffDays)
+    # daysLeft = bdays(date, trade.targetDate)
+    # if daysLeft <= thresh
+    #     netcXpir = OptionUtil.netExpired(trade.lmsTrack[], curp)
+    #     netcCur = bt.getTradeCurClose(trade)
+    #     bt.log("checkExit #$(trade.id): $((;xpir=bt.getExpir(trade), cutoffDays, thresh, netcCur, netcXpir))")
+    #     if netcCur > netcXpir
+    #         return "checkExit $((;cutoffDays, thresh, netcCur, netcXpir))"
+    #     end
+    # end
 
     # vix = acct.vix
     # t.rate >= (.8 - vix)/.6 && return "rate >= 1.0"
@@ -161,6 +163,14 @@ function checkExit(acct, trade, params)
     # else
     #     t.curVal >= qty * t.trade[:curp] * p.Put.takeRat && return "Put take min profit"
     # end
+
+    bdaysLeft = bdays(acct.date, trade.targetDate)
+    curVal = bt.getTradeCurVal(trade)
+    if bdaysLeft <= params.rollDay && curVal < 0.0
+        openTradeRoll(acct, trade)
+        return "roll for $(curVal) < 0.0"
+    end
+
     return nothing
 end
 
@@ -175,6 +185,7 @@ function strat(acct)
     # bt.checkClose((bt.checkSides, bt.checkThreaten), acct, p)
     # bt.checkClose((bt.checkSides, bt.checkExit), acct, p)
     bt.checkClose((checkExit,), acct, p)
+
     curp = acct.curp
 
     # TODO: maybe be more precise about last trade under margin: could check margin during candidate search
@@ -240,6 +251,57 @@ function canOpenPut(acct, mx)
         return false
     end
     return true
+end
+
+function openTradeRoll(acct, trade)
+    date = acct.date
+    lup = acct.lup
+    side = bt.getTradeSide(trade)
+    style = bt.getTradeStyle(trade)
+    leg1 = trade.legs[1]
+    leg2 = trade.legs[2]
+    side1 = getSide(leg1)
+    side2 = getSide(leg2)
+    s1 = getStrike(trade.legs[1])
+    s2 = getStrike(trade.legs[2])
+    xpir = acct.xpirs[6]
+
+    oqss = acct.xoqss[xpir]
+    ss = getfield(oqss, Symbol(style))
+    longs = ss.long
+    shorts = ss.short
+    # cands1 = side1 == Side.long ? longs : shorts
+    # cands2 = side2 == Side.long ? longs : shorts
+    if side == Side.long
+        oq1 = findLte(longs, s1)
+        oq2 = findLte(shorts, s2)
+    else
+        oq1 = findGte(shorts, s1)
+        oq2 = findGte(longs, s2)
+    end
+    changedStrikes1 = s1 == getStrike(oq1)
+    changedStrikes2 = s2 == getStrike(oq2)
+
+    # oq1 = lup(xpir, style, s1)
+    # oq2 = lup(xpir, style, s2)
+    lms = (LegMetaOpen(oq1, getSide(trade.legs[1]), 1.0), LegMetaOpen(oq2, getSide(trade.legs[2]), 1.0))
+    bt.openTrade(acct, lms, trade.multiple, "rolling to $(xpir) changedStrikes:($(changedStrikes1),$(changedStrikes2))")
+end
+
+function findLte(oqs, lte)
+    ind = findfirst(oq -> getStrike(oq) > lte, oqs)
+    if ind <= 1
+        error("Could not find a <= strike for trade ", trade)
+    end
+    return oqs[ind - 1]
+end
+
+function findGte(oqs, gte)
+    ind = findlast(oq -> getStrike(oq) < gte, oqs)
+    if ind >= length(oqs)
+        error("Could not find a >= strike for trade ", trade)
+    end
+    return oqs[ind + 1]
 end
 
 function back(acct, side; xbdays, probMin, kws...) # , offMax, profMin, moveMin, moveSdevs, kws...)
