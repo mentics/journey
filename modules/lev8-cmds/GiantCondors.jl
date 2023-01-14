@@ -300,7 +300,7 @@ end
 function findLte(oqs, lte)
     ind = findfirst(oq -> getStrike(oq) > lte, oqs)
     if isnothing(ind) || ind <= 1
-        log("Could not find a <= strike for trade $(getExpiration(oqs[1])) strike:$(lte)")
+        bt.log("Could not find a <= strike for trade $(getExpiration(oqs[1])) strike:$(lte)")
         return nothing
     end
     return oqs[ind - 1]
@@ -309,7 +309,7 @@ end
 function findGte(oqs, gte)
     ind = findlast(oq -> getStrike(oq) < gte, oqs)
     if ind >= length(oqs)
-        log("Could not find a >= strike for trade $(getExpiration(oqs[1])) strike:$(lte)")
+        bt.log("Could not find a >= strike for trade $(getExpiration(oqs[1])) strike:$(lte)")
         return nothing
     end
     return oqs[ind + 1]
