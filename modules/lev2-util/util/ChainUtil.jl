@@ -43,8 +43,14 @@ function oqssEntry(oqs, curp::Currency, legsCheck=LEGS_EMPTY)::Oqss
     return oqss
 end
 
-export ChainLookup
+export ChainLookup, ChainSearch3
 const ChainLookup = Styles{Dict{Currency,OptionQuote}}
+struct ChainSearch3
+    oqs::Vector{OptionQuote}
+    strikes::Vector{Currency}
+end
+const ChainSearchS2 = Styles{ChainSearch3}
+# ChainSearch() = ChainSearch(Styles(Vector{OptionQuote}(),Vector{OptionQuote}()), Styles(Vector{Currency}(),Vector{Currency}()))
 function tolup(oqs)::ChainLookup
     d = Styles(Dict{Currency,OptionQuote}(), Dict{Currency,OptionQuote}())
     for oq in oqs
@@ -57,8 +63,65 @@ function tolup(oqs)::ChainLookup
     return d
 end
 
-lup(data::ChainLookup, style::Style.T, strike::Currency)::Union{OptionQuote,Nothing} = get(getfield(data, Symbol(style)), strike, missing)
-lup(data::ChainLookup, opt::Option)::Union{OptionQuote,Nothing} = get(getfield(data, Symbol(getStyle(opt))), getStrike(opt), missing)
+function toSearch(oqs)::ChainSearchS2
+    calls = Vector{OptionQuote}()
+    puts = Vector{OptionQuote}()
+    for oq in oqs
+        if SmallTypes.isCall(oq)
+            push!(calls, oq)
+        else
+            push!(puts, oq)
+        end
+    end
+    sort!(calls; by=getStrike)
+    sort!(puts; by=getStrike)
+    return ChainSearchS2(ChainSearch3(calls, getStrike.(calls)), ChainSearch3(puts, getStrike.(puts)))
+end
+
+lup(data::ChainLookup, style::Style.T, strike::Currency)::Union{OptionQuote,Nothing} = get(getfield(data, Symbol(style)), strike, nothing)
+lup(data::ChainLookup, opt::Option)::Union{OptionQuote,Nothing} = get(getfield(data, Symbol(getStyle(opt))), getStrike(opt), nothing)
+
+abstract type Dir end
+abstract type LTE <: Dir end
+abstract type GTE <: Dir end
+
+function findDir(dir, data::ChainSearch3, style::Style.T, val::Currency; maxDist=C(7.0))::Union{Nothing,OptionQuote}
+    strikes = data.strikes
+    if dir == LTE
+        ind = searchsortedlast(data.strikes, val)
+    else
+        ind = searchsortedfirst(data.strikes, val)
+    end
+    if ind < 1 || (ind >= length(data.strikes) && data.strikes[end] < val - maxDist)
+        bt.log("Could not find $(dir) strike for trade $(getExpiration(oqs[1])) style:$(style) strike:$(val) minStrike:$(data.strikes[1]) maxStrike:$(data.strikes[end])")
+        return nothing
+    end
+    return data.oqs[ind]
+end
+
+# function findDir(dir, data::ChainSearch2, style::Style.T, val::Currency; maxDist=C(7.0))::Union{Nothing,OptionQuote}
+#     strikes = getfield(data.strikes, Symbol(style))
+#     if dir == LTE
+#         ind = searchsortedlast(data.strikes, val)
+#     else
+#         ind = searchsortedfirst(data.strikes, val)
+#     end
+#     if ind < 1 || (ind >= length(data.strikes) && data.strikes[end] < val - maxDist)
+#         bt.log("Could not find $(dir) strike for trade $(getExpiration(oqs[1])) style:$(style) strike:$(val) minStrike:$(data.strikes[1]) maxStrike:$(data.strikes[end])")
+#         return nothing
+#     end
+#     return data.oqs[ind]
+# end
+
+# function findGte(data::ChainSearch, style::Style.T, gte::Currency; maxDist=C(7.0))::Union{Nothing,OptionQuote}
+#     oqs = getfield(data, Symbol(style))
+#     ind = findlast(oq -> getStrike(oq) < gte, oqs)
+#     if ind >= length(oqs)
+#         bt.log("Could not find a >= strike for trade $(getExpiration(oqs[1])) style:$(style) strike:$(gte) minStrike:$(data.strikes[1]) maxStrike:$(data.strikes[end])")
+#         return nothing
+#     end
+#     return data.oqs[ind]
+# end
 
 # function oqssAll(oqs)::Oqss
 #     c = Vector{OptionQuote}()

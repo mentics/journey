@@ -1,13 +1,14 @@
 module GiantCondors
 using Dates
 using SH, BaseTypes, SmallTypes, LegMetaTypes
-using DateUtil, ChainUtil, Pricing
+using DateUtil, Pricing
 import HistData as HD
 using Markets, Expirations, Chains
 import CmdPos:xlegs
 import BacktestSimple as bt
 import BacktestSimple:rond
 import OptionUtil
+import ChainUtil as cu
 
 # TODO: add check to roll dangerous puts/(calls?) when they get too close to expiration
 
@@ -256,63 +257,45 @@ function canOpenPut(acct, mx)
 end
 
 function openTradeRoll(acct, trade)
-    date = acct.date
-    lup = acct.lup
+    # date = acct.date
     side = bt.getTradeSide(trade)
     style = bt.getTradeStyle(trade)
     leg1 = trade.legs[1]
     leg2 = trade.legs[2]
-    side1 = getSide(leg1)
-    side2 = getSide(leg2)
-    s1 = getStrike(trade.legs[1])
-    s2 = getStrike(trade.legs[2])
+    # side1 = getSide(leg1)
+    # side2 = getSide(leg2)
+    s1 = getStrike(leg1)
+    s2 = getStrike(leg2)
     checkXpirs = acct.xpirs[4:end]
 
     for xpir in checkXpirs
-        oqss = acct.xoqss[xpir]
-        ss = getfield(oqss, Symbol(style))
-        longs = ss.long
-        shorts = ss.short
+        search = getfield(acct.search[xpir], Symbol(style))
+
         # cands1 = side1 == Side.long ? longs : shorts
         # cands2 = side2 == Side.long ? longs : shorts
-        if side == Side.long
-            oq1 = findLte(longs, s1)
-            oq2 = findLte(shorts, s2)
-        else
-            oq1 = findGte(shorts, s1)
-            oq2 = findGte(longs, s2)
-        end
-        !isnothing(oq1) && !isnothing(oq2) || continue
+        # if side == Side.long
+        #     oq1 = findLte(longs, s1)
+        #     oq2 = findLte(shorts, s2)
+        # else
+        #     oq1 = findGte(shorts, s1)
+        #     oq2 = findGte(longs, s2)
+        # end
+
+        dir = side == Side.long ? cu.LTE : cu.GTE
+        oq1 = cu.findDir(dir, search, style, s1)
+        !isnothing(oq1) || ( log("Could not find roll quote for trade $(trade.id) leg1 dir:$(dir) strike:$(s1)") ; continue )
+        oq2 = cu.findDir(dir, search, style, s2)
+        !isnothing(oq2) || ( log("Could not find roll quote for trade $(trade.id) leg2 dir:$(dir) strike:$(s2)") ; continue )
 
         changedStrikes1 = s1 == getStrike(oq1)
         changedStrikes2 = s2 == getStrike(oq2)
 
-        # oq1 = lup(xpir, style, s1)
-        # oq2 = lup(xpir, style, s2)
         lms = (LegMetaOpen(oq1, getSide(trade.legs[1]), 1.0), LegMetaOpen(oq2, getSide(trade.legs[2]), 1.0))
-        bt.openTrade(acct, lms, trade.multiple, "rolling to $(xpir) changedStrikes:($(changedStrikes1),$(changedStrikes2))")
+        bt.openTrade(acct, lms, trade.multiple, "rolling id:$(trade.id) $(side) to $(xpir) changedStrikes:($(changedStrikes1),$(changedStrikes2))")
         return
     end
     bt.log("ERROR: Failed to roll trade: $(trade.id)")
     return
-end
-
-function findLte(oqs, lte)
-    ind = findfirst(oq -> getStrike(oq) > lte, oqs)
-    if isnothing(ind) || ind <= 1
-        bt.log("Could not find a <= strike for trade $(getExpiration(oqs[1])) strike:$(lte)")
-        return nothing
-    end
-    return oqs[ind - 1]
-end
-
-function findGte(oqs, gte)
-    ind = findlast(oq -> getStrike(oq) < gte, oqs)
-    if ind >= length(oqs)
-        bt.log("Could not find a >= strike for trade $(getExpiration(oqs[1])) strike:$(lte)")
-        return nothing
-    end
-    return oqs[ind + 1]
 end
 
 function back(acct, side; xbdays, probMin, kws...) # , offMax, profMin, moveMin, moveSdevs, kws...)

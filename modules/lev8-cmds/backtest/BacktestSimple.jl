@@ -2,13 +2,14 @@ module BacktestSimple
 using Dates, MutableNamedTuples
 import StatsBase
 using SH, Globals, BaseTypes, SmallTypes, OptionTypes, LegTypes, LegMetaTypes, OptionMetaTypes, ChainTypes, QuoteTypes
-using DateUtil, CollUtil, DictUtil, ChainUtil
+using DateUtil, CollUtil, DictUtil
 using Pricing, Between
 import OptionUtil
 import Shorthand
 import HistData as HD
 import SimpleStore as SS
 using Calendars
+import ChainUtil
 
 #= Explore pricing
 lmss = bt.findLongSpreadEntry(expir(16), market().curp, (;rat=.8, off=30.0))
@@ -178,6 +179,7 @@ function run(f, fday, params, months; maxSeconds=10)
         xpirs = Vector{Date}(),
 
         xoqss = Dict{Date, Styles{Sides{Vector{ChainTypes.OptionQuote}}}}(),
+        search = Dict{Date,ChainUtil.ChainSearchS2}(),
         lup = flookup(Dict{Date, Styles{Dict{Currency, ChainTypes.OptionQuote}}}()),
     )
     global ac = acct
@@ -279,8 +281,9 @@ function procMonth(f, fday, y, m, params, maxSeconds, acct, daily, vix)
         xpirs = SS.getExpirs(data, ts)
         acct.xpirs = sort!(collect(xpirs))
         posLegs = collect(flatmap(x -> x[:legs], acct.poss))
-        all, entry = getChains(data, ts, xpirs, curp, posLegs)
+        all, search, entry = getChains(data, ts, xpirs, curp, posLegs)
         acct.xoqss = entry
+        acct.search = search
         # lup = (xpir, args...) -> flookup(all) # @coalesce ChainUtil.lup(all[xpir], args...) log("ERROR: Backtest could not quote $(xpir), $(style), $(strike)")
         lup = flookup(all)
         acct.lup = lup
@@ -323,12 +326,14 @@ end
 function getChains(data, ts::DateTime, xpirs, curp::Currency, legsCheck)
     all = Dict{Date,ChainLookup}()
     entry = Dict{Date,Oqss}()
+    search = Dict{Date,ChainUtil.ChainSearchS2}()
     for xpir in xpirs
         oqs = SS.getOqs(data, ts, xpir)
         all[xpir] = ChainUtil.tolup(oqs)
+        search[xpir] = ChainUtil.toSearch(oqs)
         entry[xpir] = ChainUtil.oqssEntry(oqs, curp, legsCheck)
     end
-    return (;all, entry)
+    return (;all, search, entry)
 end
 
 function updatePossLmsTrack(lup, trades)
@@ -485,10 +490,10 @@ urpnl(trades::Coll) = sum(x -> urpnl(x), trades; init=0.0)
 urpnl(trade) = getTradeCurVal(trade) * trade.multiple
 
 function flookup(data)
-    function lup(xpir::Date, style::Style.T, strike::Currency) # ::Union{OptionQuote,Missing}
+    function lup(xpir::Date, style::Style.T, strike::Currency) # ::Union{OptionQuote,Nothing}
         @coalesce ChainUtil.lup(data[xpir], style, strike) log("ERROR: Backtest could not quote $(xpir), $(style), $(strike)")
     end
-    function lup(opt::Option) # ::Union{OptionQuote,Missing}
+    function lup(opt::Option) # ::Union{OptionQuote,Nothing}
         @coalesce ChainUtil.lup(data[getExpiration(opt)], opt) log("ERROR: Backtest could not quote $(opt)")
     end
     return lup
