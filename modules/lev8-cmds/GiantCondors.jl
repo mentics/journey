@@ -9,6 +9,8 @@ import BacktestSimple as bt
 import BacktestSimple:rond
 import OptionUtil
 
+# TODO: add check to roll dangerous puts/(calls?) when they get too close to expiration
+
 #region Public
 function getParamsLive()
     return (;
@@ -264,34 +266,42 @@ function openTradeRoll(acct, trade)
     side2 = getSide(leg2)
     s1 = getStrike(trade.legs[1])
     s2 = getStrike(trade.legs[2])
-    xpir = acct.xpirs[6]
+    checkXpirs = acct.xpirs[4:end]
 
-    oqss = acct.xoqss[xpir]
-    ss = getfield(oqss, Symbol(style))
-    longs = ss.long
-    shorts = ss.short
-    # cands1 = side1 == Side.long ? longs : shorts
-    # cands2 = side2 == Side.long ? longs : shorts
-    if side == Side.long
-        oq1 = findLte(longs, s1)
-        oq2 = findLte(shorts, s2)
-    else
-        oq1 = findGte(shorts, s1)
-        oq2 = findGte(longs, s2)
+    for xpir in checkXpirs
+        oqss = acct.xoqss[xpir]
+        ss = getfield(oqss, Symbol(style))
+        longs = ss.long
+        shorts = ss.short
+        # cands1 = side1 == Side.long ? longs : shorts
+        # cands2 = side2 == Side.long ? longs : shorts
+        if side == Side.long
+            oq1 = findLte(longs, s1)
+            oq2 = findLte(shorts, s2)
+        else
+            oq1 = findGte(shorts, s1)
+            oq2 = findGte(longs, s2)
+        end
+        !isnothing(oq1) && !isnothing(oq2) || continue
+
+        changedStrikes1 = s1 == getStrike(oq1)
+        changedStrikes2 = s2 == getStrike(oq2)
+
+        # oq1 = lup(xpir, style, s1)
+        # oq2 = lup(xpir, style, s2)
+        lms = (LegMetaOpen(oq1, getSide(trade.legs[1]), 1.0), LegMetaOpen(oq2, getSide(trade.legs[2]), 1.0))
+        bt.openTrade(acct, lms, trade.multiple, "rolling to $(xpir) changedStrikes:($(changedStrikes1),$(changedStrikes2))")
+        return
     end
-    changedStrikes1 = s1 == getStrike(oq1)
-    changedStrikes2 = s2 == getStrike(oq2)
-
-    # oq1 = lup(xpir, style, s1)
-    # oq2 = lup(xpir, style, s2)
-    lms = (LegMetaOpen(oq1, getSide(trade.legs[1]), 1.0), LegMetaOpen(oq2, getSide(trade.legs[2]), 1.0))
-    bt.openTrade(acct, lms, trade.multiple, "rolling to $(xpir) changedStrikes:($(changedStrikes1),$(changedStrikes2))")
+    log("ERROR: Failed to roll trade: $(trade.id)")
+    return
 end
 
 function findLte(oqs, lte)
     ind = findfirst(oq -> getStrike(oq) > lte, oqs)
-    if ind <= 1
-        error("Could not find a <= strike for trade ", trade)
+    if isnothing(ind) || ind <= 1
+        log("Could not find a <= strike for trade $(getExpiration(oqs[1])) strike:$(lte)")
+        return nothing
     end
     return oqs[ind - 1]
 end
@@ -299,7 +309,8 @@ end
 function findGte(oqs, gte)
     ind = findlast(oq -> getStrike(oq) < gte, oqs)
     if ind >= length(oqs)
-        error("Could not find a >= strike for trade ", trade)
+        log("Could not find a >= strike for trade $(getExpiration(oqs[1])) strike:$(lte)")
+        return nothing
     end
     return oqs[ind + 1]
 end

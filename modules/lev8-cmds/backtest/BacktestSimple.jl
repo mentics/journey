@@ -277,7 +277,7 @@ function procMonth(f, fday, y, m, params, maxSeconds, acct, daily, vix)
         acct.date = date
         acct.curp = curp
         xpirs = SS.getExpirs(data, ts)
-        acct.xpirs = collect(xpirs)
+        acct.xpirs = sort!(collect(xpirs))
         posLegs = collect(flatmap(x -> x[:legs], acct.poss))
         all, entry = getChains(data, ts, xpirs, curp, posLegs)
         acct.xoqss = entry
@@ -338,7 +338,7 @@ function updatePossLmsTrack(lup, trades)
             trade.lmsTrack[] = tosLMC(trade.legs, lup)
             # trade.lmsTrack = map(leg -> LegMetaClose(leg, lup(getOption(leg)), trade.legs))
         catch e
-            log("Could not quote trade ", trade.id, trade)
+            log("Could not quote trade $(trade)")
             # rethrow(e)
         end
         i += 1
@@ -360,10 +360,34 @@ function check(fs, args...)
 end
 
 function loopPoss(f, acct)
-    deleteat!(acct.poss, map(f, acct.poss))
-    acct.marginDay = recalcMargin(acct.todayOpens) # - recalcMargin(acct.todayCloses)
-    acct.margin = recalcMargin(acct.poss)
+    # Trades might have been opened during this process so we have to be careful to loop through only the trades existing at the beginning of this method execution.
+
+    # I tested and eachindex is only eachindex at the start, so adding to the vector during this loop doesn't change it.
+    # for i in eachindex(acct.poss)
+    #     f(acct.poss[i])
+    # end
+    poss = acct.poss
+    dels = [f(poss[i]) for i in eachindex(poss)]
+    diff = length(acct.poss) - length(dels)
+    if diff != 0
+        append!(dels, fill(false, diff))
+    end
+    try
+        deleteat!(acct.poss, dels)
+        acct.marginDay = recalcMargin(acct.todayOpens) # - recalcMargin(acct.todayCloses)
+        acct.margin = recalcMargin(acct.poss)
+    catch e
+        println("dels: $(typeof(dels))")
+        rethrow(e)
+    end
 end
+# function testLoopPoss()
+#     poss = [1,2,3]
+#     loopPoss((;poss)) do trade
+#         push!(poss, -trade)
+#         return true
+#     end
+# end
 
 function checkClose(fs, acct, params, args...)
     date = acct.date
@@ -385,7 +409,7 @@ function checkClose(fs, acct, params, args...)
         return false
     end
     @assert checkedCount == origCount
-    @assert length(acct.poss) == (origCount - numDelete)
+    @assert length(acct.poss) >= (origCount - numDelete) # gte because could have opened trades
     # println("checkClose $(origCount) - $(numDelete) = $(length(acct.poss))")
 end
 #endregion
