@@ -136,8 +136,9 @@ marginPerDay(acct) = acct.params.marginPerDayRat * acct.bal
 
 function checkExit(acct, trade, params)
     rateCur = bt.getTradeCurRate(trade, acct.date)
-    if rateCur > 1.5 * trade.open.rate
-        return "cur trade rate $(rateCur) > trade.open.rate $(trade.open.rate)"
+    mult = 2.0
+    if rateCur > mult * trade.open.rate
+        return "cur trade rate $(rateCur) > $(mult) * trade.open.rate $(mult * trade.open.rate)"
     end
 
     # trade.rate >= p.takeRateMin && return "rate high enough $(t.rate)"
@@ -145,7 +146,7 @@ function checkExit(acct, trade, params)
     # TODO: use prob to determine if > % chance of being a worse loss than current loss
     # theta = getGreeks(t.lmsc).theta
     date = acct.date
-    # curp = acct.curp
+    curp = acct.curp
     # cutoffDays = .5 * bdays(trade.open.date, trade.targetDate)
     # thresh = max(2, cutoffDays)
     # daysLeft = bdays(date, trade.targetDate)
@@ -167,14 +168,27 @@ function checkExit(acct, trade, params)
     #     t.curVal >= qty * t.trade[:curp] * p.Put.takeRat && return "Put take min profit"
     # end
 
-    bdaysLeft = bdays(acct.date, trade.targetDate)
+    bdaysLeft = bdays(date, trade.targetDate)
     curVal = bt.getTradeCurVal(trade)
-    if bdaysLeft <= params.rollDay && curVal < 0.0
-        openTradeRoll(acct, trade)
+    if bdaysLeft <= params.rollDay && isInTheMoney(trade, curp) # && curVal < 0.0
+        tradeRoll = openTradeRoll(acct, trade)
+        if tradeRoll.open.neto <= -bt.getTradeCurClose(trade)
+            global keepTradeExit = trade
+            global keepTradeRoll = tradeRoll
+            error("Roll didn't cover exit $(tradeRoll.neto) <= $(bt.getTradeCurClose(trade))")
+        end
         return "roll for $(curVal) < 0.0"
     end
 
     return nothing
+end
+
+function isInTheMoney(trade, curp)
+    if bt.getTradeSide(trade) == Side.long
+        return getStrike(trade.legs[2]) > curp
+    else
+        return getStrike(trade.legs[1]) < curp
+    end
 end
 
 function stratDay(acct)
@@ -185,6 +199,7 @@ end
 
 function strat(acct)
     p = acct.params
+    # balStart = acct.bal
     # bt.checkClose((bt.checkSides, bt.checkThreaten), acct, p)
     # bt.checkClose((bt.checkSides, bt.checkExit), acct, p)
     bt.checkClose((checkExit,), acct, p)
@@ -222,6 +237,10 @@ function strat(acct)
             bt.openTrade(acct, lms, multiple, "short spread: mov=$(rond(mov))")
         end
     end
+    # balEnd = acct.bal
+    # if balEnd < balStart
+    #     error("bal went down $(balStart) $(balEnd)")
+    # end
 end
 
 function canOpenCall(acct, mx)
@@ -262,11 +281,12 @@ function openTradeRoll(acct, trade)
     style = bt.getTradeStyle(trade)
     leg1 = trade.legs[1]
     leg2 = trade.legs[2]
-    # side1 = getSide(leg1)
-    # side2 = getSide(leg2)
+    side1 = getSide(leg1)
+    side2 = getSide(leg2)
     s1 = getStrike(leg1)
     s2 = getStrike(leg2)
     checkXpirs = acct.xpirs[4:end]
+    netc = bt.getTradeCurClose(trade)
 
     for xpir in checkXpirs
         search = getfield(acct.search[xpir], Symbol(style))
@@ -283,16 +303,22 @@ function openTradeRoll(acct, trade)
 
         dir = side == Side.long ? cu.LTE : cu.GTE
         oq1 = cu.findDir(dir, search, style, s1)
-        !isnothing(oq1) || ( log("Could not find roll quote for trade $(trade.id) leg1 dir:$(dir) strike:$(s1)") ; continue )
+        !isnothing(oq1) || ( bt.log("Could not find roll quote for trade $(trade.id) leg1 dir:$(dir) strike:$(s1)") ; continue )
         oq2 = cu.findDir(dir, search, style, s2)
-        !isnothing(oq2) || ( log("Could not find roll quote for trade $(trade.id) leg2 dir:$(dir) strike:$(s2)") ; continue )
+        !isnothing(oq2) || ( bt.log("Could not find roll quote for trade $(trade.id) leg2 dir:$(dir) strike:$(s2)") ; continue )
 
-        changedStrikes1 = s1 == getStrike(oq1)
-        changedStrikes2 = s2 == getStrike(oq2)
+        neto = bt.netOpen(oq1, side1, oq2, side2)
+        println((oq1, oq2))
+        global keepOqs = [oq1, oq2]
+        neto > -netc || ( bt.log("Skipped roll because $(neto) <= $(-netc)") ; continue )
+        # TODO: call calcScore and choose the best
+
+        changedStrikes1 = s1 != getStrike(oq1)
+        changedStrikes2 = s2 != getStrike(oq2)
 
         lms = (LegMetaOpen(oq1, getSide(trade.legs[1]), 1.0), LegMetaOpen(oq2, getSide(trade.legs[2]), 1.0))
-        bt.openTrade(acct, lms, trade.multiple, "rolling id:$(trade.id) $(side) to $(xpir) changedStrikes:($(changedStrikes1),$(changedStrikes2))")
-        return
+        trade = bt.openTrade(acct, lms, trade.multiple, "rolling id:$(trade.id) $(side) to $(xpir) changedStrikes:($(changedStrikes1),$(changedStrikes2))")
+        return trade
     end
     bt.log("ERROR: Failed to roll trade: $(trade.id)")
     return
@@ -442,9 +468,9 @@ end
 
 
 
-netoq2(lo, sho) = netoqL(lo) + netoqS(sho)
-netoqL(lo) = bap(QuoteTypes.newQuote(getQuote(lo), DirSQA(Side.long, 1.0, Action.open)), .1)
-netoqS(sho) = bap(sho, .1)
+# netoq2(lo, sho) = netoqL(lo) + netoqS(sho)
+# netoqL(lo) = bap(QuoteTypes.newQuote(getQuote(lo), DirSQA(Side.long, 1.0, Action.open)), .1)
+# netoqS(sho) = bap(sho, .1)
 
 function findLongSpreadEntry2(oqss, calcScore, offMax, profMinRaw, strikeExt, debug=false)
     profMin = round(profMinRaw; digits=2)
@@ -682,7 +708,7 @@ end
 
 #region Calcs
 function openInfo(lo, sho)::Tuple{Currency,Currency} # NamedTuple{(:neto,:risk), Tuple{Currency,Currency}}
-    neto = netoq2(lo, sho)
+    neto = bt.netOpen(lo, Side.long, sho, Side.short) # netoq2(lo, sho)
     neto > 0 || return (neto, CZ)
     if neto > 0
         risk = abs(getStrike(lo) - getStrike(sho)) - neto

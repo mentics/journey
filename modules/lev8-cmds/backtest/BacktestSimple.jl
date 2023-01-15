@@ -59,19 +59,10 @@ end
 
 import DrawUtil, GLMakie
 function realBals(acct)
-    # reals = get(acct, :realBals) do
-    #     reals = Vector{Tuple{DateTime,Currency}}()
-    #     bal = 0.0
-    #     for trade in acct.trades
-    #         if isClosed(trade)
-    #             bal += getTradePnlAll(trade)
-    #             push!(reals, (trade.close[].ts, bal))
-    #         end
-    #     end
-    # end
-
     DrawUtil.drawDates(acct.realBals)
-    # DrawUtil.draw([(tofrac(x[1] - DateTime(acct.dateStart)), x[2]) for x in acct.realBals])
+end
+function bals(acct)
+    DrawUtil.drawDates(acct.bals)
 end
 
 tofrac(x::Millisecond) = Dates.value(x) * 1e-3 / 3600 / 24
@@ -134,6 +125,9 @@ function getTradeCurRate(trade, to)
 end
 
 isClosed(trade) = isassigned(trade.close)
+
+netOpen(oq::OptionQuote, side::Side.T)::Currency = bap(QuoteTypes.newQuote(getQuote(oq), DirSQA(side, 1.0, Action.open)), .1)
+netOpen(oq1::OptionQuote, side1::Side.T, oq2::OptionQuote, side2::Side.T)::Currency = netOpen(oq1, side1) + netOpen(oq2, side2)
 #endregion
 
 #region Process
@@ -160,6 +154,7 @@ function run(f, fday, params, months; maxSeconds=10)
         todayOpens = Vector{TradeType4}(),
         todayCloses = Vector{TradeType4}(),
         rates = Vector{Float64}(),
+        bals = Vector{Tuple{Date,Currency}}(),
         realBals = Vector{Tuple{DateTime,Currency}}(),
         # Mutable
         ts = DATETIME_ZERO,
@@ -315,6 +310,7 @@ function procMonth(f, fday, y, m, params, maxSeconds, acct, daily, vix)
         else
             f(acct)
         end
+        push!(acct.bals, (acct.date, acct.bal))
 
         if time() > acct.start + maxSeconds
             return false
@@ -345,6 +341,7 @@ function updatePossLmsTrack(lup, trades)
         catch e
             log("Could not quote trade $(trade)")
             # rethrow(e)
+            typeof(e) == InterruptException && rethrow(e)
         end
         i += 1
     end
