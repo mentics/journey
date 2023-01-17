@@ -36,7 +36,7 @@ end
 
 getUnder(data::HistChain, ts::DateTime) = data.under[ts]
 
-getExpirs(data::HistChain, ts::DateTime) = keys(data.chain[ts])
+getExpirs(data::HistChain, ts::DateTime) = filter(x -> x < Date(2025, 1, 1), keys(data.chain[ts]))
 
 function getTss(data::HistChain)
     return sort(collect(keys(data.under)))
@@ -107,6 +107,11 @@ function loadOpt(f, path)
             theta = read(io, Float64)
             rho = read(io, Float64)
             iv = read(io, Float64)
+            if bid <= 0.0 && ask <= 0.0
+                # TODO: Is just ignoring the right solution? Could skew results. Probably should double check the original data to see if maybe it was a parsing issue.
+                # println("Ignoring bad quote: $((;ts,strike,bid,ask))")
+                continue
+            end
             if 1 < strike < 1000 # TODO: can remove this after reload data filtering it
                 f(ts, xpir, strike, bid, ask, last, vol, delta, gamma, vega, theta, rho, iv)
             end

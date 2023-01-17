@@ -35,15 +35,17 @@ end
 
 # shc(args...) = Tuple(lr for lr in sh(args...))
 sh(str::AStr, exs::Int...) = sh(str, expir.(exs)...)
-sh(str::AStr, exps::Date...)::Vector{LegMeta} = tos(LegMeta, shLegs(str, collect(exps)), optQuoter)
-function shlr(str::AStr, exps=expirs(), sp=market().startPrice)
+sh(str::AStr, exps::Date...)::Vector{LegMeta} = tos(LegMetaOpen, shLegs(str, collect(exps)), Chains.chainLookup)
+function shlr(str::AStr, exps=expirs(), curp=market().startPrice)
     lms = sh(str, exps...)
-    exp = minimum(getExpiration, lms)
-    vr = Globals.get(:vtyRatio)
-    [(lm, to(Ret, lm, exp, sp, vr)) for lm in lms]
+    # exp = minimum(getExpiration, lms)
+    # vr = Globals.get(:vtyRatio)
+    # [(lm, to(Ret, lm, exp, curp, vr)) for lm in lms]
+    [(lm, to(Ret, lm, curp)) for lm in lms]
 end
-shRet(str::AStr, exps, sp=market().startPrice) = combineTo(Ret, shlr(str, exps, sp))
-shVals(str::AStr, exps, sp=market().startPrice) = getVals(shRet(str, exps, sp))
+# shRet(str::AStr, exps, sp=market().startPrice) = combineTo(Ret, shlr(str, exps, sp))
+shRet(str::AStr, exps, curp=market().curp) = combineTo(Ret, sh(str, exps...), curp)
+shVals(str::AStr, exps, curp=market().curp) = getVals(shRet(str, exps, curp))
 drsh(str::AStr, exs::Int...; kws...) = drsh(str, getInds(expirs(), exs)...; kws...) # (sp = market().startPrice ; drawRet(shRet(str, expirs()[ex:ex+2], sp), nothing, sp, "sh") )
 drsh(str::AStr, exps::Date...; kws...) = (sp = market().startPrice ; drawRet(shRet(str, exps, sp); kws..., curp=sp, label="sh") )
 drsh!(str::AStr, exs::Int...; kws...) = drsh!(str, getInds(expirs(), exs)...; kws...)

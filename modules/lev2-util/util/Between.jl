@@ -4,6 +4,11 @@ using SH, BaseTypes, SmallTypes, QuoteTypes, OptionMetaTypes, StratTypes, LegMet
 using CollUtil
 using Rets, LegTypes, TradeTypes, LegTradeTypes, Pricing
 
+#region ToLMO
+SH.to(::Type{LegMetaOpen}, leg::Leg, lup) = LegMetaOpen(lup(getOption(leg)), getSide(leg), getQuantity(leg))
+# SH.to(::Type{LegMetaOpen}, lm::LegMetaOpen, lup) = to(LegMetaClose, getLeg(lm), lup) # LegMetaClose(lup(getOption(lm)), getQuantity(lm), getSide(lm))
+#endregion
+
 #region ToRet
 SH.to(::Type{Ret}, leg::Leg, curp::Currency, neto::Currency)::Ret = makeRet(leg, neto, curp)
 # Can't do this because need one neto per leg: SH.combineTo(::Type{Ret}, ::Type{<:ElType{<:Leg}}, legs, curp::Currency, neto::Currency)::Ret = combineRets(tos(Ret, legs, curp, neto))

@@ -40,9 +40,6 @@ function so(lms::Coll{LegMetaOpen}; ratio=nothing, at=nothing, pre=true, skipCon
     tid = pre ? submitPreview(lms, pr) : submitLive(lms, pr, curQuot)
     return pre ? 0 : tid
 end
-using LegTypes
-SH.to(::Type{LegMetaOpen}, leg::Leg, lup) = LegMetaOpen(leg, lup(getOption(leg)))
-SH.to(::Type{LegMetaOpen}, lm::LegMetaOpen, lup) = to(LegMetaClose, getLeg(lm), lup) # LegMetaClose(lup(getOption(lm)), getQuantity(lm), getSide(lm))
 
 using TradierAccount
 function tradeSize(kelly::Float64, kellyRatio::Float64 = 0.5)

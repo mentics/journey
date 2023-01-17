@@ -19,6 +19,22 @@ using Globals, SH, BaseTypes, SmallTypes, OptionTypes, LegTypes, LegMetaTypes, C
 #     return Styles(Sides(oqsCallLong, oqsCallShort), Sides(oqsPutLong, oqsPutShort))
 # end
 
+function oqssAll(oqs)::Oqss
+    c = Vector{OptionQuote}()
+    sizehint!(c, 100)
+    p = Vector{OptionQuote}()
+    sizehint!(p, 100)
+    oqss = Styles(Sides(c, c), Sides(p, p))
+    for oq in oqs
+        if SmallTypes.isCall(oq)
+            push!(c, oq)
+        else
+            push!(p, oq)
+        end
+    end
+    return oqss
+end
+
 function oqssEntry(oqs, curp::Currency, legsCheck=LEGS_EMPTY)::Oqss
     lc = Vector{OptionQuote}()
     sc = Vector{OptionQuote}()
@@ -88,12 +104,12 @@ abstract type GTE <: Dir end
 function findDir(dir, data::ChainSearch3, style::Style.T, val::Currency; maxDist=C(7.0))::Union{Nothing,OptionQuote}
     strikes = data.strikes
     if dir == LTE
-        ind = searchsortedlast(data.strikes, val)
+        ind = searchsortedlast(strikes, val)
     else
-        ind = searchsortedfirst(data.strikes, val)
+        ind = searchsortedfirst(strikes, val)
     end
-    if ind < 1 || (ind >= length(data.strikes) && data.strikes[end] < val - maxDist)
-        bt.log("Could not find $(dir) strike for trade $(getExpiration(oqs[1])) style:$(style) strike:$(val) minStrike:$(data.strikes[1]) maxStrike:$(data.strikes[end])")
+    if ind < 1 || (ind >= length(strikes) && strikes[end] < val - maxDist)
+        # bt.log("Could not find $(dir) strike for trade $(getExpiration(oqs[1])) style:$(style) strike:$(val) minStrike:$(data.strikes[1]) maxStrike:$(data.strikes[end])")
         return nothing
     end
     return data.oqs[ind]
@@ -121,22 +137,6 @@ end
 #         return nothing
 #     end
 #     return data.oqs[ind]
-# end
-
-# function oqssAll(oqs)::Oqss
-#     c = Vector{OptionQuote}()
-#     sizehint!(c, 100)
-#     p = Vector{OptionQuote}()
-#     sizehint!(p, 100)
-#     oqss = Styles(Sides(c, c), Sides(p, p))
-#     for oq in oqs
-#         if SmallTypes.isCall(oq)
-#             push!(c, oq)
-#         else
-#             push!(p, oq)
-#         end
-#     end
-#     return oqss
 # end
 
 # filtEntry(all, curp, legs)::Oqss = filtOqss(filtLong(legs), filtShort(curp, legs), all)

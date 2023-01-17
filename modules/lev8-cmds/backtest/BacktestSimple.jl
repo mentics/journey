@@ -19,12 +19,12 @@ priceOption(market().curp, texPY(market().tsMarket, lmss2[1]), lmss2[1], .276)
 =#
 
 # const TradeType = Dict{Symbol,Any}
-const TradeType4 = NamedTuple{
+const TradeType5 = NamedTuple{
         (:id, :legs, :open, :targetDate, :risk, :multiple, :curp, :lmsTrack, :close, :pnlAll, :rat),
         Tuple{Int64,
             Tuple{LegTypes.Leg, LegTypes.Leg},
-            NamedTuple{(:label, :ts, :date, :neto, :risk, :rate, :quotes, :metas),
-                Tuple{String, DateTime, Date, Currency, Currency, Float64, Tuple{QuoteTypes.Quote, QuoteTypes.Quote}, Tuple{OptionMetaTypes.OptionMeta, OptionMetaTypes.OptionMeta}}},
+            NamedTuple{(:label, :ts, :date, :neto, :basis, :risk, :rate, :quotes, :metas),
+                Tuple{String, DateTime, Date, Currency, Currency, Currency, Float64, Tuple{QuoteTypes.Quote, QuoteTypes.Quote}, Tuple{OptionMetaTypes.OptionMeta, OptionMetaTypes.OptionMeta}}},
             Date, Currency, Int64, Currency,
             Ref{Tuple{LegMetaTypes.LegMetaClose, LegMetaTypes.LegMetaClose}},
             Ref{NamedTuple{(:label, :ts, :netc, :quotes, :metas),
@@ -118,16 +118,18 @@ getTradeRat(trade)::Float64 = getTradeStyle(trade) == Style.call ? F(getStrike(t
 getTradeRisk1(trade) = trade.risk
 getTradeRiskAll(trade) = trade.multiple * trade.risk
 getTradeExpDur(trade) = bdays(Date(trade.open.ts), Date(trade.targetDate))
-getTradeCurVal(trade) = trade.open.neto + getTradeCurClose(trade)
-getTradeCurClose(trade) = bap(trade.lmsTrack[], .0)
+getTradeCurVal(trade) = trade.open.neto + trade.open.basis + getTradeCurClose(trade)
+getTradeCurClose(trade) = netClose(trade.lmsTrack[])
 function getTradeCurRate(trade, to)
     calcRate(trade.open.date, to, getTradeCurVal(trade), trade.risk)
 end
 
 isClosed(trade) = isassigned(trade.close)
 
-netOpen(oq::OptionQuote, side::Side.T)::Currency = bap(QuoteTypes.newQuote(getQuote(oq), DirSQA(side, 1.0, Action.open)), .1)
-netOpen(oq1::OptionQuote, side1::Side.T, oq2::OptionQuote, side2::Side.T)::Currency = netOpen(oq1, side1) + netOpen(oq2, side2)
+netOpen(x::Union{LegMetaOpen,Coll{LegMetaOpen}}, r=0.1) = bap(x, r)
+netClose(x::Union{LegMetaClose,Coll{LegMetaClose}}, r=0.0) = bap(x, r)
+netOpen(oq::OptionQuote, side::Side.T, r=0.1)::Currency = bap(QuoteTypes.newQuote(getQuote(oq), DirSQA(side, 1.0, Action.open)), r)
+netOpen(oq1::OptionQuote, side1::Side.T, oq2::OptionQuote, side2::Side.T, r=0.1)::Currency = netOpen(oq1, side1, r) + netOpen(oq2, side2, r)
 #endregion
 
 #region Process
@@ -149,10 +151,10 @@ function run(f, fday, params, months; maxSeconds=10)
         params = params,
         start = time(),
         # Containers
-        trades = Vector{TradeType4}(),
-        poss = Vector{TradeType4}(),
-        todayOpens = Vector{TradeType4}(),
-        todayCloses = Vector{TradeType4}(),
+        trades = Vector{TradeType5}(),
+        poss = Vector{TradeType5}(),
+        todayOpens = Vector{TradeType5}(),
+        todayCloses = Vector{TradeType5}(),
         rates = Vector{Float64}(),
         bals = Vector{Tuple{Date,Currency}}(),
         realBals = Vector{Tuple{DateTime,Currency}}(),
@@ -174,6 +176,7 @@ function run(f, fday, params, months; maxSeconds=10)
         xpirs = Vector{Date}(),
 
         xoqss = Dict{Date, Styles{Sides{Vector{ChainTypes.OptionQuote}}}}(),
+        xoqssAll = Dict{Date, Styles{Sides{Vector{ChainTypes.OptionQuote}}}}(),
         search = Dict{Date,ChainUtil.ChainSearchS2}(),
         lup = flookup(Dict{Date, Styles{Dict{Currency, ChainTypes.OptionQuote}}}()),
     )
@@ -276,8 +279,9 @@ function procMonth(f, fday, y, m, params, maxSeconds, acct, daily, vix)
         xpirs = SS.getExpirs(data, ts)
         acct.xpirs = sort!(collect(xpirs))
         posLegs = collect(flatmap(x -> x[:legs], acct.poss))
-        all, search, entry = getChains(data, ts, xpirs, curp, posLegs)
+        all, search, entry, xoqssAll = getChains(data, ts, xpirs, curp, posLegs)
         acct.xoqss = entry
+        acct.xoqssAll = xoqssAll
         acct.search = search
         # lup = (xpir, args...) -> flookup(all) # @coalesce ChainUtil.lup(all[xpir], args...) log("ERROR: Backtest could not quote $(xpir), $(style), $(strike)")
         lup = flookup(all)
@@ -320,16 +324,18 @@ function procMonth(f, fday, y, m, params, maxSeconds, acct, daily, vix)
 end
 
 function getChains(data, ts::DateTime, xpirs, curp::Currency, legsCheck)
-    all = Dict{Date,ChainLookup}()
+    all = Dict{Date,ChainUtil.ChainLookup}()
     entry = Dict{Date,Oqss}()
+    oqssAll = Dict{Date,Oqss}()
     search = Dict{Date,ChainUtil.ChainSearchS2}()
     for xpir in xpirs
         oqs = SS.getOqs(data, ts, xpir)
         all[xpir] = ChainUtil.tolup(oqs)
         search[xpir] = ChainUtil.toSearch(oqs)
         entry[xpir] = ChainUtil.oqssEntry(oqs, curp, legsCheck)
+        oqssAll[xpir] = ChainUtil.oqssAll(oqs)
     end
-    return (;all, search, entry)
+    return (;all, search, entry, oqssAll)
 end
 
 function updatePossLmsTrack(lup, trades)
@@ -339,7 +345,7 @@ function updatePossLmsTrack(lup, trades)
             trade.lmsTrack[] = tosLMC(trade.legs, lup)
             # trade.lmsTrack = map(leg -> LegMetaClose(leg, lup(getOption(leg)), trade.legs))
         catch e
-            log("Could not quote trade $(trade)")
+            log("Could not quote trade $(string(trade))")
             # rethrow(e)
             typeof(e) == InterruptException && rethrow(e)
         end
@@ -417,13 +423,13 @@ end
 #endregion
 
 #region Actions
-function openTrade(acct, lms::Coll{LegMetaOpen}, multiple, label)
+function openTrade(acct, lms::Coll{LegMetaOpen}, multiple, basis, label)
     @assert getQuantity(lms[1]) == getQuantity(lms[2])
     neto = bap(lms, .1)
     strikeWidth = abs(getStrike(lms[1]) - getStrike(lms[2]))
     risk = strikeWidth - neto
     @assert neto > 0.0
-    @assert risk > 0.0
+    @assert risk > 0.0 "risk was < 0.0: $(risk) $(strikeWidth) $(neto)\n$(lms)"
     lup = acct.lup
     lmsTrack = tosLLMC(lms, lup)
     targetDate = minimum(getExpiration, lms)
@@ -432,7 +438,7 @@ function openTrade(acct, lms::Coll{LegMetaOpen}, multiple, label)
         # Immutable
         id = nextTradeId(acct),
         legs = map(getLeg, lms),
-        open = (;label, ts=acct.ts, date=acct.date, neto, risk, rate, quotes=map(getQuote, lms), metas=map(getOptionMeta, lms)),
+        open = (;label, ts=acct.ts, date=acct.date, neto, basis, risk, rate, quotes=map(getQuote, lms), metas=map(getOptionMeta, lms)),
         targetDate = targetDate,
         risk = risk,
         multiple = multiple,
@@ -452,15 +458,16 @@ function openTrade(acct, lms::Coll{LegMetaOpen}, multiple, label)
     acct.marginDay = recalcMargin(acct.todayOpens) # - recalcMargin(acct.todayCloses)
     margin = recalcMargin(acct.poss)
     acct.margin = margin
-    if margin.risk > acct.marginMax.risk
-        acct.marginMax = margin
+    marginRat = margin.risk / acct.bal
+    if marginRat > acct.marginMax.risk
+        acct.marginMax = (;risk=marginRat, margin.call, margin.put)
     end
     openCount = length(acct.poss)
     if openCount > acct.openMax
         acct.openMax = openCount
     end
     # acct.greeks = updateGreeks(acct, targetDate, getGreeks(lms))
-    log("Open #$(trade.id) $(Shorthand.tosh(lms, acct.xpirs)): multiple:$(multiple) neto:$(neto) risk:$(rond(risk)) '$(label)'") # deltaX: $(rond(delta)) -> $(rond(deltaNew)) deltaAcct: $(rond(acct.delta))")
+    log("Open #$(trade.id) $(Shorthand.tosh(lms, acct.xpirs)): multiple:$(multiple) neto:$(neto) basis:$(basis) risk:$(rond(risk)) '$(label)'") # deltaX: $(rond(delta)) -> $(rond(deltaNew)) deltaAcct: $(rond(acct.delta))")
     return trade
 end
 function closeTrade(acct, trade, lms::Coll{LegMetaClose}, netc, label)

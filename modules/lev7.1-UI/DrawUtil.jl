@@ -28,7 +28,7 @@ function newFig(f, (xticks, yticks), showLegend=true, newWin=false)
 
     f(fig, ax)
 
-    Main.save[:ax] = ax
+    # Main.save[:ax] = ax
     showLegend && axislegend(ax)
     DataInspector(fig; textcolor=:blue)
     disp = nothing
