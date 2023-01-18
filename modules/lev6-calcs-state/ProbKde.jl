@@ -148,7 +148,8 @@ end
 
 function probKde(center::Float64, var::Float64, tex::Float64; up=false)::Prob
     # Calendars.calcTex(now(UTC), today() + Day(MaxDays)) with some margin down
-    if tex > 3500
+    # TODO: what is the max tex we can work with?
+    if tex > 7000 # tex > 3500
         # error("Requested prob for > 3500 tex")
         println("WARN: Requested prob for > 3500 tex")
     end

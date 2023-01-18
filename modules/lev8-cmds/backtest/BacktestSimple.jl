@@ -19,17 +19,17 @@ priceOption(market().curp, texPY(market().tsMarket, lmss2[1]), lmss2[1], .276)
 =#
 
 # const TradeType = Dict{Symbol,Any}
-const TradeType5 = NamedTuple{
-        (:id, :legs, :open, :targetDate, :risk, :multiple, :curp, :lmsTrack, :close, :pnlAll, :rat),
+const TradeType8 = NamedTuple{
+        (:id, :legs, :open, :targetDate, :multiple, :curp, :lmsTrack, :close, :pnl, :pnlAll, :rateVal, :rat),
         Tuple{Int64,
             Tuple{LegTypes.Leg, LegTypes.Leg},
-            NamedTuple{(:label, :ts, :date, :neto, :basis, :risk, :rate, :quotes, :metas),
-                Tuple{String, DateTime, Date, Currency, Currency, Currency, Float64, Tuple{QuoteTypes.Quote, QuoteTypes.Quote}, Tuple{OptionMetaTypes.OptionMeta, OptionMetaTypes.OptionMeta}}},
-            Date, Currency, Int64, Currency,
+            NamedTuple{(:label, :ts, :date, :neto, :basisAll, :netVal, :riskVal, :rate, :quotes, :metas),
+                Tuple{String, DateTime, Date, Currency, Currency, Currency, Currency, Float64, Tuple{QuoteTypes.Quote, QuoteTypes.Quote}, Tuple{OptionMetaTypes.OptionMeta, OptionMetaTypes.OptionMeta}}},
+            Date, Int64, Currency,
             Ref{Tuple{LegMetaTypes.LegMetaClose, LegMetaTypes.LegMetaClose}},
             Ref{NamedTuple{(:label, :ts, :netc, :quotes, :metas),
                 Tuple{String, DateTime, Currency, Tuple{QuoteTypes.Quote, QuoteTypes.Quote}, Tuple{OptionMetaTypes.OptionMeta, OptionMetaTypes.OptionMeta}}}},
-            Ref{Currency}, Ref{Float64}}
+            Ref{Currency}, Ref{Currency}, Ref{Float64}, Ref{Float64}}
         }
 
 import Statistics:quantile
@@ -39,20 +39,20 @@ function lyze()
     calls = filter(t -> getTradeStyle(t) == Style.call, closes)
     puts = filter(t -> getTradeStyle(t) == Style.put, closes)
     println("Total: $(length(closes)), calls: $(length(calls)), puts: $(length(puts))")
-    wins = filter(t -> getTradePnl1(t) > 0.0, closes)
-    losses = filter(t -> getTradePnl1(t) <= 0.0, closes)
+    wins = filter(t -> rawTradePnl1(t) > 0.0, closes)
+    losses = filter(t -> rawTradePnl1(t) <= 0.0, closes)
     @assert length(closes) == length(wins) + length(losses)
     loscall = filter(t -> getTradeStyle(t) == Style.call, losses)
     wincall = filter(t -> getTradeStyle(t) == Style.call, wins)
     losput = filter(t -> getTradeStyle(t) == Style.put, losses)
     winput = filter(t -> getTradeStyle(t) == Style.put, wins)
     println("Losses: $(length(loscall)) calls, $(length(losput)) puts")
-    ratecall = map(getTradeRate, calls)
-    rateput = map(getTradeRate, puts)
-    println("Call rate quantile:\n$(!isempty(ratecall) ? rond.(quantile(ratecall, .1:.1:.9)) : "no calls")")
-    println("Put rate quantile:\n$(!isempty(rateput) ? rond.(quantile(rateput, .1:.1:.9)) : "no puts")")
-    expdurcall = map(getTradeExpDur, calls)
-    expdurput = map(getTradeExpDur, puts)
+    rateValCall = map(getTradeRateVal, calls)
+    rateValPut = map(getTradeRateVal, puts)
+    println("Call rate quantile:\n$(!isempty(rateValCall) ? rond.(quantile(rateValCall, .1:.1:.9)) : "no calls")")
+    println("Put rate quantile:\n$(!isempty(rateValPut) ? rond.(quantile(rateValPut, .1:.1:.9)) : "no puts")")
+    expdurcall = map(calcTradeExpDur, calls)
+    expdurput = map(calcTradeExpDur, puts)
     println("Call expdur quantile:\n$(!isempty(expdurcall) ? rond.(quantile(expdurcall, .1:.1:.9)) : "no calls")")
     println("Put expdur quantile:\n$(!isempty(expdurput) ? rond.(quantile(expdurput, .1:.1:.9)) : "no puts")")
 end
@@ -68,61 +68,69 @@ end
 tofrac(x::Millisecond) = Dates.value(x) * 1e-3 / 3600 / 24
 
 #region CurStrat
-checkRateRatio(acct, t, p) = t.rate >= (t.xpirRatio * p.RateMin) ? "rate: $(rond(t.rate))" : nothing
-checkProfit(acct, t, p) = t.curVal >= p.MinTakeProfit ? "take min profit" : nothing
-function checkThreaten(acct, t, p)
-    curp = acct.curp
-    if t.style == Style.put
-        threat = curp / getStrike(t.lmsc[2])
-        if threat < 1.001
-            log("checkThreaten put #$(t.id): $(threat) theta:$(getGreeks(t.lmsc).theta) curval:$(t.curVal)")
-            # return "threat: $(threat)"
-        end
-    else
-        threat = getStrike(t.lmsc[1]) / curp
-        if threat < 1.001
-            log("checkThreaten call #$(t.id): $(threat) theta:$(getGreeks(t.lmsc).theta) curval:$(t.curVal)")
-            # return "threat: $(threat)"
-        end
-    end
-    return nothing
-    # s = getStrike(t.lmsc[1])
-    # threat = (s - acct.curp) / s
-    # return threat <= p.ThreatenPercent ? "threat: $(threat)" : nothing
-end
+# checkRateRatio(acct, t, p) = t.rate >= (t.xpirRatio * p.RateMin) ? "rate: $(rond(t.rate))" : nothing
+# checkProfit(acct, t, p) = t.curVal >= p.MinTakeProfit ? "take min profit" : nothing
+# function checkThreaten(acct, t, p)
+#     curp = acct.curp
+#     if t.style == Style.put
+#         threat = curp / getStrike(t.lmsc[2])
+#         if threat < 1.001
+#             log("checkThreaten put #$(t.id): $(threat) theta:$(getGreeks(t.lmsc).theta) curval:$(t.curVal)")
+#             # return "threat: $(threat)"
+#         end
+#     else
+#         threat = getStrike(t.lmsc[1]) / curp
+#         if threat < 1.001
+#             log("checkThreaten call #$(t.id): $(threat) theta:$(getGreeks(t.lmsc).theta) curval:$(t.curVal)")
+#             # return "threat: $(threat)"
+#         end
+#     end
+#     return nothing
+#     # s = getStrike(t.lmsc[1])
+#     # threat = (s - acct.curp) / s
+#     # return threat <= p.ThreatenPercent ? "threat: $(threat)" : nothing
+# end
 
-function checkSides(acct, t, p)
-    # vix = acct.vix
-    # t.rate >= (.8 - vix)/.6 && return "rate >= 1.0"
-    t.rate >= p.takeRateMin && return "rate high enough $(t.rate)"
-    # qty = getQuantity(t.lmsc[1])
-    # if t.style == Style.call
-    #     t.curVal >= qty * t.trade.curp * p.Call.takeRat && return "Call take min profit"
-    # else
-    #     t.curVal >= qty * t.trade.curp * p.Put.takeRat && return "Put take min profit"
-    # end
-    return nothing
-end
+# function checkSides(acct, t, p)
+#     # vix = acct.vix
+#     # t.rate >= (.8 - vix)/.6 && return "rate >= 1.0"
+#     t.rate >= p.takeRateMin && return "rate high enough $(t.rate)"
+#     # qty = getQuantity(t.lmsc[1])
+#     # if t.style == Style.call
+#     #     t.curVal >= qty * t.trade.curp * p.Call.takeRat && return "Call take min profit"
+#     # else
+#     #     t.curVal >= qty * t.trade.curp * p.Put.takeRat && return "Put take min profit"
+#     # end
+#     return nothing
+# end
 
+# General calcs
+# (basisAll = -105.000, neto = 0.020, multiple = 10, multNew = 5350, multRat = 535.0, innerStrike = 223.0, netVal = 0.000, riskVal = 1.000)
+calcVal(multiple, neto, spreadWidth, basisAll) = (
+    # println("in calvcal", (;multiple, neto, spreadWidth, basisAll)) ;
+    netVal = (multiple * neto + basisAll) / multiple ; return (netVal, spreadWidth - netVal) )
+getSpreadWidth(legs::Coll) = ( @assert length(legs) == 2 ; abs(getStrike(legs[1]) - getStrike(legs[2])) )
+
+# Anytime
+getSpreadWidth(trade::NamedTuple) = getSpreadWidth(trade.legs)
 getTradeGreeks(trade) = getGreeks(trade.lmsTrack[])
-getTradePnl1(trade) = trade.open.neto + trade.close[].netc
-getTradePnlAll(trade) = trade.multiple * (getTradePnl1(trade))
-function getTradeRate(trade)
-    pnl = getTradePnl1(trade)
-    # @show toDateMarket(trade.open.ts), toDateMarket(trade.close.ts), pnl, trade.risk
-    return calcRate(toDateMarket(trade.open.ts), toDateMarket(trade.close[].ts), pnl, trade.risk)
-end
 getTradeStyle(trade) = getStyle(trade.legs[1])
 getTradeSide(trade) = getSide(trade.legs[1])
-getTradeRat(trade)::Float64 = getTradeStyle(trade) == Style.call ? F(getStrike(trade.legs[1])) / trade.curp : F(getStrike(trade.legs[2])) / trade.curp
-getTradeRisk1(trade) = trade.risk
-getTradeRiskAll(trade) = trade.multiple * trade.risk
-getTradeExpDur(trade) = bdays(Date(trade.open.ts), Date(trade.targetDate))
-getTradeCurVal(trade) = trade.open.neto + trade.open.basis + getTradeCurClose(trade)
-getTradeCurClose(trade) = netClose(trade.lmsTrack[])
-function getTradeCurRate(trade, to)
-    calcRate(trade.open.date, to, getTradeCurVal(trade), trade.risk)
-end
+getTradeExpiration(trade) = getExpiration(trade.legs[1])
+calcTradeRat(trade)::Float64 = getTradeStyle(trade) == Style.call ? F(getStrike(trade.legs[1])) / trade.curp : F(getStrike(trade.legs[2])) / trade.curp
+calcTradeExpDur(trade) = bdays(Date(trade.open.ts), Date(trade.targetDate))
+calcTradeMarginAll(trade) = trade.multiple * getSpreadWidth(trade)
+getTradeRiskVal(trade) = trade.open.riskVal
+
+# During
+calcTradeCurVal(trade) = trade.open.neto + trade.open.basisAll/trade.multiple + calcTradeCurClose(trade)
+calcTradeCurClose(trade) = netClose(trade.lmsTrack[])
+calcTradeCurRateVal(trade, to) = calcRate(trade.open.date, to, calcTradeCurVal(trade), trade.open.riskVal)
+
+# After closed
+rawTradePnl1(trade) = trade.open.neto + trade.close[].netc
+rawTradePnlAll(trade) = trade.multiple * (rawTradePnl1(trade))
+getTradeRateVal(trade) = trade.rateVal[]
 
 isClosed(trade) = isassigned(trade.close)
 
@@ -151,10 +159,10 @@ function run(f, fday, params, months; maxSeconds=10)
         params = params,
         start = time(),
         # Containers
-        trades = Vector{TradeType5}(),
-        poss = Vector{TradeType5}(),
-        todayOpens = Vector{TradeType5}(),
-        todayCloses = Vector{TradeType5}(),
+        trades = Vector{TradeType8}(),
+        poss = Vector{TradeType8}(),
+        todayOpens = Vector{TradeType8}(),
+        todayCloses = Vector{TradeType8}(),
         rates = Vector{Float64}(),
         bals = Vector{Tuple{Date,Currency}}(),
         realBals = Vector{Tuple{DateTime,Currency}}(),
@@ -410,7 +418,7 @@ function checkClose(fs, acct, params, args...)
         label = check(fs, acct, trade, getTradeStyle(trade) == Style.put ? params.Put : params.Call, args...)
         if !isnothing(label)
             lms = trade.lmsTrack[]
-            closeTrade(acct, trade, lms, getTradeCurClose(trade), label)
+            closeTrade(acct, trade, lms, calcTradeCurClose(trade), label)
             numDelete += 1
             return true
         end
@@ -423,34 +431,37 @@ end
 #endregion
 
 #region Actions
-function openTrade(acct, lms::Coll{LegMetaOpen}, multiple, basis, label)
+function openTrade(acct, lms::Coll{LegMetaOpen}, multiple, basisAll, label)
     @assert getQuantity(lms[1]) == getQuantity(lms[2])
     neto = bap(lms, .1)
-    strikeWidth = abs(getStrike(lms[1]) - getStrike(lms[2]))
-    risk = strikeWidth - neto
-    @assert neto > 0.0
-    @assert risk > 0.0 "risk was < 0.0: $(risk) $(strikeWidth) $(neto)\n$(lms)"
+    spreadWidth = getSpreadWidth(lms) # abs(getStrike(lms[1]) - getStrike(lms[2]))
+    netVal, riskVal = calcVal(multiple, neto, spreadWidth, basisAll)
+    @assert netVal > 0.0
+    #  (netVal = 11.003, riskVal = -116.003, multiple = 12, neto = 9.670, basisAll = -105.000, spreadWidth = 16.000)
+    @assert riskVal > 0.0 "risk was < 0.0: $((;netVal, riskVal, multiple, neto, basisAll, spreadWidth))\n$(lms)"
     lup = acct.lup
     lmsTrack = tosLLMC(lms, lup)
     targetDate = minimum(getExpiration, lms)
-    rate = calcRate(acct.date, targetDate, neto, risk)
+    rate = calcRate(acct.date, targetDate, neto, riskVal)
     trade = (;
         # Immutable
         id = nextTradeId(acct),
         legs = map(getLeg, lms),
-        open = (;label, ts=acct.ts, date=acct.date, neto, basis, risk, rate, quotes=map(getQuote, lms), metas=map(getOptionMeta, lms)),
+        open = (;label, ts=acct.ts, date=acct.date, neto, basisAll, netVal, riskVal, rate, quotes=map(getQuote, lms), metas=map(getOptionMeta, lms)),
         targetDate = targetDate,
-        risk = risk,
+        # riskVal = riskVal,
         multiple = multiple,
         curp = acct.curp,
         # Mutable
         lmsTrack = Ref(lmsTrack),
         close = Ref{NamedTuple{(:label, :ts, :netc, :quotes, :metas), Tuple{String, DateTime, Currency,
                     Tuple{Quote, Quote}, Tuple{OptionMeta, OptionMeta}}}}(),
+        pnl = Ref{Currency}(),
         pnlAll = Ref{Currency}(),
+        rateVal = Ref{Float64}(),
         rat = Ref{Float64}(),
     )
-    trade.rat[] = getTradeRat(trade)
+    trade.rat[] = calcTradeRat(trade)
     push!(acct.trades, trade)
     push!(acct.poss, trade)
     push!(acct.todayOpens, trade)
@@ -467,31 +478,34 @@ function openTrade(acct, lms::Coll{LegMetaOpen}, multiple, basis, label)
         acct.openMax = openCount
     end
     # acct.greeks = updateGreeks(acct, targetDate, getGreeks(lms))
-    log("Open #$(trade.id) $(Shorthand.tosh(lms, acct.xpirs)): multiple:$(multiple) neto:$(neto) basis:$(basis) risk:$(rond(risk)) '$(label)'") # deltaX: $(rond(delta)) -> $(rond(deltaNew)) deltaAcct: $(rond(acct.delta))")
+    log("Open #$(trade.id) $(Shorthand.tosh(lms, acct.xpirs)): $((;multiple, neto, basisAll, netVal, riskVal)) '$(label)'")
     return trade
 end
 function closeTrade(acct, trade, lms::Coll{LegMetaClose}, netc, label)
     multiple = trade.multiple
     neto = trade.open.neto
+    pnlVal = trade.open.netVal + netc
     pnl = neto + netc
     pnlAll = pnl * multiple
     trade.close[] = (;label, ts=acct.ts, netc, quotes=map(getQuote, lms), metas=map(getOptionMeta, lms))
+    trade.pnl[] = pnl
     trade.pnlAll[] = pnlAll
+    trade.rateVal[] = calcTradeCurRateVal(trade, acct.date)
     push!(acct.todayCloses, trade)
     acct.bal += netc * multiple
     acct.real += pnlAll
-    push!(acct.rates, getTradeRate(trade))
+    push!(acct.rates, getTradeRateVal(trade))
     realBal = acct.realBal + pnlAll
     acct.realBal = realBal
     push!(acct.realBals, (acct.ts, realBal))
-    log("Close #$(trade.id) $(Shorthand.tosh(lms, acct.xpirs)): multiple:$(multiple) neto:$(neto) netc:$(netc) pnl=$(pnl) risk1=$(rond(getTradeRisk1(trade))) rate=$(getTradeRate(trade)) '$(label)' ; $(openDur(trade)) days open, $(bdaysLeft(acct.date, trade)) days left")
+    log("Close #$(trade.id) $(Shorthand.tosh(lms, acct.xpirs)): multiple:$(multiple) neto:$(neto) netc:$(netc) pnl:$(pnl) pnlVal:$(pnlVal) riskVal:$(getTradeRiskVal(trade)) rateVal:$(getTradeRateVal(trade)) '$(label)' ; $(openDur(trade)) days open, $(bdaysLeft(acct.date, trade)) days left")
     return
 end
 #endregion
 
 #region GetData
 urpnl(trades::Coll) = sum(x -> urpnl(x), trades; init=0.0)
-urpnl(trade) = getTradeCurVal(trade) * trade.multiple
+urpnl(trade) = calcTradeCurVal(trade) * trade.multiple
 
 function flookup(data)
     function lup(xpir::Date, style::Style.T, strike::Currency) # ::Union{OptionQuote,Nothing}
@@ -628,7 +642,7 @@ function recalcMargin(poss)
     putRisk = CZ
     for i in eachindex(poss)
         trade = poss[i]
-        risk = getTradeRiskAll(trade)
+        risk = calcTradeMarginAll(trade)
         risks[i] = risk
         if getTradeStyle(trade) == Style.call
             callCount += 1

@@ -20,17 +20,18 @@ import ChainUtil as cu
 # so you get less than the intrinsic spread price. That makes it harder to match the basis for rolling.
 # Instead of that, how about "doubling down": increase the number of contracts and go at the money to maximize intrinsic spread value?
 
+# TODO: take rate for rolling doesn't work right: rate needs to be calculated considering basis?
+
 #region Params
 function getParamsLive()
     return (;
         balInit = 100,
         ExtremaBdays = 20,
-        marginMaxRat = 0.98,
+        marginMaxRat = 0.6,
         marginPerDayRat = 0.1,
-        maxPerTrade = 10,
-        rollDay = 1,
-        Put = (;xbdays=(16,84), probMin=.99, takeRateMin=.4),
-        Call = (;xbdays=(16,84), probMin=.99, takeRateMin=.4),
+        maxPerTrade = 1,
+        Put = (;xbdays=(16,84), probMin=.98, rollDay = 1),
+        Call = (;xbdays=(16,84), probMin=.98, rollDay = 1),
     )
 end
 
@@ -48,13 +49,13 @@ end
 #endregion
 
 #region Scoring
-import Kelly # QuoteTypes
-function calcScore3(ctx, prob, side, basis, tmult, innerStrike::Float64, lo, sho; all=false)
-    minRate=0.111
-    minRateAdj=0.05
-    minNeto=0.1
-    minKel=0.01
-    MoneyValueAPR=0.03
+import Kelly
+function calcScore3(ctx, prob, side, tmult, innerStrike::Float64, lo, sho; all=false)
+    minRate=0.01
+    minRateAdj=0.01
+    minNetVal=0.2
+    minKel=-10.01
+    MoneyValueAPR=0.05
     curp = ctx.curp
 
     # 2020-07-17 (235.000, 241.000) basis:-4.680 spreadWidth:6.000 net.1:1.930 net.5:2.610 (extrin1 = 33.145, extrin2 = 32.695, extrinDiff = 0.450)
@@ -72,22 +73,20 @@ function calcScore3(ctx, prob, side, basis, tmult, innerStrike::Float64, lo, sho
     # extrinDiff = extrin1[3] - extrin2[3]
     # println("$(getExpiration(lo)) $(getStrike.((lo, sho))) basis:$(basis) spreadWidth:$(spreadWidth) net.1:$(netp1) net.5:$(netp5) $((;extrin1=extrin1[3], extrin2=extrin2[3], extrinDiff))")
 
-    neto, risk = openInfo(lo, sho, basis)
-    # println("$(getStrike.((lo, sho)))")
-    @assert risk > 0.0 "risk $(risk) <= 0.0 $((;neto, basis, strikes=getStrike.((lo, sho))))"
-    # neto >= 0.01 || ( deb("neto must be positive") ; return nothing )
-    # println("Found neto positive")
-    println((;neto=bt.netOpen(lo, Side.long, sho, Side.short), basis, cneto=neto, risk))
-    all || neto >= minNeto || ( deb("neto $(neto) < $(minNeto)") ; return nothing )
+    netVal, risk = bt.calcVal(1, lo, sho, CZ)
+    @assert risk > 0.0 "risk $(risk) <= 0.0 $((;netVal, strikes=getStrike.((lo, sho))))"
+    netVal >= 0.01 || ( deb("netVal must be positive") ; return nothing )
+    # println((;neto=bt.netOpen(lo, Side.long, sho, Side.short), netVal=netVal, risk))
+    all || netVal >= minNetVal || ( deb("neto $(netVal) < $(minNetVal)") ; return nothing )
 
-    rate = calcRate(tmult, neto, risk)
+    rate = calcRate(tmult, netVal, risk)
     all || rate >= minRate || ( deb("rate $(rate) < $(minRate)") ; return nothing )
     # Subtract out the worth of the money over time to adjust for the kelly calc
     # which is using 5% here.
     # And 0.01 buy back
-    ExpDurRatioAvg = 0.5
-    ret = round(neto - .01 - risk * (MoneyValueAPR * ExpDurRatioAvg / tmult), RoundDown; digits=2)
-    all || ret > 0.0 || ( deb("ret $(ret) <= 0.0 $(neto)") ; return nothing )
+    ExpDurRatioAvg = 1.0 # 0.5
+    ret = round(netVal - .01 - risk * (MoneyValueAPR * ExpDurRatioAvg / tmult), RoundDown; digits=2)
+    all || ret > 0.0 || ( deb("ret $(ret) <= 0.0 $(netVal)") ; return nothing )
     rateAdj = calcRate(tmult, ret, risk)
     all || rateAdj > minRateAdj || ( deb("rateAdj $(rateAdj) <= $(minRateAdj) $(rate) $(ret)") ; return nothing )
 
@@ -96,22 +95,176 @@ function calcScore3(ctx, prob, side, basis, tmult, innerStrike::Float64, lo, sho
     theta = getGreeks(lo).theta - getGreeks(sho).theta
     kel = Kelly.simple(winRate, F(ret), F(risk))
     if winRate <= 0.0 || ret <= 0.0
-        score = rate # * theta # TODO: need to deal with if theta is negative
+        score = rate * (1.0 + theta) # * theta # TODO: need to deal with if theta is negative
     else
         all || kel > minKel || ( deb("kel $(kel) <= $(minKel)") ; return nothing )
-        score = kel * rate # * theta
+        score = kel * rate * (1.0 + theta) # * theta
     end
 
     # return (;score=kel * rate, neto, risk, ret, kel, rate, winRate, mov, prob)
-    return (;score, neto, risk, kel, ret, rate, rateAdj, winRate, mov, theta)
+    return (;score, netVal, risk, kel, ret, rate, rateAdj, winRate, mov, theta)
 end
 # deb(str) = startswith(str, "rateAdj") ? println(str) : return
-deb(str) = println(str)
-# deb(str) = return
+# deb(str) = println(str)
+deb(str) = return
 resScore(r)::Float64 = r[1]
-resNeto(r)::Float64 = r[2]
+resNetVal(r)::Float64 = r[2]
 resRisk(r)::Float64 = r[3]
 resKel(r)::Float64 = r[4]
+#endregion
+
+#region Rolling
+function openTradeRoll(acct, params, trade)
+    MinNetVal = 0.2
+
+    date = acct.date
+    @assert date <= bt.getTradeExpiration(trade) # to make sure I don't test incorrectly
+    curp = acct.curp
+    vix100 = F(acct.vix)*100
+    dateMin = bdaysAfter(date, 20)
+    dateMax = bdaysAfter(date, 200) # Date(2025,1,1)
+    checkXpirs = filter(x -> dateMin < x < dateMax, acct.xpirs[2:end])
+    # global checkXpirs = DateUtil.matchAfter(date, acct.xpirs, params.xbdays)
+    multiple = trade.multiple
+    side = bt.getTradeSide(trade)
+    basisAll = multiple * bt.calcTradeCurClose(trade)
+    # TODO: using min is long specific
+    strikeExt = getInnerStrike(trade) # min(acct.extrema.lo, getInnerStrike(trade)) # , C(-.1))
+    spreadWidth = bt.getSpreadWidth(trade.legs)
+    findEntry = side == Side.long ? findSpreadEntryLong : findSpreadEntryShort
+
+    # multipleNew = multiple # round(Int, 1.2 * trade.multiple, RoundUp)
+    maxWidthNew = 2 + 1.5 * spreadWidth
+    # maxWidthNew = 10 * spreadWidth
+
+    best = nothing
+    bestScore = -Inf
+
+    for xpir in checkXpirs
+        # @show xpir
+        tmult = timult(date, xpir)
+        # prob = ProbKde.probToClose(F(curp), vix100, acct.ts, xpir)
+        # It may add to multiple, so we can adjust the basis we need to meet
+        # basisAdj = round(trade.multiple * basis/(multipleNew), RoundUp; digits=2)
+
+        # calcScore = (lo, sho, innerStrike) -> calcScore3((;curp), prob, side, basisAdj, tmult, innerStrike, lo, sho; all=true)
+
+        # calcScore = (lo, sho, innerStrike) -> begin
+        #     neto, risk = openInfo(lo, sho, basisAdj)
+        #     rate = calcRate(tmult, neto, risk)
+        #     return rate
+        # end
+
+        calcScore = (lo, sho, innerStrike) -> begin
+            # riskNet < trade.risk || ( println("risk increased $(neto) $(riskNet) $(basis) ", (;riskNet, trisk=trade.risk)) ; return ) # Avoid increasing risk (ie. net margin). TODO: we could allow a little increase
+            # risk < trade.risk || return # Avoid increasing risk (ie. net margin). TODO: we could allow a little increase
+            neto = bt.netOpen(lo, Side.long, sho, Side.short)
+            neto > MinNetVal || return
+            # println("weird")
+            k = curp / innerStrike # TODO: long specific
+            if multiple * neto > (-basisAll + MinNetVal)
+                multNew = multiple
+                multRat = 1.0
+            else
+                # netVal = neto + basisAll / multiple
+                # neto * multNew + basisAll > multNew * MinNetVal
+                # basisAll > multNew * (MinNetVal - neto)
+                # multNew > basisAll / (neto - MinNetVal)
+                multNew = round(Int, -F(basisAll) / (neto - MinNetVal), RoundUp)
+                multRat = multNew / multiple
+            end
+            netVal, riskVal = bt.calcVal(multNew, lo, sho, basisAll)
+            valNew = multNew * neto
+            valOld = (-basisAll + MinNetVal - 0.01)
+            if valNew < valOld
+                println((;basisAll, neto, multiple, multNew, multRat, innerStrike, netVal, riskVal, spreadWidth=bt.getSpreadWidth((lo, sho))))
+                error((;valNew, valOld))
+            end
+            rate = calcRate(tmult, netVal, riskVal)
+            rate > 0.0 || error("rate <= 0 when shouldn't") # return # later calcs assume it's positive
+            score = k * rate / multRat
+            # TODO: check available margin balance
+            return (;score, multNew, netVal, riskVal, rate)
+        end
+
+        # oqss = acct.xoqss[xpir]
+        oqss = acct.xoqssAll[xpir]
+        res = findEntry(oqss, calcScore, strikeExt; maxStrikeWidth=maxWidthNew)
+        !isnothing(res) || continue
+        score = res[1]
+        if score > bestScore
+            best = res[2]
+            bestScore = score
+        end
+    end
+    if !isnothing(best)
+        lms, r = best
+        outBdays = bdays(date, getExpiration(lms))
+        widthNew = bt.getSpreadWidth(lms)
+        multNew = r[2]
+        dmult = "$(multiple)->$(multNew)"
+        dwidth = "$(spreadWidth)->$(widthNew)"
+        driskVal = "$(bt.getTradeRiskVal(trade))->$(widthNew - bt.netOpen(lms) - basisAll/multNew)"
+        strikeImprov = getInnerStrike(side, lms) - getInnerStrike(trade)
+        tradeNew = bt.openTrade(acct, lms, multNew, basisAll, "rolling id:$(trade.id) $((;side, outBdays, dmult, dwidth, driskVal, strikeImprov, r=string(r)))")
+        return tradeNew
+    end
+
+    bt.log("ERROR: Failed to roll trade: $(trade.id)")
+    return
+end
+#endregion
+
+#region Exit
+function checkExit(acct, trade, params)
+    rateCur = bt.calcTradeCurRateVal(trade, acct.date)
+    mult = 2.0
+    if rateCur > mult * trade.open.rate
+        return "cur trade rate $(rateCur) > $(mult) * trade.open.rate $(mult * trade.open.rate)"
+    end
+
+    # trade.rate >= p.takeRateMin && return "rate high enough $(t.rate)"
+
+    # TODO: use prob to determine if > % chance of being a worse loss than current loss
+    # theta = getGreeks(t.lmsc).theta
+    date = acct.date
+    curp = acct.curp
+    # cutoffDays = .5 * bdays(trade.open.date, trade.targetDate)
+    # thresh = max(2, cutoffDays)
+    # daysLeft = bdays(date, trade.targetDate)
+    # if daysLeft <= thresh
+    #     netcXpir = OptionUtil.netExpired(trade.lmsTrack[], curp)
+    #     netcCur = bt.getTradeCurClose(trade)
+    #     bt.log("checkExit #$(trade.id): $((;xpir=bt.getExpir(trade), cutoffDays, thresh, netcCur, netcXpir))")
+    #     if netcCur > netcXpir
+    #         return "checkExit $((;cutoffDays, thresh, netcCur, netcXpir))"
+    #     end
+    # end
+
+    # vix = acct.vix
+    # t.rate >= (.8 - vix)/.6 && return "rate >= 1.0"
+    # qty = getQuantity(t.lmsc[1])
+    # if t.style == Style.call
+    #     t.curVal >= qty * t.trade[:curp] * p.Call.takeRat && return "Call take min profit"
+    # else
+    #     t.curVal >= qty * t.trade[:curp] * p.Put.takeRat && return "Put take min profit"
+    # end
+
+    bdaysLeft = bdays(date, trade.targetDate)
+    curVal = bt.calcTradeCurVal(trade)
+    if bdaysLeft <= params.rollDay && isInTheMoney(trade, curp) # && curVal < 0.0
+        tradeRoll = openTradeRoll(acct, params, trade)
+        !isnothing(tradeRoll) || error("Could not roll trade $(trade.id)")
+        if tradeRoll.multiple * tradeRoll.open.neto <= trade.multiple * (-bt.calcTradeCurClose(trade))
+            global keepTradeExit = trade
+            global keepTradeRoll = tradeRoll
+            error("Roll $(trade.id)->$(tradeRoll.id) didn't cover exit $(tradeRoll.open.neto) <= $(-bt.calcTradeCurClose(trade))")
+        end
+        return "roll for $(curVal) < 0.0"
+    end
+
+    return nothing
+end
 #endregion
 
 #region Strat
@@ -200,54 +353,6 @@ function canOpenPut(acct, mx)
 end
 #endregion
 
-#region Rolling
-function openTradeRoll(acct, params, trade)
-    date = acct.date
-    curp = acct.curp
-    vix100 = F(acct.vix)*100
-    # checkXpirs = filter(x ->  x < Date(2025,1,1), acct.xpirs[2:end])
-    global checkXpirs = DateUtil.matchAfter(date, acct.xpirs, params.xbdays)
-    side = bt.getTradeSide(trade)
-    basis = bt.getTradeCurClose(trade)
-    strikeExt = getInnerStrike(trade) # , C(-.1))
-    spreadWidth = getSpreadWidth(trade.legs)
-    findEntry = side == Side.long ? findSpreadEntryLong : findSpreadEntryShort
-
-    best = nothing
-    bestScore = -Inf
-
-    for xpir in checkXpirs
-        # @show xpir
-        tmult = timult(date, xpir)
-        prob = ProbKde.probToClose(F(curp), vix100, acct.ts, xpir)
-        calcScore = (lo, sho, innerStrike) -> calcScore3((;curp), prob, side, basis, tmult, innerStrike, lo, sho; all=true)
-        # oqss = acct.xoqss[xpir]
-        oqss = acct.xoqssAll[xpir]
-        res = findEntry(oqss, calcScore, strikeExt; maxStrikeWidth=(2 + 1.1 * spreadWidth))
-        !isnothing(res) || continue
-        score = res[1]
-        if score > bestScore
-            best = res[2]
-            bestScore = score
-        end
-    end
-    if !isnothing(best)
-        lms, r = best
-        outBdays = bdays(date, getExpiration(lms))
-        newSpreadWidth = getSpreadWidth(lms)
-        dwidth = "$(spreadWidth)->$(newSpreadWidth)"
-        drisk = "$(bt.getTradeRisk1(trade))->$(newSpreadWidth - bt.netOpen(lms))"
-        strikeImprov = getInnerStrike(side, lms) - getInnerStrike(trade)
-        trade = bt.openTrade(acct, lms, trade.multiple, basis, "rolling id:$(trade.id) $((;side, outBdays, dwidth, drisk, strikeImprov, r=string(r)))")
-        return trade
-    end
-
-    bt.log("ERROR: Failed to roll trade: $(trade.id)")
-    return
-end
-getSpreadWidth(legs) = ( @assert length(legs) == 2 ; abs(getStrike(legs[1]) - getStrike(legs[2])) )
-#endregion
-
 #region What
 makeCtx(side, acct) = (;
     ts = acct.ts,
@@ -267,14 +372,15 @@ function live(side=Side.long)
     # TODO: should use today's hi/lo to start with, not curp
     # hi, lo = HD.extrema(bdaysBefore(date, p.ExtremaBdays), date-Day(1), curp, curp)
 
-    getOqss = xpir -> ChainUtil.oqssEntry(chain(xpir).chain, curp, xlegs(xpir))
+    getOqss = xpir -> cu.oqssEntry(chain(xpir).chain, curp, xlegs(xpir))
     xpirs = DateUtil.matchAfter(date, expirs(), ps.xbdays)
     # offMax = curp * ps.offMaxRat
     # profMin = curp * ps.profMinRat
-    # extrema = HD.extrema(HD.dataDaily(), bdaysBefore(date, p.ExtremaBdays), date - Day(1), curp, curp)
-    # lms = findGC((;curp, vix), getOqss, xpirs, date, side, offMax, profMin, vix, extrema, ps.moveMin, ps.moveSdevs)
+    extrema = HD.extrema(HD.dataDaily(), bdaysBefore(date, p.ExtremaBdays), date - Day(1), curp, curp)
+    fromPrice = side == Side.long ? extrema.lo : extrema.hi
 
-    res = findGC((;ts=mkt.tsMarket, curp, vix), getOqss, xpirs, date, side, vix, ps.probMin)
+    # res = findGC((;ts=mkt.tsMarket, curp, vix, fromPrice), getOqss, xpirs, date, side, vix, ps.probMin)
+    res = findGC((;ts=mkt.tsMarket, curp, vix, fromPrice=curp), getOqss, xpirs, date, side, vix, ps.probMin)
     if !isnothing(res)
         lms, r = res
         return (collect(lms), r)
@@ -282,65 +388,6 @@ function live(side=Side.long)
         return
     end
     # return isnothing(lms) ? nothing : collect(lms)
-end
-
-marginPerDay(acct) = acct.params.marginPerDayRat * acct.bal
-
-function checkExit(acct, trade, params)
-    rateCur = bt.getTradeCurRate(trade, acct.date)
-    mult = 2.0
-    if rateCur > mult * trade.open.rate
-        return "cur trade rate $(rateCur) > $(mult) * trade.open.rate $(mult * trade.open.rate)"
-    end
-
-    # trade.rate >= p.takeRateMin && return "rate high enough $(t.rate)"
-
-    # TODO: use prob to determine if > % chance of being a worse loss than current loss
-    # theta = getGreeks(t.lmsc).theta
-    date = acct.date
-    curp = acct.curp
-    # cutoffDays = .5 * bdays(trade.open.date, trade.targetDate)
-    # thresh = max(2, cutoffDays)
-    # daysLeft = bdays(date, trade.targetDate)
-    # if daysLeft <= thresh
-    #     netcXpir = OptionUtil.netExpired(trade.lmsTrack[], curp)
-    #     netcCur = bt.getTradeCurClose(trade)
-    #     bt.log("checkExit #$(trade.id): $((;xpir=bt.getExpir(trade), cutoffDays, thresh, netcCur, netcXpir))")
-    #     if netcCur > netcXpir
-    #         return "checkExit $((;cutoffDays, thresh, netcCur, netcXpir))"
-    #     end
-    # end
-
-    # vix = acct.vix
-    # t.rate >= (.8 - vix)/.6 && return "rate >= 1.0"
-    # qty = getQuantity(t.lmsc[1])
-    # if t.style == Style.call
-    #     t.curVal >= qty * t.trade[:curp] * p.Call.takeRat && return "Call take min profit"
-    # else
-    #     t.curVal >= qty * t.trade[:curp] * p.Put.takeRat && return "Put take min profit"
-    # end
-
-    bdaysLeft = bdays(date, trade.targetDate)
-    curVal = bt.getTradeCurVal(trade)
-    if bdaysLeft <= params.rollDay && isInTheMoney(trade, curp) # && curVal < 0.0
-        tradeRoll = openTradeRoll(acct, params, trade)
-        if tradeRoll.open.neto <= -bt.getTradeCurClose(trade)
-            global keepTradeExit = trade
-            global keepTradeRoll = tradeRoll
-            error("Roll didn't cover exit $(tradeRoll.open.neto) <= $(bt.getTradeCurClose(trade))")
-        end
-        return "roll for $(curVal) < 0.0"
-    end
-
-    return nothing
-end
-
-function isInTheMoney(trade, curp)
-    if bt.getTradeSide(trade) == Side.long
-        return getStrike(trade.legs[2]) > curp
-    else
-        return getStrike(trade.legs[1]) < curp
-    end
 end
 
 function back(acct, side; xbdays, probMin, kws...) # , offMax, profMin, moveMin, moveSdevs, kws...)
@@ -376,7 +423,7 @@ import ProbKde, ProbUtil
 function findGC(ctx, getOqss, xpirs, date, side, vixrat, probMin) # , offMax, profMin, hilo, moveMin, moveSdevs)
     findEntry = side == Side.long ? findSpreadEntryLong : findSpreadEntryShort
     best = nothing
-    bestScore = 0.0
+    bestScore = -Inf
     vix = 100 * F(vixrat)
 
     for xpir in xpirs
@@ -389,7 +436,7 @@ function findGC(ctx, getOqss, xpirs, date, side, vixrat, probMin) # , offMax, pr
             strikeExt, _ = ProbUtil.probFromLeft(prob, probMin)
         end
         # @show side xpir strikeExt ctx.curp ctx.fromPrice
-        calcScore = (lo, sho, innerStrike) -> calcScore3(ctx, prob, side, CZ, tmult, innerStrike, lo, sho)
+        calcScore = (lo, sho, innerStrike) -> calcScore3(ctx, prob, side, tmult, innerStrike, lo, sho)
         oqss = getOqss(xpir)
 
         res = findEntry(oqss, calcScore, strikeExt) # , offMax, profMin
@@ -438,7 +485,6 @@ function findSpreadEntryLong(oqss, calcScore, strikeExt; maxStrikeWidth=40, debu
             if neto > netoMax
                 netoMax = neto
             end
-            # println("neto:$(neto)")
             res = calcScore(lo, sho, F(shostr))
             !isnothing(res) || continue
             score = resScore(res)
@@ -450,7 +496,7 @@ function findSpreadEntryLong(oqss, calcScore, strikeExt; maxStrikeWidth=40, debu
         end
     end
 
-    println((;netoMax, netoBest))
+    # println((;netoMax, netoBest))
     if isnothing(best)
         return nothing
     else
@@ -503,14 +549,8 @@ end
 #endregion
 
 #region Calcs
-function openInfo(lo, sho, basis)::Tuple{Currency,Currency} # NamedTuple{(:neto,:risk), Tuple{Currency,Currency}}
-    neto = bt.netOpen(lo, Side.long, sho, Side.short) + basis # netoq2(lo, sho)
-    # neto > 0 || return (neto, CZ)
-    # if neto > 0
-        risk = abs(getStrike(lo) - getStrike(sho)) - neto
-    # end
-    return (neto, risk)
-end
+bt.calcVal(multiple, lo::cu.OptionQuote, sho::cu.OptionQuote, basisAll)::Tuple{Currency,Currency} =
+        bt.calcVal(multiple, bt.netOpen(lo, Side.long, sho, Side.short), bt.getSpreadWidth((lo, sho)), basisAll)
 
 getInnerStrike(trade, off::Currency=CZ) = getInnerStrike(bt.getTradeSide(trade), trade.legs, off)
 function getInnerStrike(side::Side.T, legs, off::Currency=CZ)
@@ -521,6 +561,15 @@ end
 # netoq2(lo, sho) = netoqL(lo) + netoqS(sho)
 # netoqL(lo) = bap(QuoteTypes.newQuote(getQuote(lo), DirSQA(Side.long, 1.0, Action.open)), .1)
 # netoqS(sho) = bap(sho, .1)
+function isInTheMoney(trade, curp)
+    if bt.getTradeSide(trade) == Side.long
+        return getStrike(trade.legs[2]) > curp
+    else
+        return getStrike(trade.legs[1]) < curp
+    end
+end
+
+marginPerDay(acct) = acct.params.marginPerDayRat * acct.bal
 #endregion
 
 end
