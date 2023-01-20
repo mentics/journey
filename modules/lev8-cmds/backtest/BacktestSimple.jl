@@ -1,5 +1,6 @@
 module BacktestSimple
 using Dates, MutableNamedTuples
+using PrettyPrinting
 import StatsBase
 using SH, Globals, BaseTypes, SmallTypes, OptionTypes, LegTypes, LegMetaTypes, OptionMetaTypes, ChainTypes, QuoteTypes
 using DateUtil, CollUtil, DictUtil
@@ -18,12 +19,66 @@ priceOption(market().curp, texPY(market().tsMarket, lmss[2]), lmss[2], .35)
 priceOption(market().curp, texPY(market().tsMarket, lmss2[1]), lmss2[1], .276)
 =#
 
+using GLMakie
+function test()
+    from = Date(2020,1,1)
+    to = Date(2020,4,17)
+    xpir = to
+    # data = SS.load(year(from), month(from));
+    # ts1 = SS.getTss(data)[2]
+    # global search = ChainUtil.toSearch(SS.getOqs(data, ts1, xpir))
+    # i = findfirst(oq -> bap(getQuote(oq), 0.5) >= 0.1, search.put.oqs)
+    # println(i)
+    # println(search.put.oqs[i])
+    # return
+    strike = C(190)
+
+    global prices = Vector{Tuple{DateTime,Currency}}()
+    global optPrices = Vector{Tuple{DateTime,Currency}}()
+    run(from, to; maxSeconds=1) do ts, date, firstOfDay, lastOfDay, xpirs, xoqs, underData
+    # run(Date(2020,1,1), Date(2020,1,2); maxSeconds=1) do ts, date, firstOfDay, lastOfDay, xpirs, xoqs, underData
+        # println(ts)
+        global oqs = xoqs[xpir]
+        i = findfirst(oq -> getStyle(oq) == Style.put && getStrike(oq) >= strike, oqs)
+        if isnothing(i)
+            println("Could not find quote")
+        else
+            s2 = getStrike(oqs[i])
+            if s2 != strike
+                println("Different strike: $(strike) != $(s2)")
+            else
+                push!(optPrices, (ts, bap(oqs[i], 0.5)))
+            end
+        end
+        push!(prices, (ts, underData.under))
+    end
+    display(DrawUtil.drawDates(prices))
+    DataInspector(;textcolor=:blue)
+    DrawUtil.drawDates!(optPrices)
+    return
+end
+
+#region Types
+struct MarginSide2
+    margin::Currency
+    count::Int
+end
+marginSideZero() = MarginSide2(CZ, 0)
+
+struct MarginInfo2
+    margin::Currency
+    marginBalRat::Float64
+    call::MarginSide2
+    put::MarginSide2
+end
+marginZero() = MarginInfo2(CZ, 0.0, marginSideZero(), marginSideZero())
+
 # const TradeType = Dict{Symbol,Any}
-const TradeType8 = NamedTuple{
+const TradeType9 = NamedTuple{
         (:id, :legs, :open, :targetDate, :multiple, :curp, :lmsTrack, :close, :pnl, :pnlAll, :rateVal, :rat),
         Tuple{Int64,
             Tuple{LegTypes.Leg, LegTypes.Leg},
-            NamedTuple{(:label, :ts, :date, :neto, :basisAll, :netVal, :riskVal, :rate, :quotes, :metas),
+            NamedTuple{(:label, :ts, :date, :neto, :basisAll, :netVal, :riskVal, :rateVal, :quotes, :metas),
                 Tuple{String, DateTime, Date, Currency, Currency, Currency, Currency, Float64, Tuple{QuoteTypes.Quote, QuoteTypes.Quote}, Tuple{OptionMetaTypes.OptionMeta, OptionMetaTypes.OptionMeta}}},
             Date, Int64, Currency,
             Ref{Tuple{LegMetaTypes.LegMetaClose, LegMetaTypes.LegMetaClose}},
@@ -31,141 +86,165 @@ const TradeType8 = NamedTuple{
                 Tuple{String, DateTime, Currency, Tuple{QuoteTypes.Quote, QuoteTypes.Quote}, Tuple{OptionMetaTypes.OptionMeta, OptionMetaTypes.OptionMeta}}}},
             Ref{Currency}, Ref{Currency}, Ref{Float64}, Ref{Float64}}
         }
-
-import Statistics:quantile
-function lyze()
-    acct = ac
-    closes = filter(t -> isClosed(t), acct.trades)
-    calls = filter(t -> getTradeStyle(t) == Style.call, closes)
-    puts = filter(t -> getTradeStyle(t) == Style.put, closes)
-    println("Total: $(length(closes)), calls: $(length(calls)), puts: $(length(puts))")
-    wins = filter(t -> rawTradePnl1(t) > 0.0, closes)
-    losses = filter(t -> rawTradePnl1(t) <= 0.0, closes)
-    @assert length(closes) == length(wins) + length(losses)
-    loscall = filter(t -> getTradeStyle(t) == Style.call, losses)
-    wincall = filter(t -> getTradeStyle(t) == Style.call, wins)
-    losput = filter(t -> getTradeStyle(t) == Style.put, losses)
-    winput = filter(t -> getTradeStyle(t) == Style.put, wins)
-    println("Losses: $(length(loscall)) calls, $(length(losput)) puts")
-    rateValCall = map(getTradeRateVal, calls)
-    rateValPut = map(getTradeRateVal, puts)
-    println("Call rate quantile:\n$(!isempty(rateValCall) ? rond.(quantile(rateValCall, .1:.1:.9)) : "no calls")")
-    println("Put rate quantile:\n$(!isempty(rateValPut) ? rond.(quantile(rateValPut, .1:.1:.9)) : "no puts")")
-    expdurcall = map(calcTradeExpDur, calls)
-    expdurput = map(calcTradeExpDur, puts)
-    println("Call expdur quantile:\n$(!isempty(expdurcall) ? rond.(quantile(expdurcall, .1:.1:.9)) : "no calls")")
-    println("Put expdur quantile:\n$(!isempty(expdurput) ? rond.(quantile(expdurput, .1:.1:.9)) : "no puts")")
-end
-
-import DrawUtil, GLMakie
-function realBals(acct)
-    DrawUtil.drawDates(acct.realBals)
-end
-function bals(acct)
-    DrawUtil.drawDates(acct.bals)
-end
-
-tofrac(x::Millisecond) = Dates.value(x) * 1e-3 / 3600 / 24
-
-#region CurStrat
-# checkRateRatio(acct, t, p) = t.rate >= (t.xpirRatio * p.RateMin) ? "rate: $(rond(t.rate))" : nothing
-# checkProfit(acct, t, p) = t.curVal >= p.MinTakeProfit ? "take min profit" : nothing
-# function checkThreaten(acct, t, p)
-#     curp = acct.curp
-#     if t.style == Style.put
-#         threat = curp / getStrike(t.lmsc[2])
-#         if threat < 1.001
-#             log("checkThreaten put #$(t.id): $(threat) theta:$(getGreeks(t.lmsc).theta) curval:$(t.curVal)")
-#             # return "threat: $(threat)"
-#         end
-#     else
-#         threat = getStrike(t.lmsc[1]) / curp
-#         if threat < 1.001
-#             log("checkThreaten call #$(t.id): $(threat) theta:$(getGreeks(t.lmsc).theta) curval:$(t.curVal)")
-#             # return "threat: $(threat)"
-#         end
-#     end
-#     return nothing
-#     # s = getStrike(t.lmsc[1])
-#     # threat = (s - acct.curp) / s
-#     # return threat <= p.ThreatenPercent ? "threat: $(threat)" : nothing
-# end
-
-# function checkSides(acct, t, p)
-#     # vix = acct.vix
-#     # t.rate >= (.8 - vix)/.6 && return "rate >= 1.0"
-#     t.rate >= p.takeRateMin && return "rate high enough $(t.rate)"
-#     # qty = getQuantity(t.lmsc[1])
-#     # if t.style == Style.call
-#     #     t.curVal >= qty * t.trade.curp * p.Call.takeRat && return "Call take min profit"
-#     # else
-#     #     t.curVal >= qty * t.trade.curp * p.Put.takeRat && return "Put take min profit"
-#     # end
-#     return nothing
-# end
-
-# General calcs
-# (basisAll = -105.000, neto = 0.020, multiple = 10, multNew = 5350, multRat = 535.0, innerStrike = 223.0, netVal = 0.000, riskVal = 1.000)
-calcVal(multiple, neto, spreadWidth, basisAll) = (
-    # println("in calvcal", (;multiple, neto, spreadWidth, basisAll)) ;
-    netVal = (multiple * neto + basisAll) / multiple ; return (netVal, spreadWidth - netVal) )
-getSpreadWidth(legs::Coll) = ( @assert length(legs) == 2 ; abs(getStrike(legs[1]) - getStrike(legs[2])) )
-
-# Anytime
-getSpreadWidth(trade::NamedTuple) = getSpreadWidth(trade.legs)
-getTradeGreeks(trade) = getGreeks(trade.lmsTrack[])
-getTradeStyle(trade) = getStyle(trade.legs[1])
-getTradeSide(trade) = getSide(trade.legs[1])
-getTradeExpiration(trade) = getExpiration(trade.legs[1])
-calcTradeRat(trade)::Float64 = getTradeStyle(trade) == Style.call ? F(getStrike(trade.legs[1])) / trade.curp : F(getStrike(trade.legs[2])) / trade.curp
-calcTradeExpDur(trade) = bdays(Date(trade.open.ts), Date(trade.targetDate))
-calcTradeMarginAll(trade) = trade.multiple * getSpreadWidth(trade)
-getTradeRiskVal(trade) = trade.open.riskVal
-
-# During
-calcTradeCurVal(trade) = trade.open.neto + trade.open.basisAll/trade.multiple + calcTradeCurClose(trade)
-calcTradeCurClose(trade) = netClose(trade.lmsTrack[])
-calcTradeCurRateVal(trade, to) = calcRate(trade.open.date, to, calcTradeCurVal(trade), trade.open.riskVal)
-
-# After closed
-rawTradePnl1(trade) = trade.open.neto + trade.close[].netc
-rawTradePnlAll(trade) = trade.multiple * (rawTradePnl1(trade))
-getTradeRateVal(trade) = trade.rateVal[]
-
-isClosed(trade) = isassigned(trade.close)
-
-netOpen(x::Union{LegMetaOpen,Coll{LegMetaOpen}}, r=0.1) = bap(x, r)
-netClose(x::Union{LegMetaClose,Coll{LegMetaClose}}, r=0.0) = bap(x, r)
-netOpen(oq::OptionQuote, side::Side.T, r=0.1)::Currency = bap(QuoteTypes.newQuote(getQuote(oq), DirSQA(side, 1.0, Action.open)), r)
-netOpen(oq1::OptionQuote, side1::Side.T, oq2::OptionQuote, side2::Side.T, r=0.1)::Currency = netOpen(oq1, side1, r) + netOpen(oq2, side2, r)
 #endregion
 
-#region Process
-run(f, fday, params, months::Int; maxSeconds=10) = run(f, fday, params, (Date(2022,9)-Month(months-1)):Month(1):Date(2022,9); maxSeconds)
-function run(f, fday, params, months; maxSeconds=10)
+#region Run
+function run(f, from, to; maxSeconds=1)
+    months = DateUtil.toMonths(from, to)
+    dayAfter = to + Day(1)
+
+    for m in months
+        # TODO: memoize this data? might be too much RAM, though.
+        data = SS.load(year(m), month(m))
+        log("Loaded $(year(m)), $(month(m))")
+        # Ignore first ts of the day because data might be questionnable
+        tss = filter!(SS.getTss(data)) do x
+            # For consistency, just do every 30 minutes because that's what we have data for 10 years
+            return from <= x < dayAfter && minute(x) != 15 && minute(x) != 45 && Time(x) != Time(getMarketOpen(Date(x))) + Second(10)
+        end
+
+        start = time()
+        lasti = lastindex(tss)
+        firstOfDay = true
+        lastOfDay = false
+        for i in eachindex(tss)
+            ts = tss[i]
+            lastOfDay = i == lasti || day(tss[i+1]) != day(ts)
+
+            xoqs = SS.getXoqs(data, ts)
+            xpirs = SS.getExpirs(data, ts)
+            underData = SS.getUnder(data, ts)
+            f(ts, Date(ts), firstOfDay, lastOfDay, xpirs, xoqs, underData)
+
+            firstOfDay = i == lasti || day(tss[i+1]) != day(ts)
+
+            # @show start maxSeconds (start+maxSeconds) time() (time() > start + maxSeconds)
+            if time() > start + maxSeconds
+                @goto done
+            end
+        end
+    end
+    @label done
+end
+
+function bt(f, params, from, to; kws...)
     LogUtil.resetLog(:backtest)
 
     vix = Dict{Date,Currency}()
-    vix1 = HD.dailyDict(first(months), last(months)+Month(1), "VIX")
+    vix1 = HD.dailyDict(from, to, "VIX")
     for (k, v) in vix1
         vix[k] = v.open
     end
     daily = HD.dataDaily()
 
-    dateStart = nextTradingDay(first(months))
-    acct = MutableNamedTuple(
+    acct = makeAcct(params, from, to)
+    global ac = acct
+
+    run(from, to; kws...) do ts, date, firstOfDay, lastOfDay, xpirs, xoqs, underData
+        procTs(f, acct, daily, vix, ts, date, firstOfDay, lastOfDay, xpirs, xoqs, underData)
+    end
+
+    lyze()
+    showResult()
+end
+
+function procTs(f, acct, daily, vix, ts, date, firstOfDay, lastOfDay, xpirs, xoqs, underData)
+    log("Looping ts=$(ts)")
+    acct.vix = vix[date] / 100
+
+    curp = underData.under
+
+    if firstOfDay
+        loopPoss(acct) do trade
+            if getExpir(trade) < date
+                error("ERROR: Found expired trade: $(pprint(trade))")
+            #     lmsc = trade.lmsTrack[]
+            #     netc = OptionUtil.netExpired(lmsc, curp)
+            #     if abs(curp - getStrike(lmsc[1])) < 5.0 || abs(curp - getStrike(lmsc[end])) < 5.0
+            #         netc -= 0.02 # adjust to pay to close and not just let expire
+            #     end
+            #     closeTrade(acct, trade, lmsc, netc, "(missed) expired $(getQuote(trade.lmsTrack[]))")
+            #     return true
+            # else
+            #     return false
+            end
+            return false
+        end
+
+        empty!(acct.todayOpens)
+        empty!(acct.todayCloses)
+        acct.marginDay = marginZero()
+        acct.extrema = HD.extrema(daily, bdaysBefore(date, acct.params.ExtremaBdays), date-Day(1), curp, curp)
+        # acct.extrema = HD.extrema(daily, bdaysBefore(date, acct.params.ExtremaBdays), date, curp, curp)
+    else
+        updateExtrema(acct, curp)
+    end
+
+    log("Start $(formatLocal(ts)) SPY: $(curp)") # TODO: , VIX: $(mkt.vix)")
+    acct.ts = ts
+    acct.date = date
+    acct.curp = curp
+    acct.xpirs = xpirs
+    posLegs = collect(flatmap(x -> x[:legs], acct.poss))
+    all, search, entry, xoqssAll = getChains(xpirs, xoqs, curp, posLegs)
+    acct.xoqss = entry
+    acct.xoqssAll = xoqssAll
+    acct.search = search
+    # lup = (xpir, args...) -> flookup(all) # @coalesce ChainUtil.lup(all[xpir], args...) log("ERROR: Backtest could not quote $(xpir), $(style), $(strike)")
+    lup = flookup(all)
+    acct.lup = lup
+    updatePossLmsTrack(lup, acct.poss)
+
+    # Can't open trades at end of day, so don't run at market close time
+    if ts != getMarketClose(date)
+        f(acct)
+    end
+
+    if lastOfDay
+        loopPoss(acct) do trade
+            if date == getExpir(trade)
+                lmsc = trade.lmsTrack[]
+                netc = OptionUtil.netExpired(lmsc, curp)
+                if abs(curp - getStrike(lmsc[1])) < 5.0 || abs(curp - getStrike(lmsc[end])) < 5.0
+                    # average pay .02 per short to buy back, assuming balanced long/short positions
+                    netc -= .01 * sum(getQuantity, lmsc)
+                end
+                closeTrade(acct, trade, lmsc, netc, "expired $(getQuote(trade.lmsTrack))")
+                return true
+            else
+                return false
+            end
+        end
+
+        push!(acct.bals, (acct.date, acct.bal))
+        push!(acct.margins, (acct.date, acct.margin))
+
+        rate = StatsBase.mean(acct.rates)
+        log("End $(date): bal:$(rond(acct.bal)) margin:$(acct.margin) rpnl:$(rond(acct.real)) urpnl:$(rond(urpnl(acct.poss))) #open:$(length(acct.poss)) rateAvg:$(rond(rate))")
+
+        if acct.margin.marginBalRat > 1.0
+            error("Exceeded margin balance: $(acct.margin)")
+        end
+    end
+end
+#endregion
+
+#region Setup
+function makeAcct(params, from, to)
+    return MutableNamedTuple(
         # Immutable
-        dateStart = dateStart,
+        from = from,
+        to = to,
         params = params,
-        start = time(),
         # Containers
-        trades = Vector{TradeType8}(),
-        poss = Vector{TradeType8}(),
-        todayOpens = Vector{TradeType8}(),
-        todayCloses = Vector{TradeType8}(),
+        trades = Vector{TradeType9}(),
+        poss = Vector{TradeType9}(),
+        todayOpens = Vector{TradeType9}(),
+        todayCloses = Vector{TradeType9}(),
         rates = Vector{Float64}(),
         bals = Vector{Tuple{Date,Currency}}(),
         realBals = Vector{Tuple{DateTime,Currency}}(),
+        margins = Vector{Tuple{Date,MarginInfo2}}(),
         # Mutable
         ts = DATETIME_ZERO,
         date = DATE_ZERO,
@@ -188,29 +267,23 @@ function run(f, fday, params, months; maxSeconds=10)
         search = Dict{Date,ChainUtil.ChainSearchS2}(),
         lup = flookup(Dict{Date, Styles{Dict{Currency, ChainTypes.OptionQuote}}}()),
     )
-    global ac = acct
-
-    for m in months
-        # @show m
-        procMonth(f, fday, year(m), month(m), params, maxSeconds, acct, daily, vix) || break
-    end
-    lyze()
-    showResult()
 end
+#endregion
 
+#region Results
 function showResult()
     acct = ac
     rpnl = acct.real
     unreal = urpnl(acct.poss)
     total = rpnl + unreal
-    days = bdays(acct.dateStart, acct.date)
+    days = bdays(acct.from, acct.date)
     dateEnd = acct.date
     # We're going to pretend we closed everything at the last time, so don't need to add risk.
     # acct.riskDays += getRisk(acct.poss) # model it for end of last day, so only * 1 day
     # rate = calcRate(dateStart, dateEnd, total, acct.riskDays / days)
     rateMean = StatsBase.mean(acct.rates)
     rr = rpnl < 0.0 ? rpnl : (1 + rpnl / acct.params.balInit) ^ (1 / (days / DateUtil.bdaysPerYear())) - 1
-    log("Summary $(acct.dateStart) - $(dateEnd) (ran $(days) bdays):")
+    log("Summary $(acct.from) - $(dateEnd) (ran $(days) bdays):")
     log("  bal = $(acct.bal), rpnl = $(rpnl), urpnl = $(rond(unreal))")
     log("  Total: $(rond(total))")
     log("  overall realized rate: $(rond(rr))")
@@ -218,7 +291,7 @@ function showResult()
     log("  openMax: $(acct.openMax)")
     log("  marginMax: $(acct.marginMax)")
 
-    println("Summary $(acct.dateStart) - $(dateEnd) (ran $(days) bdays):")
+    println("Summary $(acct.from) - $(dateEnd) (ran $(days) bdays):")
     println("  bal = $(acct.bal), rpnl = $(rpnl), urpnl = $(unreal)")
     println("  Total: $(total)")
     println("  overall realized rate: $(rond(rr))")
@@ -227,117 +300,77 @@ function showResult()
     println("  marginMax: $(acct.marginMax)")
 end
 
-function procMonth(f, fday, y, m, params, maxSeconds, acct, daily, vix)
-    data = SS.load(y, m)
-    log("Loaded $(y) $(m)")
-    # Don't run on first and last (other if inside loop) ts of the day
-    tss = filter!(SS.getTss(data)) do x
-        # For consistency, just do every 30 minutes because that's what we have data for 10 years
-        return minute(x) != 15 && minute(x) != 45 && Time(x) != Time(getMarketOpen(Date(x))) + Second(10)
-    end
-
-    datePrev = Date(0)
-    curp = C(0)
-    for ts in tss
-        log("Looping ts=$(ts)")
-        date = toDateMarket(ts)
-        acct.vix = vix[date] / 100
-
-        if date != datePrev
-            # tind = 1
-            # while tind <= length(acct.poss)
-            #     trade = acct.poss[tind]
-            loopPoss(acct) do trade
-                if getExpir(trade) < date
-                    lmsc = trade.lmsTrack[]
-                    netc = OptionUtil.netExpired(lmsc, curp)
-                    if abs(curp - getStrike(lmsc[1])) < 5.0 || abs(curp - getStrike(lmsc[end])) < 5.0
-                        netc -= 0.02 # adjust to pay to close and not just let expire
-                    end
-                    log("ERROR: Found expired trade: ", trade)
-                    closeTrade(acct, trade, lmsc, netc, "(missed) expired $(getQuote(trade.lmsTrack[]))")
-                    return true
-                else
-                    return false
-                end
-            end
-
-            curp = SS.getUnder(data, ts).under
-
-            fday(acct)
-            rate = StatsBase.mean(acct.rates)
-            log("End $(datePrev): bal:$(rond(acct.bal)) margin:$(acct.margin) rpnl:$(rond(acct.real)) urpnl:$(rond(urpnl(acct.poss))) #open:$(length(acct.poss)) rateAvg:$(rond(rate))")
-
-            # TODO: closing and opening on same day might affect this a little, but I think buying power allows this so maybe it's ok
-            # acct.riskDays += (date - datePrev).value * getRisk(acct.poss)
-            empty!(acct.todayOpens)
-            empty!(acct.todayCloses)
-            acct.marginDay = marginZero()
-            acct.extrema = HD.extrema(daily, bdaysBefore(date, params.ExtremaBdays), date-Day(1), curp, curp)
-            datePrev = date
-        else
-            curp = SS.getUnder(data, ts).under
-            updateExtrema(acct, curp)
-        end
-
-        log("Start $(formatLocal(ts)) SPY: $(curp)") # TODO: , VIX: $(mkt.vix)")
-        acct.ts = ts
-        acct.date = date
-        acct.curp = curp
-        xpirs = SS.getExpirs(data, ts)
-        acct.xpirs = sort!(collect(xpirs))
-        posLegs = collect(flatmap(x -> x[:legs], acct.poss))
-        all, search, entry, xoqssAll = getChains(data, ts, xpirs, curp, posLegs)
-        acct.xoqss = entry
-        acct.xoqssAll = xoqssAll
-        acct.search = search
-        # lup = (xpir, args...) -> flookup(all) # @coalesce ChainUtil.lup(all[xpir], args...) log("ERROR: Backtest could not quote $(xpir), $(style), $(strike)")
-        lup = flookup(all)
-        acct.lup = lup
-        updatePossLmsTrack(lup, acct.poss)
-        # acct.greeks = calcGreeks(acct.poss) # isempty(acct.poss) ? GreeksZero : getGreeks(acct.poss)
-        # acct.greeksExpirs = isempty(acct.poss) ? Dict{Date,GreeksType}() : greeksForExpirs(lup, acct.poss)
-
-        # Run strat for this time
-
-        if ts == getMarketClose(date)
-            # tind = 1
-            # while tind <= length(acct.poss)
-            #     trade = acct.poss[tind]
-            loopPoss(acct) do trade
-                xpir = getExpir(trade)
-                if ts == getMarketClose(xpir)
-                    lmsc = trade.lmsTrack[]
-                    netc = OptionUtil.netExpired(lmsc, curp)
-                    if abs(curp - getStrike(lmsc[1])) < 5.0 || abs(curp - getStrike(lmsc[end])) < 5.0
-                        # average pay .02 per short to buy back, assuming balanced long/short positions
-                        netc -= .01 * sum(getQuantity, lmsc)
-                    end
-                    closeTrade(acct, trade, lmsc, netc, "expired $(getQuote(trade.lmsTrack))")
-                    return true
-                else
-                    return false
-                end
-            end
-        else
-            f(acct)
-        end
-        push!(acct.bals, (acct.date, acct.bal))
-
-        if time() > acct.start + maxSeconds
-            return false
-        end
-    end
-    return true
+function lyze()
+    acct = ac
+    closes = filter(t -> isClosed(t), acct.trades)
+    calls = filter(t -> getTradeStyle(t) == Style.call, closes)
+    puts = filter(t -> getTradeStyle(t) == Style.put, closes)
+    println("Total: $(length(closes)), calls: $(length(calls)), puts: $(length(puts))")
+    wins = filter(t -> rawTradePnl1(t) > 0.0, closes)
+    losses = filter(t -> rawTradePnl1(t) <= 0.0, closes)
+    @assert length(closes) == length(wins) + length(losses)
+    loscall = filter(t -> getTradeStyle(t) == Style.call, losses)
+    wincall = filter(t -> getTradeStyle(t) == Style.call, wins)
+    losput = filter(t -> getTradeStyle(t) == Style.put, losses)
+    winput = filter(t -> getTradeStyle(t) == Style.put, wins)
+    println("Losses: $(length(loscall)) calls, $(length(losput)) puts")
+    rateValCall = map(getTradeRateVal, calls)
+    rateValPut = map(getTradeRateVal, puts)
+    println("Call rate quantile:\n$(!isempty(rateValCall) ? rond.(StatsBase.quantile(rateValCall, .1:.1:.9)) : "no calls")")
+    println("Put rate quantile:\n$(!isempty(rateValPut) ? rond.(StatsBase.quantile(rateValPut, .1:.1:.9)) : "no puts")")
+    expdurcall = map(calcTradeExpDur, calls)
+    expdurput = map(calcTradeExpDur, puts)
+    println("Call expdur quantile:\n$(!isempty(expdurcall) ? rond.(StatsBase.quantile(expdurcall, .1:.1:.9)) : "no calls")")
+    println("Put expdur quantile:\n$(!isempty(expdurput) ? rond.(StatsBase.quantile(expdurput, .1:.1:.9)) : "no puts")")
 end
 
-function getChains(data, ts::DateTime, xpirs, curp::Currency, legsCheck)
+import DrawUtil, GLMakie
+histRealBals() = realBals(ac)
+function histRealBals(acct)
+    DrawUtil.drawDates(acct.realBals)
+end
+histBals() = bals(ac)
+function histBals(acct)
+    DrawUtil.drawDates(acct.bals)
+end
+
+histMargin() = histMargin(ac)
+function histMargin(acct)
+    margins = Dict{Date,Currency}()
+    bals = Dict{Date,Currency}()
+    for trade in acct.trades
+        dateOpen = trade.open.date
+        bals[dateOpen] = get!(bals, dateOpen, CZ) + trade.open.neto * trade.multiple
+        margins[dateOpen] = get!(margins, dateOpen, CZ) + calcTradeMarginAll(trade)
+        if isassigned(trade.close)
+            dateClose = toDateMarket(trade.close[].ts)
+            bals[dateClose] = get!(bals, dateClose, CZ) + trade.close[].netc * trade.multiple
+            margins[dateClose] = get!(margins, dateClose, CZ) - calcTradeMarginAll(trade)
+        end
+    end
+    dates = sort!(collect(union(keys(margins), keys(bals))))
+    data = Vector{Tuple{Date,Float64}}()
+    push!(data, (acct.dateStart, 0.0))
+    bal = acct.params.balInit
+    margin = CZ
+    for date in dates
+        bal += get(bals, date, CZ)
+        margin += get(margins, date, CZ)
+        push!(data, (date, F(margin) / bal))
+    end
+    display(DrawUtil.drawDates(data))
+    return data
+end
+#endregion
+
+#region Updates
+function getChains(xpirs, xoqs, curp::Currency, legsCheck)
     all = Dict{Date,ChainUtil.ChainLookup}()
     entry = Dict{Date,Oqss}()
     oqssAll = Dict{Date,Oqss}()
     search = Dict{Date,ChainUtil.ChainSearchS2}()
     for xpir in xpirs
-        oqs = SS.getOqs(data, ts, xpir)
+        oqs = xoqs[xpir]
         all[xpir] = ChainUtil.tolup(oqs)
         search[xpir] = ChainUtil.toSearch(oqs)
         entry[xpir] = ChainUtil.oqssEntry(oqs, curp, legsCheck)
@@ -390,8 +423,8 @@ function loopPoss(f, acct)
     end
     try
         deleteat!(acct.poss, dels)
-        acct.marginDay = recalcMargin(acct.todayOpens) # - recalcMargin(acct.todayCloses)
-        acct.margin = recalcMargin(acct.poss)
+        acct.marginDay = recalcMargin(acct.todayOpens, marginDayTotal(acct)) # - recalcMargin(acct.todayCloses)
+        acct.margin = recalcMargin(acct.poss, acct.bal)
     catch e
         println("dels: $(typeof(dels))")
         rethrow(e)
@@ -442,12 +475,12 @@ function openTrade(acct, lms::Coll{LegMetaOpen}, multiple, basisAll, label)
     lup = acct.lup
     lmsTrack = tosLLMC(lms, lup)
     targetDate = minimum(getExpiration, lms)
-    rate = calcRate(acct.date, targetDate, neto, riskVal)
+    rateVal = calcRate(acct.date, targetDate, netVal, riskVal)
     trade = (;
         # Immutable
         id = nextTradeId(acct),
         legs = map(getLeg, lms),
-        open = (;label, ts=acct.ts, date=acct.date, neto, basisAll, netVal, riskVal, rate, quotes=map(getQuote, lms), metas=map(getOptionMeta, lms)),
+        open = (;label, ts=acct.ts, date=acct.date, neto, basisAll, netVal, riskVal, rateVal, quotes=map(getQuote, lms), metas=map(getOptionMeta, lms)),
         targetDate = targetDate,
         # riskVal = riskVal,
         multiple = multiple,
@@ -466,12 +499,11 @@ function openTrade(acct, lms::Coll{LegMetaOpen}, multiple, basisAll, label)
     push!(acct.poss, trade)
     push!(acct.todayOpens, trade)
     acct.bal += neto * multiple
-    acct.marginDay = recalcMargin(acct.todayOpens) # - recalcMargin(acct.todayCloses)
-    margin = recalcMargin(acct.poss)
+    acct.marginDay = recalcMargin(acct.todayOpens, marginDayTotal(acct)) # - recalcMargin(acct.todayCloses)
+    margin = recalcMargin(acct.poss, acct.bal)
     acct.margin = margin
-    marginRat = margin.risk / acct.bal
-    if marginRat > acct.marginMax.risk
-        acct.marginMax = (;risk=marginRat, margin.call, margin.put)
+    if margin.marginBalRat > acct.marginMax.marginBalRat
+        acct.marginMax = margin
     end
     openCount = length(acct.poss)
     if openCount > acct.openMax
@@ -633,36 +665,79 @@ function entryFilterLookup(acct)
     return d
 end
 
-function recalcMargin(poss)
+function recalcMargin(poss, bal)
     # Brokerage might consider margin offsets only for the same expiration, but for me, the risk is across all expirations, so I'll count it that way.
     len = length(poss)
-    risks = Vector{Currency}(undef, len)
+    margins = Vector{Currency}(undef, len)
     callCount = 0
-    callRisk = CZ
-    putRisk = CZ
+    callMargin = CZ
+    putMargin = CZ
     for i in eachindex(poss)
         trade = poss[i]
-        risk = calcTradeMarginAll(trade)
-        risks[i] = risk
+        margin = calcTradeMarginAll(trade)
+        margins[i] = margin
         if getTradeStyle(trade) == Style.call
             callCount += 1
-            callRisk += risk
+            callMargin += margin
         else
-            putRisk += risk
+            putMargin += margin
         end
     end
-    sort!(risks; rev=true)
+    sort!(margins; rev=true)
     keep = max(callCount, len-callCount)
-    resize!(risks, keep)
-    risk = sum(risks)
-    # println("Calced new margin: ", margin)
-    return (;risk, call=(;risk=callRisk, count=callCount), put=(;risk=putRisk, count=len-callCount))
+    resize!(margins, keep)
+    marginTotal = sum(margins)
+    return MarginInfo2(marginTotal, F(marginTotal) / bal, MarginSide2(callMargin, callCount), MarginSide2(putMargin, len-callCount))
 end
-marginZero() = (;risk=CZ, call=(;risk=CZ, count=0), put=(;risk=CZ, count=0))
 
 using LogUtil
 # log(args...) = LogUtil.logit(:backtest, args...)
 log(args...) = LogUtil.logit(:backtest, args...)
+#endregion
+
+#region AcctAccessorsAndCalcs
+marginDayTotal(acct) = acct.bal * acct.params.marginPerDayRat
+marginDayAvail(acct, side) = marginDayTotal(acct) - (side == Side.long ? acct.marginDay.put.margin : acct.marginDay.call.margin)
+marginTotal(acct) = acct.bal * acct.params.marginMaxRat
+marginAvail(acct, side) = marginTotal(acct) - (side == Side.long ? acct.margin.put.margin : acct.margin.call.margin)
+#endregion
+
+#region TradeAccessorsAndCalcs
+netOpen(x::Union{LegMetaOpen,Coll{LegMetaOpen}}, r=0.1) = bap(x, r)
+netClose(x::Union{LegMetaClose,Coll{LegMetaClose}}, r=0.0) = bap(x, r)
+netOpen(oq::OptionQuote, side::Side.T, r=0.1)::Currency = bap(QuoteTypes.newQuote(getQuote(oq), DirSQA(side, 1.0, Action.open)), r)
+netOpen(oq1::OptionQuote, side1::Side.T, oq2::OptionQuote, side2::Side.T, r=0.1)::Currency = netOpen(oq1, side1, r) + netOpen(oq2, side2, r)
+
+# General calcs
+# (basisAll = -105.000, neto = 0.020, multiple = 10, multNew = 5350, multRat = 535.0, innerStrike = 223.0, netVal = 0.000, riskVal = 1.000)
+calcVal(multiple, neto, spreadWidth, basisAll) = (
+    # println("in calvcal", (;multiple, neto, spreadWidth, basisAll)) ;
+    netVal = (multiple * neto + basisAll) / multiple ; return (netVal, spreadWidth - netVal) )
+getSpreadWidth(legs::Coll) = ( @assert length(legs) == 2 ; abs(getStrike(legs[1]) - getStrike(legs[2])) )
+calcVal(trade::TradeType9) = calcVal(trade.multiple, trade.open.neto, getSpreadWidth(trade), trade.open.basisAll)
+
+# Anytime
+getSpreadWidth(trade::TradeType9) = getSpreadWidth(trade.legs)
+getTradeGreeks(trade) = getGreeks(trade.lmsTrack[])
+getTradeStyle(trade) = getStyle(trade.legs[1])
+getTradeSide(trade) = getSide(trade.legs[1])
+getTradeExpiration(trade) = getExpiration(trade.legs[1])
+calcTradeRat(trade)::Float64 = getTradeStyle(trade) == Style.call ? F(getStrike(trade.legs[1])) / trade.curp : F(getStrike(trade.legs[2])) / trade.curp
+calcTradeExpDur(trade) = bdays(Date(trade.open.ts), Date(trade.targetDate))
+calcTradeMarginAll(trade) = trade.multiple * getSpreadWidth(trade)
+getTradeRiskVal(trade) = trade.open.riskVal
+
+# During
+calcTradeCurVal(trade) = trade.open.neto + trade.open.basisAll/trade.multiple + calcTradeCurClose(trade)
+calcTradeCurClose(trade) = netClose(trade.lmsTrack[])
+calcTradeCurRateVal(trade, to) = calcRate(trade.open.date, to, calcTradeCurVal(trade), trade.open.riskVal)
+
+# After closed
+rawTradePnl1(trade) = trade.open.neto + trade.close[].netc
+rawTradePnlAll(trade) = trade.multiple * rawTradePnl1(trade)
+getTradeRateVal(trade) = trade.rateVal[]
+
+isClosed(trade) = isassigned(trade.close)
 #endregion
 
 #region MaybeMove
@@ -671,6 +746,8 @@ toLMC(leg, lup) = LegMetaClose(leg, lup(getOption(leg)))
 toLMC(lm::LegMetaOpen, lup) = toLMC(getLeg(lm), lup)
 tosLLMC(lms, lup) = map(lm -> toLMC(getLeg(lm), lup), lms)
 tosLMC(legs, lup) = map(leg -> toLMC(leg, lup), legs)
+
+# tofrac(x::Millisecond) = Dates.value(x) * 1e-3 / 3600 / 24
 #endregion
 
 end

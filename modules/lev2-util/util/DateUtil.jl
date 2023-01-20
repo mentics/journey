@@ -167,4 +167,9 @@ timeToExpir(from::DateTime, to::DateTime)::Float64 = Millisecond(to - from).valu
 nowMs() = round(Int, time()*1000)
 nowz() = now(LOCALZONE)
 
+function toMonths(from::Date, to::Date)
+    @assert from < to
+    firstdayofmonth(from):Month(1):firstdayofmonth(to)
+end
+
 end

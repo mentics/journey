@@ -2,7 +2,7 @@
 
 julia_version = "1.8.3"
 manifest_format = "2.0"
-project_hash = "9fcb9c6d893a9b307c697b996aca6de72c1601a2"
+project_hash = "1dc4be5d697bb049d8ccc52cdf44e93d8189768e"
 
 [[deps.AbstractFFTs]]
 deps = ["ChainRulesCore", "LinearAlgebra"]
@@ -1388,6 +1388,11 @@ version = "1.3.0"
 git-tree-sha1 = "632eb4abab3449ab30c5e1afaa874f0b98b586e4"
 uuid = "8162dcfd-2161-5ef2-ae6c-7681170c5f98"
 version = "0.2.0"
+
+[[deps.PrettyPrinting]]
+git-tree-sha1 = "4be53d093e9e37772cc89e1009e8f6ad10c4681b"
+uuid = "54e16d92-306c-5ea0-a30b-337be88ac337"
+version = "0.4.0"
 
 [[deps.PrettyTables]]
 deps = ["Crayons", "Formatting", "LaTeXStrings", "Markdown", "Reexport", "StringManipulation", "Tables"]

@@ -33,13 +33,16 @@ end
 function getOqs(data::HistChain, ts::DateTime, xpir::Date)::Vector{OptionQuote}
     return data.chain[ts][xpir]
 end
+function getXoqs(data::HistChain, ts::DateTime)
+    return data.chain[ts]
+end
 
 getUnder(data::HistChain, ts::DateTime) = data.under[ts]
 
-getExpirs(data::HistChain, ts::DateTime) = filter(x -> x < Date(2025, 1, 1), keys(data.chain[ts]))
+getExpirs(data::HistChain, ts::DateTime) = sort(collect(filter(x -> x < Date(2025, 1, 1), keys(data.chain[ts]))))
 
 function getTss(data::HistChain)
-    return sort(collect(keys(data.under)))
+    return sort!(collect(keys(data.under)))
 end
 
 # function getXoqss(data, ts::DateTime, xpirs, curp::Currency, legsCheck=LEGS_EMPTY)
@@ -59,13 +62,17 @@ function paths(y, m)
     return pathCall, pathPut, pathUnder
 end
 
+const Cache = Dict{Date,HistChain}()
 function load(y, m)::HistChain
-    data = HistChain()
-    pathCall, pathPut, pathUnder = paths(y, m)
-    loadOpt(proc(data, Style.call), pathCall)
-    loadOpt(proc(data, Style.put), pathPut)
-    loadUnder(tound(data), pathUnder)
-    return data
+    return get!(Cache, Date(y, m)) do
+        data = HistChain()
+        pathCall, pathPut, pathUnder = paths(y, m)
+        loadOpt(proc(data, Style.call), pathCall)
+        loadOpt(proc(data, Style.put), pathPut)
+        loadUnder(tound(data), pathUnder)
+        return data
+    end
+    # return data
 end
 
 function proc(data, style)

@@ -207,6 +207,21 @@ end
 function drawDates(tups; kws...)
     drawDates([x[1] for x in tups], [x[2] for x in tups]; kws...)
 end
+
+function drawDates!(dates, values; kws...)
+    # dateticks = optimize_ticks(dates[1], dates[end])[1]
+
+    # fig = Figure()
+    # ax1 = Axis(fig[1,1])
+    plt = lines!(datetime2rata.(dates), values; kws...)
+    # ax1.xticks[] = (datetime2rata.(dateticks) , Dates.format.(dateticks, "mm/dd/yyyy"));
+    # plt = lines!(ax1, datetime2unix.(dates), values; kws...)
+    # ax1.xticks[] = (datetime2unix.(dateticks), Dates.format.(dateticks, "mm/dd/yyyy"));
+    # return fig
+end
+function drawDates!(tups; kws...)
+    drawDates!([x[1] for x in tups], [x[2] for x in tups]; kws...)
+end
 #endregion
 
 end
