@@ -31,7 +31,7 @@ function test1()
     curp = SS.getUnder(ts1).under
 
     lms = find(ts1, xpir, curp)
-    # show(from, to, lms)
+    show(from, to, lms)
     return curp, lms
 end
 
@@ -52,31 +52,72 @@ function find(ts, xpir, curp)
     search = ChainUtil.toSearch(SS.getOqs(ts, xpir))
     specs = [
         Spec(:put, .8, Side.long),
-        Spec(:put, .85, Side.long),
+        Spec(:put, .88, Side.long),
         Spec(:put, .9, Side.short),
         Spec(:call, 1.1, Side.short),
-        Spec(:call, 1.15, Side.long),
+        Spec(:call, 1.12, Side.long),
         Spec(:call, 1.2, Side.long),
     ]
-    return [fromSpec(curp, search, spec) for spec in specs]
+    global lmso = [fromSpec(curp, search, spec) for spec in specs]
+    println(bap(lmso, .1))
+    return lmso
 end
+
+using ColorSchemes
+using PlotUtils: optimize_ticks
 
 function show(from, to, lmso)
     tss = SS.getTss(SS.NoFirst2, from, to)
-    lup = leg -> SS.getOq(ts, getExpiration(leg), getStyle(leg), getStrike(leg))
+    # colors = [:blue, :green, :yellow, :red, ]
+    # dots = [Vector{Tuple{DateTime,Currency}}() for _ in eachindex(lmso)]
+    # dots = [Vector{Tuple{Float64,Currency}}() for _ in eachindex(lmso)]
+    global dots = [Vector{Tuple{Int,Currency}}() for _ in eachindex(lmso)]
+    global prices = [Vector{Tuple{DateTime,Currency}}() for _ in eachindex(lmso)]
+    global unders = Vector{Tuple{Int,Currency}}()
+    global nets = Vector{Tuple{Int,Currency}}()
+    global curpOrig = SS.getUnder(first(tss)).under
     for ts in tss
+        tsPlot = datetime2rata(ts)
+        lup = leg -> SS.getOq(ts, getExpiration(leg), getStyle(leg), getStrike(leg))
         curp = SS.getUnder(ts).under
-        lmsc = reqlms(lup, lmso, Action.close)
-
+        try
+            lmsc = Between.reqlms(lup, lmso, Action.close)
+            vals = netVal(lmso, lmsc)
+            for i in eachindex(vals)
+                strike = getStrike(lmso[i])
+                # push!(dots[i], (datetime2unix(ts), vals[i]))
+                push!(dots[i], (tsPlot, strike + vals[i]))
+                push!(prices[i], (ts, vals[i]))
+            end
+            push!(unders, (tsPlot, curp))
+            net = bap(lmso, .01) + bap(lmsc, .0)
+            push!(nets, (tsPlot, curpOrig + net))
+        catch e
+            println("Could not requote, skipping $(ts)")
+            continue
+        end
     end
-    display(DrawUtil.drawDates(prices))
-    DataInspector(;textcolor=:blue)
-    DrawUtil.drawDates!(optPrices)
+
+    fig = Figure()
+    DataInspector(fig; textcolor=:blue)
+    dateticks = optimize_ticks(tss[1], tss[end])[1]
+    ax1 = Axis(fig[1,1])
+    ax1.xticks[] = (datetime2rata.(dateticks) , Dates.format.(dateticks, "mm/dd/yyyy"));
+
+    lines!(ax1, unders; color=:white)
+    lines!(ax1, nets; color=:green)
+
+    colors = resample_cmap(:viridis, length(dots))
+    for i in eachindex(dots)
+        scatter!(ax1, dots[i]; color=colors[i])
+    end
+    display(fig)
+
     return
 end
 
-function netVal(lmso::Coll, lmsc:Coll)
-    return map(zip(lmso, lmsc)) do lmo, lmc
+function netVal(lmso::Coll, lmsc::Coll)
+    return map(zip(lmso, lmsc)) do (lmo, lmc)
         neto = bap(lmo, .1)
         netc = bap(lmc, .0)
         curVal = neto + netc

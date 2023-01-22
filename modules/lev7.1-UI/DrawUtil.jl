@@ -170,9 +170,9 @@ end
 
 function drawDots(vals; kws...)
     closeWin()
-    fig = scatter(vals; kws...)
-    DataInspector(fig.figure)
-    return fig
+    p = scatter(vals; kws...)
+    DataInspector(p.figure)
+    return p
 end
 
 function drawDots!(vals; kws...)
@@ -193,12 +193,18 @@ end
 
 using Dates
 using PlotUtils: optimize_ticks
-function drawDates(dates, values; kws...)
+# function setupDates(dates)
+#     dateticks = optimize_ticks(dates[1], dates[end])[1]
+#     fig = current_figure()
+#     ax1 = Axis(fig[1,1])
+#     ax1.xticks[] = (datetime2rata.(dateticks) , Dates.format.(dateticks, "mm/dd/yyyy"));
+#     return fig
+# end
+function drawDates(dates, values; func=lines!, kws...)
     dateticks = optimize_ticks(dates[1], dates[end])[1]
-
-    fig = Figure()
+    fig = current_figure() # Figure()
     ax1 = Axis(fig[1,1])
-    plt = lines!(ax1, datetime2rata.(dates), values; kws...)
+    plt = func(ax1, datetime2rata.(dates), values; kws...)
     ax1.xticks[] = (datetime2rata.(dateticks) , Dates.format.(dateticks, "mm/dd/yyyy"));
     # plt = lines!(ax1, datetime2unix.(dates), values; kws...)
     # ax1.xticks[] = (datetime2unix.(dateticks), Dates.format.(dateticks, "mm/dd/yyyy"));

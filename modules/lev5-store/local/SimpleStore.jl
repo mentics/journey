@@ -1,6 +1,6 @@
 module SimpleStore
 using Dates
-using BaseTypes, SmallTypes, OptionTypes, QuoteTypes, OptionMetaTypes, ChainTypes
+using SH, BaseTypes, SmallTypes, OptionTypes, QuoteTypes, OptionMetaTypes, ChainTypes
 using DateUtil, DictUtil
 import Calendars as cal
 
@@ -46,7 +46,11 @@ end
 
 #region Public
 matches(oq, style, strike) = getStyle(oq) == style && getStrike(oq) == strike
-getOq(ts::DateTime, xpir::Date, style::Style.T, strike::Currency) = findfirst(oq -> matches(oq, style, strike), getOqs(ts, xpir))
+function getOq(ts::DateTime, xpir::Date, style::Style.T, strike::Currency)::Union{Nothing,OptionQuote}
+    oqs = getOqs(ts, xpir)
+    i = findfirst(oq -> matches(oq, style, strike), oqs)
+    return isnothing(i) ? nothing : oqs[i]
+end
 getOqs(ts::DateTime, xpir::Date)::Vector{OptionQuote} = getOqs(load(ts), ts, xpir)
 getOqs(data::HistChain, ts::DateTime, xpir::Date)::Vector{OptionQuote} = data.chain[ts][xpir]
 
@@ -60,7 +64,7 @@ getExpirs(ts::DateTime)::Vector{Date} = getExpirs(load(ts), ts)
 getExpirs(data::HistChain, ts::DateTime)::Vector{Date} = sort(collect(filter(x -> x < Date(2025, 1, 1), keys(data.chain[ts]))))
 
 getTss(from::DateLike, to::DateLike)::Vector{DateTime} = filter(ts -> from <= ts <= to, Tss[])
-getTss(filt, from::DateLike, to::DateLike)::Vector{DateTime} = filter(ts -> from <= ts <= to && from(ts), Tss[])
+getTss(filt, from::DateLike, to::DateLike)::Vector{DateTime} = filter(ts -> from <= ts <= to && filt(ts), Tss[])
 getTss(data::HistChain) = data.tss
 
 function tsFirst(dts::DateLike; filt=NoFirst2)::DateTime

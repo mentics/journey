@@ -32,13 +32,15 @@ function reqlm(lup, leg::Leg, act::Action.T)
     oq = lup(leg)
     return act == Action.open ? LegMetaOpen(leg, oq) : LegMetaClose(leg, oq)
 end
-function reqlms(lup, legs::Coll, act::Action.T)
+function reqlms(lup, legs::Coll{Leg}, act::Action.T)
     map(x -> reqlm(lup, x, act), legs)
+end
+function reqlms(lup, legs::Coll, act::Action.T)
+    map(x -> reqlm(lup, getLeg(x), act), legs)
 end
 function reqlms(lup, hasLegs, act::Action.T)
     map(x -> reqlm(lup, getLeg(x), act), getLegs(hasLegs))
 end
-
 
 
 # SH.to(::Type{LegMeta}, leg::Leg, oqter)::LegMeta = ( (oq, side) = (oqter(leg), getSide(leg)) ; LegMeta(Leg(getOption(leg), getQuantity(leg), side), getQuote(oq, side), getMeta(oq)) )
