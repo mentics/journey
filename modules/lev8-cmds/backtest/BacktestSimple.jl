@@ -11,6 +11,7 @@ import HistData as HD
 import SimpleStore as SS
 using Calendars
 import ChainUtil
+using GLMakie
 
 #= Explore pricing
 lmss = bt.findLongSpreadEntry(expir(16), market().curp, (;rat=.8, off=30.0))
@@ -19,7 +20,70 @@ priceOption(market().curp, texPY(market().tsMarket, lmss[2]), lmss[2], .35)
 priceOption(market().curp, texPY(market().tsMarket, lmss2[1]), lmss2[1], .276)
 =#
 
-using GLMakie
+#region Explore
+function test1()
+    from = Date(2020,1,1)
+    to = Date(2020,4,17)
+
+    ts1 = SS.tsFirst(from)
+    date1 = Date(ts1)
+    xpir = CollUtil.gtee(SS.getExpirs(ts1), bdaysAfter(date1, 80))
+    curp = SS.getUnder(ts1).under
+
+    lms = find(ts1, xpir, curp)
+    # show(from, to, lms)
+    return curp, lms
+end
+
+struct Spec
+    style::Symbol
+    rat::Float64
+    side::Side.T
+end
+
+function fromSpec(curp, search, spec)
+    strikes = getfield(search, spec.style).strikes
+    oqs = getfield(search, spec.style).oqs
+    oq = oqs[searchsortedlast(strikes, curp * spec.rat)]
+    return LegMetaOpen(oq, spec.side, 1.0)
+end
+
+function find(ts, xpir, curp)
+    search = ChainUtil.toSearch(SS.getOqs(ts, xpir))
+    specs = [
+        Spec(:put, .8, Side.long),
+        Spec(:put, .85, Side.long),
+        Spec(:put, .9, Side.short),
+        Spec(:call, 1.1, Side.short),
+        Spec(:call, 1.15, Side.long),
+        Spec(:call, 1.2, Side.long),
+    ]
+    return [fromSpec(curp, search, spec) for spec in specs]
+end
+
+function show(from, to, lmso)
+    tss = SS.getTss(SS.NoFirst2, from, to)
+    lup = leg -> SS.getOq(ts, getExpiration(leg), getStyle(leg), getStrike(leg))
+    for ts in tss
+        curp = SS.getUnder(ts).under
+        lmsc = reqlms(lup, lmso, Action.close)
+
+    end
+    display(DrawUtil.drawDates(prices))
+    DataInspector(;textcolor=:blue)
+    DrawUtil.drawDates!(optPrices)
+    return
+end
+
+function netVal(lmso::Coll, lmsc:Coll)
+    return map(zip(lmso, lmsc)) do lmo, lmc
+        neto = bap(lmo, .1)
+        netc = bap(lmc, .0)
+        curVal = neto + netc
+        return curVal
+    end
+end
+
 function test()
     from = Date(2020,1,1)
     to = Date(2020,4,17)
@@ -57,6 +121,7 @@ function test()
     DrawUtil.drawDates!(optPrices)
     return
 end
+#endregion
 
 #region Types
 struct MarginSide2

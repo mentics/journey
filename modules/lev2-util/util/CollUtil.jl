@@ -143,4 +143,9 @@ flat(x...) = Iterators.flatten(x)
 flatmap(f, coll) = Iterators.flatten(Iterators.map(f, coll))
 mapflatmap(fout, fin, coll) = Iterators.map(fout, Iterators.flatten(Iterators.map(fin, coll)))
 
+function gtee(v, x)
+    i = searchsortedfirst(v, x)
+    return v[min(i, lastindex(v))]
+end
+
 end

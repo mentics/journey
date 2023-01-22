@@ -19,12 +19,8 @@ end
 
 whichExpir(d::Date)::Int = searchsortedfirst(expirs(), d)
 
-xprGte(date::Date)::Int = whichExpir(expirGte(date))
-function xpirGte(date::Date)::Date
-    xpirs = expirs()
-    ind = searchsortedfirst(xpirs, date)
-    ind > lastindex(xpirs) ? xpirs[end] : xpirs[ind]
-end
+# xprGte(date::Date)::Int = whichExpir(expirGte(date))
+# xpirGte(date::Date)::Date = gtee(expirs(), date)
 
 #region Local
 const EXPIRS_TYPE = OffsetArray{Date}

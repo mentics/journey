@@ -15,9 +15,9 @@ export drlms, drlms!
 
 # drlms(lms; kws...) = drawRet(combineTo(Ret, lms, minimum(getExpiration.(lms)), market().startPrice, getvr()); curp=market().curp, kws...)
 # drlms!(lms; kws...) = drawRet!(combineTo(Ret, lms, minimum(getExpiration.(lms)), market().startPrice, getvr()); kws...)
-drlms(lms; kws...) = drawRet(combineTo(Ret, lms, market().startPrice); curp=market().curp, kws...)
-drlms!(lms; kws...) = drawRet!(combineTo(Ret, lms, market().startPrice); kws...)
-drlms!(lm::LegMeta; kws...) = drawRet!(to(Ret, lm, market().startPrice); kws...)
+drlms(lms; curp=market().curp, kws...) = drawRet(combineTo(Ret, lms, curp); curp, kws...)
+drlms!(lms; curp=market().curp, kws...) = drawRet!(combineTo(Ret, lms, curp); kws...)
+drlms!(lm::LegMeta; curp=market().curp, kws...) = drawRet!(to(Ret, lm, curp); kws...)
 
 export findShortsToClose
 # TODO: move this to scheduled

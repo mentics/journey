@@ -27,7 +27,13 @@ export nextLocalTime, nextMarketPeriod
 export isweekend # reexport from BusinessDays
 export getDate
 
+#region ConstAndTypes
+export LOCALZONE
 const LOCALZONE = localzone()
+
+export DateLike
+const DateLike = Union{Date,Dates.AbstractDateTime}
+#endregion
 
 export timult, calcRate
 bdaysPerYear() = 252.0

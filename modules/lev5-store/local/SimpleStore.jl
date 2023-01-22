@@ -2,13 +2,18 @@ module SimpleStore
 using Dates
 using BaseTypes, SmallTypes, OptionTypes, QuoteTypes, OptionMetaTypes, ChainTypes
 using DateUtil, DictUtil
+import Calendars as cal
 
+#region ConstAndTypes
 const HINT_TSS = 24 * 28
 const HINT_OQS = 100
 const HINT_XPIRS = 40
 
-const OutDir = "C:/data/db/hand/"
+const DirOut = "C:/data/db/hand/"
+const FileTss = joinpath(DirOut, "tss.ser")
 const DF_FILE = DateFormat("yyyymm")
+
+const NoFirst2 = x -> Time(x) != Time(cal.getMarketOpen(Date(x))) + Second(10)
 
 struct UnderTime
     under::Currency
@@ -20,42 +25,65 @@ end
 struct HistChain
     chain::Dict{DateTime,Dict{Date,Vector{OptionQuote}}}
     under::Dict{DateTime,UnderTime}
+    tss::Vector{DateTime}
 end
 function HistChain()
-    hc = HistChain(Dict{DateTime,Dict{Date,Vector{OptionQuote}}}(), Dict{DateTime,UnderTime}())
-    sizehint!(hc.chain, HINT_TSS)
-    sizehint!(hc.under, HINT_TSS)
-    return hc
+    chain = Dict{DateTime,Dict{Date,Vector{OptionQuote}}}()
+    sizehint!(chain, HINT_TSS)
+    under = Dict{DateTime,UnderTime}()
+    sizehint!(under, HINT_TSS)
+    tss = Vector{DateTime}()
+    sizehint!(tss, HINT_TSS)
+    return HistChain(chain, under, tss)
 end
 
-# const DataType = Dict{DateTime,Dict{Date,Vector{OptionQuote}}}
-
-function getOqs(data::HistChain, ts::DateTime, xpir::Date)::Vector{OptionQuote}
-    return data.chain[ts][xpir]
+function __init__()
+    if ccall(:jl_generating_output, Cint, ()) != 1
+        loadTss()
+    end
 end
-function getXoqs(data::HistChain, ts::DateTime)
-    return data.chain[ts]
-end
+#endregion
 
+#region Public
+matches(oq, style, strike) = getStyle(oq) == style && getStrike(oq) == strike
+getOq(ts::DateTime, xpir::Date, style::Style.T, strike::Currency) = findfirst(oq -> matches(oq, style, strike), getOqs(ts, xpir))
+getOqs(ts::DateTime, xpir::Date)::Vector{OptionQuote} = getOqs(load(ts), ts, xpir)
+getOqs(data::HistChain, ts::DateTime, xpir::Date)::Vector{OptionQuote} = data.chain[ts][xpir]
+
+getXoqs(ts::DateTime) = getXoqs(load(ts), ts)
+getXoqs(data::HistChain, ts::DateTime) = data.chain[ts]
+
+getUnder(ts::DateTime) = getUnder(load(ts), ts)
 getUnder(data::HistChain, ts::DateTime) = data.under[ts]
 
-getExpirs(data::HistChain, ts::DateTime) = sort(collect(filter(x -> x < Date(2025, 1, 1), keys(data.chain[ts]))))
+getExpirs(ts::DateTime)::Vector{Date} = getExpirs(load(ts), ts)
+getExpirs(data::HistChain, ts::DateTime)::Vector{Date} = sort(collect(filter(x -> x < Date(2025, 1, 1), keys(data.chain[ts]))))
 
-function getTss(data::HistChain)
-    return sort!(collect(keys(data.under)))
+getTss(from::DateLike, to::DateLike)::Vector{DateTime} = filter(ts -> from <= ts <= to, Tss[])
+getTss(filt, from::DateLike, to::DateLike)::Vector{DateTime} = filter(ts -> from <= ts <= to && from(ts), Tss[])
+getTss(data::HistChain) = data.tss
+
+function tsFirst(dts::DateLike; filt=NoFirst2)::DateTime
+    data = load(dts)
+    i = findfirst(ts -> ts >= dts && filt(ts), data.tss)
+    return data.tss[i]
 end
+#endregion
 
-# function getXoqss(data, ts::DateTime, xpirs, curp::Currency, legsCheck=LEGS_EMPTY)
-#     dictFromKeys(xpirs) do xpir
-#         all = ChainUtil.oqssAll(getChain(data, ts, xpir))
-#         entry = ChainUtil.filtEntry(all, curp, legsCheck)
-#         return (;all, entry)
-#     end
-# end
+#region Load
+const Tss = Ref{Vector{DateTime}}()
+function loadTss()
+    len = div(filesize(FileTss),sizeof(DateTime))
+    tss = Vector{DateTime}(undef, len)
+    open(FileTss) do io
+        read!(io, tss)
+    end
+    Tss[] = tss
+end
 
 function paths(y, m)
     dateStr = Dates.format(Date(y, m, 1), DF_FILE)
-    baseDir = mkpath(joinpath(OutDir, dateStr))
+    baseDir = mkpath(joinpath(DirOut, dateStr))
     pathCall = joinpath(baseDir, "call.ser")
     pathPut = joinpath(baseDir, "put.ser")
     pathUnder = joinpath(baseDir, "under.ser")
@@ -63,16 +91,21 @@ function paths(y, m)
 end
 
 const Cache = Dict{Date,HistChain}()
+load(dts::DateLike)::HistChain = load(year(dts), month(dts))
 function load(y, m)::HistChain
-    return get!(Cache, Date(y, m)) do
-        data = HistChain()
-        pathCall, pathPut, pathUnder = paths(y, m)
-        loadOpt(proc(data, Style.call), pathCall)
-        loadOpt(proc(data, Style.put), pathPut)
-        loadUnder(tound(data), pathUnder)
-        return data
-    end
-    # return data
+    return get!(() -> loadRaw(y, m), Cache, Date(y, m))
+end
+
+function loadRaw(y, m)::HistChain
+    data = HistChain()
+    pathCall, pathPut, pathUnder = paths(y, m)
+    loadOpt(proc(data, Style.call), pathCall)
+    loadOpt(proc(data, Style.put), pathPut)
+    loadUnder(tound(data), pathUnder)
+    append!(data.tss, keys(data.under))
+    sort!(data.tss)
+    # data.tss = sort!(collect(keys(data.under)))
+    return data
 end
 
 function proc(data, style)
@@ -140,5 +173,24 @@ function loadUnder(f, path)
     end
     return
 end
+#endregion
+
+#region Maintenance
+function updateTssFile()
+    tss = Vector{DateTime}()
+    for dirName in readdir(DirOut; sort=false)
+        path = joinpath(DirOut, dirName)
+        isdir(path) || continue
+        println("processing $(path)")
+        dt = Date(dirName, DF_FILE)
+        data = loadRaw(year(dt), month(dt))
+        append!(tss, data.tss)
+    end
+    sort!(tss)
+    open(FileTss; write=true) do io
+        write(io, tss)
+    end
+end
+#endregion
 
 end
