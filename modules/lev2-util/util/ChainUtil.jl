@@ -1,6 +1,35 @@
 module ChainUtil
+import Dates:Date
 using Globals, SH, BaseTypes, SmallTypes, OptionTypes, LegTypes, LegMetaTypes, ChainTypes
 
+#region Types
+export Chain, XpirChain
+abstract type Chain end
+abstract type ChainSearch end
+# const XpirChain = Dict{Date,Chain}
+#endregion
+
+#region Public
+function toSearch(curp, oqs::Vector{OptionQuote})::ChainSearch
+    return ChainSearchType(curp, oqs, getStrike.(oqs))
+end
+function oqsLteCurp(search::ChainSearch, rat::Float64)::Vector{OptionQuote}
+    return search.oqs[CollUtil.ltee(search.strikes, search.curp * rat)]
+end
+#endregion
+
+#region LocalTypes
+struct ChainType <: Chain
+end
+struct ChainSearchType <: ChainSearch
+    curp::Currency
+    oqs::Vector{OptionQuote}
+    strikes::Vector{Currency}
+end
+#endregion
+
+
+#region Old
 # function getOqss(oqs::Vector{OptionQuote}, curp::Currency, legsCheck=LEGS_EMPTY)::Oqss
 #     # oqs = filter(oq -> distRatio(getStrike(oq), curp) < Bins.SPAN/2, oqsIn)
 #     fconl = !isConflict(legsCheck, Side.long)
@@ -171,5 +200,6 @@ end
 #     isnothing(findfirst(x -> x > maxDiff, diffs)) || return nothing
 #     return res
 # end
+#endregion
 
 end

@@ -2,7 +2,7 @@ module SH
 
 export Vals
 
-export getStyle, getExpiration, getStrike, getSide, getQuantity, getAction
+export getStyle, getExpiration, getExpir, getStrike, getSide, getQuantity, getAction
 export getBid, getAsk
 export toCode, toOther
 export getIv
@@ -32,6 +32,7 @@ function getAsk() end
 function getStyle() end
 function getStrike() end
 getExpiration(itr) = minimum(getExpiration, itr)
+getExpir(itr) = minimum(getExpir, itr)
 
 function getSide() end
 function getQuantity() end

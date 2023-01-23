@@ -148,4 +148,15 @@ function gtee(v, x)
     return v[min(i, lastindex(v))]
 end
 
+function ltee(v, x)
+    i = searchsortedlast(v, x)
+    return v[min(i, firstindex(v))]
+end
+
+function sublist(v, from, to)
+    left = searchsortedfirst(v, from)
+    right = searchsortedlast(v, to)
+    return v[left:right]
+end
+
 end

@@ -4,9 +4,10 @@ using SH, BaseTypes, SmallTypes, QuoteTypes, OptionMetaTypes, StratTypes, LegMet
 using CollUtil
 using Rets, LegTypes, TradeTypes, LegTradeTypes, Pricing
 
-#region ToLMO
+#region ToLegMeta
 SH.to(::Type{LegMetaOpen}, leg::Leg, lup) = LegMetaOpen(lup(getOption(leg)), getSide(leg), getQuantity(leg))
 # SH.to(::Type{LegMetaOpen}, lm::LegMetaOpen, lup) = to(LegMetaClose, getLeg(lm), lup) # LegMetaClose(lup(getOption(lm)), getQuantity(lm), getSide(lm))
+SH.to(::Type{LegMetaClose}, lm::LegMetaOpen, optToOq::Function) = ( leg = getLeg(lm) ; LegMetaClose(leg, optToOq(getOption(leg))) )
 #endregion
 
 #region ToRet

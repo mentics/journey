@@ -20,120 +20,6 @@ priceOption(market().curp, texPY(market().tsMarket, lmss[2]), lmss[2], .35)
 priceOption(market().curp, texPY(market().tsMarket, lmss2[1]), lmss2[1], .276)
 =#
 
-#region Explore
-struct Spec2
-    style::Symbol
-    rat::Float64
-    off::Currency
-    side::Side.T
-end
-
-function find(ts, xpir, curp)
-    global search = ChainUtil.toSearch(SS.getOqs(ts, xpir))
-    specs = [
-        Spec2(:put, .8, CZ, Side.long),
-        Spec2(:put, .95, C(-19.2), Side.long),
-        Spec2(:put, .95, CZ, Side.short),
-        Spec2(:call, 1.1, CZ, Side.short),
-        Spec2(:call, 1.1, C(19.2), Side.long),
-        Spec2(:call, 1.2, CZ, Side.long),
-    ]
-    global lmso = [fromSpec(curp, search, spec) for spec in specs]
-    return lmso
-end
-
-function test1()
-    from = Date(2020,3,22)
-    to = Date(2020,4,17)
-
-    ts1 = SS.tsFirst(from)
-    date1 = Date(ts1)
-    # xpir = CollUtil.gtee(SS.getExpirs(ts1), bdaysAfter(date1, 80))
-    xpir = CollUtil.gtee(SS.getExpirs(ts1), to)
-    curp = SS.getUnder(ts1).under
-    global curpOrig = curp
-
-    lms = find(ts1, xpir, curp)
-    println("neto: $(pricing(lmso))")
-    println("curp:$(curp)")
-    show(from, to, lms)
-    return curp, lms
-end
-
-function fromSpec(curp, search, spec)
-    strikes = getfield(search, spec.style).strikes
-    oqs = getfield(search, spec.style).oqs
-    fsearch = spec.rat < 0 ? searchsortedlast : searchsortedfirst
-    oq = oqs[clamp(fsearch(strikes, curp * spec.rat + spec.off), firstindex(oqs), lastindex(oqs))]
-    return LegMetaOpen(oq, spec.side, 1.0)
-end
-
-using ColorSchemes
-using PlotUtils: optimize_ticks
-pricing(x) = bap(x, .5)
-function show(from, to, lmso)
-    neto = pricing(lmso)
-    tss = SS.getTss(SS.NoFirstLast, from, to)
-    # colors = [:blue, :green, :yellow, :red, ]
-    # dots = [Vector{Tuple{DateTime,Currency}}() for _ in eachindex(lmso)]
-    # dots = [Vector{Tuple{Float64,Currency}}() for _ in eachindex(lmso)]
-    global dots = [Vector{Tuple{Int,Currency}}() for _ in eachindex(lmso)]
-    global prices = [Vector{Tuple{DateTime,Currency}}() for _ in eachindex(lmso)]
-    global unders = Vector{Tuple{Int,Currency}}()
-    global nets = Vector{Tuple{Int,Currency}}()
-    global netExpireds = Vector{Tuple{Int,Currency}}()
-    global priceBase = round_step(SS.getUnder(first(tss)).under, 10)
-    for ts in tss
-        tsPlot = datetime2unix(ts)
-        lup = leg -> SS.getOq(ts, getExpiration(leg), getStyle(leg), getStrike(leg))
-        curp = SS.getUnder(ts).under
-        try
-            lmsc = Between.reqlms(lup, lmso, Action.close)
-            vals = netVal(lmso, lmsc)
-            for i in eachindex(vals)
-                strike = getStrike(lmso[i])
-                # push!(dots[i], (datetime2unix(ts), vals[i]))
-                push!(dots[i], (tsPlot, strike + vals[i]))
-                push!(prices[i], (ts, vals[i]))
-            end
-            push!(unders, (tsPlot, curp))
-            net = neto + pricing(lmsc)
-            push!(nets, (tsPlot, priceBase + net))
-            push!(netExpireds, (tsPlot, priceBase + neto + OptionUtil.netExpired(lmso, curp)))
-        catch e
-            println("Could not requote, skipping $(ts)")
-            continue
-        end
-    end
-
-    fig = Figure()
-    DataInspector(fig; textcolor=:blue)
-    global dateticks = optimize_ticks(tss[1], tss[end])[1]
-    ax1 = Axis(fig[1,1])
-    ax1.xticks[] = (datetime2unix.(dateticks) , Dates.format.(dateticks, "mm/dd/yyyy"));
-
-    lines!(ax1, unders; color=:white)
-    scatter!(ax1, nets; color=:green)
-    scatter!(ax1, netExpireds; color=:blue)
-
-    colors = resample_cmap(:viridis, length(dots))
-    for i in eachindex(dots)
-        scatter!(ax1, dots[i]; color=colors[i])
-    end
-    display(fig)
-
-    return
-end
-
-function netVal(lmso::Coll, lmsc::Coll)
-    return map(zip(lmso, lmsc)) do (lmo, lmc)
-        neto = pricing(lmo)
-        netc = pricing(lmc)
-        curVal = neto + netc
-        return curVal
-    end
-end
-
 function test()
     from = Date(2020,1,1)
     to = Date(2020,4,17)
@@ -174,21 +60,7 @@ end
 #endregion
 
 #region Types
-struct MarginSide2
-    margin::Currency
-    count::Int
-end
-marginSideZero() = MarginSide2(CZ, 0)
-
-struct MarginInfo2
-    margin::Currency
-    marginBalRat::Float64
-    call::MarginSide2
-    put::MarginSide2
-end
-marginZero() = MarginInfo2(CZ, 0.0, marginSideZero(), marginSideZero())
-
-# const TradeType = Dict{Symbol,Any}
+using BackTypes
 const TradeType9 = NamedTuple{
         (:id, :legs, :open, :targetDate, :multiple, :curp, :lmsTrack, :close, :pnl, :pnlAll, :rateVal, :rat),
         Tuple{Int64,
@@ -359,7 +231,7 @@ function makeAcct(params, from, to)
         rates = Vector{Float64}(),
         bals = Vector{Tuple{Date,Currency}}(),
         realBals = Vector{Tuple{DateTime,Currency}}(),
-        margins = Vector{Tuple{Date,MarginInfo2}}(),
+        margins = Vector{Tuple{Date,MarginInfo}}(),
         # Mutable
         ts = DATETIME_ZERO,
         date = DATE_ZERO,
@@ -802,7 +674,7 @@ function recalcMargin(poss, bal)
     keep = max(callCount, len-callCount)
     resize!(margins, keep)
     marginTotal = sum(margins)
-    return MarginInfo2(marginTotal, F(marginTotal) / bal, MarginSide2(callMargin, callCount), MarginSide2(putMargin, len-callCount))
+    return MarginInfo(marginTotal, F(marginTotal) / bal, MarginSide(callMargin, callCount), MarginSide(putMargin, len-callCount))
 end
 
 using LogUtil

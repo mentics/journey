@@ -1,8 +1,10 @@
 module SimpleStore
 using Dates
 using SH, BaseTypes, SmallTypes, OptionTypes, QuoteTypes, OptionMetaTypes, ChainTypes
-using DateUtil, DictUtil
+using DateUtil, DictUtil, CollUtil
 import Calendars as cal
+
+export ChainInfo, UnderTime, TimeInfo
 
 #region ConstAndTypes
 const HINT_TSS = 24 * 28
@@ -13,9 +15,6 @@ const DirOut = "C:/data/db/hand/"
 const FileTss = joinpath(DirOut, "tss.ser")
 const DF_FILE = DateFormat("yyyymm")
 
-const NoFirst2 = x -> Time(x) != Time(cal.getMarketOpen(Date(x))) + Second(10)
-const NoFirstLast = x -> Time(x) != Time(cal.getMarketOpen(Date(x))) + Second(10) && Time(x) != Time(cal.getMarketClose(Date(x)))
-
 struct UnderTime
     under::Currency
     open::Currency
@@ -23,55 +22,75 @@ struct UnderTime
     lo::Currency
 end
 
-struct HistChain
-    chain::Dict{DateTime,Dict{Date,Vector{OptionQuote}}}
-    under::Dict{DateTime,UnderTime}
-    tss::Vector{DateTime}
-end
-function HistChain()
-    chain = Dict{DateTime,Dict{Date,Vector{OptionQuote}}}()
-    sizehint!(chain, HINT_TSS)
-    under = Dict{DateTime,UnderTime}()
-    sizehint!(under, HINT_TSS)
-    tss = Vector{DateTime}()
-    sizehint!(tss, HINT_TSS)
-    return HistChain(chain, under, tss)
+struct ChainInfo
+    xsoqs::Dict{Date,Styles{Vector{OptionQuote}}}
+    under::UnderTime
+    xpirs::Vector{Date}
 end
 
-function __init__()
-    if ccall(:jl_generating_output, Cint, ()) != 1
-        loadTss()
-    end
+struct TimeInfo
+    ts::DateTime
+    date::Date
+    firstOfDay::Bool
+    lastOfDay::Bool
+    atClose::Bool
 end
 #endregion
 
 #region Public
-matches(oq, style, strike) = getStyle(oq) == style && getStrike(oq) == strike
-function getOq(ts::DateTime, xpir::Date, style::Style.T, strike::Currency)::Union{Nothing,OptionQuote}
-    oqs = getOqs(ts, xpir)
-    i = findfirst(oq -> matches(oq, style, strike), oqs)
-    return isnothing(i) ? nothing : oqs[i]
+function run(f, from::DateLike, to::DateLike; maxSeconds=1)
+    tss = getTss(from, to)
+    start = time()
+    lasti = lastindex(tss)
+    firstOfDay = true
+    lastOfDay = false
+    for i in eachindex(tss)
+        ts = tss[i]
+        date = Date(ts)
+        lastOfDay = i == lasti || day(tss[i+1]) != day(ts)
+        atClose = Time(ts) == Time(cal.getMarketClose(Date(ts)))
+
+        chain = loadChainInfo(ts)
+        f(TimeInfo(ts, date, firstOfDay, lastOfDay, atClose), chain)
+
+        firstOfDay = i == lasti || day(tss[i+1]) != day(ts)
+
+        if time() > start + maxSeconds
+            break
+        end
+    end
 end
-getOqs(ts::DateTime, xpir::Date)::Vector{OptionQuote} = getOqs(load(ts), ts, xpir)
-getOqs(data::HistChain, ts::DateTime, xpir::Date)::Vector{OptionQuote} = data.chain[ts][xpir]
 
-getXoqs(ts::DateTime) = getXoqs(load(ts), ts)
-getXoqs(data::HistChain, ts::DateTime) = data.chain[ts]
+# function getOq(ts::DateTime, xpir::Date, style::Style.T, strike::Currency)::Union{Nothing,OptionQuote}
+#     oqs = getOqs(ts, xpir)
+#     i = findfirst(oq -> matches(oq, style, strike), oqs)
+#     return isnothing(i) ? nothing : oqs[i]
+# end
 
-getUnder(ts::DateTime) = getUnder(load(ts), ts)
-getUnder(data::HistChain, ts::DateTime) = data.under[ts]
+# getCalls(ts::DateTime, xpir::Date)::Vector{OptionQuote} = loadChainInfo(ts)[xpir].calls
+# getPuts(ts::DateTime, xpir::Date)::Vector{OptionQuote} = loadChainInfo(ts)[xpir].puts
 
-getExpirs(ts::DateTime)::Vector{Date} = getExpirs(load(ts), ts)
-getExpirs(data::HistChain, ts::DateTime)::Vector{Date} = sort(collect(filter(x -> x < Date(2025, 1, 1), keys(data.chain[ts]))))
+# getSoqs(ts::DateTime, xpir::Date)::Styles{Vector{OptionQuote}} = loadChain(ts).xpirChain[xpir]
+# getXsoqs(ts::DateTime) = loadChain(ts).xsoqs
+# getUnder(ts::DateTime) = loadChain(ts).under
 
-getTss(from::DateLike, to::DateLike)::Vector{DateTime} = filter(ts -> from <= ts <= to, Tss[])
+# getExpirs(ts::DateTime)::Vector{Date} = getExpirs(load(ts), ts)
+# getExpirs(data::HistChain, ts::DateTime)::Vector{Date} = sort(collect(filter(x -> x < Date(2025, 1, 1), keys(data.chain[ts]))))
+
+getTss(from::DateLike, to::DateLike)::Vector{DateTime} = CollUtil.sublist(Tss[], from, to)
 getTss(filt, from::DateLike, to::DateLike)::Vector{DateTime} = filter(ts -> from <= ts <= to && filt(ts), Tss[])
-getTss(data::HistChain) = data.tss
+# TODO: test the above two return the same for no filter
 
-function tsFirst(dts::DateLike; filt=NoFirst2)::DateTime
-    data = load(dts)
-    i = findfirst(ts -> ts >= dts && filt(ts), data.tss)
-    return data.tss[i]
+tsFirst(dts::DateLike)::DateTime = Tss[][searchsortedfirst(Tss[], dts)]
+#endregion
+
+#region Local
+function __init__()
+    if ccall(:jl_generating_output, Cint, ()) != 1
+        sizehint!(ChainCache, HINT_TSS * 12 * 12) # 12 months by 12 years
+        # sizehint!(XpirCache, HINT_TSS * 12 * 12)
+        loadTss()
+    end
 end
 #endregion
 
@@ -83,7 +102,9 @@ function loadTss()
     open(FileTss) do io
         read!(io, tss)
     end
-    Tss[] = tss
+
+    # Ignore first ts of the day because data might be questionnable, and just use 30 minute because that's all we have for older dates
+    Tss[] = filter!(ts -> minute(ts) != 15 && minute(ts) != 45 && Time(ts) != Time(cal.getMarketOpen(Date(ts))) + Second(10), tss)
 end
 
 function paths(y, m)
@@ -95,44 +116,73 @@ function paths(y, m)
     return pathCall, pathPut, pathUnder
 end
 
-const Cache = Dict{Date,HistChain}()
-load(dts::DateLike)::HistChain = load(year(dts), month(dts))
-function load(y, m)::HistChain
-    return get!(() -> loadRaw(y, m), Cache, Date(y, m))
+const ChainCache = Dict{DateTime,ChainInfo}()
+# const XpirCache = Dict{DateTime,Vector{Date}}()
+function loadChainInfo(ts::DateTime)::ChainInfo
+    get(ChainCache, ts) do
+        loadMonth(year(ts), month(ts))
+        return ChainCache[ts]
+    end
 end
 
-function loadRaw(y, m)::HistChain
-    data = HistChain()
+function loadMonth(y, m)
     pathCall, pathPut, pathUnder = paths(y, m)
-    loadOpt(proc(data, Style.call), pathCall)
-    loadOpt(proc(data, Style.put), pathPut)
-    loadUnder(tound(data), pathUnder)
-    append!(data.tss, keys(data.under))
-    sort!(data.tss)
-    # data.tss = sort!(collect(keys(data.under)))
-    return data
+    calls = Dict{DateTime,Dict{Date,Vector{OptionQuote}}}()
+    sizehint!(calls, HINT_TSS)
+    loadOpt(proc(calls, Style.call), pathCall)
+    puts = Dict{DateTime,Dict{Date,Vector{OptionQuote}}}()
+    sizehint!(puts, HINT_TSS)
+    loadOpt(proc(puts, Style.put), pathPut)
+    tunder = Dict{DateTime,UnderTime}()
+    sizehint!(tunder, HINT_TSS)
+    loadUnder(toUnd(tunder), pathUnder)
+    @assert keys(calls) == keys(puts) == keys(tunder)
+    for ts in keys(calls)
+        callsts = calls[ts]
+        putsts = puts[ts]
+        xpirsCalls = keys(callsts)
+        xpirsPuts = keys(putsts)
+        @assert xpirsCalls == xpirsPuts
+        xsoqs = Dict{Date,Styles{Vector{OptionQuote}}}()
+        xpirs = filter!(x -> x < Date(2025, 1, 1), sort!(collect(xpirsCalls)))
+        for xpir in xpirs
+            xsoqs[xpir] = Styles(callsts[xpir], putsts[xpir])
+        end
+        ChainCache[ts] = ChainInfo(xsoqs, tunder[ts], xpirs)
+    end
 end
 
-function proc(data, style)
+# function loadRaw(y, m)::HistChain
+#     data = HistChain()
+#     pathCall, pathPut, pathUnder = paths(y, m)
+#     loadOpt(proc(data, Style.call), pathCall)
+#     loadOpt(proc(data, Style.put), pathPut)
+#     loadUnder(toUnd(data), pathUnder)
+#     append!(data.tss, keys(data.under))
+#     sort!(data.tss)
+#     return data
+# end
+
+function proc(info, style)
     return function(ts, xpir, strike, bid, ask, last, vol, delta, gamma, vega, theta, rho, iv)
-        v = get!(newv, get!(newch, data.chain, ts), xpir)
-        push!(v, tooq(style, xpir, strike, bid, ask, last, vol, delta, gamma, vega, theta, rho, iv))
+        v = get!(newv, get!(newch, info, ts), xpir)
+        push!(v, toOq(style, xpir, strike, bid, ask, last, vol, delta, gamma, vega, theta, rho, iv))
     end
 end
 
 newch() = ( d = Dict{Date,Vector{OptionQuote}}() ; sizehint!(d, HINT_XPIRS) ; return d )
 newv() = ( v = Vector{OptionQuote}() ; sizehint!(v, HINT_OQS) ; return v )
 
-function tooq(style, xpir, strike, bid, ask, last, vol, delta, gamma, vega, theta, rho, iv)::OptionQuote
+function toOq(style, xpir, strike, bid, ask, last, vol, delta, gamma, vega, theta, rho, iv)::OptionQuote
     return OptionQuote(
         Option(style, xpir, strike), Quote(bid, ask),
         OptionMeta(delta, theta, NaN, vega, rho, gamma, iv, iv, iv)
     )
 end
 
-function tound(data)
+function toUnd(data)
     return function(ts, under, open, hi, lo)
-        data.under[ts] = UnderTime(under, open, hi, lo)
+        data[ts] = UnderTime(under, open, hi, lo)
     end
 end
 
@@ -196,6 +246,10 @@ function updateTssFile()
         write(io, tss)
     end
 end
+#endregion
+
+#region Util
+matches(oq, style, strike) = getStyle(oq) == style && getStrike(oq) == strike
 #endregion
 
 end
