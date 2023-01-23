@@ -21,53 +21,59 @@ priceOption(market().curp, texPY(market().tsMarket, lmss2[1]), lmss2[1], .276)
 =#
 
 #region Explore
+struct Spec2
+    style::Symbol
+    rat::Float64
+    off::Currency
+    side::Side.T
+end
+
+function find(ts, xpir, curp)
+    global search = ChainUtil.toSearch(SS.getOqs(ts, xpir))
+    specs = [
+        Spec2(:put, .8, CZ, Side.long),
+        Spec2(:put, .95, C(-19.2), Side.long),
+        Spec2(:put, .95, CZ, Side.short),
+        Spec2(:call, 1.1, CZ, Side.short),
+        Spec2(:call, 1.1, C(19.2), Side.long),
+        Spec2(:call, 1.2, CZ, Side.long),
+    ]
+    global lmso = [fromSpec(curp, search, spec) for spec in specs]
+    return lmso
+end
+
 function test1()
-    from = Date(2020,1,1)
+    from = Date(2020,3,22)
     to = Date(2020,4,17)
 
     ts1 = SS.tsFirst(from)
     date1 = Date(ts1)
-    xpir = CollUtil.gtee(SS.getExpirs(ts1), bdaysAfter(date1, 80))
+    # xpir = CollUtil.gtee(SS.getExpirs(ts1), bdaysAfter(date1, 80))
+    xpir = CollUtil.gtee(SS.getExpirs(ts1), to)
     curp = SS.getUnder(ts1).under
+    global curpOrig = curp
 
     lms = find(ts1, xpir, curp)
+    println("neto: $(pricing(lmso))")
+    println("curp:$(curp)")
     show(from, to, lms)
     return curp, lms
-end
-
-struct Spec
-    style::Symbol
-    rat::Float64
-    side::Side.T
 end
 
 function fromSpec(curp, search, spec)
     strikes = getfield(search, spec.style).strikes
     oqs = getfield(search, spec.style).oqs
-    oq = oqs[searchsortedlast(strikes, curp * spec.rat)]
+    fsearch = spec.rat < 0 ? searchsortedlast : searchsortedfirst
+    oq = oqs[clamp(fsearch(strikes, curp * spec.rat + spec.off), firstindex(oqs), lastindex(oqs))]
     return LegMetaOpen(oq, spec.side, 1.0)
-end
-
-function find(ts, xpir, curp)
-    search = ChainUtil.toSearch(SS.getOqs(ts, xpir))
-    specs = [
-        Spec(:put, .8, Side.long),
-        Spec(:put, .88, Side.long),
-        Spec(:put, .9, Side.short),
-        Spec(:call, 1.1, Side.short),
-        Spec(:call, 1.12, Side.long),
-        Spec(:call, 1.2, Side.long),
-    ]
-    global lmso = [fromSpec(curp, search, spec) for spec in specs]
-    println(bap(lmso, .1))
-    return lmso
 end
 
 using ColorSchemes
 using PlotUtils: optimize_ticks
-
+pricing(x) = bap(x, .5)
 function show(from, to, lmso)
-    tss = SS.getTss(SS.NoFirst2, from, to)
+    neto = pricing(lmso)
+    tss = SS.getTss(SS.NoFirstLast, from, to)
     # colors = [:blue, :green, :yellow, :red, ]
     # dots = [Vector{Tuple{DateTime,Currency}}() for _ in eachindex(lmso)]
     # dots = [Vector{Tuple{Float64,Currency}}() for _ in eachindex(lmso)]
@@ -75,9 +81,10 @@ function show(from, to, lmso)
     global prices = [Vector{Tuple{DateTime,Currency}}() for _ in eachindex(lmso)]
     global unders = Vector{Tuple{Int,Currency}}()
     global nets = Vector{Tuple{Int,Currency}}()
-    global curpOrig = SS.getUnder(first(tss)).under
+    global netExpireds = Vector{Tuple{Int,Currency}}()
+    global priceBase = round_step(SS.getUnder(first(tss)).under, 10)
     for ts in tss
-        tsPlot = datetime2rata(ts)
+        tsPlot = datetime2unix(ts)
         lup = leg -> SS.getOq(ts, getExpiration(leg), getStyle(leg), getStrike(leg))
         curp = SS.getUnder(ts).under
         try
@@ -90,8 +97,9 @@ function show(from, to, lmso)
                 push!(prices[i], (ts, vals[i]))
             end
             push!(unders, (tsPlot, curp))
-            net = bap(lmso, .01) + bap(lmsc, .0)
-            push!(nets, (tsPlot, curpOrig + net))
+            net = neto + pricing(lmsc)
+            push!(nets, (tsPlot, priceBase + net))
+            push!(netExpireds, (tsPlot, priceBase + neto + OptionUtil.netExpired(lmso, curp)))
         catch e
             println("Could not requote, skipping $(ts)")
             continue
@@ -100,12 +108,13 @@ function show(from, to, lmso)
 
     fig = Figure()
     DataInspector(fig; textcolor=:blue)
-    dateticks = optimize_ticks(tss[1], tss[end])[1]
+    global dateticks = optimize_ticks(tss[1], tss[end])[1]
     ax1 = Axis(fig[1,1])
-    ax1.xticks[] = (datetime2rata.(dateticks) , Dates.format.(dateticks, "mm/dd/yyyy"));
+    ax1.xticks[] = (datetime2unix.(dateticks) , Dates.format.(dateticks, "mm/dd/yyyy"));
 
     lines!(ax1, unders; color=:white)
-    lines!(ax1, nets; color=:green)
+    scatter!(ax1, nets; color=:green)
+    scatter!(ax1, netExpireds; color=:blue)
 
     colors = resample_cmap(:viridis, length(dots))
     for i in eachindex(dots)
@@ -118,8 +127,8 @@ end
 
 function netVal(lmso::Coll, lmsc::Coll)
     return map(zip(lmso, lmsc)) do (lmo, lmc)
-        neto = bap(lmo, .1)
-        netc = bap(lmc, .0)
+        neto = pricing(lmo)
+        netc = pricing(lmc)
         curVal = neto + netc
         return curVal
     end
@@ -854,6 +863,8 @@ tosLLMC(lms, lup) = map(lm -> toLMC(getLeg(lm), lup), lms)
 tosLMC(legs, lup) = map(leg -> toLMC(leg, lup), legs)
 
 # tofrac(x::Millisecond) = Dates.value(x) * 1e-3 / 3600 / 24
+
+round_step(x, step) = round(x / step) * step
 #endregion
 
 end

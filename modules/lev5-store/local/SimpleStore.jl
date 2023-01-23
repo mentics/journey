@@ -14,6 +14,7 @@ const FileTss = joinpath(DirOut, "tss.ser")
 const DF_FILE = DateFormat("yyyymm")
 
 const NoFirst2 = x -> Time(x) != Time(cal.getMarketOpen(Date(x))) + Second(10)
+const NoFirstLast = x -> Time(x) != Time(cal.getMarketOpen(Date(x))) + Second(10) && Time(x) != Time(cal.getMarketClose(Date(x)))
 
 struct UnderTime
     under::Currency
