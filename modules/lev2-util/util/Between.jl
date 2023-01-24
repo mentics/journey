@@ -1,13 +1,13 @@
 module Between
 using Dates
 using SH, BaseTypes, SmallTypes, QuoteTypes, OptionMetaTypes, StratTypes, LegMetaTypes, RetTypes, StatusTypes, ChainTypes
-using CollUtil
+using CollUtil, ChainUtil
 using Rets, LegTypes, TradeTypes, LegTradeTypes, Pricing
 
 #region ToLegMeta
 SH.to(::Type{LegMetaOpen}, leg::Leg, lup) = LegMetaOpen(lup(getOption(leg)), getSide(leg), getQuantity(leg))
 # SH.to(::Type{LegMetaOpen}, lm::LegMetaOpen, lup) = to(LegMetaClose, getLeg(lm), lup) # LegMetaClose(lup(getOption(lm)), getQuantity(lm), getSide(lm))
-SH.to(::Type{LegMetaClose}, lm::LegMetaOpen, optToOq::Function) = ( leg = getLeg(lm) ; LegMetaClose(leg, optToOq(getOption(leg))) )
+SH.to(::Type{LegMetaClose}, lm::LegMetaOpen, otoq) = ( leg = getLeg(lm) ; LegMetaClose(leg, ChainUtil.oToOq(otoq, getOption(leg))) )
 #endregion
 
 #region ToRet
@@ -71,7 +71,7 @@ tradesToLMOs(trades) = collect(mapflatmap(getLegs, legTradeToLMO, trades))
 
 # SH.combineTo(::Type{Ret}, ::Type{<:ElType{<:LegTrade}}, legs, forDate::Date, curp::Currency, vtyRatio::Float64=1.0)::Ret = combineRets(tos(Ret, legs, forDate, curp, vtyRatio))
 # function SH.to(::Type{Ret}, leg::LegTrade, forDate::Date, sp::Currency, vtyRatio::Float64)::Ret
-#     @assert getExpiration(leg) == forDate
+#     @assert getExpir(leg) == forDate
 #     makeRet(getLeg(leg), NaN, getNetOpen(leg), forDate, sp, vtyRatio)
 # end
 
@@ -80,7 +80,7 @@ tradesToLMOs(trades) = collect(mapflatmap(getLegs, legTradeToLMO, trades))
 # SH.to(::Type{LegMeta}, lg::Leg, qt::Quote, met::OptionMeta)::LegMeta = ( side = getSide(side) ; LegMeta(Leg(getOption(lg), getQuantity(lg), side), qt, met) )
 # SH.to(::Type{LegMeta}, lg::Leg, qt::OptionQuote)::LegMeta = ( side = getSide(side) ; LegMeta(Leg(getOption(lg), getQuantity(lg), side), qt, met) )
 
-# SH.to(::Type{Ret}, lm::LegMeta, sp::Currency)::Ret = makeRet(getLeg(lm), getMeta(lm), bap(lm), getExpiration(lm), sp, 1.0)
+# SH.to(::Type{Ret}, lm::LegMeta, sp::Currency)::Ret = makeRet(getLeg(lm), getMeta(lm), bap(lm), getExpir(lm), sp, 1.0)
 
 # SH.to(::Type{Ret}, lm::LegMeta, (forDate, sp, vtyRatio)::Tuple{Date,Currency,Float64})::Ret = makeRet(getLeg(lm), getMeta(lm), bap(lm), (forDate, sp, vtyRatio))
 # SH.to(::Type{Ret}, lg::Leg, (forDate, sp, vtyRatio)::Tuple{Date,Currency,Float64})::Ret = to(Ret, to(LegMeta, lg), (forDate, sp, vtyRatio))

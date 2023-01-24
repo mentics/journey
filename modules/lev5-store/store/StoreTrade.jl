@@ -20,7 +20,7 @@ function newTrade(primitDir::PriceT, legs::Coll{LegMetaOpen}, underBid::Currency
         update("insert into TradeMeta (tid, underBid, underAsk) values (?, ?, ?)", tid, underBid, underAsk)
         for lq in legs
             resLeg = select("insert into LegTrade (tid, style, expiration, strike, side, quantity) values (?, ?, ?, ?, ?, ?) returning lid",
-                    tid, Int(getStyle(lq)), getExpiration(lq), getStrike(lq), Int(getSide(lq)), getQuantity(lq))
+                    tid, Int(getStyle(lq)), getExpir(lq), getStrike(lq), Int(getSide(lq)), getQuantity(lq))
             lid = first(resLeg).lid
             update("insert into LegTradeMeta (lid, bid, ask, iv) values (?, ?, ?, ?)",
                     lid, getBid(lq), getAsk(lq), getIv(lq))
@@ -214,7 +214,7 @@ function undeleteTrade(tid::Int)
         update("insert into TradeMeta (tid, underBid, underAsk) values (?, ?, ?)", tid, tmet.bid, tmet.ask)
         for leg in getLegs(t)
             update("insert into LegTrade (lid, tid, style, expiration, strike, side, quantity) values (?, ?, ?, ?, ?, ?, ?)",
-                    getId(leg), tid, Int(getStyle(leg)), getExpiration(leg), getStrike(leg), Int(getSide(leg)), getQuantity(leg))
+                    getId(leg), tid, Int(getStyle(leg)), getExpir(leg), getStrike(leg), Int(getSide(leg)), getQuantity(leg))
             lmet = getMeta(leg)
             update("insert into LegTradeMeta (lid, bid, ask, iv) values (?, ?, ?, ?)",
                     getId(leg), getBid(lmet), getAsk(lmet), getIv(lmet))

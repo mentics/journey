@@ -47,8 +47,7 @@ SH.getQuote(lm::LegMeta) = lm.quot
 SH.getOptionMeta(lm::LegMeta) = lm.meta
 
 SH.getOption(lm::LegMeta) = getOption(lm.leg)
-SH.getExpiration(lm::LegMeta) = getExpiration(lm.leg)
-SH.getExpir(lm::LegMeta) = getExpiration(lm.leg)
+SH.getExpir(lm::LegMeta) = getExpir(lm.leg)
 SH.getStyle(lm::LegMeta) = getStyle(lm.leg)
 SH.getStrike(lm::LegMeta) = getStrike(lm.leg)
 SH.getSide(lm::LegMeta) = getSide(lm.leg)

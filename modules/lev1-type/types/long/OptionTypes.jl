@@ -14,7 +14,7 @@ Option(;style=Style.call, expiration=today()+Day(1), strike=C(450.0)) = Option(s
 SH.getOption(o::Option) = o
 SH.getStyle(o::Option) = o.style
 SH.getStrike(o::Option) = o.strike
-SH.getExpiration(o::Option) = o.expiration
+SH.getExpir(o::Option) = o.expiration
 # SH.random(::Type{Option}) = Option(random(Style.T), rand((today()+Day(1)):Day(1):(today()+Day(10))), randomC())
 Base.show(io::IO, o::Option) = print(io, "Option($(o.style), $(o.expiration), $(o.strike))")
 # Usually called with config as Globals.get(:Strats)

@@ -22,7 +22,7 @@ SH.getOption(p::Position) = getOption(p.leg)
 SH.getSide(p::Position) = getSide(p.leg)
 SH.getQuantity(p::Position) = getQuantity(p.leg)
 SH.getStrike(p::Position) = getStrike(p.leg)
-SH.getExpiration(p::Position) = getExpiration(p.leg)
+SH.getExpir(p::Position) = getExpir(p.leg)
 tsAcquired(p::Position) = p.tsAcquired
 
 end

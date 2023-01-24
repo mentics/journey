@@ -105,7 +105,7 @@ function toc(rateMin=0.0) # findTradesToClose
             # timult = 1 / Calendars.texToYear(tex)
             dur = DateUtil.durRisk(toDateMarket(ts), todayDate)
             timt = DateUtil.timult(toDateMarket(ts), todayDate)
-            mn = min(OptionUtil.legsExtrema(neto, getLegs(trade)...)...)
+            mn = Pricing.calcMargin((getLegs(trade)...,)) # min(OptionUtil.legsExtrema(neto, getLegs(trade)...)...)
             rate = timt * curVal / (-mn)
             # @show rate timt curVal (-mn)
             if rate > rateMin

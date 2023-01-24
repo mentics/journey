@@ -105,7 +105,7 @@ function calcScore3(ctx, prob, side, tmult, innerStrike::Float64, lo, sho; all=f
     # extrin1 = OptionUtil.calcExtrin(lo, curp)
     # extrin2 = OptionUtil.calcExtrin(sho, curp)
     # extrinDiff = extrin1[3] - extrin2[3]
-    # println("$(getExpiration(lo)) $(getStrike.((lo, sho))) basis:$(basis) spreadWidth:$(spreadWidth) net.1:$(netp1) net.5:$(netp5) $((;extrin1=extrin1[3], extrin2=extrin2[3], extrinDiff))")
+    # println("$(getExpir(lo)) $(getStrike.((lo, sho))) basis:$(basis) spreadWidth:$(spreadWidth) net.1:$(netp1) net.5:$(netp5) $((;extrin1=extrin1[3], extrin2=extrin2[3], extrinDiff))")
 
     netVal, risk = bt.calcVal(1, lo, sho, CZ)
     @assert risk > 0.0 "risk $(risk) <= 0.0 $((;netVal, strikes=getStrike.((lo, sho))))"
@@ -238,7 +238,7 @@ function openTradeRoll(acct, params, trade)
         # println("using index $(i)")
         r = res[i]
         lms = toLms(side, r.lo, r.sho)
-        outBdays = bdays(date, getExpiration(r.lo))
+        outBdays = bdays(date, getExpir(r.lo))
         widthNew = bt.getSpreadWidth(lms)
         multNew = r.scoring.multNew
         dmult = "$(multiple)->$(multNew)"

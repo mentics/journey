@@ -1,27 +1,37 @@
 module BackTypes
-using BaseTypes, LegMetaTypes
+using SH, BaseTypes, LegMetaTypes
+
+# TODO: some things should be PriceT instead of Currency
 
 export Strat, Account, TradeBTOpen, TradeBTClose, TradeBT, MarginSide, MarginInfo
 
 abstract type Strat end
 
-struct TradeBTOpen{N}
+function pricingOpen end
+function pricingClose end
+function checkExit end
+
+abstract type TradeBTStage end
+
+struct TradeBTOpen{N,E} <: TradeBTStage
     id::Int
     lms::NTuple{N,LegMetaOpen}
     neto::Currency
     multiple::Int
     label::String
+    extra::E
 end
 
-struct TradeBTClose{N}
+struct TradeBTClose{N} <: TradeBTStage
     lms::NTuple{N,LegMetaClose}
     netc::Currency
     label::String
 end
+SH.getExpir(t::TradeBTStage) = getExpir(t.lms)
 
-struct TradeBT
-    open::TradeBTOpen
-    close::TradeBTOpen
+struct TradeBT{N}
+    open::TradeBTOpen{N}
+    close::TradeBTClose{N}
 end
 
 mutable struct Account

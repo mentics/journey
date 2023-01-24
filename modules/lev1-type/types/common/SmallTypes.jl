@@ -18,6 +18,7 @@ struct Styles{T}
 end
 Base.length(s::Styles) = length(s.call) + length(s.put)
 iter(s::Styles) = Iterators.flatten((iter(s.call), iter(s.put)))
+Base.getindex(s::Styles, style::Style.T) = style == Style.call ? s.call : s.put
 
 @enumx Side long=1 short=-1
 SH.toOther(x::Side.T) = x === Side.long ? Side.short : Side.long

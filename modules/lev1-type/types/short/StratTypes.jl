@@ -23,14 +23,14 @@ SH.to(::Type{Ret}, lr::LegRet)::Ret = lr[2]
 SH.getLeg(lr::LegRet) = getLeg(lr[1])
 
 using SmallTypes
-isCal((lr1, lr2)) = getExpiration(lr1) != getExpiration(lr2)
+isCal((lr1, lr2)) = getExpir(lr1) != getExpir(lr2)
 isCalShort((lr1, lr2)) =
-    (getExpiration(lr1) > getExpiration(lr2) && getSide(lr1) == Side.short) ||
-    (getExpiration(lr2) > getExpiration(lr1) && getSide(lr2) == Side.short)
+    (getExpir(lr1) > getExpir(lr2) && getSide(lr1) == Side.short) ||
+    (getExpir(lr2) > getExpir(lr1) && getSide(lr2) == Side.short)
 isCalLong((lr1, lr2)) =
-    (getExpiration(lr1) > getExpiration(lr2) && getSide(lr1) == Side.long) ||
-    (getExpiration(lr2) > getExpiration(lr1) && getSide(lr2) == Side.long)
-isVert((lr1, lr2)) = getExpiration(lr1) == getExpiration(lr2)
+    (getExpir(lr1) > getExpir(lr2) && getSide(lr1) == Side.long) ||
+    (getExpir(lr2) > getExpir(lr1) && getSide(lr2) == Side.long)
+isVert((lr1, lr2)) = getExpir(lr1) == getExpir(lr2)
 isSideSame((lr1, lr2)) = getSide(lr1) == getSide(lr2)
 isStyleDiff((lr1, lr2)) = getStyle(lr1) != getStyle(lr2)
 
@@ -46,6 +46,6 @@ SH.getStrike(lr::LegRet) = getStrike(first(lr))
 SH.getSide(lr::LegRet) = getSide(first(lr))
 SH.getStyle(lr::LegRet) = getStyle(first(lr))
 SH.getOption(lr::LegRet) = getOption(first(lr))
-SH.getExpiration(lr::LegRet) = getExpiration(first(lr))
+SH.getExpir(lr::LegRet) = getExpir(first(lr))
 
 end

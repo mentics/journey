@@ -100,16 +100,16 @@ function SH.calcQuote(lookup, legs::Coll, act::Action.T=Action.open)::Quote
     sumQuotes(calcQuote(lookup, leg, act) for leg in legs)
 end
 function SH.calcQuote(lookup, leg::T, act::Action.T=Action.open)::Quote where T # <:Union{Leg,LegMeta,<:LegTrade}
-    oq = lookup(getExpiration(leg), getStyle(leg), getStrike(leg))
+    oq = lookup(getExpir(leg), getStyle(leg), getStrike(leg))
     dir = DirSQA(getSide(leg), getQuantity(leg), act)
     return newQuote(getQuote(oq), dir)
 end
 function SH.calcOptQuote(lookup, leg::T, act::Action.T=Action.open)::OptionQuote where T # <:Union{Leg,LegMeta,<:LegTrade}
-    oq = lookup(getExpiration(leg), getStyle(leg), getStrike(leg))
+    oq = lookup(getExpir(leg), getStyle(leg), getStrike(leg))
     dir = DirSQ(getSide(leg), getQuantity(leg))
     return OptionQuote(getOption(leg), newQuote(getQuote(oq), DirSQA(dir, act)), newOptionMeta(getOptionMeta(oq), dir))
 end
-# isQuotable(o::Option)::Bool = isQuotable(getStyle(o), getExpiration(o), getStrike(o))
+# isQuotable(o::Option)::Bool = isQuotable(getStyle(o), getExpir(o), getStrike(o))
 # function isQuotable(style::Style.T, exp::Date, strike::Currency)::Bool
 #     res = find(chains()[exp].chain) do x; getStyle(x) === style && getStrike(x) === strike end
 #     return !isnothing(res) && getBid(res) > 0.0
@@ -160,7 +160,7 @@ nearOqs(curp::Currency, d::Date, chs, dist::Int=20)::Vector{OptionQuote} = nearO
 nearOqs(curp::Currency, oqs, dist::Int=20)::Vector{OptionQuote} = filter(x -> abs(getStrike(x) - curp) <= dist, oqs)
 
 chainLookup(hasOpt) = chainLookup(getOption(hasOpt))
-chainLookup(opt::Option) = chainLookup(getExpiration(opt), getStyle(opt), getStrike(opt))
+chainLookup(opt::Option) = chainLookup(getExpir(opt), getStyle(opt), getStrike(opt))
 function chainLookup(exp::Date, style::Style.T, strike::Currency)::Union{Nothing,OptionQuote}
     res = find(chain(exp).chain) do x; getStyle(x) === style && getStrike(x) === strike end
     !isnothing(res) || println("WARN: Could not quote $(exp), $(style), $(strike)")

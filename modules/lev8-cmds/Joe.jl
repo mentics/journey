@@ -313,7 +313,7 @@ const lockMsg = ReentrantLock()
 const Msgs = Dict{Symbol,Vector{Any}}()
 
 # function joe(ctx, lms)
-#     # targ = getExpiration(lms)
+#     # targ = getExpir(lms)
 #     rate = 0.0
 
 #     ret = Ret(condorRetVals!(ctx.retBuf1, condRetVals(cond)), ctx.curp, 4)
@@ -420,7 +420,7 @@ function runlc2(xprs=1:2; maxSpreads=1000, start=GreeksZero, kws...)
 
         # TODO: if keep, optimize
         lms = lmsForQtys(spreads, qtys)
-        met = calcMetrics(probs[getExpiration(lms)], curp, lms)
+        met = calcMetrics(probs[getExpir(lms)], curp, lms)
 
         return met.prob > .8 && met.mx >= .1
         return true
@@ -656,7 +656,7 @@ scoreGreeks(gks::GreeksType) = scoreGreeks(gks.delta, gks.gamma, gks.vega)
 scoreGreeks(del, gam, veg) = abs(del) + 8 * abs(gam) + abs(veg)
 
 using CmdExplore, Between
-function improveGreeks(f, rs, lmsStart; xpir=getExpiration(lmsStart))
+function improveGreeks(f, rs, lmsStart; xpir=getExpir(lmsStart))
     ctx = (;xpir, prob=xprob(xpir), curp=market().curp)
     lms = lmsStart
     i = nothing
@@ -687,7 +687,7 @@ end
 
 vcatt(itrs...) = collect(Iterators.flatten(itrs))
 
-function calcMet(lms, prob=xprob(getExpiration(lms)), curp=market().curp)
+function calcMet(lms, prob=xprob(getExpir(lms)), curp=market().curp)
     met = calcMetrics(prob, curp, lms)
     return met
 end

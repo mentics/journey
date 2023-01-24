@@ -20,7 +20,7 @@ SH.getQuantity(l::Leg) = l.quantity
 SH.getSide(l::Leg) = l.side
 
 SH.getStyle(l::Leg) = getStyle(l.option)
-SH.getExpiration(l::Leg) = getExpiration(l.option)
+SH.getExpir(l::Leg) = getExpir(l.option)
 SH.getStrike(l::Leg) = getStrike(l.option)
 
 SH.getQuantityDir(l::Leg) = Int(getSide(l)) * l.quantity

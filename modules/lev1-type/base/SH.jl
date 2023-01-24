@@ -1,8 +1,10 @@
 module SH
 
+# TODO: The convention is to use `function emptyfunc end` according to https://docs.julialang.org/en/v1/manual/methods/#Empty-generic-functions
+
 export Vals
 
-export getStyle, getExpiration, getExpir, getStrike, getSide, getQuantity, getAction
+export getStyle, getExpir, getStrike, getSide, getQuantity, getAction
 export getBid, getAsk
 export toCode, toOther
 export getIv
@@ -31,7 +33,6 @@ function getAsk() end
 
 function getStyle() end
 function getStrike() end
-getExpiration(itr) = minimum(getExpiration, itr)
 getExpir(itr) = minimum(getExpir, itr)
 
 function getSide() end

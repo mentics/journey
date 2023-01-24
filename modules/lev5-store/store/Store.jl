@@ -73,7 +73,7 @@ select f.tid, f.lid from VLegFilled f join Trade t on t.tid=f.tid where f.qtyUse
 using PositionTypes, Positions, SH, Dates, StoreTrade
 function findUnknownPositions()
     notFound = Tuple{Position,Ref{Float64}}[]
-    tposs = [(p, Ref(getQuantity(p))) for p in positions(;age=Second(0))] # filter(p -> getExpiration(getOption(p)) == today(), positions())
+    tposs = [(p, Ref(getQuantity(p))) for p in positions(;age=Second(0))] # filter(p -> getExpir(getOption(p)) == today(), positions())
     tlegs = [(leg, Ref(getQuantity(leg))) for leg in StoreTrade.loadLegTrade.(select("select * from vlegtrade where status='Filled'"))]
     # @info "findUnknownPositions" length(tposs) length(tlegs)
     for tpos in tposs

@@ -531,7 +531,7 @@ function flookup(data)
         @coalesce ChainUtil.lup(data[xpir], style, strike) log("ERROR: Backtest could not quote $(xpir), $(style), $(strike)")
     end
     function lup(opt::Option) # ::Union{OptionQuote,Nothing}
-        @coalesce ChainUtil.lup(data[getExpiration(opt)], opt) log("ERROR: Backtest could not quote $(opt)")
+        @coalesce ChainUtil.lup(data[getExpir(opt)], opt) log("ERROR: Backtest could not quote $(opt)")
     end
     return lup
 end
@@ -549,7 +549,7 @@ end
 #     end
 #     function lup(o::Option)
 #         try
-#             xpir = getExpiration(o)
+#             xpir = getExpir(o)
 #             style = getStyle(o)
 #             strike = getStrike(o)
 #             res = find(x -> getStrike(x) == strike, getfield(xoqss[xpir].all, Symbol(style)).long)
@@ -708,7 +708,7 @@ getSpreadWidth(trade::TradeType9) = getSpreadWidth(trade.legs)
 getTradeGreeks(trade) = getGreeks(trade.lmsTrack[])
 getTradeStyle(trade) = getStyle(trade.legs[1])
 getTradeSide(trade) = getSide(trade.legs[1])
-getTradeExpiration(trade) = getExpiration(trade.legs[1])
+getTradeExpiration(trade) = getExpir(trade.legs[1])
 calcTradeRat(trade)::Float64 = getTradeStyle(trade) == Style.call ? F(getStrike(trade.legs[1])) / trade.curp : F(getStrike(trade.legs[2])) / trade.curp
 calcTradeExpDur(trade) = bdays(Date(trade.open.ts), Date(trade.targetDate))
 calcTradeMarginAll(trade) = trade.multiple * getSpreadWidth(trade)

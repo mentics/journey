@@ -65,7 +65,7 @@ function show(from, to, lmso)
     global priceBase = round_step(SS.getUnder(first(tss)).under, 10)
     for ts in tss
         tsPlot = datetime2unix(ts)
-        lup = leg -> SS.getOq(ts, getExpiration(leg), getStyle(leg), getStrike(leg))
+        lup = leg -> SS.getOq(ts, getExpir(leg), getStyle(leg), getStrike(leg))
         curp = SS.getUnder(ts).under
         try
             lmsc = Between.reqlms(lup, lmso, Action.close)

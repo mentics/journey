@@ -12,7 +12,7 @@ function makeRet(leg, neto::Currency, sp::Currency)::Ret
     return atExp(getStyle(leg), Float64(getStrike(leg)), getSide(leg), getQuantity(leg), Float64(neto), Float64(sp))
 end
 function makeRet(leg::Leg, iv::Float64, neto::Currency, targetDate::Date, sp::Currency, vtyRatio::Float64=Globals.get(:vtyRatio))::Ret
-    if getExpiration(leg) === targetDate
+    if getExpir(leg) === targetDate
         return atExp(getStyle(leg), Float64(getStrike(leg)), getSide(leg), getQuantity(leg), Float64(neto), Float64(sp))
     else
         return afterExp(leg, iv, Float64(neto), targetDate, Float64(sp), vtyRatio)
@@ -122,7 +122,7 @@ function atExp(style::Style.T, strike::Float64, side::Side.T, qty::Float64, neto
 end
 
 function afterExp(leg::Leg, iv::Float64, neto::Float64, targetDate::Date, sp::Float64, vtyRatio::Float64)::Ret
-    exp = getExpiration(leg)
+    exp = getExpir(leg)
     if exp == targetDate
         error("Wrong segment called with same exp", exp, targetDate)
     else

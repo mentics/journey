@@ -37,7 +37,7 @@ function xprob(expr::Date)
         error("vix was 0")
     end
     # return ProbKde.probKde(F(curp), F(vix), tex)
-    prob, _ = pk.kdeToClose(F(curp), F(vix), start, expr)
+    prob = pk.kdeToClose(F(curp), F(vix), start, expr)
     return prob
 end
 

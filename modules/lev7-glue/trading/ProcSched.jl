@@ -38,7 +38,7 @@ function procExpired()
             continue
         end
         qtyExpDir = hopt["quantity"]
-        if getExpiration(opt) < Date("2022-03-23")
+        if getExpir(opt) < Date("2022-03-23")
             continue # ignore previous to when we started storing data
         end
         dbLegs = findLegUnclosed(opt, Side.T(-sign(qtyExpDir)))
@@ -84,8 +84,8 @@ end
 
 #region Local
 using OptionTypes, SmallTypes, StoreUtil
-findLegUnclosed(opt::Option, side::Side.T) = select(sqlLegsUnclosed(), getStyle(opt), getExpiration(opt), getStrike(opt), side)
-findQtyUsedPrev(opt::Option, side::Side.T)::Int = select(sqlPrevUsedExpiredQty(), getStyle(opt), getExpiration(opt), getStrike(opt), side)[1].qtyused
+findLegUnclosed(opt::Option, side::Side.T) = select(sqlLegsUnclosed(), getStyle(opt), getExpir(opt), getStrike(opt), side)
+findQtyUsedPrev(opt::Option, side::Side.T)::Int = select(sqlPrevUsedExpiredQty(), getStyle(opt), getExpir(opt), getStrike(opt), side)[1].qtyused
 
 sqlLegsUnclosed() = """
 select tid, lid, (quantity - qtyUsed) qtyRemain from VLegFilled where act=-1 and qtyUsed < quantity

@@ -95,4 +95,21 @@ end
 
 addRowcol(vtup) = [merge((;row=i), (vtup[i])) for i in eachindex(vtup)]
 
+pp(x::String) = "\"$(x)\""
+pp(x::Symbol) = x
+pp(x::Float64) = round(x; digits=5)
+pp(x::Number) = x
+pp(x::Dates.AbstractTime) = x
+pp(x::Tuple) = x
+pp(x::NamedTuple) = showFields(x)
+function pp(x)
+    # !isprimitivetype(x) || return x
+    # s = sprint(JSON3.pretty, x)
+    # s = replace(s, r"[ \n]+" => " ")
+    # s = replace(s, r"\"" => "")
+    # return s
+    return "$(typeof(x).name.name):{$(showFields(x))}"
+end
+showFields(x) = join(("$(n):$(pp(getfield(x, n)))" for n in fieldnames(typeof(x))), ", ")
+
 end

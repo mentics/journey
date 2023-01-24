@@ -1,5 +1,8 @@
 include("repl-simple.jl")
 
-using Calendars
-import BacktestSimple as bt, GiantCondors as gc
-import SimpleStore as stor
+import Backtests as bt
+import TestStrat as strat1
+import SimpleStore as sstor
+import ChainUtil as ch
+
+bt.run(strat1.makeStrat(), DateTime(2022,1,1), DateTime(2022,3,4); maxSeconds=1)

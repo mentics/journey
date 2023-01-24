@@ -2,67 +2,81 @@ module TestStrat
 using SH, BaseTypes, SmallTypes, BackTypes, LegMetaTypes
 import LogUtil
 import DateUtil:timult,calcRate
-import ChainUtil:toSearch, oqsLteCurp
+import ChainUtil as ch
 using Pricing
 
-struct ThisStrat{T,C} <: Strat
-    params::T
-    pricingOpen::Function
-    pricingClose::Function
-    ctx::C
-end
-
-struct Cand{T,N}
-    lms::NTuple{N,LegMetaOpen}
-    score::Float64
-    scoring::T
-end
-
-struct Scoring1
-    neto::Currency
+#region Types
+struct Scoring
+    ret::Currency
     risk::Currency
     rate::Float64
 end
 
-makeCtx() = (;keep=Vector{Cand{Scoring1,3}}())
+struct Cand
+    lms::NTuple{3,LegMetaOpen}
+    score::Float64
+    scoring::Scoring
+end
 
-makeStrat() = ThisStrat(
-    (;balInit=1000),
-    pricingOpen,
-    pricingClose,
+struct Params
+    balInit::Currency
+end
+
+struct Context
+    bufCand::Vector{Cand}
+end
+
+struct TStrat <: Strat
+    params::Params
+    ctx::Context
+end
+
+makeCtx() = Context(Vector{Cand}())
+
+makeStrat() = TStrat(
+    Params(C(1000)),
     makeCtx(),
 )
+#endregion
 
-function (s::Strat)(ops, tim, chain)
-    log("Strat running for ts $(tim.ts)")
-    # @show ops tim
-    # ops.openTrade()
-    ops.checkExit(checkExit, tim, chain)
+#region InterfaceImpl
+function (s::TStrat)(ops, tim, chain)
+    curp = ch.getCurp(chain)
+    log("Strat running for ts $(tim.ts) curp:$(curp)")
 
-    keep = s.ctx.keep
+    keep = s.ctx.bufCand
     empty!(keep)
 
-    for xpir in chain.xpirs[8:20]
+    for xpir in ch.getXpirs(chain)[8:20]
         tmult = timult(tim.date, xpir)
-        search = toSearch(chain.under.under, chain.xsoqs[xpir].put)
-        findEntry(ops, keep, tim, search, tmult)
+        search = ch.toSearch(curp, chain.xsoqs[xpir].put)
+        findEntry(keep, tim, search, tmult)
         # if !isempty(keep)
         #     println("Found: ", keep[1])
         # end
     end
     if !isempty(keep)
-        ops.openTrade(keep[1].lms, keep[1].scoring.neto, 1, "scored")
+        ops.openTrade(keep[1].lms, C(round(keep[1].scoring.ret, RoundDown; digits=2)), 1, "scored", keep[1].scoring)
     end
 end
 
-function checkExit(tradeOpen::TradeBTOpen, tim, chain)::Union{Nothing,String}
-    println("checkExit")
+BackTypes.pricingOpen(::TStrat, lmso::NTuple{3,LegMetaOpen}) = calcPrice(lmso)
+BackTypes.pricingClose(::TStrat, lmsc::NTuple{3,LegMetaClose}) = calcPrice(lmsc)
+function BackTypes.checkExit(strat::TStrat, tradeOpen::TradeBTOpen{3}, tim, lmsc)::Union{Nothing,String}
+    curVal = tradeOpen.neto + calcPrice(lmsc)
+    rate = calcRate(tim.date, getExpir(tradeOpen), curVal, tradeOpen.extra.risk)
+    rateOrig = tradeOpen.extra.rate
+    log("checkExit: $(tradeOpen.id) $(round(rate;digits=5)) $(round(rateOrig;digits=5))")
+    if rate >= 1.5 * rateOrig
+        return "rate $(rate) >= 1.5 * $(rateOrig)"
+    end
 end
+#endregion
 
-function findEntry(ops, keep, tim, search, tmult)
+#region Find
+function findEntry(keep, tim, search, tmult)
     # global keepSearch = search
-    oqs = oqsLteCurp(search, .9)
-    # log("findEntry $(length(oqs))")
+    oqs = ch.oqsLteCurp(search, .9)
     itr1 = Iterators.reverse(eachindex(oqs)[3:end])
     for i1 in itr1
         itr2 = i1-1:-1:2
@@ -74,7 +88,7 @@ function findEntry(ops, keep, tim, search, tmult)
                 oq2 = oqs[i2]
                 oq3 = oqs[i3]
                 lms = (LegMetaOpen(oq3, Side.long), LegMetaOpen(oq2, Side.long), LegMetaOpen(oq1, Side.short))
-                r = score(ops, tim, lms, tmult)
+                r = score(tim, lms, tmult)
                 if !isnothing(r) && (isempty(keep) || r[1] > keep[end].score)
                     # TODO: not optimized
                     push!(keep, Cand(lms, r[1], r[2]))
@@ -86,7 +100,7 @@ function findEntry(ops, keep, tim, search, tmult)
     end
 end
 
-function score(ops, tim, lms, tmult)
+function score(tim, lms, tmult)
     # global keepLms = lms
     # log("Scoring")
     neto = Pricing.bapFast(lms, .2)
@@ -99,12 +113,13 @@ function score(ops, tim, lms, tmult)
     rate = calcRate(tmult, neto, risk)
     # log(lms)
     # error("stop")
-    return (rate, Scoring1(neto, risk, rate))
+    return (rate, Scoring(neto, risk, rate))
 end
+#endregion
 
-pricingOpen(lmso::NTuple{3,LegMetaOpen}) = bap(lmso, .2)
-pricingClose(lmsc::NTuple{3,LegMetaClose}) = bap(lmsc, .2)
-
+#region Util
+calcPrice(lms) = bap(lms, .2)
 log(args...) = LogUtil.logit(:backtest, args...)
+#endregion
 
 end

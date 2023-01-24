@@ -12,7 +12,7 @@ function Base.string(leg::LegTrade)
         res *= " op:$(pdo)"
         pdc = getPrillDirClose(leg)
         if isnothing(pdc)
-            if getExpiration(leg) in expirs()
+            if getExpir(leg) in expirs()
                 oq = optQuoter(leg, Action.close)
                 res *= " cl($(getBid(oq)), $(getAsk(oq)))"
                 res *= " urpnl:$(pdo + getBid(oq))"
@@ -30,7 +30,7 @@ function SH.to(::Type{NamedTuple}, lt::LegTrade)
     open = getNetOpen(lt)
     netc = getNetClose(lt)
     if ismissing(netc)
-        if getExpiration(lt) in expirs()
+        if getExpir(lt) in expirs()
             oq = optQuoter(lt, Action.close)
             close = getQuote(oq)
             pnl = open + getBid(oq)
@@ -42,14 +42,14 @@ function SH.to(::Type{NamedTuple}, lt::LegTrade)
         close = netc
         pnl = pdc + pdo
     end
-    (;lid=getId(lt), exp=getExpiration(lt), strike=getStrike(lt), style=getStyle(lt), side=getSide(lt), qty=getQuantity(lt), open, close, pnl)
+    (;lid=getId(lt), exp=getExpir(lt), strike=getStrike(lt), style=getStyle(lt), side=getSide(lt), qty=getQuantity(lt), open, close, pnl)
 end
 
 # TODO: this is identical to in LegMetaTypes
 # using SmallTypes, QuoteTypes, ChainTypes
 # SH.calcQuote(lookup::Function, legs::AVec{<:LegTrade}, act::Action.T=Action.open)::Quote = sumQuotes(getQuote(calcOptQuote(lookup, leg, act)) for leg in legs)
 # function SH.calcOptQuote(lookup::Function, leg::LegTrade, act::Action.T=Action.open)::Union{Nothing,OptionQuote}
-#     OptionQuote(lookup(getExpiration(leg), getStyle(leg), getStrike(leg)), act, getSide(leg))
+#     OptionQuote(lookup(getExpir(leg), getStyle(leg), getStrike(leg)), act, getSide(leg))
 # end
 
 end

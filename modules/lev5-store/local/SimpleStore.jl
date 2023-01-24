@@ -1,7 +1,7 @@
 module SimpleStore
 using Dates
-using SH, BaseTypes, SmallTypes, OptionTypes, QuoteTypes, OptionMetaTypes, ChainTypes
-using DateUtil, DictUtil, CollUtil
+using SH, BaseTypes, SmallTypes, OptionTypes, QuoteTypes, OptionQuoteTypes, OptionMetaTypes
+using DateUtil, DictUtil, CollUtil, ChainUtil
 import Calendars as cal
 
 export ChainInfo, UnderTime, TimeInfo
@@ -22,7 +22,7 @@ struct UnderTime
     lo::Currency
 end
 
-struct ChainInfo
+struct ChainInfo # <: Chain
     xsoqs::Dict{Date,Styles{Vector{OptionQuote}}}
     under::UnderTime
     xpirs::Vector{Date}
@@ -38,6 +38,8 @@ end
 #endregion
 
 #region Public
+ChainUtil.getCurp(chain::ChainInfo) = chain.under.under
+
 function run(f, from::DateLike, to::DateLike; maxSeconds=1)
     tss = getTss(from, to)
     start = time()
@@ -82,6 +84,9 @@ getTss(filt, from::DateLike, to::DateLike)::Vector{DateTime} = filter(ts -> from
 # TODO: test the above two return the same for no filter
 
 tsFirst(dts::DateLike)::DateTime = Tss[][searchsortedfirst(Tss[], dts)]
+
+ChainUtil.toOtoq(chi::ChainInfo) = ChainUtil.toOtoq(chi.xsoqs)
+ChainUtil.getXpirs(chi::ChainInfo) = chi.xpirs
 #endregion
 
 #region Local

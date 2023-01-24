@@ -5,6 +5,7 @@ using LogUtil, DateUtil, ChainUtil
 using SimpleStore
 import SimpleStore as SS
 using Between
+import OutputUtil:pp
 
 #region Public
 # function run(strat::Strat, from::Int, to::Int; maxSeconds::Int=1)::Nothing
@@ -20,13 +21,17 @@ function run(strat::Strat, from::DateLike, to::DateLike; maxSeconds::Int=1)::Not
     # $(from) - $(to) params:\n", params
     acct = makeAccount(params)
     global keepAcct = acct
-    ops = makeOps(acct)
+    chainRef = Ref{Chain}()
+    ops = makeOps(acct, chainRef)
 
     SS.run(from, to; maxSeconds) do tim, chain
+        otoq = ChainUtil.toOtoq(chain)
+        if !tim.atClose
+            checkExits(strat, acct, tim, otoq)
+            strat(ops, tim, chain)
+        end
         if tim.lastOfDay
             handleExpirations(acct, tim, chain)
-        else
-            strat(ops, tim, chain)
         end
     end
 end
@@ -59,11 +64,10 @@ function makeAccount(params)
     )
 end
 
-function makeOps(acct::Account)
+function makeOps(acct::Account, chain::Ref{Chain})
     return (;
-        openTrade = (lmso, neto, multiple, label) -> openTrade(acct, lmso, neto, multiple, label),
+        openTrade = (lmso, neto, multiple, label, extra) -> openTrade(acct, lmso, neto, multiple, label, extra),
         # closeTrade = (tradeOpen, lmsc, netc, label) -> closeTrade(acct, tradeOpen, lmsc, netc, label),
-        checkExit = (f, args...) -> checkExit(f, acct, args...),
     )
 end
 
@@ -86,31 +90,38 @@ end
 #endregion
 
 #region Trading
-function checkExit(f, acct::Account, optToOq, args...)
+function checkExits(strat, acct::Account, tim, otoq)
     filter!(acct.open) do tradeOpen
-        label = f(tradeOpen, args...)
+        lmsc = tos(LegMetaClose, tradeOpen.lms, otoq)
+        label = BackTypes.checkExit(strat, tradeOpen, tim, lmsc)
         if !isnothing(label)
-            lmsc = tos(LegMetaClose, tradeOpen.lmso, optToOq)
-            closeTrade(acct, tradeOpen, lmsc, pricingClose(lmsc), label)
+            closeTrade(acct, tradeOpen, lmsc, BackTypes.pricingClose(strat, lmsc), label)
+            return false
         end
+        return true
     end
 end
 
-function openTrade(acct, lmso, neto, multiple, label)
+import Shorthand
+
+function openTrade(acct, lmso, neto, multiple, label, extra)::Nothing
     id = acct.nextTradeId
     acct.nextTradeId += 1
-    tradeOpen = TradeBTOpen(id, lmso, neto, multiple, label)
+    tradeOpen = TradeBTOpen(id, lmso, neto, multiple, label, extra)
     push!(acct.open, tradeOpen)
     acct.bal += multiple * neto
-    # log("Open #$(trade.id) $(Shorthand.tosh(lms, acct.xpirs)): $((;multiple, neto, basisAll, netVal, riskVal)) '$(label)'")
-    log("Open #$(tradeOpen.id)")
+    # log("Open #$(tradeOpen.id) $(pp((;neto, multiple, strikes=getStrike.(lmso)))), $(pp(extra))")
+    log("Open #$(tradeOpen.id) $(Shorthand.sh(lmso)) $(pp((;neto, multiple))), $(pp(extra))")
+    return
 end
 
-function closeTrade(acct, tradeOpen, lmsc, netc, label)
+function closeTrade(acct, tradeOpen, lmsc, netc, label)::Nothing
     tradeClose = TradeBTClose(lmsc, netc, label)
     tradeFull = TradeBT(tradeOpen, tradeClose)
-    push!(acct.trades, tradeFull)
+    push!(acct.closed, tradeFull)
     acct.bal += tradeOpen.multiple * netc
+    log("Close #$(tradeOpen.id) $(Shorthand.sh(lmsc)) $(pp((;neto=tradeOpen.neto, netc, multiple=tradeOpen.multiple)))")
+    return
 end
 #endregion
 

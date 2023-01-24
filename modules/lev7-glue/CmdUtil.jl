@@ -193,6 +193,6 @@ SH.getGreeks(trade::Trade)::Greeks = getGreeks(Quoting.requote(optQuoter, getLeg
 # end
 
 export texPY
-texPY(from, leg) = cal.texToYear(calcTex(from, getExpiration(leg)))
+texPY(from, leg) = cal.texToYear(calcTex(from, getExpir(leg)))
 
 end

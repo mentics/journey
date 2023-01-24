@@ -2,18 +2,41 @@ module ChainUtil
 import Dates:Date
 using Globals, SH, BaseTypes, SmallTypes, OptionTypes, LegTypes, LegMetaTypes, ChainTypes
 using CollUtil
+import DictUtil:dictFromVals
 
 #region Types
-export Chain, XpirChain
+export Chain, ChainSearch
 abstract type Chain end
 abstract type ChainSearch end
-# const XpirChain = Dict{Date,Chain}
 #endregion
 
 #region Public
+function getXpirs end
+function getCurp end
+
+# function toSearch(curp, soqs::Styles{Vector{OptionQuote}})::ChainSearch
+#     return Styles(ChainSearchType(curp, oqs, getStrike.(soqs.call)), ChainSearchType(curp, oqs, getStrike.(soqs.put)))
+# end
 function toSearch(curp, oqs::Vector{OptionQuote})::ChainSearch
     return ChainSearchType(curp, oqs, getStrike.(oqs))
 end
+
+# function toStoq(oqs::Vector{OptionQuote})
+#     return DictUtil.dictFromKeys(getStrike, oqs)
+# end
+const Otoq = Dict{Date,Styles{Dict{Currency,OptionQuote}}}
+function toOtoq(xsoqs::Dict{Date,Styles{Vector{OptionQuote}}})::Otoq
+    # from: xsoqs::Dict{Date,Styles{Vector{OptionQuote}}} in SimpleStore
+    Dict(Iterators.map(xsoqs) do (date, styles)
+        date => Styles(dictFromVals(getStrike, styles.call), dictFromVals(getStrike, styles.put))
+    end)
+end
+
+otoqToStoq(otoq::Otoq, xpir::Date, style::Style.T) = otoq[xpir][style]
+
+oToOq(chainOtoq::Otoq, opt::Option) = chainOtoq[getExpir(opt)][getStyle(opt)][getStrike(opt)]
+xssToq(chainOtoq::Otoq, xpir::Date, style::Style.T, strike::Currency) = return chainOtoq[xpir][style][strike]
+
 function oqsLteCurp(search::ChainSearch, rat::Float64)::Vector{OptionQuote}
     strikeMax = search.curp * rat
     i = CollUtil.ltee(search.strikes, strikeMax)
@@ -22,15 +45,12 @@ end
 #endregion
 
 #region LocalTypes
-struct ChainType <: Chain
-end
 struct ChainSearchType <: ChainSearch
     curp::Currency
     oqs::Vector{OptionQuote}
     strikes::Vector{Currency}
 end
 #endregion
-
 
 #region Old
 # function getOqss(oqs::Vector{OptionQuote}, curp::Currency, legsCheck=LEGS_EMPTY)::Oqss
@@ -141,7 +161,7 @@ function findDir(dir, data::ChainSearch3, style::Style.T, val::Currency; maxDist
         ind = searchsortedfirst(strikes, val)
     end
     if ind < 1 || (ind >= length(strikes) && strikes[end] < val - maxDist)
-        # bt.log("Could not find $(dir) strike for trade $(getExpiration(oqs[1])) style:$(style) strike:$(val) minStrike:$(data.strikes[1]) maxStrike:$(data.strikes[end])")
+        # bt.log("Could not find $(dir) strike for trade $(getExpir(oqs[1])) style:$(style) strike:$(val) minStrike:$(data.strikes[1]) maxStrike:$(data.strikes[end])")
         return nothing
     end
     return data.oqs[ind]
@@ -155,7 +175,7 @@ end
 #         ind = searchsortedfirst(data.strikes, val)
 #     end
 #     if ind < 1 || (ind >= length(data.strikes) && data.strikes[end] < val - maxDist)
-#         bt.log("Could not find $(dir) strike for trade $(getExpiration(oqs[1])) style:$(style) strike:$(val) minStrike:$(data.strikes[1]) maxStrike:$(data.strikes[end])")
+#         bt.log("Could not find $(dir) strike for trade $(getExpir(oqs[1])) style:$(style) strike:$(val) minStrike:$(data.strikes[1]) maxStrike:$(data.strikes[end])")
 #         return nothing
 #     end
 #     return data.oqs[ind]
@@ -165,7 +185,7 @@ end
 #     oqs = getfield(data, Symbol(style))
 #     ind = findlast(oq -> getStrike(oq) < gte, oqs)
 #     if ind >= length(oqs)
-#         bt.log("Could not find a >= strike for trade $(getExpiration(oqs[1])) style:$(style) strike:$(gte) minStrike:$(data.strikes[1]) maxStrike:$(data.strikes[end])")
+#         bt.log("Could not find a >= strike for trade $(getExpir(oqs[1])) style:$(style) strike:$(gte) minStrike:$(data.strikes[1]) maxStrike:$(data.strikes[end])")
 #         return nothing
 #     end
 #     return data.oqs[ind]

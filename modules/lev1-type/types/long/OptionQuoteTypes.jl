@@ -13,7 +13,7 @@ SH.getQuote(oq::OptionQuote) = oq.quot
 SH.getOptionMeta(oq::OptionQuote) = oq.meta
 
 SH.getStyle(oq::OptionQuote) = getStyle(oq.option)
-SH.getExpiration(oq::OptionQuote) = getExpiration(oq.option)
+SH.getExpir(oq::OptionQuote) = getExpir(oq.option)
 SH.getStrike(oq::OptionQuote) = getStrike(oq.option)
 SH.getBid(oq::OptionQuote) = getBid(oq.quot)
 SH.getAsk(oq::OptionQuote) = getAsk(oq.quot)

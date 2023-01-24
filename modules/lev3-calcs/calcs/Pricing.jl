@@ -51,6 +51,11 @@ function calcMargin(lms::NTuple{2,LegMetaOpen})::Currency
     return calcWidth(lms[1], lms[2])
 end
 
+function calcMargin(lms::NTuple{2,T})::Currency where T
+    @assert getSide(lms[1]) != getSide(lms[2])
+    return calcWidth(lms[1], lms[2])
+end
+
 function calcMargin(lms::NTuple{3,LegMetaOpen})::Currency
     # TODO: compare performance to conditionals approach
     sides = Int.(getSide.(lms))

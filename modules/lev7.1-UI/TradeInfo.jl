@@ -6,7 +6,7 @@ using OutputUtil
 
 using Globals, RetTypes
 # minMaxPnl(trad::Trade)::Tuple{Currency,Currency} = C.(extrema(getVals(combineTo(Ret, [trad], getTargetDate(trad), market().startPrice, Globals.get(:vtyRatio)))))
-minMaxPnl(trad::Trade)::Tuple{Currency,Currency} = C.(extrema(OptionUtil.legsExtrema(getNetOpen(trad), getLegs(trad)...)))
+minMaxPnl(trad::Trade)::Tuple{Currency,Currency} = (CZ,CZ) # C.(extrema(OptionUtil.legsExtrema(getNetOpen(trad), getLegs(trad)...)))
 
 # getMaxClose(trad::Trade)::Currency = getMaxClose(getLegs(trad))
 # findPriceOpen(trad) = (dt = Date(tsOpen(trad)); dt == today() ? market().open : priceOpen(dt))
@@ -25,7 +25,7 @@ minMaxPnl(trad::Trade)::Tuple{Currency,Currency} = C.(extrema(OptionUtil.legsExt
 
 Base.show(io::IO, trade::Trade{S}) where S = println(io, string(trade))
 
-canQuote(trade::Trade) = isnothing(findfirst(leg -> !CH.canQuoteXpr(getExpiration(leg)), getLegs(trade)))
+canQuote(trade::Trade) = isnothing(findfirst(leg -> !CH.canQuoteXpr(getExpir(leg)), getLegs(trade)))
 
 # haskey(chains(), getTargetDate(trad))
 

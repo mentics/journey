@@ -7,14 +7,24 @@ export legsTosh, shLeg, shLegs
 export tosh
 
 # l448p@1 / s452p2@2 / s456c@2 / l458c2@1
-legsTosh(legs, exps) = join((legTosh(leg, exps) for leg in legs), " / ")
-tosh(legs::Coll, exps) = join((legTosh(leg, exps) for leg in legs), " / ")
+# legsTosh(legs, exps) = join((legTosh(leg, exps) for leg in legs), " / ")
+tosh(legs::Coll) = join((legTosh(leg) for leg in legs), " / ")
 
-# legTosh(leg, exps) = string(toCode(getSide(leg)), round(getStrike(leg); digits=1), toCode(getStyle(leg)), '@', searchsortedfirst(exps, getExpiration(leg)))
-legTosh(leg, exps) = string(toCode(getSide(leg)), round(getStrike(leg); digits=1), toCode(getStyle(leg)), '@', getExpiration(leg))
-tosh(leg, exps) = string(toCode(getSide(leg)), round(getStrike(leg); digits=1), toCode(getStyle(leg)), '@', searchsortedfirst(exps, getExpiration(leg)))
+function sh(legs::Coll)
+    xpir = getExpir(legs[1])
+    if !isnothing(findfirst(x -> getExpir(x) != xpir, legs))
+        return tosh(legs)
+    else
+        return string(join(shne.(legs), "/"), '@', xpir)
+    end
+end
+shne(lm) = string(toCode(getSide(lm)), round(getStrike(lm); digits=1), toCode(getStyle(lm)))
+
+# legTosh(leg, exps) = string(toCode(getSide(leg)), round(getStrike(leg); digits=1), toCode(getStyle(leg)), '@', searchsortedfirst(exps, getExpir(leg)))
+legTosh(leg) = string(toCode(getSide(leg)), round(getStrike(leg); digits=1), toCode(getStyle(leg)), '@', getExpir(leg))
+tosh(leg, exps) = string(toCode(getSide(leg)), round(getStrike(leg); digits=1), toCode(getStyle(leg)), '@', searchsortedfirst(exps, getExpir(leg)))
 # strikes = join(map(l -> "$(first(string(side(l))))$(s(strike(l), 1))$(first(string(style(l))))@$(searchsortedfirst(exps, expiration(l)))", legs(ar)), " / ")
-tosh(lm) = string(toCode(getSide(lm)), round(getStrike(lm); digits=1), toCode(getStyle(lm)), '@', getExpiration(lm))
+tosh(lm) = string(toCode(getSide(lm)), round(getStrike(lm); digits=1), toCode(getStyle(lm)), '@', getExpir(lm))
 
 # export shLegs, shLeg, toSh
 
