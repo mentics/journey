@@ -22,8 +22,11 @@ const CFG_DEF = Dict{Symbol,Any}(
 )
 
 function __init__()
-    if !Globals.has(:Distris)
-        Globals.set(:Distris, CFG_DEF)
+    if ccall(:jl_generating_output, Cint, ()) != 1
+        println("Loading ProbHist")
+        if !Globals.has(:Distris)
+            Globals.set(:Distris, CFG_DEF)
+        end
     end
 end
 

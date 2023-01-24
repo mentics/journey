@@ -52,6 +52,8 @@ isPut(o) = getStyle(o) == Style.put
 isLong(o) = getSide(o) == Side.long
 isShort(o) = getSide(o) == Side.short
 
+export calcWidth
+calcWidth(hasStrike1, hasStrike2) = abs(getStrike(hasStrike1) - getStrike(hasStrike2))
 
 export DirSQA, DirSQ, dirMult
 struct DirSQ

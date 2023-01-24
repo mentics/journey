@@ -10,11 +10,13 @@ struct TradeBTOpen{N}
     lms::NTuple{N,LegMetaOpen}
     neto::Currency
     multiple::Int
+    label::String
 end
 
 struct TradeBTClose{N}
     lms::NTuple{N,LegMetaClose}
     netc::Currency
+    label::String
 end
 
 struct TradeBT

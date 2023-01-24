@@ -143,14 +143,16 @@ flat(x...) = Iterators.flatten(x)
 flatmap(f, coll) = Iterators.flatten(Iterators.map(f, coll))
 mapflatmap(fout, fin, coll) = Iterators.map(fout, Iterators.flatten(Iterators.map(fin, coll)))
 
-function gtee(v, x)
+gteev(v, x) = v[gtee(v, x)]
+function gtee(v, x)::Int
     i = searchsortedfirst(v, x)
-    return v[min(i, lastindex(v))]
+    return min(i, lastindex(v))
 end
 
-function ltee(v, x)
+lteev(v, x) = v[ltee(v, x)]
+function ltee(v, x)::Int
     i = searchsortedlast(v, x)
-    return v[min(i, firstindex(v))]
+    return max(i, firstindex(v))
 end
 
 function sublist(v, from, to)

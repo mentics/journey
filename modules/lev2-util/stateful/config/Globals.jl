@@ -23,21 +23,24 @@ setvr(vr::Float64) = Globals.set(:vtyRatio, vr)
 const cfg = Dict{Symbol,Any}()
 
 function __init__()
-    haskey(cfg, :vtyRatio) || push!(cfg,
-        :vtyRatio => 0.8,
-        :devMode => false,
-        :incShortCals => false,
-        :testing => false,
-        :tierEnv => :paper,
-        :snap => nothing,
-        :snapTs => nothing,
-        :useCurp => true,
-        :Strats => Dict{Symbol,Any}(
-            :maxStrikeDist => 28.0,
-            :maxPutHeight => 3.2,
-            :maxCallHeight => 22.0 # TODO: compare results if allow deeper calls
+    if ccall(:jl_generating_output, Cint, ()) != 1
+        println("Loading Globals")
+        haskey(cfg, :vtyRatio) || push!(cfg,
+            :vtyRatio => 0.8,
+            :devMode => false,
+            :incShortCals => false,
+            :testing => false,
+            :tierEnv => :paper,
+            :snap => nothing,
+            :snapTs => nothing,
+            :useCurp => true,
+            :Strats => Dict{Symbol,Any}(
+                :maxStrikeDist => 28.0,
+                :maxPutHeight => 3.2,
+                :maxCallHeight => 22.0 # TODO: compare results if allow deeper calls
+            )
         )
-    )
+    end
 end
 
 dirData() = "G:/My Drive/sync/data/journey"

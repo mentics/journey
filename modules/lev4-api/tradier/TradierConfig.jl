@@ -79,11 +79,14 @@ end
 const cfg = Dict{Symbol,Any}()
 
 function __init__()
-    # only set default config if not already set
-    haskey(cfg, :defaultSymbol) || setDefaultConfig()
-    HEADERS_GET[] = ["Authorization" => "Bearer $(cfg[:apiKey])", "Accept" => "application/json"]
-    HEADERS_POST[] = vcat(HEADERS_GET[], "Content-Type" => "application/x-www-form-urlencoded")
-    HEADERS_DELETE[] = HEADERS_GET[] # vcat(HEADERS_GET[], "Content-Type" => "application/x-www-form-urlencoded")
+    if ccall(:jl_generating_output, Cint, ()) != 1
+        println("Loading TradierConfig")
+        # only set default config if not already set
+        haskey(cfg, :defaultSymbol) || setDefaultConfig()
+        HEADERS_GET[] = ["Authorization" => "Bearer $(cfg[:apiKey])", "Accept" => "application/json"]
+        HEADERS_POST[] = vcat(HEADERS_GET[], "Content-Type" => "application/x-www-form-urlencoded")
+        HEADERS_DELETE[] = HEADERS_GET[] # vcat(HEADERS_GET[], "Content-Type" => "application/x-www-form-urlencoded")
+    end
 end
 function setDefaultConfig()
     tenv(:prod)

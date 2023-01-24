@@ -27,7 +27,7 @@ struct LegMeta{S}
 end
 const LegMetaOpen = LegMeta{Open}
 const LegMetaClose = LegMeta{Close}
-function LegMeta{Open}(oq::OptionQuote, side::Side.T, qty::Float64)
+function LegMeta{Open}(oq::OptionQuote, side::Side.T, qty::Float64=1.0)
     dir = DirSQ(side, qty)
     return LegMetaOpen(Leg(getOption(oq), dir), newQuote(getQuote(oq), DirSQA(dir, Action.open)), newOptionMeta(getOptionMeta(oq), dir))
 end
@@ -48,6 +48,7 @@ SH.getOptionMeta(lm::LegMeta) = lm.meta
 
 SH.getOption(lm::LegMeta) = getOption(lm.leg)
 SH.getExpiration(lm::LegMeta) = getExpiration(lm.leg)
+SH.getExpir(lm::LegMeta) = getExpiration(lm.leg)
 SH.getStyle(lm::LegMeta) = getStyle(lm.leg)
 SH.getStrike(lm::LegMeta) = getStrike(lm.leg)
 SH.getSide(lm::LegMeta) = getSide(lm.leg)

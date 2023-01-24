@@ -99,10 +99,11 @@ end
 function openTrade(acct, lmso, neto, multiple, label)
     id = acct.nextTradeId
     acct.nextTradeId += 1
-    tradeOpen = TradeBTOpen(id, lmso, neto, label)
+    tradeOpen = TradeBTOpen(id, lmso, neto, multiple, label)
     push!(acct.open, tradeOpen)
     acct.bal += multiple * neto
-    log("Open #$(trade.id) $(Shorthand.tosh(lms, acct.xpirs)): $((;multiple, neto, basisAll, netVal, riskVal)) '$(label)'")
+    # log("Open #$(trade.id) $(Shorthand.tosh(lms, acct.xpirs)): $((;multiple, neto, basisAll, netVal, riskVal)) '$(label)'")
+    log("Open #$(tradeOpen.id)")
 end
 
 function closeTrade(acct, tradeOpen, lmsc, netc, label)

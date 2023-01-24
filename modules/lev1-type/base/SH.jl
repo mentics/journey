@@ -10,7 +10,7 @@ export getOption, getLeg, getMeta, getOptionMeta, getQuote, getGreeks
 export calcQuote, calcOptQuote
 export getQuantityDir, addQuantity # , withQuantity
 
-export getVals, getVals!, valAt, getCenter, draw, draw!
+export getVals, getVals!, valAt, getCenter
 
 export getNetOpen, getNetClose, getLegs, getPnl
 export bap
@@ -86,8 +86,8 @@ function getVals!() end
 function valAt() end
 # function getValMid() end
 function getCenter() end
-function draw(::Nothing) end
-function draw!(::Nothing) end
+# function draw(::Nothing) end
+# function draw!(::Nothing) end
 
 # these are for prill's * quantity
 getNetOpen(itr) = sum(getNetOpen, itr)

@@ -1,6 +1,7 @@
 module ChainUtil
 import Dates:Date
 using Globals, SH, BaseTypes, SmallTypes, OptionTypes, LegTypes, LegMetaTypes, ChainTypes
+using CollUtil
 
 #region Types
 export Chain, XpirChain
@@ -14,7 +15,9 @@ function toSearch(curp, oqs::Vector{OptionQuote})::ChainSearch
     return ChainSearchType(curp, oqs, getStrike.(oqs))
 end
 function oqsLteCurp(search::ChainSearch, rat::Float64)::Vector{OptionQuote}
-    return search.oqs[CollUtil.ltee(search.strikes, search.curp * rat)]
+    strikeMax = search.curp * rat
+    i = CollUtil.ltee(search.strikes, strikeMax)
+    return search.oqs[1:i]
 end
 #endregion
 
@@ -108,20 +111,20 @@ function tolup(oqs)::ChainLookup
     return d
 end
 
-function toSearch(oqs)::ChainSearchS2
-    calls = Vector{OptionQuote}()
-    puts = Vector{OptionQuote}()
-    for oq in oqs
-        if SmallTypes.isCall(oq)
-            push!(calls, oq)
-        else
-            push!(puts, oq)
-        end
-    end
-    sort!(calls; by=getStrike)
-    sort!(puts; by=getStrike)
-    return ChainSearchS2(ChainSearch3(calls, getStrike.(calls)), ChainSearch3(puts, getStrike.(puts)))
-end
+# function toSearch(oqs)::ChainSearchS2
+#     calls = Vector{OptionQuote}()
+#     puts = Vector{OptionQuote}()
+#     for oq in oqs
+#         if SmallTypes.isCall(oq)
+#             push!(calls, oq)
+#         else
+#             push!(puts, oq)
+#         end
+#     end
+#     sort!(calls; by=getStrike)
+#     sort!(puts; by=getStrike)
+#     return ChainSearchS2(ChainSearch3(calls, getStrike.(calls)), ChainSearch3(puts, getStrike.(puts)))
+# end
 
 lup(data::ChainLookup, style::Style.T, strike::Currency)::Union{OptionQuote,Nothing} = get(getfield(data, Symbol(style)), strike, nothing)
 lup(data::ChainLookup, opt::Option)::Union{OptionQuote,Nothing} = get(getfield(data, Symbol(getStyle(opt))), getStrike(opt), nothing)

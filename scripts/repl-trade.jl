@@ -5,7 +5,7 @@ using Store, StoreTrade, ProcOrder
 using CmdTrading, CmdPos
 
 import Combos as c, SeekingAlpha as sa
-# import Backtests as bt, GiantCondors as gc, HistSpy as hspy, SpyLoader as sl
+# import Backtests as bt, GiantCondors as gc
 
 dbChecks()
 procOrders()
@@ -21,8 +21,8 @@ c.findRoll("F", 14, .12, Style.put)
 # so(r.lms)
 # devoff()
 
-gc.live(Side.long)
-bt.run(gc.strat, gc.stratDay, 2022; maxSeconds=2)
+# gc.live(Side.long)
+# bt.run(gc.strat, gc.stratDay, 2022; maxSeconds=2)
 
 # jorn(1:2)
 # jorn(2:3; all=true)

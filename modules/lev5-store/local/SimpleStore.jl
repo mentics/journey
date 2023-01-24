@@ -87,6 +87,7 @@ tsFirst(dts::DateLike)::DateTime = Tss[][searchsortedfirst(Tss[], dts)]
 #region Local
 function __init__()
     if ccall(:jl_generating_output, Cint, ()) != 1
+        println("Loading SimpleStore")
         sizehint!(ChainCache, HINT_TSS * 12 * 12) # 12 months by 12 years
         # sizehint!(XpirCache, HINT_TSS * 12 * 12)
         loadTss()
