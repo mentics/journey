@@ -15,6 +15,7 @@ function run(strat::Strat, from::DateLike, to::DateLike; maxSeconds::Int=1)::Not
     LogUtil.resetLog(:backtest)
 
     params = strat.params
+    global keepParams = params
     global tss = SS.getTss(from, to)
     global info = BacktestInfo(from, to, tss[1], tss[end], params)
     log("Starting backtest info ", info)
@@ -34,7 +35,19 @@ function run(strat::Strat, from::DateLike, to::DateLike; maxSeconds::Int=1)::Not
             handleExpirations(acct, tim, chain)
         end
     end
+    showResult()
 end
+
+function showResult(acct=keepAcct, params=keepParams)::Nothing
+    balReal = params.balInit
+    for trade in acct.closed
+        balReal += getPnl(trade)
+    end
+    println(pp((;balReal)))
+    return
+end
+
+getPnl(trade) = trade.open.neto + trade.close.netc
 #endregion
 
 #region LocalTypes
@@ -120,7 +133,8 @@ function closeTrade(acct, tradeOpen, lmsc, netc, label)::Nothing
     tradeFull = TradeBT(tradeOpen, tradeClose)
     push!(acct.closed, tradeFull)
     acct.bal += tradeOpen.multiple * netc
-    log("Close #$(tradeOpen.id) $(Shorthand.sh(lmsc)) $(pp((;neto=tradeOpen.neto, netc, multiple=tradeOpen.multiple)))")
+    pnl = tradeOpen.neto + netc
+    log("Close #$(tradeOpen.id) $(Shorthand.sh(lmsc)) $(pp((;neto=tradeOpen.neto, netc, pnl, multiple=tradeOpen.multiple)))")
     return
 end
 #endregion

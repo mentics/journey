@@ -66,7 +66,7 @@ function BackTypes.checkExit(strat::TStrat, tradeOpen::TradeBTOpen{3}, tim, lmsc
     curVal = tradeOpen.neto + calcPrice(lmsc)
     rate = calcRate(tim.date, getExpir(tradeOpen), curVal, tradeOpen.extra.risk)
     rateOrig = tradeOpen.extra.rate
-    log("checkExit: $(tradeOpen.id) $(round(rate;digits=5)) $(round(rateOrig;digits=5))")
+    # log("checkExit: $(tradeOpen.id) $(round(rate;digits=5)) $(round(rateOrig;digits=5))")
     if rate >= 1.5 * rateOrig
         return "rate $(rate) >= 1.5 * $(rateOrig)"
     end
