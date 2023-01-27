@@ -27,6 +27,7 @@ struct Context
 end
 
 struct TStrat <: Strat
+    acctTypes::Tuple{Int,DataType}
     params::Params
     ctx::Context
 end
@@ -34,6 +35,7 @@ end
 makeCtx() = Context(Vector{Cand}())
 
 makeStrat() = TStrat(
+    (3,Scoring),
     Params(C(1000)),
     makeCtx(),
 )
@@ -56,7 +58,7 @@ function (s::TStrat)(ops, tim, chain)
         # end
     end
     if !isempty(keep)
-        ops.openTrade(keep[1].lms, C(round(keep[1].scoring.ret, RoundDown; digits=2)), 1, "scored", keep[1].scoring)
+        ops.openTrade(keep[1].lms, tim.ts, C(round(keep[1].scoring.ret, RoundDown; digits=2)), 1, "scored", keep[1].scoring)
     end
 end
 

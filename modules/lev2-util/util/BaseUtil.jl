@@ -11,6 +11,14 @@ function coal(args...)
     return nothing
 end
 
+macro coal(args...)
+    expr = :(nothing)
+    for arg in reverse(args)
+        expr = :((val = $arg) |> isSomething ? val : $expr)
+    end
+    return esc(:(let val; $expr; end))
+end
+
 toEnum(mod::Module, sym::Symbol) = getproperty(mod, sym)
 toEnum(mod::Module, s::AbstractString) = toEnum(mod, Symbol(s))
 

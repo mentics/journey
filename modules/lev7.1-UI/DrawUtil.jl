@@ -1,19 +1,39 @@
 module DrawUtil
-import Makie:Makie, Figure, Axis, DataInspector, axislegend, Axis, AxisPlot
+using Dates
+import PlotUtils
+import Makie:Makie, Figure, Axis, DataInspector, axislegend, Axis, AxisPlot, current_figure, current_axis
 import GLMakie
 # import GLFW
-using SH, Bins
+using SH, Bins, BaseTypes
+using BaseUtil, DateUtil
 
 #region Public
-export draw
+export draw, draw!
 
 draw!(type::Symbol, args...; kws...)::Axis = draw(type, args...; newFig=false, kws...)
-function draw(type::Symbol, args...; kws...)::Axis
+draw(type::Symbol, args...; kws...)::Axis = _draw(type, args...; kws...)
+
+# dtformat="yyyy.mm.dd.HHMMss"
+function draw(type::Symbol, points::AbstractVector{<:Tuple{DateLike,T}}; kws...)::Axis where T
+    draw(type, getindex.(points, 1), getindex.(points, 2); kws...)
+end
+function draw(type::Symbol, xs::Coll{<:DateLike}, ys; dtformat="mm/dd/yyyy", kws...)::Axis
+    ax = _draw(type, datetime2unix.(xs), ys; kws...)
+    dateticks = PlotUtils.optimize_datetime_ticks(Dates.value(xs[1]), Dates.value(xs[end]))[1]
+    tickdts = dtFromValue.(dateticks)
+    ax.xticks[] = (datetime2unix.(tickdts), Dates.format.(tickdts, dtformat));
+    return ax
+end
+
+function _draw(type::Symbol, args...; kws...)::Axis
     f = getproperty(Makie, Symbol(string(type) * '!'))
     ax = getAxis(; kws...)
     f(ax, args...; kws...)
+    afterDraw(;kws...)
     return ax
 end
+
+dtFromValue(val) = DateTime(Dates.UTM(val))
 #endregion
 
 function prob!(ax, prob, colorIndex, scale)
@@ -55,8 +75,6 @@ function check()::FigureAxisPlot
     return GLMakie.lines(getFig(), [(0.0, 0.0)])
 end
 
-using Dates
-using PlotUtils: optimize_ticks
 # function setupDates(dates)
 #     dateticks = optimize_ticks(dates[1], dates[end])[1]
 #     fig = current_figure()
@@ -113,20 +131,26 @@ end
 
 makeFig() = Figure(;resolution = (1200, 1000))
 
-getAxis(args...; kws...)::Axis = Axis(getFig(args...; kws...)[1,1])
+function getAxis(args...; kws...)::Axis
+    fig = getFig(args...; kws...)
+    ax = @coal current_axis() Axis(fig[1,1])
+    return ax
+end
 
-function getFig(; newFig=true, newWin=false, showLegend=false)::Figure
+function getFig(; newFig=true, newWin=false, kws...)::Figure
     fig = newFig ? makeFig() : current_figure()
     if newWin
         display(GLMakie.Screen(), fig)
     end
-    if showLegend
-        ax = Axis(fig[1,1])
-        axislegend(ax)
-    end
     DataInspector(fig; textcolor=:blue)
     display(fig)
     return fig
+end
+
+function afterDraw(; showLegend=false, kws...)
+    if showLegend
+        axislegend(current_axis())
+    end
 end
 
 closeWin() = GLMakie.closeall()

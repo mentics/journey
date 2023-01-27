@@ -1,4 +1,5 @@
 module BackTypes
+import Dates:DateTime
 using SH, BaseTypes, LegMetaTypes
 
 # TODO: some things should be PriceT instead of Currency
@@ -15,6 +16,7 @@ abstract type TradeBTStage end
 
 struct TradeBTOpen{N,E} <: TradeBTStage
     id::Int
+    ts::DateTime
     lms::NTuple{N,LegMetaOpen}
     neto::Currency
     multiple::Int
@@ -23,21 +25,22 @@ struct TradeBTOpen{N,E} <: TradeBTStage
 end
 
 struct TradeBTClose{N} <: TradeBTStage
+    ts::DateTime
     lms::NTuple{N,LegMetaClose}
     netc::Currency
     label::String
 end
 SH.getExpir(t::TradeBTStage) = getExpir(t.lms)
 
-struct TradeBT{N}
-    open::TradeBTOpen{N}
+struct TradeBT{N,E}
+    open::TradeBTOpen{N,E}
     close::TradeBTClose{N}
 end
 
-mutable struct Account
+mutable struct Account{N,E}
     bal::Currency
-    open::Vector{TradeBTOpen}
-    closed::Vector{TradeBT}
+    open::Vector{TradeBTOpen{N,E}}
+    closed::Vector{TradeBT{N,E}}
     nextTradeId::Int
 end
 

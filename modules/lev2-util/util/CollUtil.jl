@@ -161,4 +161,65 @@ function sublist(v, from, to)
     return v[left:right]
 end
 
+#=
+This should do exactly what accumulate! does, but in some testing, this might be a lot faster
+f1(a, x) = (a[2], a[2]+x);
+v1 = rand(100);
+buf1 = Vector{NTuple{2,Float64}}(undef, length(v1));
+init = (0.0, 0.0);
+r1 = @btime CollUtil.maps!($f1, $buf1, $v1, $init);
+r2 = @btime accumulate!($f1, $buf1, $v1; init=$init);
+@assert r1 == r2
+=#
+# function maps!(f, buf, v, init)
+#     s = init
+#     i = 0
+#     for x in v
+#         i += 1
+#         s = f(s, x)
+#         buf[i] = s
+#     end
+#     return buf
+# end
+
+struct _DefinitelyNothingThisTime end
+function accum!(op, B, A; dims::Union{Integer, Nothing} = nothing, init = _DefinitelyNothingThisTime)
+    Base._accumulate!(op, B, A, dims, init === _DefinitelyNothingThisTime ? nothing : Some(init))
+end
+
+# function accumul!(op, B, A; dims::Union{Integer, Nothing} = nothing, kw...)
+#     if isnothing(init)
+#         Base._accumulate!(op, B, A, dims, nothing)
+#     else
+#         Base._accumulate!(op, B, A, dims, Some(init))
+#     end
+# end
+
+# # function accum!(op, B, A; dims::Union{Integer, Nothing} = nothing)
+# #     Base._accumulate!(op, B, A, dims, nothing)
+# # end
+
+# function accumul!(op, B, A; dims::Union{Integer, Nothing} = nothing, kw...)
+#     if isempty(kw)
+#         Base._accumulate!(op, B, A, dims, nothing)
+#     else
+#         ks = keys(kw)
+#         check = length(ks) === 1 && first(ks) === :init
+#         if check
+#             x = first(values(kw))
+#             x2 = Some(x)
+#             Base._accumulate!(op, B, A, dims, x2)
+#         end
+#         # @time ks = keys(kw)
+#         # @time check = length(ks) === 1 && first(ks) === :init
+#         # if check
+#         #     @time x = first(values(kw))
+#         #     @time x2 = Some(x)
+#         #     @time Base._accumulate!(op, B, A, dims, x2)
+#         # else
+#         #     throw(ArgumentError("acccumulate! does not support the keyword arguments $(setdiff(keys(kw), (:init,)))"))
+#         # end
+#     end
+# end
+
 end
