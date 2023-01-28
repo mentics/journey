@@ -148,7 +148,11 @@ function loadMonth(y, m)
         putsts = puts[ts]
         xpirsCalls = keys(callsts)
         xpirsPuts = keys(putsts)
-        @assert xpirsCalls == xpirsPuts
+        if xpirsCalls != xpirsPuts
+            global keepXpirsCalls = xpirsCalls
+            global keepXpirsPuts = xpirsPuts
+            println("Unexpected xpirsCalls != xpirsPuts for year/month: $(y)/$(m)")
+        end
         xsoqs = Dict{Date,Styles{Vector{OptionQuote}}}()
         xpirs = filter!(x -> x < Date(2025, 1, 1), sort!(collect(xpirsCalls)))
         for xpir in xpirs

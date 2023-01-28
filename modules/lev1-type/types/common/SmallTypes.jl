@@ -33,6 +33,10 @@ end
 Base.length(s::Sides) = length(s.long) + length(s.short)
 iter(s::Sides) = Iterators.flatten((iter(s.long), iter(s.short)))
 iter(other) = other
+Base.iterate(s::Sides, i::Int=1) = i === 1 ? (s.long, 2) : ( i === 2 ? (s.short, 3) : nothing )
+Base.eltype(::Sides{T}) where T = T
+(Base.max(s::Sides{T})::T) where T<:Number = max(s.long, s.short)
+(Base.min(s::Sides{T})::T) where T<:Number = min(s.long, s.short)
 
 @enumx Action open=1 close=-1
 SH.toOther(x::Action.T) = x === Action.open ? Action.close : Action.open

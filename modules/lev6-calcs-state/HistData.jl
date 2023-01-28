@@ -3,9 +3,6 @@ using Dates, DelimitedFiles
 using Globals, BaseTypes, FileUtil, DateUtil, LogUtil, DictUtil
 using Caches, TradierData
 
-const hd = @__MODULE__
-export hd
-
 export dataDaily, dataDay
 export DailyType, DailyRowType, RetsItemType
 
@@ -14,11 +11,24 @@ const DailyRowType = NamedTuple{(:date, :open, :high, :low, :close, :volume), Tu
 const DailyType = Vector{DailyRowType}
 const RetsItemType = NamedTuple{(:interval, :ret, :date, :dailyIndex), Tuple{Int,Float64,Date,Int}}
 
+const VixOpens = Dict{Date,Currency}()
+function vixOpen(date::Date)
+    !isempty(VixOpens) || populateVixOpens()
+    return VixOpens[date]
+end
+function populateVixOpens()
+    v = dataDaily("VIX")
+    for row in v
+        VixOpens[row.date] = row.open
+    end
+end
+
 # In descending date order
 dataDaily(sym::AStr="SPY"; up=false)::DailyType = ( res = cache!(() -> updateDaily(sym), DailyType, Symbol("daily-$(lowercase(sym))"), Hour(4); up) ; @assert length(res) > 5000 string("length(dataDaily(", sym, ")) ", length(res)) ; return res )
 dataDaily(d::Date, sym::AStr="SPY")::DailyType = (daily = dataDaily(sym) ; daily[findfirst(r->r.date <= d, daily):end])
 dataDaily(from::Date, to::Date, sym::AStr="SPY")::DailyType = filter(r -> from <= r.date <= to, dataDaily(sym))
 dailyDict(from::Date, to::Date, sym::AStr="SPY")::Dict{Date,NamedTuple} = dictFromVals(getDate, filter(x -> from <= x.date <= to, dataDaily(sym)))
+dailyDict(sym::AStr="SPY")::Dict{Date,NamedTuple} = dictFromVals(getDate, dataDaily(sym))
 
 priceOpen(d::Date)::Currency = dataDay(d).open
 function dataDay(d::Date, sym::AStr="SPY")::DailyRowType

@@ -4,13 +4,10 @@ using SH, BaseTypes, SmallTypes, BackTypes, LegMetaTypes
 using LogUtil, DateUtil, ChainUtil, CollUtil
 using SimpleStore
 import SimpleStore as SS
-using Between
+import Pricing, Between, Shorthand
 import OutputUtil:pp
 
 #region Public
-# function run(strat::Strat, from::Int, to::Int; maxSeconds::Int=1)::Nothing
-#     SS.getTss()
-# end
 function run(strat::Strat, from::DateLike, to::DateLike; maxSeconds::Int=1)::Nothing
     LogUtil.resetLog(:backtest)
 
@@ -32,54 +29,10 @@ function run(strat::Strat, from::DateLike, to::DateLike; maxSeconds::Int=1)::Not
             strat(ops, tim, chain)
         end
         if tim.lastOfDay
-            handleExpirations(acct, tim, chain)
+            handleExpirations(acct, tim, chain, otoq)
         end
     end
-    showResult()
 end
-
-function showResult(acct=keepAcct, params=keepParams)::Nothing
-    # balReals = foldl(red.balReal, acct.closed; init=[params.balInit])
-    # balReals = maps(red.balReal, acct.closed, params.balInit)
-    balReals = mapPoint(pts.balReal, acct.closed, (acctTsStart(acct), params.balInit))
-
-    # println(balReals)
-
-    # balReal = params.balInit
-    # for trade in acct.closed
-    #     balReal += getPnl(trade)
-    # end
-    # println(pp((;balReals=balReals[end])))
-    return
-end
-
-module pts
-import ..Currency, ..TradeBT, ..trad
-balReal(prev::Currency, trade::TradeBT) = prev + trad.pnl(trade)
-end # module pts
-
-# mapPoint(f, trades, init) = maps(trades, init) do prev, trade
-#     return (trad.tsClose(trade), f(prev[2], trade))
-# end
-
-# mapPoint2(f, trades, init) = accumulate(trades; init) do prev, trade
-#     return (trad.tsClose(trade), f(prev[2], trade))
-# end
-
-# mapPoint!(f, buf, trades, init) = maps!(buf, trades; init) do prev, trade
-#     return (trad.tsClose(trade), f(prev[2], trade))
-# end
-
-function mapPoint(f, trades, init)
-    buf = Vector{typeof(init)}(undef, length(trades))
-    mapPoint!(f, buf, trades, init)
-    return buf
-end
-
-mapPoint!(f, buf, trades, init) = CollUtil.accum!(buf, trades; init) do prev, trade
-    return (trad.tsClose(trade), f(prev[2], trade))
-end
-
 #endregion
 
 #region LocalTypes
@@ -103,6 +56,7 @@ end
 function makeAccount(typeParams, params)
     return Account{typeParams...}(
         params.balInit,
+        marginZero(),
         Vector{TradeBT{typeParams...}}(),
         Vector{TradeBT{typeParams[1]}}(),
         1,
@@ -111,27 +65,46 @@ end
 
 function makeOps(acct::Account, chain::Ref{Chain})
     return (;
-        openTrade = (lmso, ts, neto, multiple, label, extra) -> openTrade(acct, ts, lmso, neto, multiple, label, extra),
+        marginAvail = () -> marginAvail(acct),
+        openTrade = (ts, lmso, neto, margin, multiple, label, extra) -> openTrade(acct, ts, lmso, neto, margin, multiple, label, extra),
         # closeTrade = (tradeOpen, lmsc, netc, label) -> closeTrade(acct, tradeOpen, lmsc, netc, label),
     )
 end
 
-function handleExpirations(acct::Account, tim::TimeInfo, chain::ChainInfo)::Nothing
+function handleExpirations(acct::Account, tim::TimeInfo, chain::ChainInfo, otoq)::Nothing
     filter!(acct.open) do tradeOpen
         if tim.date == getExpir(tradeOpen)
-            lmsc = tos(LegMetaClose, tradeOpen.lms, optToOq)
-            netc = OptionUtil.netExpired(lmsc, chain.under)
+            lmsc = tos(LegMetaClose, tradeOpen.lms, otoq)
+            netc = Pricing.netExpired(lmsc, chain.under.under)
             # TODO: adjust netExpired to handle buyback for near strikes?
             closeTrade(acct, tradeOpen, tim.ts, lmsc, netc, "expired")
             return false
         end
         return true
     end
-    recalcMargin(acct)
+    acct.margin = calcMargin(acct.open, acct.bal)
+    return
 end
 
-function recalcMargin(acct::Account)
+function calcMargin(trades::AbstractVector{<:TradeBTOpen}, bal::PT)::MarginInfo
+    # Brokerage might consider margin offsets only for the same expiration, but for me, the risk is across all expirations, so I'll count it that way.
+    countLong = 0
+    countShort = 0
+    marginLong = CZ
+    marginShort = CZ
+    for trade in trades
+        long, short = calcMargin(trade)
+        multiple = trade.multiple
+        long > 0 && ( countLong += multiple )
+        short > 0 && ( countShort += multiple )
+        marginLong += long * multiple
+        marginShort += short * multiple
+    end
+    marginTotal = max(marginLong, marginShort)
+    return MarginInfo(marginTotal, F(marginTotal) / bal, MarginSide(marginLong, countLong), MarginSide(marginShort, countShort))
 end
+
+calcMargin(trade::TradeBTOpen) = Pricing.calcMargin(trade.lms)
 #endregion
 
 #region Trading
@@ -147,12 +120,10 @@ function checkExits(strat, acct::Account, tim, otoq)
     end
 end
 
-import Shorthand
-
-function openTrade(acct, ts, lmso, neto, multiple, label, extra)::Nothing
+function openTrade(acct, ts, lmso, neto::PT, margin::PT, multiple::Int, label::String, extra)::Nothing
     id = acct.nextTradeId
     acct.nextTradeId += 1
-    tradeOpen = TradeBTOpen(id, ts, lmso, neto, multiple, label, extra)
+    tradeOpen = TradeBTOpen(id, ts, lmso, neto, margin, multiple, label, extra)
     push!(acct.open, tradeOpen)
     acct.bal += multiple * neto
     # log("Open #$(tradeOpen.id) $(pp((;neto, multiple, strikes=getStrike.(lmso)))), $(pp(extra))")
@@ -166,16 +137,18 @@ function closeTrade(acct, tradeOpen, ts, lmsc, netc, label)::Nothing
     push!(acct.closed, tradeFull)
     acct.bal += tradeOpen.multiple * netc
     pnl = tradeOpen.neto + netc
-    log("Close #$(tradeOpen.id) $(Shorthand.sh(lmsc)) $(pp((;neto=tradeOpen.neto, netc, pnl, multiple=tradeOpen.multiple)))")
+    log("Close #$(tradeOpen.id) $(Shorthand.sh(lmsc)) $(pp((;neto=tradeOpen.neto, netc, pnl, multiple=tradeOpen.multiple, rate=trad.rate(tradeFull))))")
     return
 end
 #endregion
 
 #region AccessAndCalcs
 module trad
-using BackTypes
+using Dates
+using BackTypes, DateUtil
 tsClose(trade::TradeBT) = trade.close.ts
 pnl(trade) = trade.open.neto + trade.close.netc
+rate(trade) = DateUtil.calcRate(Date(trade.open.ts), Date(trade.close.ts), pnl(trade), max(trade.open.margin))
 end
 
 acctTsStart(acct)::DateTime =
@@ -183,20 +156,8 @@ acctTsStart(acct)::DateTime =
         (isempty(acct.closed) ? DATETIME_ZERO : acct.closed[1].open.ts) :
         (isempty(acct.closed) ? acct.open[1].ts : min(acct.open[1].ts, acct.closed[1].open.ts))
 
-# acctTsStart2(acct) = acct.closed[1].open.ts
-acctTsStart2(acct) = acct.open[1].ts
-
-function acctTsStart3(acct)::DateTime
-    @time a = acct.closed[1]
-    @time b = a.open
-    @time c = b.ts
-    return c
-end
-
-    # isempty(acct.open) ?
-    #     (isempty(acct.closed) ? DATETIME_ZERO : acct.closed[1].open.ts) :
-    #     (isempty(acct.closed) ? acct.open[1].ts : min(acct.open[1].ts, acct.closed[1].open.ts))
-
+marginMax(acct::Account)::PT = acct.bal * .8 # TODO: make param?
+marginAvail(acct)::Sides{PT} = ( mx = marginMax(acct) ; Sides(mx - acct.margin.long.margin, mx - acct.margin.short.margin) )
 #endregion
 
 #region Util

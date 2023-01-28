@@ -1,5 +1,5 @@
 module Pricing
-using SH, BaseTypes, SmallTypes, QuoteTypes, LegMetaTypes
+using AbstractTypes, SH, BaseTypes, SmallTypes, QuoteTypes, LegMetaTypes
 import OptionUtil
 
 export bap
@@ -7,15 +7,15 @@ export bap
 bap(qt::Quote, r=.2)::Currency = improve(qt, r)
 bap(hasQuote, r=.2)::Currency = improve(getQuote(hasQuote), r)
 bap(hasQuotes::Coll, r=.2)::Currency = round(sum(bap.(getQuote.(hasQuotes), r)), RoundDown; digits=2)
-function bap(hasQuotes::NTuple{3,T}, r=.2)::Currency where T
+function (bap(hasQuotes::NTuple{3,T}, r=.2)::Currency) where T
     s = bap(getQuote(hasQuotes[1]), r) +
         bap(getQuote(hasQuotes[2]), r) +
         bap(getQuote(hasQuotes[3]), r)
     return round(s, RoundDown; digits=2)
 end
 
-bapFast(qt::Quote, r=.2)::Currency = improveFast(qt, r)
-function bapFast(hasQuotes::NTuple{3,T}, r=.2)::Currency where T
+bapFast(qt::Quote, r=.2) = improveFast(qt, r)
+function (bapFast(hasQuotes::NTuple{3,T}, r=.2)) where T
     return bapFast(getQuote(hasQuotes[1]), r) +
         bapFast(getQuote(hasQuotes[2]), r) +
         bapFast(getQuote(hasQuotes[3]), r)
@@ -33,36 +33,54 @@ function improve(q::Quote, r::Float64)::Currency
     #     return a <= 2*b ? b + r * (a - b) : b * (1.0 + r)
     # end
 end
-function improveFast(q::Quote, r::Float64)::Currency
+function improveFast(q::Quote, r::Float64)
     b = getBid(q)
     a = getAsk(q)
     a = min(a, (b >= 0.0 ? 4*b : b/4))
     return b + r * (a - b)
 end
 
-netExpired(lms, curp) = sum(x -> netExpired1(x, curp), lms)
-function netExpired1(lm, curp)
+# TODO: remove this dep
+import OptionUtil
+
+netExpired(lms, curp::Currency)::Currency = sum(x -> netExpired1(x, curp), lms)
+function netExpired1(lm::LegType, curp::Currency)::Currency
     s = getStrike(lm)
-    return getQuantity(lm) * (extrinSub(getStyle(lm), s, curp) ? Int(getSide(lm)) * abs(curp - s) : 0.0)
+    return getQuantity(lm) * (OptionUtil.extrinSub(getStyle(lm), s, curp) ? Int(getSide(lm)) * abs(curp - s) : 0.0)
 end
 
-function calcMargin(lms::NTuple{2,LegMetaOpen})::Currency
-    @assert getSide(lms[1]) != getSide(lms[2])
-    return calcWidth(lms[1], lms[2])
+# function calcMargin(lms::NTuple{2,LegMetaOpen})::Sides{Currency}
+#     @assert getSide(lms[1]) != getSide(lms[2])
+#     return calcWidth(lms[1], lms[2])
+# end
+
+function calcMargin(lms::NTuple{2,T})::Sides{Currency} where T
+    side1 = getSide(lms[1])
+    @assert side1 != getSide(lms[2])
+    width = calcWidth(lms[1], lms[2])
+    return side1 == Side.long ? Sides(width, CZ) : Sides(CZ, width)
 end
 
-function calcMargin(lms::NTuple{2,T})::Currency where T
-    @assert getSide(lms[1]) != getSide(lms[2])
-    return calcWidth(lms[1], lms[2])
-end
+# function calcMargin(lms::NTuple{3,LegMetaOpen})::Sides{Currency}
+#     # TODO: compare performance to conditionals approach
+#     sides = Int.(getSide.(lms))
+#     s1 = ((sides[1] - sides[2]) >> 1) * calcWidth(lms[1], lms[2])
+#     # s2 = ((sides[1] - sides[2]) >> 1) * calcWidth(lms[1], lms[3]) # 1-3 wouldn't make sense: 1-2 or 2-3 would always be shorter because they're in strike order
+#     s3 = ((sides[2] - sides[3]) >> 1) * calcWidth(lms[2], lms[3])
+#     return s1 + s3 # s1 + s2 + s3
+# end
 
-function calcMargin(lms::NTuple{3,LegMetaOpen})::Currency
-    # TODO: compare performance to conditionals approach
-    sides = Int.(getSide.(lms))
-    s1 = ((sides[1] - sides[2]) >> 1) * calcWidth(lms[1], lms[2])
-    # s2 = ((sides[1] - sides[2]) >> 1) * calcWidth(lms[1], lms[3]) # 1-3 wouldn't make sense: 1-2 or 2-3 would always be shorter because they're in strike order
-    s3 = ((sides[2] - sides[3]) >> 1) * calcWidth(lms[2], lms[3])
-    return s1 + s3 # s1 + s2 + s3
+function calcMargin(lms::NTuple{3,<:LegType})::Sides{Currency}
+    side1 = getSide(lms[1])
+    side2 = getSide(lms[2])
+    if side1 == side2
+        width = calcWidth(lms[2], lms[3])
+        dir = toOther(side2)
+    else
+        width = calcWidth(lms[1], lms[2])
+        dir = side2
+    end
+    return dir == Side.long ? Sides(width, CZ) : Sides(CZ, width)
 end
 
 # function calcMargin(lms::Coll{LegMetaOpen})::Currency

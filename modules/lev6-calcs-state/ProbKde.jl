@@ -125,26 +125,27 @@ end
 
 addScores(s1, s2) = typeof(s1)(values(s1) .+ values(s2))
 
-function showProbs(probComp, probs, actual=nothing)
-    fig, ax = du.start()
-    drawProbs((probs..., probComp); labels=Iterators.flatten((string.(eachindex(probs[end-1:-1:1])), ("norm", "comp"))))
-    isnothing(actual) || GLMakie.vlines!(actual; label="actual")
-    GLMakie.axislegend(ax)
-end
-using DrawUtil
-import GLMakie
-# function compareProbs(probs)
-#     # display(du.drawProb(probs[1].center, probs[1].vals; label="1"))
+# function showProbs(probComp, probs, actual=nothing)
 #     fig, ax = du.start()
-#     drawProbs(probs)
+#     drawProbs((probs..., probComp); labels=Iterators.flatten((string.(eachindex(probs[end-1:-1:1])), ("norm", "comp"))))
+#     isnothing(actual) || GLMakie.vlines!(actual; label="actual")
 #     GLMakie.axislegend(ax)
 # end
-function drawProbs(probs; labels=string.(eachindex(probs)))
-    for (prob, label) in zip(probs, labels)
-        # println("drawing ", label)
-        du.drawProb!(prob.center, prob.vals; label)
-    end
-end
+
+# using DrawUtil
+# import GLMakie
+# # function compareProbs(probs)
+# #     # display(du.drawProb(probs[1].center, probs[1].vals; label="1"))
+# #     fig, ax = du.start()
+# #     drawProbs(probs)
+# #     GLMakie.axislegend(ax)
+# # end
+# function drawProbs(probs; labels=string.(eachindex(probs)))
+#     for (prob, label) in zip(probs, labels)
+#         # println("drawing ", label)
+#         du.drawProb!(prob.center, prob.vals; label)
+#     end
+# end
 
 function probKde(center::Float64, var::Float64, tex::Float64; up=false)::Prob
     # Calendars.calcTex(now(UTC), today() + Day(MaxDays)) with some margin down

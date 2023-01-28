@@ -1,10 +1,10 @@
 module LegTypes
-using SH, BaseTypes, SmallTypes, OptionTypes
+using AbstractTypes, SH, BaseTypes, SmallTypes, OptionTypes
 
-export Leg, LEGS_EMPTY, isConflict, switchSide
+export Leg
 
 # The quantity in leg is only to represent the qty in an option strategy and doesn't reflect transaction sizing. Transaction sizing (buy/sell multiple contracts at once) is handled separately.
-struct Leg
+struct Leg <: LegType
     option::Option
     quantity::Float64
     side::Side.T

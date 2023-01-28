@@ -1,12 +1,12 @@
 module LegMetaTypes
-using SH, BaseTypes, SmallTypes, QuoteTypes, LegTypes, OptionMetaTypes, ChainTypes
+using AbstractTypes, SH, BaseTypes, SmallTypes, QuoteTypes, LegTypes, OptionMetaTypes, ChainTypes
 
 export LegMeta, LegMetaOpen, LegMetaClose
 
 abstract type Open end
 abstract type Close end
 
-struct LegMeta{S}
+struct LegMeta{S} <: LegType
     leg::Leg
     quot::Quote
     # NOTE: Greeks are always stored here as if the associated position was open, unlike Quote

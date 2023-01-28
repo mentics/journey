@@ -1,24 +1,24 @@
 module BackTypes
 import Dates:DateTime
-using SH, BaseTypes, LegMetaTypes
+using SH, BaseTypes, SmallTypes, LegMetaTypes
 
 # TODO: some things should be PriceT instead of Currency
 
-export Strat, Account, TradeBTOpen, TradeBTClose, TradeBT, MarginSide, MarginInfo
-
-abstract type Strat end
+export Strat, Account, TradeBTOpen, TradeBTClose, TradeBT, MarginSide, MarginInfo, marginZero, marginSideZero
 
 function pricingOpen end
 function pricingClose end
 function checkExit end
 
+abstract type Strat end
 abstract type TradeBTStage end
 
 struct TradeBTOpen{N,E} <: TradeBTStage
     id::Int
     ts::DateTime
     lms::NTuple{N,LegMetaOpen}
-    neto::Currency
+    neto::PT
+    margin::Sides{PT}
     multiple::Int
     label::String
     extra::E
@@ -27,7 +27,7 @@ end
 struct TradeBTClose{N} <: TradeBTStage
     ts::DateTime
     lms::NTuple{N,LegMetaClose}
-    netc::Currency
+    netc::PT
     label::String
 end
 SH.getExpir(t::TradeBTStage) = getExpir(t.lms)
@@ -37,25 +37,26 @@ struct TradeBT{N,E}
     close::TradeBTClose{N}
 end
 
-mutable struct Account{N,E}
-    bal::Currency
-    open::Vector{TradeBTOpen{N,E}}
-    closed::Vector{TradeBT{N,E}}
-    nextTradeId::Int
-end
-
 struct MarginSide
-    margin::Currency
+    margin::PT
     count::Int
 end
 marginSideZero() = MarginSide(CZ, 0)
 
 struct MarginInfo
-    margin::Currency
+    margin::PT
     marginBalRat::Float64
-    call::MarginSide
-    put::MarginSide
+    long::MarginSide
+    short::MarginSide
 end
 marginZero() = MarginInfo(CZ, 0.0, marginSideZero(), marginSideZero())
+
+mutable struct Account{N,E}
+    bal::PT
+    margin::MarginInfo
+    open::Vector{TradeBTOpen{N,E}}
+    closed::Vector{TradeBT{N,E}}
+    nextTradeId::Int
+end
 
 end

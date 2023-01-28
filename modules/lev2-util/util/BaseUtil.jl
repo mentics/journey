@@ -1,6 +1,6 @@
 module BaseUtil
 
-export isSomething, coal, toEnum
+export isSomething, coal, @coal, toEnum
 
 isSomething(v) = !isnothing(v) && !ismissing(v)
 
