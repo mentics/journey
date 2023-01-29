@@ -14,8 +14,8 @@ function (bap(hasQuotes::NTuple{3,T}, r=.2)::Currency) where T
     return round(s, RoundDown; digits=2)
 end
 
-bapFast(qt::Quote, r=.2) = improveFast(qt, r)
-function (bapFast(hasQuotes::NTuple{3,T}, r=.2)) where T
+bapFast(qt::Quote, r=.2)::Float64 = improveFast(qt, r)
+function (bapFast(hasQuotes::NTuple{3,T}, r=.2)::Float64) where T
     return bapFast(getQuote(hasQuotes[1]), r) +
         bapFast(getQuote(hasQuotes[2]), r) +
         bapFast(getQuote(hasQuotes[3]), r)
@@ -33,9 +33,9 @@ function improve(q::Quote, r::Float64)::Currency
     #     return a <= 2*b ? b + r * (a - b) : b * (1.0 + r)
     # end
 end
-function improveFast(q::Quote, r::Float64)
-    b = getBid(q)
-    a = getAsk(q)
+function improveFast(q::Quote, r::Float64)::Float64
+    b = F(getBid(q))
+    a = F(getAsk(q))
     a = min(a, (b >= 0.0 ? 4*b : b/4))
     return b + r * (a - b)
 end
@@ -43,8 +43,8 @@ end
 # TODO: remove this dep
 import OptionUtil
 
-netExpired(lms, curp::Currency)::Currency = sum(x -> netExpired1(x, curp), lms)
-function netExpired1(lm::LegType, curp::Currency)::Currency
+netExpired(lms, curp::Currency)::PT = sum(x -> netExpired1(x, curp), lms)
+function netExpired1(lm::LegType, curp::Currency)::PT
     s = getStrike(lm)
     return getQuantity(lm) * (OptionUtil.extrinSub(getStyle(lm), s, curp) ? Int(getSide(lm)) * abs(curp - s) : 0.0)
 end
@@ -59,6 +59,13 @@ function calcMargin(lms::NTuple{2,T})::Sides{Currency} where T
     @assert side1 != getSide(lms[2])
     width = calcWidth(lms[1], lms[2])
     return side1 == Side.long ? Sides(width, CZ) : Sides(CZ, width)
+end
+
+function calcMarginFloat(lms::NTuple{2,T})::Sides{Float64} where T
+    side1 = getSide(lms[1])
+    @assert side1 != getSide(lms[2])
+    width = F(calcWidth(lms[1], lms[2]))
+    return side1 == Side.long ? Sides(width, 0.0) : Sides(0.0, width)
 end
 
 # function calcMargin(lms::NTuple{3,LegMetaOpen})::Sides{Currency}
@@ -81,6 +88,19 @@ function calcMargin(lms::NTuple{3,<:LegType})::Sides{Currency}
         dir = side2
     end
     return dir == Side.long ? Sides(width, CZ) : Sides(CZ, width)
+end
+
+function calcMarginFloat(lms::NTuple{3,<:LegType})::Sides{Float64}
+    side1 = getSide(lms[1])
+    side2 = getSide(lms[2])
+    if side1 == side2
+        width = F(calcWidth(lms[2], lms[3]))
+        dir = toOther(side2)
+    else
+        width = F(calcWidth(lms[1], lms[2]))
+        dir = side2
+    end
+    return dir == Side.long ? Sides(width, 0.0) : Sides(0.0, width)
 end
 
 # function calcMargin(lms::Coll{LegMetaOpen})::Currency

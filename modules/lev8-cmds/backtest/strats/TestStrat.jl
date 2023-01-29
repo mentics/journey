@@ -1,4 +1,5 @@
 module TestStrat
+using Dates
 using SH, BaseTypes, SmallTypes, BackTypes, LegMetaTypes
 import LogUtil
 import DateUtil:timult,calcRate
@@ -14,11 +15,11 @@ struct Scoring
     kel::Float64
 end
 
-struct Cand2
+struct Cand3
     lms::NTuple{3,LegMetaOpen}
     score::Float64
-    neto::Currency
-    margin::Sides{}
+    neto::Float64
+    margin::Sides{Float64}
     scoring::Scoring
 end
 
@@ -27,19 +28,19 @@ struct Params
     maxMarginPerTrade::PT
 end
 
-struct Context
-    bufCand::Vector{Cand2}
+struct Context3
+    bufCand::Vector{Cand3}
 end
 
-struct TStrat <: Strat
+struct TStrat3 <: Strat
     acctTypes::Tuple{Int,DataType}
     params::Params
-    ctx::Context
+    ctx::Context3
 end
 
-makeCtx() = Context(Vector{Cand2}())
+makeCtx() = Context3(Vector{Cand3}())
 
-makeStrat() = TStrat(
+makeStrat() = TStrat3(
     (3,Scoring),
     Params(C(1000), C(52)),
     makeCtx(),
@@ -47,7 +48,7 @@ makeStrat() = TStrat(
 #endregion
 
 #region InterfaceImpl
-function (s::TStrat)(ops, tim, chain)::Nothing
+function (s::TStrat3)(ops, tim, chain)::Nothing
     curp = ch.getCurp(chain)
     log("Strat running for ts $(tim.ts) curp:$(curp)")
 
@@ -67,24 +68,25 @@ function (s::TStrat)(ops, tim, chain)::Nothing
         x = keep[1]
         multiple = qtyForMargin(s.params.maxMarginPerTrade, ops.marginAvail(), x.margin, x.scoring.kel)
         if multiple > 0
-            ops.openTrade(tim.ts, x.lms, round(PT, x.neto, RoundDown), round(PT, x.margin, RoundUp), multiple, "best score", keep[1].scoring)
+            ops.openTrade(tim.ts, x.lms, toPT(x.neto, RoundDown), toPT(x.margin), multiple, "best score", keep[1].scoring)
         else
             println("0 multiple found, odd.")
         end
     end
     return
 end
+BaseTypes.toPT(sides::Sides{Float64})::Sides{PT} = Sides(toPT(sides.long, RoundDown), round(toPT(sides.short, RoundDown)))
 
-BackTypes.pricingOpen(::TStrat, lmso::NTuple{3,LegMetaOpen}) = calcPrice(lmso)
-BackTypes.pricingClose(::TStrat, lmsc::NTuple{3,LegMetaClose}) = calcPrice(lmsc)
-function BackTypes.checkExit(strat::TStrat, tradeOpen::TradeBTOpen{3}, tim, lmsc)::Union{Nothing,String}
+BackTypes.pricingOpen(::TStrat3, lmso::NTuple{3,LegMetaOpen}) = calcPrice(lmso)
+BackTypes.pricingClose(::TStrat3, lmsc::NTuple{3,LegMetaClose}) = calcPrice(lmsc)
+function BackTypes.checkExit(strat::TStrat3, tradeOpen::TradeBTOpen{3}, tim, lmsc)::Union{Nothing,String}
     curVal = tradeOpen.neto + calcPrice(lmsc)
-    rate = calcRate(tim.date, getExpir(tradeOpen), curVal, tradeOpen.extra.risk)
+    rate = calcRate(Date(tradeOpen.ts), tim.date, curVal, tradeOpen.extra.risk)
     rateOrig = tradeOpen.extra.rate
     # log("checkExit: $(tradeOpen.id) $(round(rate;digits=5)) $(round(rateOrig;digits=5))")
     # if rate >= 1.5 * rateOrig
     if rate >= 0.4 || rate >= 1.5 * rateOrig
-        return "rate $(rate) >= 1.5 * $(rateOrig)"
+        return "rate $(rate) >= 0.4 or 1.5 * $(rateOrig)"
     end
 end
 #endregion
@@ -106,7 +108,7 @@ function findEntry!(keep, search, args...)
                 if !isnothing(r) && (isempty(keep) || r[1].score > keep[end].score)
                     # TODO: not optimized
                     info, about = r
-                    push!(keep, Cand2(lms, info..., about))
+                    push!(keep, Cand3(lms, info..., about))
                     sort!(keep; rev=true, by=x->x.score)
                     length(keep) <= 10 || pop!(keep)
                 end
@@ -118,7 +120,7 @@ end
 function score(lms, tmult, prob)
     neto = Pricing.bapFast(lms, .2)
     neto > 0.02 || return nothing
-    margin = Pricing.calcMargin(lms)
+    margin = Pricing.calcMarginFloat(lms)
     risk = max(margin)
     @assert risk > CZ "risk was <= 0"
     rate = calcRate(tmult, neto, risk)
@@ -128,7 +130,7 @@ end
 #endregion
 
 #region Util
-calcPrice(lms) = bap(lms, .2)
+calcPrice(lms)::PT = toPT(bap(lms, .2))
 function qtyForMargin(maxMarginPerTrade, avail, marginTrade, kel)::Int
     # @show maxMarginPerTrade avail marginTrade kel
     long = marginTrade.long > 0 ? qtyForAvail(avail.long, marginTrade.long, kel) : typemax(Int)

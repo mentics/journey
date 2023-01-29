@@ -1,7 +1,7 @@
 module BaseTypes
 using FixedPointDecimals
 
-export AStr, Coll, CollN, AVec, Currency, C, CZ, PriceT, PT, P, F
+export AStr, Coll, CollN, AVec, Currency, C, CZ, PriceT, PT, P, PZ, F, toPT
 
 const AStr = AbstractString
 const AVec = AbstractVector
@@ -16,6 +16,8 @@ const CZ = C(0)
 const PriceT = FixedDecimal{Int,2}
 const PT = PriceT
 P(x::Real) = PriceT(x)
+toPT(c::Real, r::RoundingMode=RoundNearest)::PT = PT(round(c, r; digits=2))
+const PZ = P(0)
 
 F(x::Real) = Float64(x)
 

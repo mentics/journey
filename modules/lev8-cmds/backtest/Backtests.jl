@@ -120,14 +120,14 @@ function checkExits(strat, acct::Account, tim, otoq)
     end
 end
 
-function openTrade(acct, ts, lmso, neto::PT, margin::PT, multiple::Int, label::String, extra)::Nothing
+function openTrade(acct, ts, lmso, neto::PT, margin::Sides{PT}, multiple::Int, label::String, extra)::Nothing
     id = acct.nextTradeId
     acct.nextTradeId += 1
     tradeOpen = TradeBTOpen(id, ts, lmso, neto, margin, multiple, label, extra)
     push!(acct.open, tradeOpen)
     acct.bal += multiple * neto
     # log("Open #$(tradeOpen.id) $(pp((;neto, multiple, strikes=getStrike.(lmso)))), $(pp(extra))")
-    log("Open #$(tradeOpen.id) $(Shorthand.sh(lmso)) $(pp((;neto, multiple))), $(pp(extra))")
+    log("Open #$(tradeOpen.id) $(Shorthand.sh(lmso)) '$(label)' $(pp((;neto, multiple))), $(pp(extra))")
     return
 end
 
@@ -137,7 +137,7 @@ function closeTrade(acct, tradeOpen, ts, lmsc, netc, label)::Nothing
     push!(acct.closed, tradeFull)
     acct.bal += tradeOpen.multiple * netc
     pnl = tradeOpen.neto + netc
-    log("Close #$(tradeOpen.id) $(Shorthand.sh(lmsc)) $(pp((;neto=tradeOpen.neto, netc, pnl, multiple=tradeOpen.multiple, rate=trad.rate(tradeFull))))")
+    log("Close #$(tradeOpen.id) $(Shorthand.sh(lmsc)) '$(label)' $(pp((;neto=tradeOpen.neto, netc, pnl, multiple=tradeOpen.multiple, rate=trad.rate(tradeFull))))")
     return
 end
 #endregion
@@ -148,7 +148,11 @@ using Dates
 using BackTypes, DateUtil
 tsClose(trade::TradeBT) = trade.close.ts
 pnl(trade) = trade.open.neto + trade.close.netc
-rate(trade) = DateUtil.calcRate(Date(trade.open.ts), Date(trade.close.ts), pnl(trade), max(trade.open.margin))
+# rate(trade) = DateUtil.calcRate(Date(trade.open.ts), Date(trade.close.ts), pnl(trade), max(trade.open.margin))
+function rate(trade)
+    @show Date(trade.open.ts) Date(trade.close.ts) pnl(trade) max(trade.open.margin)
+    DateUtil.calcRate(Date(trade.open.ts), Date(trade.close.ts), pnl(trade), max(trade.open.margin))
+end
 end
 
 acctTsStart(acct)::DateTime =

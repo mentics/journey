@@ -23,8 +23,8 @@ end
 
 #region Points
 module pts
-import ..Currency, ..TradeBT, ..bt.trad
-balReal(prev::Currency, trade::TradeBT) = prev + trad.pnl(trade)
+using BaseTypes, BackTypes, ..bt.trad
+balReal(prev::PT, trade::TradeBT) = prev + trad.pnl(trade)
 end
 #endregion
 

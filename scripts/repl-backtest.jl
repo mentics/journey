@@ -1,6 +1,7 @@
 include("repl-simple.jl")
 
 import Backtests as bt
+import BacktestAnalysis as lyze
 import TestStrat as strat1
 import SimpleStore as sstor
 import ChainUtil as ch
