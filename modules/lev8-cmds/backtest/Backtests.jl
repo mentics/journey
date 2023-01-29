@@ -33,47 +33,6 @@ function run(strat::Strat, from::DateLike, to::DateLike; maxSeconds::Int=1)::Not
         end
     end
 end
-<<<<<<< Updated upstream
-=======
-
-function showResult(acct=keepAcct, params=keepParams)::Nothing
-    # balReals = foldl(red.balReal, acct.closed; init=[params.balInit])
-    # balReals = maps(red.balReal, acct.closed, params.balInit)
-    balReals = mapPoint(pts.balReal, acct.closed, (acctTsStart(acct), params.balInit))
-
-    # println(balReals)
-
-    # balReal = params.balInit
-    # for trade in acct.closed
-    #     balReal += getPnl(trade)
-    # end
-    # println(pp((;balReals=balReals[end])))
-    return
-end
-
-# mapPoint(f, trades, init) = maps(trades, init) do prev, trade
-#     return (trad.tsClose(trade), f(prev[2], trade))
-# end
-
-# mapPoint2(f, trades, init) = accumulate(trades; init) do prev, trade
-#     return (trad.tsClose(trade), f(prev[2], trade))
-# end
-
-# mapPoint!(f, buf, trades, init) = maps!(buf, trades; init) do prev, trade
-#     return (trad.tsClose(trade), f(prev[2], trade))
-# end
-
-function mapPoint(f, trades, init)
-    buf = Vector{typeof(init)}(undef, length(trades))
-    mapPoint!(f, buf, trades, init)
-    return buf
-end
-
-mapPoint!(f, buf, trades, init) = CollUtil.accum!(buf, trades; init) do prev, trade
-    return (trad.tsClose(trade), f(prev[2], trade))
-end
-
->>>>>>> Stashed changes
 #endregion
 
 #region LocalTypes
