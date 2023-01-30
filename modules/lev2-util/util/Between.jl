@@ -4,10 +4,16 @@ using SH, BaseTypes, SmallTypes, QuoteTypes, OptionMetaTypes, StratTypes, LegMet
 using CollUtil, ChainUtil
 using Rets, LegTypes, TradeTypes, LegTradeTypes, Pricing
 
+#region Lines
+using LinesLeg
+(LinesLeg.toSegments(lms::NTuple{N,LegMeta})::Segments{N}) where N = LinesLeg.toSegments(lms, map(P ∘ bap, lms))
+#end
+
 #region ToLegMeta
 SH.to(::Type{LegMetaOpen}, leg::Leg, lup) = LegMetaOpen(lup(getOption(leg)), getSide(leg), getQuantity(leg))
 # SH.to(::Type{LegMetaOpen}, lm::LegMetaOpen, lup) = to(LegMetaClose, getLeg(lm), lup) # LegMetaClose(lup(getOption(lm)), getQuantity(lm), getSide(lm))
 SH.to(::Type{LegMetaClose}, lm::LegMetaOpen, otoq) = ( leg = getLeg(lm) ; LegMetaClose(leg, ChainUtil.oToOq(otoq, getOption(leg))) )
+SH.to(::Type{LegMetaClose}, lm::LegMetaOpen, fotoq::Function) = ( leg = getLeg(lm) ; LegMetaClose(leg, fotoq(getOption(lm))) )
 #endregion
 
 #region ToRet

@@ -1,5 +1,5 @@
 module Pricing
-using AbstractTypes, SH, BaseTypes, SmallTypes, QuoteTypes, LegMetaTypes
+using AbstractTypes, SH, BaseTypes, SmallTypes, QuoteTypes, OptionQuoteTypes, OptionMetaTypes, LegMetaTypes
 import OptionUtil
 
 export bap
@@ -40,13 +40,25 @@ function improveFast(q::Quote, r::Float64)::Float64
     return b + r * (a - b)
 end
 
-# TODO: remove this dep
-import OptionUtil
+# TODO: remove this dep?
+import OptionUtil, ChainUtil
 
 netExpired(lms, curp::Currency)::PT = sum(x -> netExpired1(x, curp), lms)
 function netExpired1(lm::LegType, curp::Currency)::PT
-    s = getStrike(lm)
-    return getQuantity(lm) * (OptionUtil.extrinSub(getStyle(lm), s, curp) ? Int(getSide(lm)) * abs(curp - s) : 0.0)
+    return getQuantity(lm) * Int(getSide(lm)) * netExpired(getStyle(lm), getStrike(lm), curp)
+end
+netExpired(style::Style.T, strike::Currency, curp::Currency)::PT = (OptionUtil.extrinSub(style, strike, curp) ? abs(curp - strike) : 0.0)
+
+fallbackExpired(curp, otoq) = function(o)
+    try
+        return ChainUtil.oToOq(otoq, o)
+    catch e
+        if e isa KeyError
+            return OptionQuote(o, Quote(C(Pricing.netExpired(getStyle(o), getStrike(o), curp))), OptionMeta())
+        else
+            rethrow(e)
+        end
+    end
 end
 
 # function calcMargin(lms::NTuple{2,LegMetaOpen})::Sides{Currency}

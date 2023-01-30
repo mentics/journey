@@ -2,8 +2,6 @@ module BackTypes
 import Dates:DateTime
 using SH, BaseTypes, SmallTypes, LegMetaTypes
 
-# TODO: some things should be PriceT instead of Currency
-
 export Strat, Account, TradeBTOpen, TradeBTClose, TradeBT, MarginSide, MarginInfo, marginZero, marginSideZero
 
 function pricingOpen end

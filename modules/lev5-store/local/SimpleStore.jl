@@ -40,7 +40,7 @@ end
 #region Public
 ChainUtil.getCurp(chain::ChainInfo) = chain.under.under
 
-function run(f, from::DateLike, to::DateLike; maxSeconds=1)
+function run(f, from::DateLike, to::DateLike; maxSeconds=10)
     tss = getTss(from, to)
     start = time()
     lasti = lastindex(tss)

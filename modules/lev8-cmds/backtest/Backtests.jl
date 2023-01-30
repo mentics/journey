@@ -2,7 +2,7 @@ module Backtests
 using Dates
 using SH, BaseTypes, SmallTypes, BackTypes, LegMetaTypes
 using LogUtil, DateUtil, ChainUtil, CollUtil
-using SimpleStore
+using SimpleStore, BacktestUtil
 import SimpleStore as SS
 import Pricing, Between, Shorthand
 import OutputUtil:pp
@@ -25,7 +25,7 @@ function run(strat::Strat, from::DateLike, to::DateLike; maxSeconds::Int=1)::Not
     SS.run(from, to; maxSeconds) do tim, chain
         otoq = ChainUtil.toOtoq(chain)
         if !tim.atClose
-            checkExits(strat, acct, tim, otoq)
+            checkExits(strat, acct, tim, otoq, getCurp(chain))
             strat(ops, tim, chain)
         end
         if tim.lastOfDay
@@ -65,7 +65,7 @@ end
 
 function makeOps(acct::Account, chain::Ref{Chain})
     return (;
-        marginAvail = () -> marginAvail(acct),
+        marginAvail = () -> ac.marginAvail(acct),
         openTrade = (ts, lmso, neto, margin, multiple, label, extra) -> openTrade(acct, ts, lmso, neto, margin, multiple, label, extra),
         # closeTrade = (tradeOpen, lmsc, netc, label) -> closeTrade(acct, tradeOpen, lmsc, netc, label),
     )
@@ -74,7 +74,7 @@ end
 function handleExpirations(acct::Account, tim::TimeInfo, chain::ChainInfo, otoq)::Nothing
     filter!(acct.open) do tradeOpen
         if tim.date == getExpir(tradeOpen)
-            lmsc = tos(LegMetaClose, tradeOpen.lms, otoq)
+            lmsc = tos(LegMetaClose, tradeOpen.lms, Pricing.fallbackExpired(getCurp(chain), otoq))
             netc = Pricing.netExpired(lmsc, chain.under.under)
             # TODO: adjust netExpired to handle buyback for near strikes?
             closeTrade(acct, tradeOpen, tim.ts, lmsc, netc, "expired")
@@ -85,6 +85,8 @@ function handleExpirations(acct::Account, tim::TimeInfo, chain::ChainInfo, otoq)
     acct.margin = calcMargin(acct.open, acct.bal)
     return
 end
+
+getCurp(chain::ChainInfo) = chain.under.under
 
 function calcMargin(trades::AbstractVector{<:TradeBTOpen}, bal::PT)::MarginInfo
     # Brokerage might consider margin offsets only for the same expiration, but for me, the risk is across all expirations, so I'll count it that way.
@@ -108,13 +110,22 @@ calcMargin(trade::TradeBTOpen) = Pricing.calcMargin(trade.lms)
 #endregion
 
 #region Trading
-function checkExits(strat, acct::Account, tim, otoq)
+function checkExits(strat, acct::Account, tim, otoq, curp)
     filter!(acct.open) do tradeOpen
-        lmsc = tos(LegMetaClose, tradeOpen.lms, otoq)
-        label = BackTypes.checkExit(strat, tradeOpen, tim, lmsc)
-        if !isnothing(label)
-            closeTrade(acct, tradeOpen, tim.ts, lmsc, BackTypes.pricingClose(strat, lmsc), label)
-            return false
+        lmsc = nothing
+        try
+            lmsc = tos(LegMetaClose, tradeOpen.lms, otoq)
+            label = BackTypes.checkExit(strat, tradeOpen, tim, lmsc, curp)
+            if !isnothing(label)
+                closeTrade(acct, tradeOpen, tim.ts, lmsc, BackTypes.pricingClose(strat, lmsc), label)
+                return false
+            end
+        catch e
+            if e isa KeyError
+                println("Could not quote")
+            else
+                rethrow(e)
+            end
         end
         return true
     end
@@ -133,35 +144,13 @@ end
 
 function closeTrade(acct, tradeOpen, ts, lmsc, netc, label)::Nothing
     tradeClose = TradeBTClose(ts, lmsc, netc, label)
-    tradeFull = TradeBT(tradeOpen, tradeClose)
-    push!(acct.closed, tradeFull)
+    trade = TradeBT(tradeOpen, tradeClose)
+    push!(acct.closed, trade)
     acct.bal += tradeOpen.multiple * netc
     pnl = tradeOpen.neto + netc
-    log("Close #$(tradeOpen.id) $(Shorthand.sh(lmsc)) '$(label)' $(pp((;neto=tradeOpen.neto, netc, pnl, multiple=tradeOpen.multiple, rate=trad.rate(tradeFull))))")
+    log("Close #$(tradeOpen.id) $(Shorthand.sh(lmsc)) '$(label)' $(pp((;neto=tradeOpen.neto, netc, pnl, multiple=tradeOpen.multiple, rate=trad.rate(trade)))) $(trad.openDur(trade)) days open, $(trad.bdaysLeft(Date(ts), trade)) days left")
     return
 end
-#endregion
-
-#region AccessAndCalcs
-module trad
-using Dates
-using BackTypes, DateUtil
-tsClose(trade::TradeBT) = trade.close.ts
-pnl(trade) = trade.open.neto + trade.close.netc
-# rate(trade) = DateUtil.calcRate(Date(trade.open.ts), Date(trade.close.ts), pnl(trade), max(trade.open.margin))
-function rate(trade)
-    @show Date(trade.open.ts) Date(trade.close.ts) pnl(trade) max(trade.open.margin)
-    DateUtil.calcRate(Date(trade.open.ts), Date(trade.close.ts), pnl(trade), max(trade.open.margin))
-end
-end
-
-acctTsStart(acct)::DateTime =
-    isempty(acct.open) ?
-        (isempty(acct.closed) ? DATETIME_ZERO : acct.closed[1].open.ts) :
-        (isempty(acct.closed) ? acct.open[1].ts : min(acct.open[1].ts, acct.closed[1].open.ts))
-
-marginMax(acct::Account)::PT = acct.bal * .8 # TODO: make param?
-marginAvail(acct)::Sides{PT} = ( mx = marginMax(acct) ; Sides(mx - acct.margin.long.margin, mx - acct.margin.short.margin) )
 #endregion
 
 #region Util
