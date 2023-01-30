@@ -242,16 +242,25 @@ end
 
 #region Maintenance
 function updateTssFile()
-    tss = Vector{DateTime}()
-    for dirName in readdir(DirOut; sort=false)
-        path = joinpath(DirOut, dirName)
-        isdir(path) || continue
-        println("processing $(path)")
-        dt = Date(dirName, DF_FILE)
-        data = loadRaw(year(dt), month(dt))
-        append!(tss, data.tss)
+    # tss = Vector{DateTime}()
+    # for dirName in readdir(DirOut; sort=false)
+    #     path = joinpath(DirOut, dirName)
+    #     isdir(path) || continue
+    #     println("processing $(path)")
+    #     dt = Date(dirName, DF_FILE)
+    #     data = loadRaw(year(dt), month(dt))
+    #     append!(tss, data.tss)
+    # end
+    tssLoaded = sort!(collect(keys(ChainCache)))
+    notFound = lastindex(tssLoaded) + 1
+    for date in Date(2010,1):Month(1):Date(2022,9)
+        println("processing $(date)")
+        i = searchsortedfirst(tssLoaded, date)
+        if i == notFound || year(tssLoaded[i]) != year(date) || month(tssLoaded[i]) != month(date)
+            loadMonth(year(date), month(date))
+        end
     end
-    sort!(tss)
+    tssLoaded = sort!(collect(keys(ChainCache)))
     open(FileTss; write=true) do io
         write(io, tss)
     end

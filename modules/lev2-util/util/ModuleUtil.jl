@@ -52,13 +52,14 @@ function findUsings(base, fil)
         # if startswith(line, "using")
         if startswith(line, "using") || startswith(line, "import")
             if !occursin(":", line) && !occursin(" as ", line)
-                append!(res, split(line, r"[,\s]+")[2:end])
+                mods = filter!(x -> !occursin("..", x), split(line, r"[,\s]+")[2:end])
+                !isempty(mods) && append!(res, mods)
             else
                 m = match(r"\s(.+?)(?:\:|$| as)", line)
                 if isnothing(m)
                     error(line)
                 end
-                push!(res, m[1])
+                !occursin("..", m[1]) && push!(res, m[1])
             end
         end
         # elseif startswith(line, "import")
