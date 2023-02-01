@@ -16,7 +16,7 @@ export Segments
 segCall(strike::Currency, side::Side.T, qty::Float64, neto::PT)::Right = Right(Point(strike, F(neto)), side == Side.long ? qty : -qty)
 segPut(strike::Currency, side::Side.T, qty::Float64, neto::PT)::Left = Left(side == Side.long ? -qty : qty, Point(strike, F(neto)))
 # TODO: clean up after moving style/side into types
-function toSeg(leg::LegType, neto::PT)::Union{Left,Right}
+function toSeg(leg::LegType, neto::PT)::SegSide
     strike = getStrike(leg)
     side = getSide(leg)
     qty = getQuantity(leg)

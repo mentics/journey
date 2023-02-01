@@ -105,8 +105,8 @@ function toc(rateMin=0.0) # findTradesToClose
             # timult = 1 / Calendars.texToYear(tex)
             dur = DateUtil.durRisk(toDateMarket(ts), todayDate)
             timt = DateUtil.timult(toDateMarket(ts), todayDate)
-            mn = Pricing.calcMargin((getLegs(trade)...,)) # min(OptionUtil.legsExtrema(neto, getLegs(trade)...)...)
-            rate = timt * curVal / (-mn)
+            mn = max(Pricing.calcMargin((getLegs(trade)...,))) # min(OptionUtil.legsExtrema(neto, getLegs(trade)...)...)
+            rate = timt * curVal / mn
             # @show rate timt curVal (-mn)
             if rate > rateMin
                 tid = getId(trade)
@@ -285,7 +285,7 @@ function priceUse(qt, orig=nothing; ratio=nothing, at=nothing)
     if isnothing(at)
         # pr1 = improve(qt, ratio)
         # pr1 = improve(isnothing(orig) ? qt : orig, ratio)
-        pr1 = isnothing(orig) ? improve(qt, ratio) : orig
+        pr1 = isnothing(orig) ? Pricing.improve(qt, ratio) : orig
     else
         pr1 = at
     end

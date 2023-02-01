@@ -3,12 +3,14 @@ using LineTypes
 
 export Segments
 
-struct Left
+abstract type SegSide end
+
+struct Left <: SegSide
     slope::Float64
     point::Point
 end
 
-struct Right
+struct Right <: SegSide
     point::Point
     slope::Float64
 end
