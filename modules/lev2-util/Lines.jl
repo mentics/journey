@@ -1,18 +1,14 @@
 module Lines
 using LineTypes
 
-export Segments, Point, Left, Right, At
+export Segments
 
-# abstract type SlopeDir end
-# abstract type Up <: SlopeDir end
-# abstract type Down <: SlopeDir end
-
-struct Left # {D<:SlopeDir}
+struct Left
     slope::Float64
     point::Point
 end
 
-struct Right # {D<:SlopeDir}
+struct Right
     point::Point
     slope::Float64
 end
@@ -99,19 +95,6 @@ function at(s::Segments, x::Float64)::Float64
     end
 end
 
-# struct LR2
-#     left::Float64
-#     x1::Float64
-#     y::Float64
-#     x2::Float64
-#     right::Float64
-# end
-
-# function combine(l::Left, r::Right)::LR2
-#     @assert l.point.x < r.point.x
-#     return LR2(l.slope, l.point.x, l.point.y + r.point.y, r.pointy, r.slope)
-# end
-
 function at(s::Left, x::Float64)::Float64
     if x < s.point.x
         return s.point.y - s.slope * (s.point.x - x)
@@ -152,17 +135,17 @@ function Base.:≈(tup1::Tuple, tup2::Tuple)::Bool
 end
 
 using ComputedFieldTypes
-@computed struct SegmentsZeros5{N}
+@computed struct SegmentsZeros{N}
     s::fulltype(Segments{N})
 end
 
-zeros(s::Segments{N}) where N = SegmentsZeros5{N}(s)
-Base.IteratorSize(::Type{SegmentsZeros5{N}}) where N = Base.SizeUnknown()
-Base.IteratorSize(::Type{SegmentsZeros5{N,M}}) where {N,M} = Base.SizeUnknown()
-Base.eltype(::Type{SegmentsZeros5{N,M}}) where {N,M} = Float64
-Base.eltype(::Type{SegmentsZeros5{N}}) where N = Float64
+zeros(s::Segments{N}) where N = SegmentsZeros{N}(s)
+Base.IteratorSize(::Type{SegmentsZeros{N}}) where N = Base.SizeUnknown()
+Base.IteratorSize(::Type{SegmentsZeros{N,M}}) where {N,M} = Base.SizeUnknown()
+Base.eltype(::Type{SegmentsZeros{N,M}}) where {N,M} = Float64
+Base.eltype(::Type{SegmentsZeros{N}}) where N = Float64
 
-function Base.iterate(z::SegmentsZeros5)::Union{Nothing,Tuple{Float64,Int}}
+function Base.iterate(z::SegmentsZeros)::Union{Nothing,Tuple{Float64,Int}}
     s = z.s
     if signbit(s.slopes[1]) == signbit(s.points[1].y)
         # s.points[1].y - s.slopes[1] * (s.points[1].x - x) = 0
@@ -173,7 +156,7 @@ function Base.iterate(z::SegmentsZeros5)::Union{Nothing,Tuple{Float64,Int}}
     end
 end
 
-function Base.iterate(z::SegmentsZeros5, i::Int)::Union{Nothing,Tuple{Float64,Int}}
+function Base.iterate(z::SegmentsZeros, i::Int)::Union{Nothing,Tuple{Float64,Int}}
     s = z.s
     @assert i > 0
     lasti = lastindex(s.points)
@@ -197,24 +180,4 @@ function Base.iterate(z::SegmentsZeros5, i::Int)::Union{Nothing,Tuple{Float64,In
     return nothing
 end
 
-#=
-@computed struct Segments{N}
-    slopes::NTuple{N+1,Float64}
-    points::NTuple{N,Point}
-end
-Segments(left, point, right) = Segments{1}((left, right), (point,))
-left(seg::Segments) = first(seg.slopes)
-right(seg::Segments) = last(seg.slopes)
-
-function combineSegments(segs::NTuple{N,Segments{1}})::Segments{N} where N
-    # @assert issorted
-    left = sum(left, segs)
-    right = sum(right, segs)
-
-    for i in 2:N
-        from = segs[i-1]
-        to = segs[i]
-    end
-end
-=#
 end
