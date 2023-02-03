@@ -1,7 +1,15 @@
 module LinesLeg
-using SH, AbstractTypes, BaseTypes, SmallTypes, Lines
+using SH, AbstractTypes, BaseTypes, SmallTypes
+using LineTypes
+import Lines:Segments, SegSide, Left, Right, at, combine, toLineTuples, findZeros
 
-export Segments
+export Segments, Section, toLineTuples
+
+struct Section
+    x1::Float64
+    x2::Float64
+    y::Float64
+end
 
 # toPoint(leg::LegType, neto::Float64)::Point = Point(getStrike(leg), neto)
 # slopeLeft(style::Style.T, side::Side.T, qty::Float64)::Float64 =
@@ -25,7 +33,23 @@ end
 function toSegments(legs::NTuple{N,LegType}, netos::NTuple{N,PT})::Segments{N} where N
     # @assert issorted(legs; by=getStrike)
     segs = toSeg.(legs, netos)
-    return Lines.combine(segs)
+    return combine(segs)
+end
+
+toSections(legs::NTuple{N,LegType}, netos::NTuple{N,PT}) where N = toSections(toSegments(legs, netos))
+function toSections(segs::Segments{N}) where N
+    zs = findZeros(segs)
+    x1 = first(segs.points).x
+    x1 -= abs(x1) + 1 # subtract an extra 1 in case x1 == 0
+    xend = last(segs.points).x
+    xend += xend + 1 # add an extra 1 in case x1 == 0
+    zprev = x1
+    return Iterators.map(Iterators.flatten((zs, xend))) do z
+        zp = zprev
+        zprev = z
+        y = at(segs, (zp + z)/2)
+        return Section(zp, z, y)
+    end
 end
 
 using OptionTypes, LegTypes

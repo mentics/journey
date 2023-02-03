@@ -15,6 +15,7 @@ function (bap(hasQuotes::NTuple{3,T}, r=.2)::Currency) where T
 end
 
 bapFast(qt::Quote, r=.2)::Float64 = improveFast(qt, r)
+bapFast(hasQuote, r=.2)::Float64 = improveFast(getQuote(hasQuote), r)
 function (bapFast(hasQuotes::NTuple{3,T}, r=.2)::Float64) where T
     return bapFast(getQuote(hasQuotes[1]), r) +
         bapFast(getQuote(hasQuotes[2]), r) +
@@ -54,6 +55,7 @@ fallbackExpired(curp, otoq) = function(o)
         return ChainUtil.oToOq(otoq, o)
     catch e
         if e isa KeyError
+            println("WARN: Fell back to expired pricing for $(o)")
             return OptionQuote(o, Quote(C(Pricing.netExpired(getStyle(o), getStrike(o), curp))), OptionMeta())
         else
             rethrow(e)
@@ -73,12 +75,12 @@ function calcMargin(lms::NTuple{2,T})::Sides{Currency} where T
     return side1 == Side.long ? Sides(width, CZ) : Sides(CZ, width)
 end
 
-function calcMarginFloat(lms::NTuple{2,T})::Sides{Float64} where T
-    side1 = getSide(lms[1])
-    @assert side1 != getSide(lms[2])
-    width = F(calcWidth(lms[1], lms[2]))
-    return side1 == Side.long ? Sides(width, 0.0) : Sides(0.0, width)
-end
+# function calcMarginFloat(lms::NTuple{2,T})::Sides{Float64} where T
+#     side1 = getSide(lms[1])
+#     @assert side1 != getSide(lms[2])
+#     width = F(calcWidth(lms[1], lms[2]))
+#     return side1 == Side.long ? Sides(width, 0.0) : Sides(0.0, width)
+# end
 
 # function calcMargin(lms::NTuple{3,LegMetaOpen})::Sides{Currency}
 #     # TODO: compare performance to conditionals approach
@@ -89,17 +91,32 @@ end
 #     return s1 + s3 # s1 + s2 + s3
 # end
 
-function calcMargin(lms::NTuple{3,<:LegType})::Sides{Currency}
-    side1 = getSide(lms[1])
-    side2 = getSide(lms[2])
-    if side1 == side2
-        width = calcWidth(lms[2], lms[3])
-        dir = toOther(side2)
+function calcMargin(lms::NTuple{3,<:LegType})::PT
+    lm1 = lms[1]
+    if getSide(lm1) == Side.short
+        @assert getSide(lms[2]) == Side.long && getSide(lms[3]) == Side.long
+        return getQuantity(lm1) * calcWidth(lm1, lm2)
     else
-        width = calcWidth(lms[1], lms[2])
-        dir = side2
+        lm2 = lms[2]
+        # not planning to try long/short/long so can skip
+        # if getSide(lm2) == Side.short
+        #     @assert getSide(lms[1]) == Side.long && getSide(lms[3]) == Side.long
+        # else
+            lm3 = lms[3]
+            @assert getSide(lm1) == Side.long && getSide(lm2) == Side.long && getSide(lm3) == Side.short
+            return getQuantity(lm3) * calcWidth(lm2, lm3)
+        # end
     end
-    return dir == Side.long ? Sides(width, CZ) : Sides(CZ, width)
+    # side1 = getSide(lms[1])
+    # side2 = getSide(lms[2])
+    # if side1 == side2
+    #     width = calcWidth(lms[2], lms[3])
+    #     dir = toOther(side2) # TODO: or get side 3?
+    # else
+    #     width = calcWidth(lms[1], lms[2])
+    #     dir = side2
+    # end
+    # return dir == Side.long ? Sides(width, CZ) : Sides(CZ, width)
 end
 
 function calcMarginFloat(lms::NTuple{3,<:LegType})::Sides{Float64}

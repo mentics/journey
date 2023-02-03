@@ -36,6 +36,11 @@ function LegMeta{Close}(oq::OptionQuote, side::Side.T, qty::Float64)
     return LegMetaClose(Leg(getOption(oq), dir), newQuote(getQuote(oq), DirSQA(dir, Action.open)), newOptionMeta(getOptionMeta(oq), dir))
 end
 
+function LegMeta{Open}(leg::Leg, oq::OptionQuote)
+    dir = DirSQ(getSide(leg), getQuantity(leg))
+    return LegMetaOpen(leg, newQuote(getQuote(oq), DirSQA(dir, Action.open)), newOptionMeta(getOptionMeta(oq), dir))
+end
+
 function LegMeta{Close}(leg::Leg, oq::OptionQuote)
     dir = DirSQ(getSide(leg), getQuantity(leg))
     return LegMetaClose(leg, newQuote(getQuote(oq), DirSQA(dir, Action.close)), newOptionMeta(getOptionMeta(oq), dir))

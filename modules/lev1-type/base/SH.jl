@@ -28,6 +28,9 @@ export v
 
 const Vals = Vector{Float64}
 
+export toDraw
+function toDraw end
+
 function getBid() end
 function getAsk() end
 

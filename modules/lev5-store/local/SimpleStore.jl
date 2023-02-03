@@ -271,4 +271,12 @@ end
 matches(oq, style, strike) = getStyle(oq) == style && getStrike(oq) == strike
 #endregion
 
+#region Testing
+curpFor(ts::DateTime) = ChainUtil.getCurp(loadChainInfo(ts))
+quoteFor(ts::DateTime, xpir::Date, style::Style.T, strike::Currency)::OptionQuote = find(x -> getStrike(x) == strike, loadChainInfo(ts).xsoqs[xpir][style])
+quoteFor(ts::DateTime, has)::OptionQuote = quoteFor(ts, getExpir(has), getStyle(has), getStrike(has))
+lupFor(ts::DateTime) = (args...) -> quoteFor(ts, args...)
+# find(x -> getStrike(x) == getStrike(has), loadChainInfo(ts)[getExpir(has)][getStyle(has)])
+#endregion
+
 end

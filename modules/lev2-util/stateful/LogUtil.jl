@@ -1,10 +1,9 @@
 module LogUtil
 using Dates
-#Crayons
-using ThreadUtil
+using ThreadUtil, OutputUtil
 
 export nstr, @log, @logret, @logerr, resetLog, @tail, @logboth
-export prout, prerr
+export prout, prerr, pp
 
 function prout(args...)
     runSync(lockPrint) do
@@ -105,7 +104,11 @@ function inner(exs, callBlock)
             push!(callBlock.args, esc(ex), " ")
         else
             # push!(prblk.args, string(ex)*"=", Expr(:call, esc(:repr), esc(ex)), " ")
-            push!(callBlock.args, string(ex)*"=", esc(ex), " ")
+            # push!(callBlock.args, string(ex)*"=", esc(ex), " ")
+            s = string(ex)
+            i = findfirst('=', s)
+            isnothing(i) || ( s = SubString(s, 1, i-2) )
+            push!(callBlock.args, s*":", quote pp($(esc(ex))) end, " ")
         end
     end
 end

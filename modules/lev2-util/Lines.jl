@@ -1,7 +1,7 @@
 module Lines
 using LineTypes
 
-export Segments
+export Segments, SegSide, Left, Right, Point
 
 abstract type SegSide end
 
@@ -141,7 +141,7 @@ using ComputedFieldTypes
     s::fulltype(Segments{N})
 end
 
-zeros(s::Segments{N}) where N = SegmentsZeros{N}(s)
+findZeros(s::Segments{N}) where N = SegmentsZeros{N}(s)
 Base.IteratorSize(::Type{SegmentsZeros{N}}) where N = Base.SizeUnknown()
 Base.IteratorSize(::Type{SegmentsZeros{N,M}}) where {N,M} = Base.SizeUnknown()
 Base.eltype(::Type{SegmentsZeros{N,M}}) where {N,M} = Float64

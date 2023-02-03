@@ -1,11 +1,12 @@
 module TestStrat
 using Dates
 using SH, BaseTypes, SmallTypes, BackTypes, LegMetaTypes
-using LogUtil, OutputUtil, BacktestUtil
+using LogUtil, OutputUtil, BacktestUtil, CollUtil, DateUtil
 import DateUtil:timult,calcRate
 import ChainUtil as ch
 using Pricing
 import ProbKde, ProbUtil, Kelly, HistData
+import LinesLeg as LL
 
 #region Types
 struct Scoring
@@ -50,14 +51,16 @@ makeStrat() = TStrat(
 #region InterfaceImpl
 function (s::TStrat)(ops, tim, chain)::Nothing
     curp = ch.getCurp(chain)
-    log("Strat running for ts $(tim.ts) curp:$(curp)")
 
     min(ops.marginAvail()) > 0 || return
 
     keep = s.ctx.bufCand
     empty!(keep)
 
-    for xpir in ch.getXpirs(chain)[8:20]
+    xpirs = ch.getXpirs(chain)
+    starti = CollUtil.gtee(xpirs, bdaysAfter(tim.date,24))
+    endi = CollUtil.gtee(xpirs, bdaysAfter(tim.date, 84))
+    for xpir in xpirs[starti:endi]
         fromPrice = curp # TODO: could use recent extrema?
         tmult = timult(tim.date, xpir)
         search = ch.toSearch(curp, chain.xsoqs[xpir].put)
@@ -81,10 +84,11 @@ BaseTypes.toPT(sides::Sides{Float64})::Sides{PT} = Sides(toPT(sides.long, RoundD
 BackTypes.pricingOpen(::TStrat, lmso::NTuple{3,LegMetaOpen}) = calcPrice(lmso)
 BackTypes.pricingClose(::TStrat, lmsc::NTuple{3,LegMetaClose}) = calcPrice(lmsc)
 function BackTypes.checkExit(strat::TStrat, tradeOpen::TradeBTOpen{3,Scoring}, tim, lmsc, curp)::Union{Nothing,String}
+    Date(tradeOpen.ts) < tim.date || return # No closing on the same day
     curVal = tradeOpen.neto + calcPrice(lmsc)
     rate = calcRate(Date(tradeOpen.ts), tim.date, curVal, tradeOpen.extra.risk)
     # rateOrig = tradeOpen.extra.rate
-    # log("checkExit: $(tradeOpen.id) $(round(rate;digits=5)) $(round(rateOrig;digits=5))")
+    # blog("checkExit: $(tradeOpen.id) $(round(rate;digits=5)) $(round(rateOrig;digits=5))")
     # if rate >= 1.5 * rateOrig
     # if rate >= 0.4 || rate >= 1.5 * rateOrig
     #     return "rate $(rate) >= 0.4 or 1.5 * $(rateOrig)"
@@ -94,8 +98,8 @@ function BackTypes.checkExit(strat::TStrat, tradeOpen::TradeBTOpen{3,Scoring}, t
         return "rate $(rd5(rate)) >= 0.4 * $(ratio) ($(.4*ratio))"
     end
     theta = getGreeks(lmsc).theta
-    if theta < -0.01 && curp <= getStrike(lmsc[2])
-        return "theta $(rd5(theta)) <= 0.01"
+    if theta < -0.01 && curp <= getStrike(lmsc[3])
+        return "theta $(rd5(theta)) <= 0.01 curp:$(curp)<$(getStrike(lmsc[3]))"
     end
 end
 #endregion
@@ -103,7 +107,8 @@ end
 #region Find
 function findEntry!(keep, search, args...)
     MaxWidth = 40.0
-    oqs = ch.oqsLteCurp(search, .9)
+    # TODO: have dist based on percent chance of move size like was done in btsimple
+    oqs = ch.oqsLteCurp(search, .96)
     itr1 = Iterators.reverse(eachindex(oqs)[3:end])
     for i1 in itr1
         oq1 = oqs[i1]
@@ -136,20 +141,22 @@ end
 
 function score(lms, tmult, prob)
     neto = Pricing.bapFast(lms, .2)
-    neto > 0.02 || return nothing
+    neto > 0.24 || return nothing
     margin = Pricing.calcMarginFloat(lms)
     risk = max(margin)
     @assert risk > CZ "risk was <= 0"
     rate = calcRate(tmult, neto, risk)
-    kel = calcKel(tmult, neto, risk, prob, getStrike(lms[3])) # TODO: lms[3]
+    rate >= .12 || return nothing
+    kel = calcKel(tmult, neto, risk, prob, LL.toSections(lms))
     kel > 0 || return nothing
-    score = rate / (getStrike(lms[2]) - getStrike(lms[1]))
+    # score = rate / (getStrike(lms[2]) - getStrike(lms[1]))
+    score = rate * kel / risk
     return ((;score, neto, margin), Scoring(neto, risk, rate, kel))
 end
 #endregion
 
 #region Util
-calcPrice(lms)::PT = toPT(bap(lms, .2))
+calcPrice(lms)::PT = toPT(bap(lms, 0.0))
 function qtyForMargin(maxMarginPerTrade, avail, marginTrade, kel)::Int
     # @show maxMarginPerTrade avail marginTrade kel
     long = marginTrade.long > 0 ? qtyForAvail(avail.long, marginTrade.long, kel) : typemax(Int)
@@ -161,19 +168,55 @@ function qtyForMargin(maxMarginPerTrade, avail, marginTrade, kel)::Int
 end
 qtyForAvail(avail, risk, kel)::Int = round(Int, kel * avail / risk, RoundDown)
 
-function calcKel(tmult, neto, risk, prob, atStrike)
+function calcKel(tmult, neto, risk, prob, sections)
     MoneyValueAPR = 0.05
-    ExpDurRatioAvg = 0.5 # 0.5
-    ret = round(neto - .01 - risk * (MoneyValueAPR * ExpDurRatioAvg / tmult), RoundDown; digits=2)
-    rateAdj = calcRate(tmult, ret, risk)
-    # TODO
-    side = Side.long
-    winRate = side == Side.long ? ProbUtil.cdfFromRight(prob, F(atStrike)) : ProbUtil.cdfFromLeft(prob, F(atStrike))
+    ExpDurRatioAvg = 0.5
+    # ret = round(neto - .01 - risk * (MoneyValueAPR * ExpDurRatioAvg / tmult), RoundDown; digits=2)
+    ret = round(neto - risk * (MoneyValueAPR * ExpDurRatioAvg / tmult), RoundDown; digits=2)
+    ret > 0 || return -1.0
+    # rateAdj = calcRate(tmult, ret, risk)
+    winRat = calcWinRat(prob, sections)
+    # side = Side.long
+    # winRate = side == Side.long ? ProbUtil.cdfFromRight(prob, F(atStrike)) : ProbUtil.cdfFromLeft(prob, F(atStrike))
     # theta = getGreeks(lo).theta - getGreeks(sho).theta
-    kel = Kelly.simple(winRate, F(ret), F(risk))
+    # @show ret risk winRat
+    kel = Kelly.simple(winRat, F(ret), F(risk))
+    return kel
 end
 
-log(args...) = LogUtil.logit(:backtest, args...)
+function calcWinRat(prob, sections)
+    cdfPrev = 0.0
+    return reduce(sections; init=0.0) do a::Float64, s
+        cdf = ProbUtil.cdfFromLeft(prob, s.x2)
+        r = s.y > 0.0 ? a + (cdf - cdfPrev) : a
+        # @show a, r, s.x2, s.y, cdfPrev, cdf
+        cdfPrev = cdf
+        return r
+    end
+end
+
+blog(args...) = LogUtil.logit(:backtest, args...)
+#endregion
+
+#region Testing
+import SimpleStore as SS
+probFor(ts::DateTime, xpir::Date) = ProbKde.probToClose(F(SS.curpFor(ts)), F(HistData.vixOpen(Date(ts))), ts, xpir)
+function testCalcWinRate(tradeOpen)
+    lms = tradeOpen.lms
+    ts = tradeOpen.ts
+    prob = probFor(ts, getExpir(lms))
+    sitr = LL.toSections(lms)
+    winRat = calcWinRat(prob, sitr)
+    return winRat
+end
+
+function testScore(tradeOpen)
+    lms = tradeOpen.lms
+    ts = tradeOpen.ts
+    tmult = timult(Date(ts), getExpir(lms))
+    prob = probFor(ts, getExpir(lms))
+    score(lms, tmult, prob)
+end
 #endregion
 
 end

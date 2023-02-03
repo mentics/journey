@@ -5,13 +5,16 @@ using CollUtil, ChainUtil
 using Rets, LegTypes, TradeTypes, LegTradeTypes, Pricing
 
 #region Lines
-using LinesLeg
-(LinesLeg.toSegments(lms::NTuple{N,LegMeta})::Segments{N}) where N = LinesLeg.toSegments(lms, map(P ∘ bap, lms))
+import LinesLeg:LinesLeg as LL,Segments
+(LL.toSegments(lms::NTuple{N,LegMeta})::Segments{N}) where N = LL.toSegments(lms, map(P ∘ Pricing.bapFast, lms))
+LL.toSections(lms::NTuple{N,LegMeta}) where N = LL.toSections(lms, map(P ∘ Pricing.bapFast, lms))
+SH.toDraw(lms::NTuple{N,LegMeta}) where N = collect(LL.toLineTuples(LL.toSegments(lms))) # collect because Makie can't handle tuples of coords
 #end
 
 #region ToLegMeta
 SH.to(::Type{LegMetaOpen}, leg::Leg, lup) = LegMetaOpen(lup(getOption(leg)), getSide(leg), getQuantity(leg))
-# SH.to(::Type{LegMetaOpen}, lm::LegMetaOpen, lup) = to(LegMetaClose, getLeg(lm), lup) # LegMetaClose(lup(getOption(lm)), getQuantity(lm), getSide(lm))
+SH.to(::Type{LegMetaOpen}, lm::LegMetaOpen, otoq) = ( leg = getLeg(lm) ; LegMetaOpen(leg, ChainUtil.oToOq(otoq, getOption(leg))) )
+SH.to(::Type{LegMetaOpen}, lm::LegMetaOpen, fotoq::Function) = ( leg = getLeg(lm) ; LegMetaOpen(leg, fotoq(getOption(leg))) )
 SH.to(::Type{LegMetaClose}, lm::LegMetaOpen, otoq) = ( leg = getLeg(lm) ; LegMetaClose(leg, ChainUtil.oToOq(otoq, getOption(leg))) )
 SH.to(::Type{LegMetaClose}, lm::LegMetaOpen, fotoq::Function) = ( leg = getLeg(lm) ; LegMetaClose(leg, fotoq(getOption(lm))) )
 #endregion

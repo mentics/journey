@@ -9,7 +9,7 @@ using DateUtil
 export confirm
 export pretty, pretyble, spretyble, niceShow, sho
 export PRI, SEC
-export r2, r3, rd2, rd3, rd5
+export r2, r3, rd2, rd3, rd5, pp
 
 r2(x) = round(x; sigdigits=2)
 r3(x) = round(x; sigdigits=3)
@@ -96,21 +96,35 @@ end
 
 addRowcol(vtup) = [merge((;row=i), (vtup[i])) for i in eachindex(vtup)]
 
-pp(x::String) = "\"$(x)\""
-pp(x::Symbol) = x
-pp(x::Float64) = round(x; digits=5)
-pp(x::Number) = x
-pp(x::Dates.AbstractTime) = x
-pp(x::Tuple) = x
-pp(x::NamedTuple) = showFields(x)
+# pp(x::String) = "\"$(x)\""
+# pp(x::Symbol) = x
+# pp(x::Float64) = round(x; digits=5)
+# pp(x::Number) = x
+# pp(x::Dates.AbstractTime) = x
+# pp(x::Tuple) = x
+# pp(x::NamedTuple) = showFields(x)
+# pp(x::Array) = "[$(pp.(x))]"
+# function pp(x)
+#     # println("pp receieved ", typeof(x))
+#     # !isprimitivetype(x) || return x
+#     # s = sprint(JSON3.pretty, x)
+#     # s = replace(s, r"[ \n]+" => " ")
+#     # s = replace(s, r"\"" => "")
+#     # return s
+#     return "$(typeof(x).name.name){$(showFields(x))}"
+# end
+# showFields(x) = join(("$(n):$(pp(getfield(x, n)))" for n in fieldnames(typeof(x))), ", ")
+const RX1 = r"\n *" => " "
+const RX2 = r"({ |, )\"([^\"]+?)\": " => s"\1\2:"
+const RX3 = r"\b\d+\.\d{6,20}\b" => x -> round(parse(Float64, x); digits=5)
 function pp(x)
-    # !isprimitivetype(x) || return x
-    # s = sprint(JSON3.pretty, x)
-    # s = replace(s, r"[ \n]+" => " ")
-    # s = replace(s, r"\"" => "")
-    # return s
-    return "$(typeof(x).name.name):{$(showFields(x))}"
+    s = sprint(JSON3.pretty, x)
+    return replace(replace(s, RX1), RX2, RX3)
 end
-showFields(x) = join(("$(n):$(pp(getfield(x, n)))" for n in fieldnames(typeof(x))), ", ")
+pp(x::AbstractString) = x
+import HTTP
+pp(x::HTTP.Messages.Response) = string(x)
+
+# JSON3.tostring(x::Float64) = rd5(x)
 
 end

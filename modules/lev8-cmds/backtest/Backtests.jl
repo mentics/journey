@@ -15,7 +15,7 @@ function run(strat::Strat, from::DateLike, to::DateLike; maxSeconds::Int=1)::Not
     global keepParams = params
     global tss = SS.getTss(from, to)
     global info = BacktestInfo(from, to, tss[1], tss[end], params)
-    log("Starting backtest info ", info)
+    @blog "Starting backtest info" info
     # $(from) - $(to) params:\n", params
     acct = makeAccount(strat.acctTypes, params)
     global keepAcct = acct
@@ -25,11 +25,13 @@ function run(strat::Strat, from::DateLike, to::DateLike; maxSeconds::Int=1)::Not
     SS.run(from, to; maxSeconds) do tim, chain
         otoq = ChainUtil.toOtoq(chain)
         if !tim.atClose
+            @blog "Strat running" ts=tim.ts curp=getCurp(chain) margin=acct.margin
             checkExits(strat, acct, tim, otoq, getCurp(chain))
             strat(ops, tim, chain)
         end
         if tim.lastOfDay
             handleExpirations(acct, tim, chain, otoq)
+            verifyMargin(acct)
         end
     end
 end
@@ -43,13 +45,6 @@ struct BacktestInfo{T}
     tsTo::DateTime
     params::T
 end
-
-# mutable struct Tracking
-#     margins::Vector{MarginInfo}
-#     marginMax::MarginInfo
-#     bals::Vector{Currency}
-#     realBals::Vector{Currency}
-# end
 #endregion
 
 #region Local
@@ -82,8 +77,17 @@ function handleExpirations(acct::Account, tim::TimeInfo, chain::ChainInfo, otoq)
         end
         return true
     end
-    acct.margin = calcMargin(acct.open, acct.bal)
     return
+end
+
+function verifyMargin(acct::Account)
+    # Recalc margin each day from scratch and make sure the intraday calcs were reasonable
+    margin = calcMargin(acct.open, acct.bal)
+    if abs(acct.margin.margin - margin.margin) > 0.01 || abs(acct.margin.marginBalRat - margin.marginBalRat > 0.01)
+        println("margin didn't match")
+        @blog "margin didn't match" margin acct.margin
+    end
+    acct.margin = margin
 end
 
 getCurp(chain::ChainInfo) = chain.under.under
@@ -95,18 +99,22 @@ function calcMargin(trades::AbstractVector{<:TradeBTOpen}, bal::PT)::MarginInfo
     marginLong = CZ
     marginShort = CZ
     for trade in trades
-        long, short = calcMargin(trade)
         multiple = trade.multiple
-        long > 0 && ( countLong += multiple )
-        short > 0 && ( countShort += multiple )
-        marginLong += long * multiple
-        marginShort += short * multiple
+        margAdd = calcMargin(trade)
+        side = trad.side(trade)
+        if side == Side.long
+            marginLong += margAdd
+            countLong += multiple
+        else
+            marginShort += margAdd
+            countShort += multiple
+        end
     end
     marginTotal = max(marginLong, marginShort)
     return MarginInfo(marginTotal, F(marginTotal) / bal, MarginSide(marginLong, countLong), MarginSide(marginShort, countShort))
 end
 
-calcMargin(trade::TradeBTOpen) = Pricing.calcMargin(trade.lms)
+calcMargin(trade::TradeBTOpen) = trade.multiple * Pricing.calcMargin(trade.lms)
 #endregion
 
 #region Trading
@@ -137,8 +145,9 @@ function openTrade(acct, ts, lmso, neto::PT, margin::Sides{PT}, multiple::Int, l
     tradeOpen = TradeBTOpen(id, ts, lmso, neto, margin, multiple, label, extra)
     push!(acct.open, tradeOpen)
     acct.bal += multiple * neto
-    # log("Open #$(tradeOpen.id) $(pp((;neto, multiple, strikes=getStrike.(lmso)))), $(pp(extra))")
-    log("Open #$(tradeOpen.id) $(Shorthand.sh(lmso)) '$(label)' $(pp((;neto, multiple))), $(pp(extra))")
+    acct.margin = ac.marginAdd(acct.bal, acct.margin, trad.side(tradeOpen), multiple, calcMargin(tradeOpen))
+    # blog("Open #$(tradeOpen.id) $(pp((;neto, multiple, strikes=getStrike.(lmso)))), $(pp(extra))")
+    @blog "Open $(label) #$(tradeOpen.id) $(Shorthand.sh(lmso))" neto multiple extra
     return
 end
 
@@ -148,13 +157,10 @@ function closeTrade(acct, tradeOpen, ts, lmsc, netc, label)::Nothing
     push!(acct.closed, trade)
     acct.bal += tradeOpen.multiple * netc
     pnl = tradeOpen.neto + netc
-    log("Close #$(tradeOpen.id) $(Shorthand.sh(lmsc)) '$(label)' $(pp((;neto=tradeOpen.neto, netc, pnl, multiple=tradeOpen.multiple, rate=trad.rate(trade)))) $(trad.openDur(trade)) days open, $(trad.bdaysLeft(Date(ts), trade)) days left")
+    acct.margin = ac.marginAdd(acct.bal, acct.margin, trad.side(tradeOpen), tradeOpen.multiple, -calcMargin(tradeOpen))
+    @blog "Close $(label) #$(tradeOpen.id) $(Shorthand.sh(lmsc))" neto=tradeOpen.neto netc pnl multiple=tradeOpen.multiple rate=trad.rate(trade) openDur=trad.openDur(trade) bdaysLeft=trad.bdaysLeft(Date(ts), trade)
     return
 end
-#endregion
-
-#region Util
-log(args...) = LogUtil.logit(:backtest, args...)
 #endregion
 
 end
