@@ -68,6 +68,20 @@ function combine(l1::Left, l2::Left, l3::Left)::Segments{3}
     )
     return segs
 end
+combine(ls::Tuple{Right,Right,Right}) = combine(ls...)
+function combine(l1::Right, l2::Right, l3::Right)::Segments{3}
+    @assert l1.point.x < l2.point.x < l3.point.x
+    y1 = l1.point.y + l2.point.y + l3.point.y
+    y2 = y1 + l1.slope * (l2.point.x - l1.point.x)
+    y3 = y2 + (l2.slope + l3.slope) * (l3.point.x - l2.point.x)
+    slope12 = l1.slope + l2.slope
+    segs = Segments{3}(
+        (0.0, l1.slope, slope12, slope12 + l3.slope),
+        (Point(l1.point.x, y1), Point(l2.point.x, y2), Point(l3.point.x, y3))
+    )
+    return segs
+end
+# TODO: test above
 
 # function combine(l::Right{T}, r::Left{T})::Segments{3} where T<:SlopeDir
 #     @assert l.point.x < r.point.x

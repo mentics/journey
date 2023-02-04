@@ -60,7 +60,7 @@ end
 #region Trade
 module trad
 
-using SH, Dates, BackTypes, DateUtil, CollUtil
+using SH, Dates, BackTypes, LegMetaTypes, DateUtil, CollUtil
 side(trade::TradeBTOpen) = getSide(trade.lms[1])
 targetDate(t::TradeBTOpen) = getExpir(t.lms[1])
 targetDate(trade::TradeBT) = targetDate(trade.open)
@@ -75,8 +75,16 @@ end
 openDur(trade::TradeBT) = bdays(toDateMarket(trade.open.ts), toDateMarket(trade.close.ts)) + 1
 bdaysLeft(from::Date, trade) = bdays(from, targetDate(trade))
 closed(acct, id) = CollUtil.find(x -> x.open.id == id, acct.closed)
-
+function calcCloseInfo(trade::TradeBTOpen, ts, otoq, calcPrice)
+    lmsc = tosn(LegMetaClose, trade.lms, otoq)
+    !isnothing(lmsc) || return nothing
+    netc = calcPrice(lmsc)
+    cv = trade.neto + netc
+    rate = calcRate(Date(trade.ts), Date(ts), cv, trade.extra.risk)
+    return (;rate, curVal=cv, trade.neto, netc, lmsc, trade)
 end
 #endregion
+
+end
 
 end

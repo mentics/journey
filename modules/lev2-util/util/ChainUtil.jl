@@ -34,13 +34,23 @@ end
 
 otoqToStoq(otoq::Otoq, xpir::Date, style::Style.T) = otoq[xpir][style]
 
-oToOq(chainOtoq::Otoq, opt::Option) = chainOtoq[getExpir(opt)][getStyle(opt)][getStrike(opt)]
+oToOq(chainOtoq::Otoq, opt::Option)::Union{OptionQuote,Nothing} =
+        get(get(chainOtoq, getExpir(opt), nothing)[getStyle(opt)], getStrike(opt), nothing)
 xssToq(chainOtoq::Otoq, xpir::Date, style::Style.T, strike::Currency) = return chainOtoq[xpir][style][strike]
 
-function oqsLteCurp(search::ChainSearch, rat::Float64)::Vector{OptionQuote}
+function oqsLteCurpRat(search::ChainSearch, rat::Float64)::Vector{OptionQuote}
     strikeMax = search.curp * rat
     i = CollUtil.ltee(search.strikes, strikeMax)
     return search.oqs[1:i]
+end
+
+function oqsLteCurp(search::ChainSearch, strikeMax)::Vector{OptionQuote}
+    i = CollUtil.ltee(search.strikes, strikeMax)
+    return search.oqs[1:i]
+end
+function oqsGteCurp(search::ChainSearch, strikeMin)::Vector{OptionQuote}
+    i = CollUtil.gtee(search.strikes, strikeMin)
+    return search.oqs[i:end]
 end
 #endregion
 

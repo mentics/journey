@@ -52,6 +52,19 @@ function findFrom(f, start::Int, v::Vector{T})::Union{Nothing,Tuple{Int,T}} wher
     return nothing
 end
 
+function findMaxDom(f, itr)
+    mx = -Inf
+    retx = nothing
+    for x in itr
+        y = f(x)
+        if !isnothing(y) && y > mx
+            mx = y
+            retx = x
+        end
+    end
+    return retx
+end
+
 ensureVector(o) = isnothing(o) ? [] : (isa(o, Array) ? o : [o])
 
 # sortExp(f, v; kws...) = v[sortperm(f.(v))]

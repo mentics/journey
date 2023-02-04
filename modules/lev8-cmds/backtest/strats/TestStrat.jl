@@ -27,10 +27,24 @@ end
 struct Params
     balInit::PT
     maxMarginPerTrade::PT
+    InitTakeRate::Float64
+    MaxWidth::Currency
+    ProbMin::Float64
+    MinNeto::PT
+    MinRate::Float64
+    MoneyValueAPR::Float64
+    ExpDurRatioAvg::Float64
 end
 
+makeStrat() = TStrat(
+    (3,Scoring),
+    Params(C(1000), C(72), 0.4, C(40), 0.7, 0.22, .0, 0.05, 0.5),
+    makeCtx(),
+)
+
 struct Context
-    bufCand::Vector{Cand}
+    bufCandLong::Vector{Cand}
+    bufCandShort::Vector{Cand}
 end
 
 struct TStrat <: Strat
@@ -39,23 +53,20 @@ struct TStrat <: Strat
     ctx::Context
 end
 
-makeCtx() = Context(Vector{Cand}())
-
-makeStrat() = TStrat(
-    (3,Scoring),
-    Params(C(1000), C(72)),
-    makeCtx(),
-)
+makeCtx() = Context(Vector{Cand}(), Vector{Cand}())
 #endregion
 
 #region InterfaceImpl
-function (s::TStrat)(ops, tim, chain)::Nothing
+function (s::TStrat)(ops, tim, chain, otoq)::Nothing
+    params = s.params
     curp = ch.getCurp(chain)
 
-    min(ops.marginAvail()) > 0 || return
+    # min(ops.marginAvail()) > 0 || return
 
-    keep = s.ctx.bufCand
-    empty!(keep)
+    keepLong = s.ctx.bufCandLong
+    keepShort = s.ctx.bufCandShort
+    empty!(keepLong)
+    empty!(keepShort)
 
     xpirs = ch.getXpirs(chain)
     starti = CollUtil.gtee(xpirs, bdaysAfter(tim.date,24))
@@ -63,18 +74,34 @@ function (s::TStrat)(ops, tim, chain)::Nothing
     for xpir in xpirs[starti:endi]
         fromPrice = curp # TODO: could use recent extrema?
         tmult = timult(tim.date, xpir)
-        search = ch.toSearch(curp, chain.xsoqs[xpir].put)
+        # searchLong = ch.toSearch(curp, chain.xsoqs[xpir].put)
+        searchShort = ch.toSearch(curp, chain.xsoqs[xpir].call)
         prob = ProbKde.probToClose(F(fromPrice), F(HistData.vixOpen(tim.date)), tim.ts, xpir)
-        findEntry!(keep, search, tmult, prob)
+        # findEntry!(keepLong, params, prob, searchLong, tmult)
+        findEntryShort!(keepShort, params, prob, searchShort, tmult)
     end
-    if !isempty(keep)
-        x = keep[1]
-        multiple = qtyForMargin(s.params.maxMarginPerTrade, ops.marginAvail(), x.margin, x.scoring.kel)
-        # println("Found best $(multiple): $(x)")
-        if multiple > 0
-            ops.openTrade(tim.ts, x.lms, toPT(x.neto, RoundDown), toPT(x.margin), multiple, "best score", keep[1].scoring)
-        else
-            println("0 multiple found, odd.")
+    if !isempty(keepLong)
+        # TODO: identify if new opportunity is better than currently open one
+        if (closeEarlyForMargin(params, tim.ts, ops, otoq))
+            x = keepLong[1]
+            multiple = qtyForMargin(s.params.maxMarginPerTrade, ops.marginAvail(), x.margin, x.scoring.kel)
+            if multiple > 0
+                ops.openTrade(tim.ts, x.lms, toPT(x.neto, RoundDown), toPT(x.margin), multiple, "best score", keep[1].scoring)
+            else
+                println("0 multiple found, odd.")
+            end
+        end
+    end
+    if !isempty(keepShort)
+        # TODO: identify if new opportunity is better than currently open one
+        if (closeEarlyForMargin(params, tim.ts, ops, otoq))
+            x = keepShort[1]
+            multiple = qtyForMargin(s.params.maxMarginPerTrade, ops.marginAvail(), x.margin, x.scoring.kel)
+            if multiple > 0
+                ops.openTrade(tim.ts, x.lms, toPT(x.neto, RoundDown), toPT(x.margin), multiple, "best score", keep[1].scoring)
+            else
+                println("0 multiple found, odd.")
+            end
         end
     end
     return
@@ -83,7 +110,7 @@ BaseTypes.toPT(sides::Sides{Float64})::Sides{PT} = Sides(toPT(sides.long, RoundD
 
 BackTypes.pricingOpen(::TStrat, lmso::NTuple{3,LegMetaOpen}) = calcPrice(lmso)
 BackTypes.pricingClose(::TStrat, lmsc::NTuple{3,LegMetaClose}) = calcPrice(lmsc)
-function BackTypes.checkExit(strat::TStrat, tradeOpen::TradeBTOpen{3,Scoring}, tim, lmsc, curp)::Union{Nothing,String}
+function BackTypes.checkExit(params::Params, tradeOpen::TradeBTOpen{3,Scoring}, tim, lmsc, curp)::Union{Nothing,String}
     Date(tradeOpen.ts) < tim.date || return # No closing on the same day
     netc = calcPrice(lmsc)
     curVal = tradeOpen.neto + netc
@@ -95,46 +122,64 @@ function BackTypes.checkExit(strat::TStrat, tradeOpen::TradeBTOpen{3,Scoring}, t
     #     return "rate $(rate) >= 0.4 or 1.5 * $(rateOrig)"
     # end
     ratio = trad.targetRatio(tradeOpen, Date(tim.date))
-    if rate >= 0.4 * ratio
-        return "rate $(rd5(rate)) >= 0.4 * $(ratio) ($(.4*ratio))"
+    if rate >= params.InitTakeRate * ratio
+        return "rate $(rd5(rate)) >= $(params.InitTakeRate) * $(ratio) ($(.4*ratio))"
     end
     theta = getGreeks(lmsc).theta
     bdaysLeft = bdays(tim.date, getExpir(tradeOpen))
     netExp = Pricing.netExpired(lmsc, curp)
     # @show tradeOpen.extra.risk netExp
     if theta < -0.01 && curp <= getStrike(lmsc[3]) && bdaysLeft < 7 && netc > netExp
-        return "theta $(rd5(theta)) <= 0.01 curp:$(curp)<$(getStrike(lmsc[3]))"
+        return "theta $(rd5(theta)) <= -0.01 curp:$(curp)<$(getStrike(lmsc[3]))"
     end
 end
 
-function closeEarlyForMargin(acct)
-
+function closeEarlyForMargin(params, ts, ops, otoq)
+    # TODO: handle long short separately
+    avail = min(ops.marginAvail())
+    if avail < 54.0
+        # mx = nothing
+        # mxVal = -Inf
+        # for t in acct.open
+        #     res = trad.curVal(t, otoq, calcPrice)
+        #     if !isnothing(res)
+        #         neto, netc, lmsc = res
+        #     end
+        # end
+        # i = findmax(t -> trad.curVal(otoq, t), acct.open)[2]
+        cv = CollUtil.findMaxDom(firstNinf, Iterators.map(t -> trad.calcCloseInfo(t, ts, otoq, calcPrice), ops.tradesOpen()))
+        cv.rate > 0.1 || return false
+        blog("Closing for margin $(cv.curVal)")
+        ops.closeTrade(cv.trade, ts, cv.lmsc, cv.netc, "margin $(avail)")
+    end
+    return true
 end
+firstNinf(::Nothing) = -Inf
+firstNinf(x) = first(x)
 #endregion
 
 #region Find
-function findEntry!(keep, search, args...)
-    MaxWidth = 40.0
-    # TODO: have dist based on percent chance of move size like was done in btsimple
-    oqs = ch.oqsLteCurp(search, .9)
+function findEntry!(keep, params, prob, search, args...)
+    strikeExt, _ = ProbUtil.probFromRight(prob, params.ProbMin)
+    oqs = ch.oqsLteCurp(search, strikeExt)
+
     itr1 = Iterators.reverse(eachindex(oqs)[3:end])
     for i1 in itr1
         oq1 = oqs[i1]
         itr2 = i1-1:-1:2
         for i2 in itr2
             oq2 = oqs[i2]
-            # TODO: long specific
-            if getStrike(oq1) - getStrike(oq2) > MaxWidth
+            if getStrike(oq1) - getStrike(oq2) > params.MaxWidth
                 break
             end
             itr3 = i2-1:-1:1
             for i3 in itr3
                 oq3 = oqs[i3]
-                if getStrike(oq2) - getStrike(oq3) > MaxWidth
+                if getStrike(oq2) - getStrike(oq3) > params.MaxWidth
                     break
                 end
                 lms = (LegMetaOpen(oq3, Side.long), LegMetaOpen(oq2, Side.long), LegMetaOpen(oq1, Side.short))
-                r = score(lms, args...)
+                r = score(lms, params, prob, args...)
                 if !isnothing(r) && (isempty(keep) || r[1].score > keep[end].score)
                     # TODO: not optimized
                     info, about = r
@@ -147,21 +192,56 @@ function findEntry!(keep, search, args...)
     end
 end
 
-function score(lms, tmult, prob)
+function findEntryShort!(keep, params, prob, search, args...)
+    strikeExt, _ = ProbUtil.probFromLeft(prob, params.ProbMin)
+    oqs = ch.oqsGteCurp(search, strikeExt)
+    @show prob.center strikeExt length(oqs)
+    lasti = lastindex(oqs)
+    itr1 = eachindex(oqs)[3:end]
+    for i1 in itr1
+        oq1 = oqs[i1]
+        itr2 = i1+1:lasti-1
+        for i2 in itr2
+            oq2 = oqs[i2]
+            if getStrike(oq2) - getStrike(oq1) > params.MaxWidth
+                break
+            end
+            itr3 = i2+1:lasti
+            for i3 in itr3
+                oq3 = oqs[i3]
+                if getStrike(oq3) - getStrike(oq2) > params.MaxWidth
+                    break
+                end
+                lms = (LegMetaOpen(oq1, Side.short), LegMetaOpen(oq2, Side.long), LegMetaOpen(oq3, Side.long))
+                r = score(lms, params, prob, args...)
+                if !isnothing(r) && (isempty(keep) || r[1].score > keep[end].score)
+                    # TODO: not optimized
+                    info, about = r
+                    push!(keep, Cand(lms, info..., about))
+                    sort!(keep; rev=true, by=x->x.score)
+                    length(keep) <= 10 || pop!(keep)
+                end
+            end
+        end
+    end
+end
+
+function score(lms, params, prob, tmult)
     neto = Pricing.bapFast(lms, 0.0)
-    neto > 0.12 || return nothing
+    neto >= params.MinNeto || ( deb("neto $(neto) < $(params.MinNeto)") ; return nothing )
     margin = Pricing.calcMarginFloat(lms)
     risk = max(margin)
     @assert risk > CZ "risk was <= 0"
     rate = calcRate(tmult, neto, risk)
-    rate >= .01 || return nothing
-    kel = calcKel(tmult, neto, risk, prob, LL.toSections(lms))
-    kel > 0 || return nothing
+    rate >= params.MinRate || ( deb("rate $(rate) < $(params.MinRate)") ; return nothing )
+    kel = calcKel(params, tmult, neto, risk, prob, LL.toSections(lms))
+    kel > 0 || ( deb("kel $(kel) <= 0") ; return nothing )
     # score = rate / (getStrike(lms[2]) - getStrike(lms[1]))
     # score = rate * kel / risk
     score = rate * kel
     return ((;score, neto, margin), Scoring(neto, risk, rate, kel))
 end
+deb(s) = startswith(s, "neto") ? nothing : println(s)
 #endregion
 
 #region Util
@@ -177,11 +257,9 @@ function qtyForMargin(maxMarginPerTrade, avail, marginTrade, kel)::Int
 end
 qtyForAvail(avail, risk, kel)::Int = round(Int, kel * avail / risk, RoundDown)
 
-function calcKel(tmult, neto, risk, prob, sections)
-    MoneyValueAPR = 0.05
-    ExpDurRatioAvg = 0.5
+function calcKel(params, tmult, neto, risk, prob, sections)
     # ret = round(neto - .01 - risk * (MoneyValueAPR * ExpDurRatioAvg / tmult), RoundDown; digits=2)
-    ret = round(neto - risk * (MoneyValueAPR * ExpDurRatioAvg / tmult), RoundDown; digits=2)
+    ret = round(neto - risk * (params.MoneyValueAPR * params.ExpDurRatioAvg / tmult), RoundDown; digits=2)
     ret > 0 || return -1.0
     # rateAdj = calcRate(tmult, ret, risk)
     winRat = calcWinRat(prob, sections)

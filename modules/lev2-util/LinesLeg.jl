@@ -28,7 +28,7 @@ function toSeg(leg::LegType, neto::PT)::SegSide
     strike = getStrike(leg)
     side = getSide(leg)
     qty = getQuantity(leg)
-    return getStyle(leg) == Style.call ? setCall(strike, side, qty, neto) : segPut(strike, side, qty, neto)
+    return getStyle(leg) == Style.call ? segCall(strike, side, qty, neto) : segPut(strike, side, qty, neto)
 end
 function toSegments(legs::NTuple{N,LegType}, netos::NTuple{N,PT})::Segments{N} where N
     # @assert issorted(legs; by=getStrike)

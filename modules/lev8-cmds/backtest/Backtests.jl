@@ -19,15 +19,15 @@ function run(strat::Strat, from::DateLike, to::DateLike; maxSeconds::Int=1)::Not
     # $(from) - $(to) params:\n", params
     acct = makeAccount(strat.acctTypes, params)
     global keepAcct = acct
-    chainRef = Ref{Chain}()
-    ops = makeOps(acct, chainRef)
+    # chainRef = Ref{Chain}()
+    ops = makeOps(acct)
 
     SS.run(from, to; maxSeconds) do tim, chain
         otoq = ChainUtil.toOtoq(chain)
         if !tim.atClose
             @blog "Strat running" ts=tim.ts curp=getCurp(chain) margin=acct.margin
             checkExits(strat, acct, tim, otoq, getCurp(chain))
-            strat(ops, tim, chain)
+            strat(ops, tim, chain, otoq)
         end
         if tim.lastOfDay
             handleExpirations(acct, tim, chain, otoq)
@@ -58,11 +58,12 @@ function makeAccount(typeParams, params)
     )
 end
 
-function makeOps(acct::Account, chain::Ref{Chain})
+function makeOps(acct::Account)
     return (;
         marginAvail = () -> ac.marginAvail(acct),
+        tradesOpen = () -> acct.open,
         openTrade = (ts, lmso, neto, margin, multiple, label, extra) -> openTrade(acct, ts, lmso, neto, margin, multiple, label, extra),
-        closeTrade = (tradeOpen, ts, lmsc, netc, label) -> closeTrade(acct, tradeOpen, ts, lmsc, netc, label)
+        closeTrade = (tradeOpen, ts, lmsc, netc, label) -> ( closeTrade(acct, tradeOpen, ts, lmsc, netc, label) ; del!(acct.open, tradeOpen) )
     )
 end
 
@@ -121,20 +122,21 @@ calcMargin(trade::TradeBTOpen) = trade.multiple * Pricing.calcMargin(trade.lms)
 function checkExits(strat, acct::Account, tim, otoq, curp)
     filter!(acct.open) do tradeOpen
         lmsc = nothing
-        try
-            lmsc = tos(LegMetaClose, tradeOpen.lms, otoq)
+        # try
+            lmsc = tosn(LegMetaClose, tradeOpen.lms, otoq)
+            !isnothing(lmsc) || ( println("couldn't quote") ; return true ) # skip if can't quote
             label = BackTypes.checkExit(strat, tradeOpen, tim, lmsc, curp)
             if !isnothing(label)
                 closeTrade(acct, tradeOpen, tim.ts, lmsc, BackTypes.pricingClose(strat, lmsc), label)
                 return false
             end
-        catch e
-            if e isa KeyError
-                println("Could not quote")
-            else
-                rethrow(e)
-            end
-        end
+        # catch e
+        #     if e isa KeyError
+        #         println("Could not quote")
+        #     else
+        #         rethrow(e)
+        #     end
+        # end
         return true
     end
 end
@@ -147,7 +149,7 @@ function openTrade(acct, ts, lmso, neto::PT, margin::Sides{PT}, multiple::Int, l
     acct.bal += multiple * neto
     acct.margin = ac.marginAdd(acct.bal, acct.margin, trad.side(tradeOpen), multiple, calcMargin(tradeOpen))
     # blog("Open #$(tradeOpen.id) $(pp((;neto, multiple, strikes=getStrike.(lmso)))), $(pp(extra))")
-    @blog "Open $(label) #$(tradeOpen.id) $(Shorthand.sh(lmso))" neto multiple extra
+    @blog "Open $(label) #$(tradeOpen.id) $(Shorthand.sh(lmso))" neto multiple dmargin=(-calcMargin(tradeOpen)) extra
     return
 end
 
@@ -158,7 +160,7 @@ function closeTrade(acct, tradeOpen, ts, lmsc, netc, label)::Nothing
     acct.bal += tradeOpen.multiple * netc
     pnl = tradeOpen.neto + netc
     acct.margin = ac.marginAdd(acct.bal, acct.margin, trad.side(tradeOpen), tradeOpen.multiple, -calcMargin(tradeOpen))
-    @blog "Close $(label) #$(tradeOpen.id) $(Shorthand.sh(lmsc))" neto=tradeOpen.neto netc pnl multiple=tradeOpen.multiple rate=trad.rate(trade) openDur=trad.openDur(trade) bdaysLeft=trad.bdaysLeft(Date(ts), trade)
+    @blog "Close $(label) #$(tradeOpen.id) $(Shorthand.sh(lmsc))" neto=tradeOpen.neto netc pnl multiple=tradeOpen.multiple rate=trad.rate(trade) dmargin=calcMargin(tradeOpen) openDur=trad.openDur(trade) bdaysLeft=trad.bdaysLeft(Date(ts), trade)
     return
 end
 #endregion

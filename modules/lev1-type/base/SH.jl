@@ -21,7 +21,7 @@ export isValid
 # export tsOpen, tsClose, getNetClose
 # export getMaxClose
 
-export to, tos, tosnn, combineTo, mapFlattenTo
+export to, tos, tosn, tosnn, combineTo, mapFlattenTo
 
 export v
 (v(x::Dict{K,V})::Vector{V}) where {K,V} = collect(values(x))
@@ -108,6 +108,25 @@ function mapFlattenTo(gen, ::Type{T}, itr, args...)::Base.Generator where T; Ite
 tosnn(::Type{T}, itr, args...) where T =
         filter(!isnothing, map(x -> to(Union{Nothing,T}, x, args...), itr)) # TODO: is closure here optimum?
 tos(::Type{T}, itr, args...) where T = map(x -> to(T, x, args...), itr) # TODO: is closure here optimum?
+tosn(::Type{T}, itr, args...) where T = mapStopNothing(x -> to(T, x, args...), itr)
+mapStopNothing(f, t::Tuple{Any}) = (@inline; y = f(t[1]) ; isnothing(y) ? nothing : (y,))
+function mapStopNothing(f, t::Tuple{Any,Any})
+    @inline;
+    y1 = f(t[1])
+    !isnothing(y1) || return nothing
+    y2 = f(t[2])
+    return isnothing(y2) ? nothing : (y1, y2)
+end
+function mapStopNothing(f, t::Tuple{Any,Any,Any})
+    @inline;
+    y1 = f(t[1])
+    !isnothing(y1) || return nothing
+    y2 = f(t[2])
+    !isnothing(y2) || return nothing
+    y3 = f(t[3])
+    return isnothing(y3) ? nothing : (y1, y2, y3)
+end
+
 
 export ElType
 struct ElType{T} end
