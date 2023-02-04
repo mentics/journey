@@ -62,7 +62,7 @@ function makeOps(acct::Account, chain::Ref{Chain})
     return (;
         marginAvail = () -> ac.marginAvail(acct),
         openTrade = (ts, lmso, neto, margin, multiple, label, extra) -> openTrade(acct, ts, lmso, neto, margin, multiple, label, extra),
-        # closeTrade = (tradeOpen, lmsc, netc, label) -> closeTrade(acct, tradeOpen, lmsc, netc, label),
+        closeTrade = (tradeOpen, ts, lmsc, netc, label) -> closeTrade(acct, tradeOpen, ts, lmsc, netc, label)
     )
 end
 

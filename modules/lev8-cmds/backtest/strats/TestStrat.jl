@@ -43,7 +43,7 @@ makeCtx() = Context(Vector{Cand}())
 
 makeStrat() = TStrat(
     (3,Scoring),
-    Params(C(100000), C(52)),
+    Params(C(1000), C(72)),
     makeCtx(),
 )
 #endregion
@@ -69,7 +69,7 @@ function (s::TStrat)(ops, tim, chain)::Nothing
     end
     if !isempty(keep)
         x = keep[1]
-        multiple = 1 # qtyForMargin(s.params.maxMarginPerTrade, ops.marginAvail(), x.margin, x.scoring.kel)
+        multiple = qtyForMargin(s.params.maxMarginPerTrade, ops.marginAvail(), x.margin, x.scoring.kel)
         # println("Found best $(multiple): $(x)")
         if multiple > 0
             ops.openTrade(tim.ts, x.lms, toPT(x.neto, RoundDown), toPT(x.margin), multiple, "best score", keep[1].scoring)
@@ -105,6 +105,10 @@ function BackTypes.checkExit(strat::TStrat, tradeOpen::TradeBTOpen{3,Scoring}, t
     if theta < -0.01 && curp <= getStrike(lmsc[3]) && bdaysLeft < 7 && netc > netExp
         return "theta $(rd5(theta)) <= 0.01 curp:$(curp)<$(getStrike(lmsc[3]))"
     end
+end
+
+function closeEarlyForMargin(acct)
+
 end
 #endregion
 
@@ -155,7 +159,7 @@ function score(lms, tmult, prob)
     kel > 0 || return nothing
     # score = rate / (getStrike(lms[2]) - getStrike(lms[1]))
     # score = rate * kel / risk
-    score = rate * kel / risk
+    score = rate * kel
     return ((;score, neto, margin), Scoring(neto, risk, rate, kel))
 end
 #endregion
