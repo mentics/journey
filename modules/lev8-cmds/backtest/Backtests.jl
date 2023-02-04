@@ -70,7 +70,7 @@ function handleExpirations(acct::Account, tim::TimeInfo, chain::ChainInfo, otoq)
     filter!(acct.open) do tradeOpen
         if tim.date == getExpir(tradeOpen)
             lmsc = tos(LegMetaClose, tradeOpen.lms, Pricing.fallbackExpired(getCurp(chain), otoq))
-            netc = Pricing.netExpired(lmsc, chain.under.under)
+            netc = Pricing.netExpired(lmsc, getCurp(chain))
             # TODO: adjust netExpired to handle buyback for near strikes?
             closeTrade(acct, tradeOpen, tim.ts, lmsc, netc, "expired")
             return false

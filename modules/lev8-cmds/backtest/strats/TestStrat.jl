@@ -43,7 +43,7 @@ makeCtx() = Context(Vector{Cand}())
 
 makeStrat() = TStrat(
     (3,Scoring),
-    Params(C(1000), C(52)),
+    Params(C(100000), C(52)),
     makeCtx(),
 )
 #endregion
@@ -59,7 +59,7 @@ function (s::TStrat)(ops, tim, chain)::Nothing
 
     xpirs = ch.getXpirs(chain)
     starti = CollUtil.gtee(xpirs, bdaysAfter(tim.date,24))
-    endi = CollUtil.gtee(xpirs, bdaysAfter(tim.date, 84))
+    endi = CollUtil.gtee(xpirs, bdaysAfter(tim.date, 48))
     for xpir in xpirs[starti:endi]
         fromPrice = curp # TODO: could use recent extrema?
         tmult = timult(tim.date, xpir)
@@ -69,7 +69,7 @@ function (s::TStrat)(ops, tim, chain)::Nothing
     end
     if !isempty(keep)
         x = keep[1]
-        multiple = qtyForMargin(s.params.maxMarginPerTrade, ops.marginAvail(), x.margin, x.scoring.kel)
+        multiple = 1 # qtyForMargin(s.params.maxMarginPerTrade, ops.marginAvail(), x.margin, x.scoring.kel)
         # println("Found best $(multiple): $(x)")
         if multiple > 0
             ops.openTrade(tim.ts, x.lms, toPT(x.neto, RoundDown), toPT(x.margin), multiple, "best score", keep[1].scoring)
@@ -85,7 +85,8 @@ BackTypes.pricingOpen(::TStrat, lmso::NTuple{3,LegMetaOpen}) = calcPrice(lmso)
 BackTypes.pricingClose(::TStrat, lmsc::NTuple{3,LegMetaClose}) = calcPrice(lmsc)
 function BackTypes.checkExit(strat::TStrat, tradeOpen::TradeBTOpen{3,Scoring}, tim, lmsc, curp)::Union{Nothing,String}
     Date(tradeOpen.ts) < tim.date || return # No closing on the same day
-    curVal = tradeOpen.neto + calcPrice(lmsc)
+    netc = calcPrice(lmsc)
+    curVal = tradeOpen.neto + netc
     rate = calcRate(Date(tradeOpen.ts), tim.date, curVal, tradeOpen.extra.risk)
     # rateOrig = tradeOpen.extra.rate
     # blog("checkExit: $(tradeOpen.id) $(round(rate;digits=5)) $(round(rateOrig;digits=5))")
@@ -98,7 +99,10 @@ function BackTypes.checkExit(strat::TStrat, tradeOpen::TradeBTOpen{3,Scoring}, t
         return "rate $(rd5(rate)) >= 0.4 * $(ratio) ($(.4*ratio))"
     end
     theta = getGreeks(lmsc).theta
-    if theta < -0.01 && curp <= getStrike(lmsc[3])
+    bdaysLeft = bdays(tim.date, getExpir(tradeOpen))
+    netExp = Pricing.netExpired(lmsc, curp)
+    # @show tradeOpen.extra.risk netExp
+    if theta < -0.01 && curp <= getStrike(lmsc[3]) && bdaysLeft < 7 && netc > netExp
         return "theta $(rd5(theta)) <= 0.01 curp:$(curp)<$(getStrike(lmsc[3]))"
     end
 end
@@ -108,7 +112,7 @@ end
 function findEntry!(keep, search, args...)
     MaxWidth = 40.0
     # TODO: have dist based on percent chance of move size like was done in btsimple
-    oqs = ch.oqsLteCurp(search, .96)
+    oqs = ch.oqsLteCurp(search, .9)
     itr1 = Iterators.reverse(eachindex(oqs)[3:end])
     for i1 in itr1
         oq1 = oqs[i1]
@@ -140,16 +144,17 @@ function findEntry!(keep, search, args...)
 end
 
 function score(lms, tmult, prob)
-    neto = Pricing.bapFast(lms, .2)
-    neto > 0.24 || return nothing
+    neto = Pricing.bapFast(lms, 0.0)
+    neto > 0.12 || return nothing
     margin = Pricing.calcMarginFloat(lms)
     risk = max(margin)
     @assert risk > CZ "risk was <= 0"
     rate = calcRate(tmult, neto, risk)
-    rate >= .12 || return nothing
+    rate >= .01 || return nothing
     kel = calcKel(tmult, neto, risk, prob, LL.toSections(lms))
     kel > 0 || return nothing
     # score = rate / (getStrike(lms[2]) - getStrike(lms[1]))
+    # score = rate * kel / risk
     score = rate * kel / risk
     return ((;score, neto, margin), Scoring(neto, risk, rate, kel))
 end
