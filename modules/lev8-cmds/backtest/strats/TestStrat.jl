@@ -98,7 +98,7 @@ function (s::TStrat)(ops, tim, chain, otoq)::Nothing
             x = keepShort[1]
             multiple = qtyForMargin(s.params.maxMarginPerTrade, ops.marginAvail(), x.margin, x.scoring.kel)
             if multiple > 0
-                ops.openTrade(tim.ts, x.lms, toPT(x.neto, RoundDown), toPT(x.margin), multiple, "best score", keep[1].scoring)
+                ops.openTrade(tim.ts, x.lms, toPT(x.neto, RoundDown), toPT(x.margin), multiple, "best score", keepShort[1].scoring)
             else
                 println("0 multiple found, odd.")
             end
@@ -125,13 +125,13 @@ function BackTypes.checkExit(params::Params, tradeOpen::TradeBTOpen{3,Scoring}, 
     if rate >= params.InitTakeRate * ratio
         return "rate $(rd5(rate)) >= $(params.InitTakeRate) * $(ratio) ($(.4*ratio))"
     end
-    theta = getGreeks(lmsc).theta
-    bdaysLeft = bdays(tim.date, getExpir(tradeOpen))
-    netExp = Pricing.netExpired(lmsc, curp)
+    # theta = getGreeks(lmsc).theta
+    # bdaysLeft = bdays(tim.date, getExpir(tradeOpen))
+    # netExp = Pricing.netExpired(lmsc, curp)
     # @show tradeOpen.extra.risk netExp
-    if theta < -0.01 && curp <= getStrike(lmsc[3]) && bdaysLeft < 7 && netc > netExp
-        return "theta $(rd5(theta)) <= -0.01 curp:$(curp)<$(getStrike(lmsc[3]))"
-    end
+    # if theta < -0.01 && curp <= getStrike(lmsc[3]) && bdaysLeft < 7 && netc > netExp
+    #     return "theta $(rd5(theta)) <= -0.01 curp:$(curp)<$(getStrike(lmsc[3]))"
+    # end
 end
 
 function closeEarlyForMargin(params, ts, ops, otoq)
@@ -195,7 +195,7 @@ end
 function findEntryShort!(keep, params, prob, search, args...)
     strikeExt, _ = ProbUtil.probFromLeft(prob, params.ProbMin)
     oqs = ch.oqsGteCurp(search, strikeExt)
-    @show prob.center strikeExt length(oqs)
+    # @show prob.center strikeExt length(oqs)
     lasti = lastindex(oqs)
     itr1 = eachindex(oqs)[3:end]
     for i1 in itr1
@@ -234,14 +234,15 @@ function score(lms, params, prob, tmult)
     @assert risk > CZ "risk was <= 0"
     rate = calcRate(tmult, neto, risk)
     rate >= params.MinRate || ( deb("rate $(rate) < $(params.MinRate)") ; return nothing )
-    kel = calcKel(params, tmult, neto, risk, prob, LL.toSections(lms))
-    kel > 0 || ( deb("kel $(kel) <= 0") ; return nothing )
-    # score = rate / (getStrike(lms[2]) - getStrike(lms[1]))
-    # score = rate * kel / risk
-    score = rate * kel
-    return ((;score, neto, margin), Scoring(neto, risk, rate, kel))
+
+    # kel = calcKel(params, tmult, neto, risk, prob, LL.toSections(lms), false)
+    # kel > 0 || return nothing # ( deb("kel $(kel) <= 0, $(rate), $(tmult), $(neto), $(risk)") ; return nothing )
+    # score = rate * kel
+    # return ((;score, neto, margin), Scoring(neto, risk, rate, kel))
+    score = rate
+    return ((;score, neto, margin), Scoring(neto, risk, rate, 1.0))
 end
-deb(s) = startswith(s, "neto") ? nothing : println(s)
+deb(s) = nothing # startswith(s, "neto") ? nothing : println(s)
 #endregion
 
 #region Util
@@ -257,17 +258,23 @@ function qtyForMargin(maxMarginPerTrade, avail, marginTrade, kel)::Int
 end
 qtyForAvail(avail, risk, kel)::Int = round(Int, kel * avail / risk, RoundDown)
 
-function calcKel(params, tmult, neto, risk, prob, sections)
-    # ret = round(neto - .01 - risk * (MoneyValueAPR * ExpDurRatioAvg / tmult), RoundDown; digits=2)
-    ret = round(neto - risk * (params.MoneyValueAPR * params.ExpDurRatioAvg / tmult), RoundDown; digits=2)
-    ret > 0 || return -1.0
+function calcKel(params, tmult, neto, risk, prob, sections, adjust=true)
+    if adjust
+        # ret = round(neto - .01 - risk * (MoneyValueAPR * ExpDurRatioAvg / tmult), RoundDown; digits=2)
+        ret = round(neto - risk * (params.MoneyValueAPR * params.ExpDurRatioAvg / tmult), RoundDown; digits=2)
+        ret > 0 || return -Inf
+    else
+        ret = neto
+    end
     # rateAdj = calcRate(tmult, ret, risk)
     winRat = calcWinRat(prob, sections)
     # side = Side.long
     # winRate = side == Side.long ? ProbUtil.cdfFromRight(prob, F(atStrike)) : ProbUtil.cdfFromLeft(prob, F(atStrike))
     # theta = getGreeks(lo).theta - getGreeks(sho).theta
     # @show ret risk winRat
+    # winRat *= 2
     kel = Kelly.simple(winRat, F(ret), F(risk))
+    # println("Kelcalc: $(kel)   $(winRat), $(ret), $(risk)")
     return kel
 end
 

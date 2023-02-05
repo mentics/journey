@@ -25,7 +25,7 @@ function run(strat::Strat, from::DateLike, to::DateLike; maxSeconds::Int=1)::Not
     SS.run(from, to; maxSeconds) do tim, chain
         otoq = ChainUtil.toOtoq(chain)
         if !tim.atClose
-            @blog "Strat running" ts=tim.ts curp=getCurp(chain) margin=acct.margin
+            @blog "Strat running" ts=tim.ts curp=getCurp(chain) bal=acct.bal margin=acct.margin
             checkExits(strat, acct, tim, otoq, getCurp(chain))
             strat(ops, tim, chain, otoq)
         end
@@ -71,6 +71,10 @@ function handleExpirations(acct::Account, tim::TimeInfo, chain::ChainInfo, otoq)
     filter!(acct.open) do tradeOpen
         if tim.date == getExpir(tradeOpen)
             lmsc = tos(LegMetaClose, tradeOpen.lms, Pricing.fallbackExpired(getCurp(chain), otoq))
+            # lmsc = tos(LegMetaClose, tradeOpen.lms, otoq)
+            # if isnothing(lmsc)
+            #             return OptionQuote(o, Quote(C(Pricing.netExpired(getStyle(o), getStrike(o), curp))), OptionMeta())
+            # end
             netc = Pricing.netExpired(lmsc, getCurp(chain))
             # TODO: adjust netExpired to handle buyback for near strikes?
             closeTrade(acct, tradeOpen, tim.ts, lmsc, netc, "expired")
@@ -125,7 +129,7 @@ function checkExits(strat, acct::Account, tim, otoq, curp)
         # try
             lmsc = tosn(LegMetaClose, tradeOpen.lms, otoq)
             !isnothing(lmsc) || ( println("couldn't quote") ; return true ) # skip if can't quote
-            label = BackTypes.checkExit(strat, tradeOpen, tim, lmsc, curp)
+            label = BackTypes.checkExit(strat.params, tradeOpen, tim, lmsc, curp)
             if !isnothing(label)
                 closeTrade(acct, tradeOpen, tim.ts, lmsc, BackTypes.pricingClose(strat, lmsc), label)
                 return false

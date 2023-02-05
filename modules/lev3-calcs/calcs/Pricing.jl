@@ -50,6 +50,11 @@ function netExpired1(lm::LegType, curp::Currency)::PT
 end
 netExpired(style::Style.T, strike::Currency, curp::Currency)::PT = (OptionUtil.extrinSub(style, strike, curp) ? abs(curp - strike) : 0.0)
 
+fallbackExpired(curp, otoq) = function(o)
+    res = ChainUtil.oToOq(otoq, o)
+    !isnothing(res) ? res : OptionQuote(o, Quote(C(Pricing.netExpired(getStyle(o), getStrike(o), curp))), OptionMeta())
+end
+
 # fallbackExpired(curp, otoq) = function(o)
 #     try
 #         return ChainUtil.oToOq(otoq, o)
@@ -93,11 +98,11 @@ end
 
 function calcMargin(lms::NTuple{3,<:LegType})::PT
     lm1 = lms[1]
+    lm2 = lms[2]
     if getSide(lm1) == Side.short
-        @assert getSide(lms[2]) == Side.long && getSide(lms[3]) == Side.long
+        @assert getSide(lm2) == Side.long && getSide(lms[3]) == Side.long
         return getQuantity(lm1) * calcWidth(lm1, lm2)
     else
-        lm2 = lms[2]
         # not planning to try long/short/long so can skip
         # if getSide(lm2) == Side.short
         #     @assert getSide(lms[1]) == Side.long && getSide(lms[3]) == Side.long

@@ -2,7 +2,7 @@ module BacktestAnalysis
 using Dates
 using SH, BaseTypes, BackTypes, LegMetaTypes
 import Backtests as bt, SimpleStore as SS
-using DateUtil, DrawUtil, CollUtil, ChainUtil, BacktestUtil, OutputUtil
+using DateUtil, DrawUtil, CollUtil, ChainUtil, BacktestUtil, OutputUtil, Pricing
 import StatsBase
 
 #region Public
@@ -41,19 +41,29 @@ function showResult(info=bt.info, acct=bt.keepAcct, params=bt.keepParams)::Nothi
     return
 end
 
-rateMax() = bt.keepAcct.closed[findmax(x -> trad.rate(x), bt.keepAcct.closed)[2]]
+rateMax() = ( (r, i) = findmax(x -> trad.rate(x), bt.keepAcct.closed) ; (i, r, bt.keepAcct.closed[i]) )
+rateMin() = ( (r, i) = findmin(x -> trad.rate(x), bt.keepAcct.closed) ; (i, r, bt.keepAcct.closed[i]) )
 
+tradeThetas(trade) = lyzeTrade(trade) do lms
+    getGreeks(lms).theta
+end
+tradeVal(trade) = lyzeTrade(trade) do lms
+    bap(lms, 0.0)
+end
 function lyzeTrade(f, trade::TradeBT)
     from = trade.open.ts
     to = trade.close.ts
-    thetas = Vector{Tuple{DateTime,Float64}}()
+    ys = Vector{Tuple{DateTime,Float64}}()
     SS.run(from, to) do tim, chain
         otoq = ChainUtil.toOtoq(chain)
-        lms = tos(LegMetaClose, trade.open.lms, otoq)
-        theta = getGreeks(lms).theta
-        push!(thetas, (tim.ts, theta))
+        lms = tosn(LegMetaClose, trade.open.lms, otoq)
+        # theta = getGreeks(lms).theta
+        !isnothing(lms) || return
+        y = f(lms)
+        push!(ys, (tim.ts, y))
+        return
     end
-    draw(:scatter, thetas)
+    draw(:scatter, ys)
 end
 #endregion
 
