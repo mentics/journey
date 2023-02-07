@@ -8,6 +8,13 @@ using Pricing
 import ProbKde, ProbUtil, Kelly, HistData
 import LinesLeg as LL
 
+macro deb(exs...)
+    return
+    # prblk = Expr(:call, (esc(LogUtil.logit)))
+    # LogUtil.inner((:backtest, exs...), prblk)
+    # return Expr(:block, prblk)
+end
+
 #region Types
 struct Scoring
     ret::Currency
@@ -40,7 +47,7 @@ end
 
 makeStrat() = TStrat(
     (3,Scoring),
-    Params(C(1000), 0.084, 0.3, 0.1, 0.8, 0.02, 0.1, 0.05, 0.5, 8, 84),
+    Params(C(1000), 0.084, 0.3, 0.06, 0.95, 0.02, 0.1, 0.05, 0.5, 8, 84),
     makeCtx(),
 )
 
@@ -55,7 +62,7 @@ struct TStrat <: Strat
     ctx::Context
 end
 
-BackTypes.hasMultExpirs(::TStrat) = true
+BackTypes.hasMultExpirs(::TStrat) = false # true
 
 makeCtx() = Context(Vector{Cand}(), Vector{Cand}())
 #endregion
@@ -77,7 +84,10 @@ function (s::TStrat)(ops, tim, chain, otoq)::Nothing
     endi = CollUtil.gtee(xpirs, bdaysAfter(tim.date, params.MaxXpirBdays))
     for i in starti:endi
         xpir = xpirs[i]
-        xpirsExtra = xpirs[starti-2:i]
+        # extrais = max(starti-2, i * 3 ÷ 4):i
+        extrais = i:i # (i-2):i
+        xpirsExtra = xpirs[extrais]
+        # @show starti endi extrais
         fromPrice = curp # TODO: could use recent extrema?
         tmult = timult(tim.date, xpir)
         searchLong = ch.toSearch(curp, chain.xsoqs[xpir].put)
@@ -93,7 +103,7 @@ function (s::TStrat)(ops, tim, chain, otoq)::Nothing
             multiple = qtyForMargin(s.params.maxMarginPerTradeRat * ops.bal(), ops.marginAvail(), x.margin, x.scoring.kel)
             if multiple > 0
                 @assert getExpir(x.lms[1]) <= getExpir(x.lms[2])
-                ops.openTrade(tim.ts, x.lms, toPT(x.neto, RoundDown), toPT(x.margin), multiple, "best score", keepLong[1].scoring)
+                ops.openTrade(tim.ts, x.lms, toPT(x.neto, RoundDown), toPT(x.margin), multiple, "best score $(rd5(x.score))", x.scoring)
             else
                 println("0 multiple found, odd.")
             end
@@ -106,7 +116,7 @@ function (s::TStrat)(ops, tim, chain, otoq)::Nothing
             multiple = qtyForMargin(s.params.maxMarginPerTradeRat * ops.bal(), ops.marginAvail(), x.margin, x.scoring.kel)
             if multiple > 0
                 @assert getExpir(x.lms[3]) <= getExpir(x.lms[2])
-                ops.openTrade(tim.ts, x.lms, toPT(x.neto, RoundDown), toPT(x.margin), multiple, "best score", keepShort[1].scoring)
+                ops.openTrade(tim.ts, x.lms, toPT(x.neto, RoundDown), toPT(x.margin), multiple, "best score $(rd5(x.score))", x.scoring)
             else
                 println("0 multiple found, odd.")
             end
@@ -178,7 +188,7 @@ function findEntry!(keep, params, prob, search, otoq, xpirsExtra, args...)
             itr3 = i2-1:-1:1
             for i3 in itr3
                 oq3 = oqs[i3]
-                if getStrike(oq2) - getStrike(oq3) > params.MaxWidthRat * prob.center
+                if getStrike(oq2) - getStrike(oq3) > (params.MaxWidthRat/2) * prob.center
                     break
                 end
                 strike = getStrike(oq3)
@@ -237,12 +247,12 @@ end
 
 function score(lms, params, prob, tmult)
     neto = calcPriceFast(lms)
-    neto >= params.MinNeto || ( deb("neto $(neto) < $(params.MinNeto)") ; return nothing )
+    neto >= params.MinNeto || ( @deb "no score neto" neto params.MinNeto ; return nothing )
     margin = Pricing.calcMarginFloat(lms)
     risk = max(margin)
     @assert risk > CZ "risk was <= 0"
     rate = calcRate(tmult, neto, risk)
-    rate >= params.MinRate || ( deb("rate $(rate) < $(params.MinRate)") ; return nothing )
+    rate >= params.MinRate || ( @deb "no score rate" rate params.MinRate ; return nothing )
 
     # TODO: mult xpir won't work with this kel calc
     # kel = calcKel(params, tmult, neto, risk, prob, LL.toSections(lms))
@@ -251,7 +261,10 @@ function score(lms, params, prob, tmult)
     # score = rate * kel
     gks = getGreeks(lms)
     # TODO: could require vega > delta
+    gks.theta + gks.vega > gks.delta || ( @deb "no score thetavega>delta" gks.theta gks.vega gks.delta ; return nothing )
     # score = rate * (gks.theta + gks.vega)
+    # score = gks.theta + gks.vega - gks.delta
+    # score = rate * (gks.theta + gks.vega - gks.delta)
     score = gks.theta + gks.vega - gks.delta
     return ((;score, neto, margin), Scoring(neto, risk, rate, 1.0))
 
@@ -259,7 +272,6 @@ function score(lms, params, prob, tmult)
     # score = gks.theta + gks.delta - gks.vega
     # return ((;score, neto, margin), Scoring(neto, risk, rate, 1.0))
 end
-deb(s) = nothing # startswith(s, "neto") ? nothing : println(s)
 #endregion
 
 #region Util
