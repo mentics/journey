@@ -30,9 +30,10 @@ function run(strat::Strat, from::DateLike, to::DateLike; maxSeconds::Int=1)::Not
             strat(ops, tim, chain, otoq)
         end
         if tim.lastOfDay
-            handleExpirations(acct, tim, chain, otoq)
+            handleExpirations(strat, acct, tim, chain, otoq)
             verifyMargin(acct)
         end
+        yield()
     end
 end
 #endregion
@@ -61,13 +62,14 @@ end
 function makeOps(acct::Account)
     return (;
         marginAvail = () -> ac.marginAvail(acct),
+        bal = () -> acct.bal,
         tradesOpen = () -> acct.open,
         openTrade = (ts, lmso, neto, margin, multiple, label, extra) -> openTrade(acct, ts, lmso, neto, margin, multiple, label, extra),
         closeTrade = (tradeOpen, ts, lmsc, netc, label) -> ( closeTrade(acct, tradeOpen, ts, lmsc, netc, label) ; del!(acct.open, tradeOpen) )
     )
 end
 
-function handleExpirations(acct::Account, tim::TimeInfo, chain::ChainInfo, otoq)::Nothing
+function handleExpirations(strat, acct::Account, tim::TimeInfo, chain::ChainInfo, otoq)::Nothing
     filter!(acct.open) do tradeOpen
         if tim.date == getExpir(tradeOpen)
             lmsc = tos(LegMetaClose, tradeOpen.lms, Pricing.fallbackExpired(getCurp(chain), otoq))
@@ -75,7 +77,13 @@ function handleExpirations(acct::Account, tim::TimeInfo, chain::ChainInfo, otoq)
             # if isnothing(lmsc)
             #             return OptionQuote(o, Quote(C(Pricing.netExpired(getStyle(o), getStrike(o), curp))), OptionMeta())
             # end
-            netc = Pricing.netExpired(lmsc, getCurp(chain))
+
+            if BackTypes.hasMultExpirs(strat)
+                netc = BackTypes.pricingClose(strat, lmsc)
+            else
+                netc = Pricing.netExpired(lmsc, getCurp(chain))
+            end
+
             # TODO: adjust netExpired to handle buyback for near strikes?
             closeTrade(acct, tradeOpen, tim.ts, lmsc, netc, "expired")
             return false
@@ -99,27 +107,29 @@ getCurp(chain::ChainInfo) = chain.under.under
 
 function calcMargin(trades::AbstractVector{<:TradeBTOpen}, bal::PT)::MarginInfo
     # Brokerage might consider margin offsets only for the same expiration, but for me, the risk is across all expirations, so I'll count it that way.
-    countLong = 0
-    countShort = 0
+    # countLong = 0
+    # countShort = 0
     marginLong = CZ
     marginShort = CZ
     for trade in trades
         multiple = trade.multiple
-        margAdd = calcMargin(trade)
-        side = trad.side(trade)
-        if side == Side.long
-            marginLong += margAdd
-            countLong += multiple
-        else
-            marginShort += margAdd
-            countShort += multiple
-        end
+        margAdd = Pricing.calcMargin(trade.lms)
+        marginLong += multiple * margAdd.long
+        marginShort += multiple * margAdd.short
+        # side = trad.side(trade)
+        # if side == Side.long
+        #     marginLong += margAdd
+        #     countLong += multiple
+        # else
+        #     marginShort += margAdd
+        #     countShort += multiple
+        # end
     end
     marginTotal = max(marginLong, marginShort)
-    return MarginInfo(marginTotal, F(marginTotal) / bal, MarginSide(marginLong, countLong), MarginSide(marginShort, countShort))
+    return MarginInfo(marginTotal, F(marginTotal) / bal, MarginSide(marginLong, 0), MarginSide(marginShort, 0))
 end
 
-calcMargin(trade::TradeBTOpen) = trade.multiple * Pricing.calcMargin(trade.lms)
+# calcMargin(trade::TradeBTOpen) = trade.multiple * Pricing.calcMargin(trade.lms)
 #endregion
 
 #region Trading
@@ -151,9 +161,9 @@ function openTrade(acct, ts, lmso, neto::PT, margin::Sides{PT}, multiple::Int, l
     tradeOpen = TradeBTOpen(id, ts, lmso, neto, margin, multiple, label, extra)
     push!(acct.open, tradeOpen)
     acct.bal += multiple * neto
-    acct.margin = ac.marginAdd(acct.bal, acct.margin, trad.side(tradeOpen), multiple, calcMargin(tradeOpen))
+    acct.margin = ac.marginAdd(acct.bal, acct.margin, multiple, Pricing.calcMargin(tradeOpen.lms))
     # blog("Open #$(tradeOpen.id) $(pp((;neto, multiple, strikes=getStrike.(lmso)))), $(pp(extra))")
-    @blog "Open $(label) #$(tradeOpen.id) $(Shorthand.sh(lmso))" neto multiple dmargin=(-calcMargin(tradeOpen)) extra
+    @blog "Open $(label) #$(tradeOpen.id) $(Shorthand.sh(lmso))" neto multiple dmargin=(-max(Pricing.calcMargin(tradeOpen.lms))) extra
     return
 end
 
@@ -163,8 +173,8 @@ function closeTrade(acct, tradeOpen, ts, lmsc, netc, label)::Nothing
     push!(acct.closed, trade)
     acct.bal += tradeOpen.multiple * netc
     pnl = tradeOpen.neto + netc
-    acct.margin = ac.marginAdd(acct.bal, acct.margin, trad.side(tradeOpen), tradeOpen.multiple, -calcMargin(tradeOpen))
-    @blog "Close $(label) #$(tradeOpen.id) $(Shorthand.sh(lmsc))" neto=tradeOpen.neto netc pnl multiple=tradeOpen.multiple rate=trad.rate(trade) dmargin=calcMargin(tradeOpen) openDur=trad.openDur(trade) bdaysLeft=trad.bdaysLeft(Date(ts), trade)
+    acct.margin = ac.marginAdd(acct.bal, acct.margin, -tradeOpen.multiple, Pricing.calcMargin(tradeOpen.lms))
+    @blog "Close $(label) #$(tradeOpen.id) $(Shorthand.sh(lmsc))" neto=tradeOpen.neto netc pnl multiple=tradeOpen.multiple rate=trad.rate(trade) dmargin=max(Pricing.calcMargin(tradeOpen.lms)) openDur=trad.openDur(trade) bdaysLeft=trad.bdaysLeft(Date(ts), trade)
     return
 end
 #endregion

@@ -24,7 +24,11 @@ function wrapErr(f)
         try
             f(args...)
         catch e
-            showerror(stderr, e, catch_backtrace()) ; println(stderr)
+            if e isa InterruptException
+                rethrow(e)
+            else
+                showerror(stderr, e, catch_backtrace()) ; println(stderr)
+            end
         end
     end
 end

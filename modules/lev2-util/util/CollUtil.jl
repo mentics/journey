@@ -200,6 +200,18 @@ function accum!(op, B, A; dims::Union{Integer, Nothing} = nothing, init = _Defin
     Base._accumulate!(op, B, A, dims, init === _DefinitelyNothingThisTime ? nothing : Some(init))
 end
 
+function vtToTv(vt)
+    vs = map(x -> Vector{typeof(x)}(), first(vt))
+    jinds = eachindex(first(vt))
+    for i in eachindex(vt)
+        tup = vt[i]
+        for j in jinds
+            push!(vs[j], tup[j])
+        end
+    end
+    return vs
+end
+
 # function accumul!(op, B, A; dims::Union{Integer, Nothing} = nothing, kw...)
 #     if isnothing(init)
 #         Base._accumulate!(op, B, A, dims, nothing)

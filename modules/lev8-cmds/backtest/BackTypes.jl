@@ -7,6 +7,7 @@ export Strat, Account, TradeBTOpen, TradeBTClose, TradeBT, MarginSide, MarginInf
 function pricingOpen end
 function pricingClose end
 function checkExit end
+function hasMultExpirs end
 
 abstract type Strat end
 abstract type TradeBTStage end

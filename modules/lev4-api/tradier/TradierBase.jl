@@ -37,7 +37,7 @@ function tradierPost(pathQuery::AbstractString, payload::AbstractString, info::C
             return resp
         catch e
             @log error "HTTP error in tradierPost:" url payload
-            rethrow()
+            rethrow(e)
         end
     end
 end
@@ -70,7 +70,7 @@ function tradierDelete(pathQuery::AbstractString, info::CallInfo{T}; retries=0):
             return resp
         catch e
             @log error "HTTP error in tradierDelete:" url
-            rethrow()
+            rethrow(e)
         end
     end
 

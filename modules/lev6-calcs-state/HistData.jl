@@ -148,7 +148,11 @@ function updateDaily(sym)::DailyType
             end
         end
     catch
-        @warn "Could not update HistData: " path
+        if e isa InterruptException
+            rethrow(e)
+        else
+            @warn "Could not update HistData: " path
+        end
     end
     return load(path)
 end

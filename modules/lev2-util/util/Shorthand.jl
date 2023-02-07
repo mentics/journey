@@ -65,6 +65,22 @@ function shLegs(sh::AbstractString)::Vector{Leg}
     return shLegs(legs, expirs)
 end
 
+# l285.0p@2020-09-30 / l287.0p@2020-12-18 / s302.0p@2020-12-18
+export shlegs
+function shlegs(str)
+    ss = split(str, r"\s*/\s*")
+    return Tuple(shleg(s) for s in ss)
+end
+function shleg(str)
+    m = match(r"(.)([\d\.]+)(.)(\d)?@(.+)", str)
+    xs = m.captures
+    styl = to(Style.T, xs[3])
+    sid = to(Side.T, xs[1])
+    qty = !isnothing(xs[4]) ? parse(Int, xs[4]) : 1
+    ex = Date(xs[5])
+    return Leg(Option(styl, ex, parse(Currency, xs[2])), Float64(qty), sid)
+end
+
 # # module Test
 # # import ..shOrder
 # # using StructEquality

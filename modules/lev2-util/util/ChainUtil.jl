@@ -34,9 +34,10 @@ end
 
 otoqToStoq(otoq::Otoq, xpir::Date, style::Style.T) = otoq[xpir][style]
 
-oToOq(chainOtoq::Otoq, opt::Option)::Union{OptionQuote,Nothing} =
-        get(get(chainOtoq, getExpir(opt), nothing)[getStyle(opt)], getStrike(opt), nothing)
-xssToq(chainOtoq::Otoq, xpir::Date, style::Style.T, strike::Currency) = return chainOtoq[xpir][style][strike]
+oToOq(otoq::Otoq, opt::Option)::Union{OptionQuote,Nothing} = xssToq(otoq, getExpir(opt), getStyle(opt), getStrike(opt))
+        # get(get(chainOtoq, getExpir(opt), nothing)[getStyle(opt)], getStrike(opt), nothing)
+xssToq(otoq::Otoq, xpir::Date, style::Style.T, strike::Currency) = # return otoq[xpir][style][strike]
+        get(get(otoq, xpir, nothing)[style], strike, nothing)
 
 function oqsLteCurpRat(search::ChainSearch, rat::Float64)::Vector{OptionQuote}
     strikeMax = search.curp * rat

@@ -68,11 +68,6 @@ end
 #     end
 # end
 
-# function calcMargin(lms::NTuple{2,LegMetaOpen})::Sides{Currency}
-#     @assert getSide(lms[1]) != getSide(lms[2])
-#     return calcWidth(lms[1], lms[2])
-# end
-
 function calcMargin(lms::NTuple{2,T})::Sides{Currency} where T
     side1 = getSide(lms[1])
     @assert side1 != getSide(lms[2])
@@ -96,45 +91,22 @@ end
 #     return s1 + s3 # s1 + s2 + s3
 # end
 
-function calcMargin(lms::NTuple{3,<:LegType})::PT
-    lm1 = lms[1]
-    lm2 = lms[2]
-    if getSide(lm1) == Side.short
-        @assert getSide(lm2) == Side.long && getSide(lms[3]) == Side.long
-        return getQuantity(lm1) * calcWidth(lm1, lm2)
-    else
-        # not planning to try long/short/long so can skip
-        # if getSide(lm2) == Side.short
-        #     @assert getSide(lms[1]) == Side.long && getSide(lms[3]) == Side.long
-        # else
-            lm3 = lms[3]
-            @assert getSide(lm1) == Side.long && getSide(lm2) == Side.long && getSide(lm3) == Side.short
-            return getQuantity(lm3) * calcWidth(lm2, lm3)
-        # end
-    end
-    # side1 = getSide(lms[1])
-    # side2 = getSide(lms[2])
-    # if side1 == side2
-    #     width = calcWidth(lms[2], lms[3])
-    #     dir = toOther(side2) # TODO: or get side 3?
-    # else
-    #     width = calcWidth(lms[1], lms[2])
-    #     dir = side2
-    # end
-    # return dir == Side.long ? Sides(width, CZ) : Sides(CZ, width)
+# This assumes two longs and a short and that the short is not in the middle
+function calcMargin(lms::NTuple{3,<:LegType})::Sides{Currency}
+    side1 = getSide(lms[1])
+    side3 = getSide(lms[3])
+    @assert side1 != side3
+    width = C(side1 == Side.long ? getQuantity(lms[3]) * calcWidth(lms[2], lms[3]) : getQuantity(lms[1]) * calcWidth(lms[1], lms[2]))
+    return side1 == Side.long ? Sides(width, CZ) : Sides(0.0, CZ)
 end
 
+# This assumes two longs and a short and that the short is not in the middle
 function calcMarginFloat(lms::NTuple{3,<:LegType})::Sides{Float64}
     side1 = getSide(lms[1])
-    side2 = getSide(lms[2])
-    if side1 == side2
-        width = F(calcWidth(lms[2], lms[3]))
-        dir = toOther(side2)
-    else
-        width = F(calcWidth(lms[1], lms[2]))
-        dir = side2
-    end
-    return dir == Side.long ? Sides(width, 0.0) : Sides(0.0, width)
+    side3 = getSide(lms[3])
+    @assert side1 != side3
+    width = side1 == Side.long ? F(getQuantity(lms[3])) * F(calcWidth(lms[2], lms[3])) : F(getQuantity(lms[1])) * F(calcWidth(lms[1], lms[2]))
+    return side1 == Side.long ? Sides(width, 0.0) : Sides(0.0, width)
 end
 
 # function calcMargin(lms::Coll{LegMetaOpen})::Currency

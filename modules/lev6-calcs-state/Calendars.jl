@@ -156,9 +156,13 @@ function updateState()
         @atomic MktState.isOpen = isOpen
         @atomic MktState.nextChange = nextChange
     catch
-        @warn "Could not Calendars.updateState()"
-        @atomic MktState.isOpen = false
-        @atomic MktState.nextChange = ts + Day(1)
+        if e isa InterruptException
+            rethrow(e)
+        else
+            @warn "Could not Calendars.updateState()"
+            @atomic MktState.isOpen = false
+            @atomic MktState.nextChange = ts + Day(1)
+        end
     end
     @atomic MktState.ts = ts
 end

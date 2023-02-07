@@ -24,18 +24,26 @@ acctTsStart(acct)::DateTime =
 marginMax(acct::Account)::PT = acct.bal - 50.0 # TODO: make param?
 marginAvail(acct)::Sides{PT} = ( mx = marginMax(acct) ; Sides(mx - acct.margin.long.margin, mx - acct.margin.short.margin) )
 
-function marginAdd(bal::PT, m1::MarginInfo, side::Side.T, multiple::Int, margAdd::PT)::MarginInfo
-    if side == Side.long
-        long = MarginSide(m1.long.margin + margAdd, m1.long.count + multiple)
-        short = m1.short
-    else
-        long = m1.long
-        short = MarginSide(m1.short.margin + margAdd, m1.short.count + multiple)
-    end
+function marginAdd(bal::PT, m1::MarginInfo, multiple::Int, margAdd::Sides{Currency})::MarginInfo
+    long = margAdd.long > 0 ? MarginSide(m1.long.margin + multiple * margAdd.long, m1.long.count + multiple) : m1.long
+    short = margAdd.short > 0 ? MarginSide(m1.short.margin + multiple * margAdd.short, m1.short.count + multiple) : m1.short
     tot = max(long.margin, short.margin)
     rat = tot / bal
     return MarginInfo(tot, rat, long, short)
 end
+
+# function marginAdd(bal::PT, m1::MarginInfo, side::Side.T, multiple::Int, margAdd::PT)::MarginInfo
+#     if side == Side.long
+#         long = MarginSide(m1.long.margin + margAdd, m1.long.count + multiple)
+#         short = m1.short
+#     else
+#         long = m1.long
+#         short = MarginSide(m1.short.margin + margAdd, m1.short.count + multiple)
+#     end
+#     tot = max(long.margin, short.margin)
+#     rat = tot / bal
+#     return MarginInfo(tot, rat, long, short)
+# end
 
 # function marginAdd(bal::PT, m1::MarginInfo, m2::MarginInfo)::MarginInfo
 #     mlong = marginSideAdd(m1.long, m2.long)
@@ -67,6 +75,7 @@ targetDate(trade::TradeBT) = targetDate(trade.open)
 targetRatio(t::TradeBTOpen, date::Date) = ( to = targetDate(t) ; bdays(date, to) / bdays(Date(t.ts), to) )
 tsClose(trade::TradeBT) = trade.close.ts
 pnl(trade) = trade.open.neto + trade.close.netc
+pnlm(trade) = trade.open.multiple * (trade.open.neto + trade.close.netc)
 # rate(trade) = DateUtil.calcRate(Date(trade.open.ts), Date(trade.close.ts), pnl(trade), max(trade.open.margin))
 function rate(trade::TradeBT)
     # @show Date(trade.open.ts) Date(trade.close.ts) pnl(trade) max(trade.open.margin)
