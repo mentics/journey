@@ -47,7 +47,7 @@ end
 
 makeStrat() = TStrat(
     (3,Scoring),
-    Params(C(1000), 0.084, 0.3, 0.06, 0.95, 0.02, 0.1, 0.05, 0.5, 8, 84),
+    Params(C(1000), 0.1, 0.2, 0.2, 0.7, 0.02, 0.001, 0.05, 0.5, 8, 84),
     makeCtx(),
 )
 
@@ -62,7 +62,7 @@ struct TStrat <: Strat
     ctx::Context
 end
 
-BackTypes.hasMultExpirs(::TStrat) = false # true
+BackTypes.hasMultExpirs(::TStrat) = false
 
 makeCtx() = Context(Vector{Cand}(), Vector{Cand}())
 #endregion
@@ -255,18 +255,20 @@ function score(lms, params, prob, tmult)
     rate >= params.MinRate || ( @deb "no score rate" rate params.MinRate ; return nothing )
 
     # TODO: mult xpir won't work with this kel calc
-    # kel = calcKel(params, tmult, neto, risk, prob, LL.toSections(lms))
-    # kel > 0 || return nothing # ( deb("kel $(kel) <= 0, $(rate), $(tmult), $(neto), $(risk)") ; return nothing )
+    kel = calcKel(params, tmult, neto, risk, prob, LL.toSections(lms))
+    kel > 0 || ( @deb "no score kel" kel rate tmult neto risk ; return nothing )
 
     # score = rate * kel
     gks = getGreeks(lms)
-    # TODO: could require vega > delta
-    gks.theta + gks.vega > gks.delta || ( @deb "no score thetavega>delta" gks.theta gks.vega gks.delta ; return nothing )
+
+    # gks.theta + gks.vega > gks.delta || ( @deb "no score thetavega>delta" gks.theta gks.vega gks.delta ; return nothing )
+
     # score = rate * (gks.theta + gks.vega)
     # score = gks.theta + gks.vega - gks.delta
     # score = rate * (gks.theta + gks.vega - gks.delta)
-    score = gks.theta + gks.vega - gks.delta
-    return ((;score, neto, margin), Scoring(neto, risk, rate, 1.0))
+    score = kel * (gks.theta + gks.vega - gks.delta)
+    # score = gks.theta + gks.vega - gks.delta
+    return ((;score, neto, margin), Scoring(neto, risk, rate, kel))
 
     # Note: tested below for short entries
     # score = gks.theta + gks.delta - gks.vega
@@ -293,13 +295,13 @@ end
 qtyForAvail(avail, risk, kel)::Int = round(Int, kel * avail / risk, RoundDown)
 
 function calcKel(params, tmult, neto, risk, prob, sections, adjust=true)
-    if adjust
-        # ret = round(neto - .01 - risk * (MoneyValueAPR * ExpDurRatioAvg / tmult), RoundDown; digits=2)
-        ret = round(neto - risk * (params.MoneyValueAPR * params.ExpDurRatioAvg / tmult), RoundDown; digits=2)
-        ret > 0 || return -Inf
-    else
+    # if adjust
+    #     # ret = round(neto - .01 - risk * (MoneyValueAPR * ExpDurRatioAvg / tmult), RoundDown; digits=2)
+    #     ret = round(neto - risk * (params.MoneyValueAPR * params.ExpDurRatioAvg / tmult), RoundDown; digits=2)
+    #     ret > 0 || return -Inf
+    # else
         ret = neto
-    end
+    # end
     # rateAdj = calcRate(tmult, ret, risk)
     winRat = calcWinRat(prob, sections)
     # side = Side.long

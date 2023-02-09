@@ -142,16 +142,18 @@ function loadMonth(y, m)
     tunder = Dict{DateTime,UnderTime}()
     sizehint!(tunder, HINT_TSS)
     loadUnder(toUnd(tunder), pathUnder)
-    @assert keys(calls) == keys(puts) == keys(tunder)
+    @assert keys(calls) == keys(puts) == keys(tunder) string("loadMonth keys didn't match", (y,m))
     for ts in keys(calls)
         callsts = calls[ts]
         putsts = puts[ts]
         xpirsCalls = keys(callsts)
         xpirsPuts = keys(putsts)
+        xpirs = xpirsCalls
         if xpirsCalls != xpirsPuts
             global keepXpirsCalls = xpirsCalls
             global keepXpirsPuts = xpirsPuts
             println("Unexpected xpirsCalls != xpirsPuts for year/month: $(y)/$(m)")
+            xpirs = intersect!(xpirsCalls, xpirsPuts)
         end
         xsoqs = Dict{Date,Styles{Vector{OptionQuote}}}()
         xpirs = filter!(x -> x < Date(2025, 1, 1), sort!(collect(xpirsCalls)))

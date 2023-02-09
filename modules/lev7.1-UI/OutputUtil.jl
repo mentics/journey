@@ -118,12 +118,13 @@ const RX1 = r"\n *" => " "
 const RX2 = r"({ |, )\"([^\"]+?)\": " => s"\1\2:"
 const RX3 = r"\b\d+\.\d{6,20}\b" => x -> round(parse(Float64, x); digits=5)
 function pp(x)
-    s = sprint(JSON3.pretty, x)
+    s = sprint(jsonpretty, x)
     return replace(replace(s, RX1), RX2, RX3)
 end
 pp(x::AbstractString) = x
 import HTTP
 pp(x::HTTP.Messages.Response) = string(x)
+jsonpretty(io, x) = JSON3.pretty(io, x; allow_inf=true)
 
 # JSON3.tostring(x::Float64) = rd5(x)
 

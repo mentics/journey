@@ -114,6 +114,14 @@ function drawRes(xys)
 end
 #endregion
 
+#region LyzeClosed
+function medianDurs(acct=bt.keepAcct)
+    trades = acct.closed
+    durs = map(trade -> trade.close.ts - trade.open.ts, trades)
+    StatsBase.median(durs)
+end
+#endregion
+
 #region Points
 module pts
 using BaseTypes, BackTypes, ..bt.trad, Pricing
