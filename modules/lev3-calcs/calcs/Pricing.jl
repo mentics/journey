@@ -4,6 +4,20 @@ import OptionUtil
 
 export bap
 
+price(has)::Currency = price(getQuote(has))
+price(hass::Coll)::Currency = sum(price, hass)
+function price(qt::Quote)::Currency
+    b = getBid(qt)
+    a = getAsk(qt)
+    spread = a - b
+    if spread < 0.4
+        mult = round(Int, spread / 0.04, RoundDown)
+        return b + mult * 0.01
+    else
+        return b + 0.1
+    end
+end
+
 bap(qt::Quote, r=.2)::Currency = improve(qt, r)
 bap(hasQuote, r=.2)::Currency = improve(getQuote(hasQuote), r)
 bap(hasQuotes::Coll, r=.2)::Currency = round(sum(bap.(getQuote.(hasQuotes), r)), RoundDown; digits=2)

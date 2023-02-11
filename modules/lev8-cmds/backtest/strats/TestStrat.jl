@@ -47,7 +47,7 @@ end
 
 makeStrat() = TStrat(
     (3,Scoring),
-    Params(C(1000), 0.1, 0.2, 0.2, 0.7, 0.02, 0.001, 0.05, 0.5, 8, 84),
+    Params(C(1000), 0.1, 0.2, 0.2, 0.9, 0.12, 0.001, 0.05, 0.5, 8, 84),
     makeCtx(),
 )
 
@@ -93,8 +93,9 @@ function (s::TStrat)(ops, tim, chain, otoq)::Nothing
         searchLong = ch.toSearch(curp, chain.xsoqs[xpir].put)
         # searchShort = ch.toSearch(curp, chain.xsoqs[xpir].call)
         prob = ProbKde.probToClose(F(fromPrice), F(HistData.vixOpen(tim.date)), tim.ts, xpir)
-        findEntry!(keepLong, params, prob, searchLong, otoq, xpirsExtra, tmult)
+        # findEntry!(keepLong, params, prob, searchLong, otoq, xpirsExtra, tmult)
         # findEntryShort!(keepShort, params, prob, searchShort, tmult)
+        findEntryFixed!(keepLong, params, prob, searchLong, otoq, xpirsExtra, tmult)
     end
     if !isempty(keepLong)
         # TODO: identify if new opportunity is better than currently open one
@@ -172,6 +173,24 @@ firstNinf(x) = first(x)
 #endregion
 
 #region Find
+function findEntryFixed!(keep, params, prob, search, otoq, xpirsExtra, args...)
+    # strikeExt, _ = ProbUtil.probFromRight(prob, params.ProbMin)
+    oqs = ch.oqsLteCurpRat(search, 0.9)
+    length(oqs) >= 9 || return
+    # println("oqs ", length(oqs))
+    oq1, oq2, oq3 = (oqs[end], oqs[end-4], oqs[end-8])
+    lms = (LegMetaOpen(oq3, Side.long), LegMetaOpen(oq2, Side.long), LegMetaOpen(oq1, Side.short))
+    global keepLms = lms
+    r = score(lms, params, prob, args...)
+    if !isnothing(r) && (isempty(keep) || r[1].score > keep[end].score)
+        # TODO: not optimized
+        info, about = r
+        push!(keep, Cand(lms, info..., about))
+        sort!(keep; rev=true, by=x->x.score)
+        length(keep) <= 10 || pop!(keep)
+    end
+end
+
 function findEntry!(keep, params, prob, search, otoq, xpirsExtra, args...)
     strikeExt, _ = ProbUtil.probFromRight(prob, params.ProbMin)
     oqs = ch.oqsLteCurp(search, strikeExt)
@@ -277,8 +296,8 @@ end
 #endregion
 
 #region Util
-calcPrice(lms)::PT = toPT(bap(lms, 0.0))
-calcPriceFast(lms)::Float64 = Pricing.bapFast(lms, 0.0)
+calcPrice(lms)::PT = toPT(Pricing.price(lms)) # toPT(bap(lms, 0.0)) + P(0.02)
+calcPriceFast(lms)::Float64 = Pricing.price(lms) # Pricing.bapFast(lms, 0.0) + 0.02
 function qtyForMargin(maxMarginPerTrade, avail, marginTrade, kel)::Int
     # @show maxMarginPerTrade avail marginTrade kel
     long = marginTrade.long > 0 ? qtyForAvail(avail.long, marginTrade.long, kel) : typemax(Int)

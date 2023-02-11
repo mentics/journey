@@ -45,11 +45,11 @@ function oqsLteCurpRat(search::ChainSearch, rat::Float64)::Vector{OptionQuote}
     return search.oqs[1:i]
 end
 
-function oqsLteCurp(search::ChainSearch, strikeMax)::Vector{OptionQuote}
+function oqsLte(search::ChainSearch, strikeMax)::Vector{OptionQuote}
     i = CollUtil.ltee(search.strikes, strikeMax)
     return search.oqs[1:i]
 end
-function oqsGteCurp(search::ChainSearch, strikeMin)::Vector{OptionQuote}
+function oqsGte(search::ChainSearch, strikeMin)::Vector{OptionQuote}
     i = CollUtil.gtee(search.strikes, strikeMin)
     return search.oqs[i:end]
 end
