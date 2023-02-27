@@ -25,4 +25,21 @@ function setupTeardown(f, setup, tearDown)
     end
 end
 
+# using Parsers, BaseTypes
+# Base.tryparse(::Type{Currency}, s::String) = Base.parse(Currency, s)
+# function testparse(s)
+#     len = length(s)
+#     io = IOBuffer(s)
+#     Parsers.xparse(Currency, io, 1, len)
+# end
+
+function testSymbols()
+    s1 = :sym1
+    s2 = :sym2
+    setproperty!(@__MODULE__, s1, 1)
+    setproperty!(@__MODULE__, s2, 2)
+    getproperty(@__MODULE__, s1)
+    getproperty(@__MODULE__, s2)
+end
+
 end

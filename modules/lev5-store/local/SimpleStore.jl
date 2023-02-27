@@ -161,7 +161,7 @@ function loadMonth(y, m)
             xpirs = intersect(xpirsCalls, xpirsPuts)
         end
         xsoqs = Dict{Date,Styles{Vector{OptionQuote}}}()
-        xpirs = filter!(x -> x < Date(2025, 1, 1), sort!(collect(xpirsCalls)))
+        xpirs = filter!(x -> x < Date(2025, 1, 1), sort!(collect(xpirs)))
         for xpir in xpirs
             xsoqs[xpir] = Styles(callsts[xpir], putsts[xpir])
         end

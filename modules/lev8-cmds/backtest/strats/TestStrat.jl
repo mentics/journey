@@ -47,7 +47,7 @@ end
 
 makeStrat() = TStrat(
     (3,Scoring),
-    Params(C(1000), 0.1, 0.2, 0.2, 0.9, 0.12, 0.001, 0.05, 0.5, 8, 84),
+    Params(C(1000), 0.08, 0.315, 0.2, 0.9, 0.04, 0.001, 0.05, 0.5, 8, 84),
     makeCtx(),
 )
 
@@ -174,11 +174,23 @@ firstNinf(x) = first(x)
 
 #region Find
 function findEntryFixed!(keep, params, prob, search, otoq, xpirsExtra, args...)
+    curp = search.curp
+    w1 = 0.04 * curp
     # strikeExt, _ = ProbUtil.probFromRight(prob, params.ProbMin)
-    oqs = ch.oqsLteCurpRat(search, 0.9)
-    length(oqs) >= 9 || return
+    oqs = ch.oqsLteCurpRat(search, 0.95)
+    length(oqs) >= 3 || return
     # println("oqs ", length(oqs))
-    oq1, oq2, oq3 = (oqs[end], oqs[end-4], oqs[end-8])
+    oq1 = oqs[end]
+    strike1 = getStrike(oq1)
+    i2 = findlast(x -> getStrike(x) <= strike1 - w1, oqs)
+    !isnothing(i2) || return
+    oq2 = oqs[i2]
+    strike2 = getStrike(oq2)
+    i3 = findlast(x -> getStrike(x) <= strike2 - w1, oqs)
+    !isnothing(i3) || return
+    oq3 = oqs[i3]
+    # @show strike1 getStrike(oq1) getStrike(oq2) getStrike(oq3)
+    # oq1, oq2, oq3 = (oqs[end], oqs[end-4], oqs[end-8])
     lms = (LegMetaOpen(oq3, Side.long), LegMetaOpen(oq2, Side.long), LegMetaOpen(oq1, Side.short))
     global keepLms = lms
     r = score(lms, params, prob, args...)

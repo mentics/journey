@@ -21,7 +21,7 @@ function showResult(info=bt.info, acct=bt.keepAcct, params=bt.keepParams)::Nothi
     rateMean = StatsBase.mean(map(t -> trad.rate(t), acct.closed))
     rateMedian = StatsBase.median(map(t -> trad.rate(t), acct.closed))
     rr = rpnl < 0.0 ? rpnl : (1 + rpnl / params.balInit) ^ (1 / (days / DateUtil.bdaysPerYear())) - 1
-    @blog "Summary $(dateFrom) - $(dateTo) (ran $(days) bdays):"
+    @blog "Summary $(dateFrom) - $(dateTo) (ran $(days) bdays): $(pnlCount(acct))"
     @blog "  bal = $(acct.bal), balReal = $(balReal), rpnl = $(rpnl)" # , urpnl = $(unreal)")
     # blog("  Total: $(rd5(total))")
     @blog "  overall realized rate: $(rd5(rr))"
@@ -30,7 +30,7 @@ function showResult(info=bt.info, acct=bt.keepAcct, params=bt.keepParams)::Nothi
     # blog("  openMax: $(acct.openMax)")
     # blog("  marginMax: $(acct.marginMax)")
 
-    println("Summary $(dateFrom) - $(dateTo) (ran $(days) bdays):")
+    println("Summary $(dateFrom) - $(dateTo) (ran $(days) bdays): $(pnlCount(acct))")
     println("  bal = $(acct.bal), balReal = $(balReal), rpnl = $(rpnl)") # , urpnl = $(unreal)")
     # println("  Total: $(total)")
     println("  overall realized rate: $(rd5(rr))")
@@ -119,6 +119,12 @@ function medianDurs(acct=bt.keepAcct)
     trades = acct.closed
     durs = map(trade -> trade.close.ts - trade.open.ts, trades)
     StatsBase.median(durs)
+end
+function pnlCount(acct=bt.keepAcct)
+    wins, losses = reduce(acct.closed; init=(0,0)) do a, trade
+        trad.pnl(trade) > 0 ? (first(a) + 1, last(a)) : (first(a), last(a) + 1)
+    end
+    return (;wins, losses)
 end
 #endregion
 

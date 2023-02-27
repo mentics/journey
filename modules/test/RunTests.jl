@@ -9,7 +9,7 @@ function runTestsAll()::Nothing
                 _, fn = splitdir(file)
                 testName, _ = splitext(fn)
                 # @info "Running test" testName
-                eval(Meta.parse("using $(testName)"))
+                eval(Meta.parse("import $(testName)"))
                 eval(Meta.parse("$(testName).runTests()"))
             end
         end
