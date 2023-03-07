@@ -24,7 +24,7 @@ acctTsStart(acct)::DateTime =
 marginMax(acct::Account)::PT = acct.bal - 50.0 # TODO: make param?
 marginAvail(acct)::Sides{PT} = ( mx = marginMax(acct) ; Sides(mx - acct.margin.long.margin, mx - acct.margin.short.margin) )
 
-function marginAdd(bal::PT, m1::MarginInfo, multiple::Int, margAdd::Sides{Currency})::MarginInfo
+function marginAdd(bal::PT, m1::MarginInfo, multiple::Int, margAdd::Sides{PT})::MarginInfo
     long = margAdd.long > 0 ? MarginSide(m1.long.margin + multiple * margAdd.long, m1.long.count + multiple) : m1.long
     short = margAdd.short > 0 ? MarginSide(m1.short.margin + multiple * margAdd.short, m1.short.count + multiple) : m1.short
     tot = max(long.margin, short.margin)

@@ -7,7 +7,7 @@ export drawRet, drawRet!
 
 # drawRet(r::Ret; probs=nothing, cp=nothing, label="", newWin=false) = drawRet(r, probs, cp, label; newWin)
 function drawRet(r::Ret; probs=nothing, curp=nothing, label="", newWin=false)
-    newWin || closeWin()
+    # newWin || closeWin()
     sp = r.center
     if hasproperty(Main, :save) && haskey(Main.save, :drawExtentHalf)
         extentHalf = Main.save[:drawExtentHalf]
@@ -21,7 +21,7 @@ function drawRet(r::Ret; probs=nothing, curp=nothing, label="", newWin=false)
     xrange = (xs[1] - 0.5 * sp * Bins.width(), xs[end] + 0.5 * sp * Bins.width())
     # yMin, yMax = extrema(vals)
     yMin, yMax = (-5.0, 5.0)
-    ax = newFig(ticksCentered(sp, xrange, (yMin, yMax)), newWin) do fig, ax
+    ax = newFig(DrawUtil.ticksCentered(sp, xrange, (yMin, yMax)), newWin) do fig, ax
         # TODO: draw on fig arg
         if !isnothing(probs)
             for (i, prob) in enumerate(probs)

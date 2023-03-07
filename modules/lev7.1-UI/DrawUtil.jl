@@ -157,9 +157,9 @@ closeWin() = GLMakie.closeall()
 #endregion
 
 #region Util
-# rnd(x, m, mode=RoundNearest) = round(x / m, mode) * m
-# rndUp(x, m) = rnd(x, m, RoundUp)
-# rndDown(x, m) = rnd(x, m, RoundDown)
+rnd(x, m, mode=RoundNearest) = round(x / m, mode) * m
+rndUp(x, m) = rnd(x, m, RoundUp)
+rndDown(x, m) = rnd(x, m, RoundDown)
 #endregion
 
 #region Old

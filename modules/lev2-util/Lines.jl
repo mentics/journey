@@ -105,6 +105,36 @@ function combine(l1::Right, l2::Right, l3::Right)::Segments{3}
     )
     return segs
 end
+
+combine(ls::Tuple{Left,Right,Right,Right}) = combine(ls...)
+function combine(l1::Left, l2::Right, l3::Right, l4::Right)::Segments{4}
+    @assert l1.point.x < l2.point.x < l3.point.x < l4.point.x
+    y1 = l1.point.y + l2.point.y + l3.point.y + l4.point.y
+    y2 = y1
+    y3 = y2 + l2.slope * (l3.point.x - l2.point.x)
+    y4 = y3 + (l2.slope + l3.slope) * (l4.point.x - l3.point.x)
+    slope23 = l2.slope + l3.slope
+    segs = Segments{4}(
+        (l1.slope, 0.0, l2.slope, slope23, slope23 + l4.slope),
+        (Point(l1.point.x, y1), Point(l2.point.x, y2), Point(l3.point.x, y3), Point(l4.point.x, y4))
+    )
+    return segs
+end
+
+combine(ls::Tuple{Left,Left,Right,Right}) = combine(ls...)
+function combine(l1::Left, l2::Left, l3::Right, l4::Right)::Segments{4}
+    @assert l1.point.x < l2.point.x < l3.point.x < l4.point.x
+    y2 = l1.point.y + l2.point.y + l3.point.y + l4.point.y
+    y3 = y2
+    y1 = y2 - l2.slope * (l2.point.x - l1.point.x)
+    y4 = y3 + l3.slope * (l4.point.x - l3.point.x)
+    slope23 = l2.slope + l3.slope
+    segs = Segments{4}(
+        (l1.slope + l2.slope, l2.slope, 0.0, l3.slope, l3.slope + l4.slope),
+        (Point(l1.point.x, y1), Point(l2.point.x, y2), Point(l3.point.x, y3), Point(l4.point.x, y4))
+    )
+    return segs
+end
 # TODO: test above
 
 # function combine(l::Right{T}, r::Left{T})::Segments{3} where T<:SlopeDir
@@ -172,11 +202,6 @@ function Base.:≈(tup1::Tuple, tup2::Tuple)::Bool
         tup1[i] ≈ tup2[i] || return false
     end
     return true
-end
-
-using ComputedFieldTypes
-@computed struct SegmentsZeros{N}
-    s::fulltype(Segments{N})
 end
 
 findZeros(s::Segments{N}) where N = SegmentsZeros{N}(s)

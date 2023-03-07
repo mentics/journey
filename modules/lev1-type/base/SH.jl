@@ -126,7 +126,17 @@ function mapStopNothing(f, t::Tuple{Any,Any,Any})
     y3 = f(t[3])
     return isnothing(y3) ? nothing : (y1, y2, y3)
 end
-
+function mapStopNothing(f, t::Tuple{Any,Any,Any,Any})
+    @inline;
+    y1 = f(t[1])
+    !isnothing(y1) || return nothing
+    y2 = f(t[2])
+    !isnothing(y2) || return nothing
+    y3 = f(t[3])
+    !isnothing(y3) || return nothing
+    y4 = f(t[4])
+    return isnothing(y4) ? nothing : (y1, y2, y3, y4)
+end
 
 export ElType
 struct ElType{T} end

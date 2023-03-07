@@ -18,6 +18,23 @@ function price(qt::Quote)::Currency
     end
 end
 
+priceOpp(has)::Currency = priceOpp(getQuote(has))
+priceOpp(hass::Coll)::Currency = sum(priceOpp, hass)
+function priceOpp(qt::Quote)::Currency
+    a = -getBid(qt)
+    b = -getAsk(qt)
+    spread = a - b
+    if spread < 0.4
+        mult = round(Int, spread / 0.04, RoundDown)
+        return b + mult * 0.01
+    else
+        return b + 0.1
+    end
+end
+
+priceSpread(has)::Currency = price(getQuote(has)) + priceOpp(getQuote(has))
+priceSpread(hass::Coll)::Currency = sum(price, hass) + sum(priceOpp, hass)
+
 bap(qt::Quote, r=.2)::Currency = improve(qt, r)
 bap(hasQuote, r=.2)::Currency = improve(getQuote(hasQuote), r)
 bap(hasQuotes::Coll, r=.2)::Currency = round(sum(bap.(getQuote.(hasQuotes), r)), RoundDown; digits=2)
@@ -106,12 +123,12 @@ end
 # end
 
 # This assumes two longs and a short and that the short is not in the middle
-function calcMargin(lms::NTuple{3,<:LegType})::Sides{Currency}
+function calcMargin(lms::NTuple{3,<:LegType})::Sides{PT}
     side1 = getSide(lms[1])
     side3 = getSide(lms[3])
     @assert side1 != side3
     width = C(side1 == Side.long ? getQuantity(lms[3]) * calcWidth(lms[2], lms[3]) : getQuantity(lms[1]) * calcWidth(lms[1], lms[2]))
-    return side1 == Side.long ? Sides(width, CZ) : Sides(0.0, CZ)
+    return side1 == Side.long ? Sides(P(width), PZ) : Sides(PZ, P(width))
 end
 
 # This assumes two longs and a short and that the short is not in the middle
@@ -122,6 +139,56 @@ function calcMarginFloat(lms::NTuple{3,<:LegType})::Sides{Float64}
     width = side1 == Side.long ? F(getQuantity(lms[3])) * F(calcWidth(lms[2], lms[3])) : F(getQuantity(lms[1])) * F(calcWidth(lms[1], lms[2]))
     return side1 == Side.long ? Sides(width, 0.0) : Sides(0.0, width)
 end
+
+# TODO: don't be lazy
+function calcMargin(lms::NTuple{4,<:LegType})::Sides{PT}
+    m = calcMarginFloat(lms)
+    return Sides(P(m.long), P(m.short))
+end
+function calcMarginFloat(lms::NTuple{4,<:LegType})::Sides{Float64}
+    longs = filter(isLong, lms)
+    shorts = filter(isShort, lms)
+    mult = sum(getQuantity, shorts)
+    marg = mult * abs(getStrike(longs[1]) - getStrike(shorts[1]))
+    return Sides(marg, marg)
+end
+
+
+# TODO: could do more efficient if sorted?
+# Can't use, doesn't support quantities and would get complicated if did
+# function calcMarginFloat(lms::NTuple{4,<:LegType})::Sides{Float64}
+#     longs = [-1,-1]
+#     shorts = [-1,-1]
+#     strikesShort = [0.0, 0.0]
+#     widthsSum = 0.0
+#     numShorts = 0
+#     for i in eachindex(lms)
+#         leg = lms[i]
+#         side = getSide(leg)
+#         if side == Side.short
+#             numShorts += 1
+#             shorts[numShorts] = i
+#             sstrike = F(getStrike(leg))
+#             strikesShort[numShorts] = sstrike
+#             widthMin = 1e9
+#             for j in eachindex(lms)
+#                 (numShorts < 2 && j != longs[1]) || continue
+#                 jleg = lms[j]
+#                 jside = getSide(jleg)
+#                 if jside == Side.long
+#                     jstrike = F(getStrike(jleg))
+#                     w = abs(jstrike - sstrike)
+#                     if w < widthMin
+#                         widthMin = w
+#                         longs[numShorts] = j
+#                     end
+#                 end
+#             end
+#             widthsSum += widthMin
+#         end
+#     end
+#     return Sides(widthsSum, widthsSum)
+# end
 
 # function calcMargin(lms::Coll{LegMetaOpen})::Currency
 #     # TODO: assert all legs have the same expiration? not sure how margin calced for diagonals

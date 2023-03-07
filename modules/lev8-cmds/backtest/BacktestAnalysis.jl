@@ -45,6 +45,11 @@ end
 rateMax() = ( (r, i) = findmax(x -> trad.rate(x), bt.keepAcct.closed) ; (i, r, bt.keepAcct.closed[i]) )
 rateMin() = ( (r, i) = findmin(x -> trad.rate(x), bt.keepAcct.closed) ; (i, r, bt.keepAcct.closed[i]) )
 
+reviewOpen(id::Int) = tradeVal(trad.closed(bt.keepAcct, id))
+reviewOpen(trade) = lyzeOpen(trade) do ts, lms
+    trade.neto + Pricing.price(lms)
+end
+
 tradeTheta(trade) = lyzeTrade(trade) do ts, lms
     getGreeks(lms).theta
 end
@@ -53,12 +58,12 @@ tradeVega(trade) = lyzeTrade(trade) do ts, lms
 end
 tradeVal(id::Int) = tradeVal(trad.closed(bt.keepAcct, id))
 tradeVal(trade) = lyzeTrade(trade) do ts, lms
-    bap(lms, 0.0)
+    Pricing.price(lms)
 end
 
 tradeVal2(id::Int) = tradeVal2(trad.closed(bt.keepAcct, id))
 tradeVal2(trade) = lyzeTrade(trade, NTuple{3,Currency}) do ts, lms
-    bap.(lms, 0.0)
+    Pricing.price.(lms)
 end
 
 tradeCurp(trade) = lyzeTrade(trade) do ts, lms
@@ -69,6 +74,21 @@ tradeVix(trade) = lyzeTrade(trade) do ts, lms
     HistData.vixOpen(Date(ts))
 end
 
+function lyzeOpen(f::Function, trade::TradeBTOpen, ::Type{T}=Float64) where T
+    from = trade.ts
+    to = trad.targetDate(trade)
+    xys = Vector{Tuple{DateTime,T}}()
+    SS.run(from, to) do tim, chain
+        otoq = ChainUtil.toOtoq(chain)
+        lms = tosn(LegMetaClose, trade.lms, otoq)
+        !isnothing(lms) || return
+        y = f(tim.ts, lms)
+        push!(xys, (tim.ts, y))
+        return
+    end
+    drawRes(xys)
+end
+
 function lyzeTrade(f, trade::TradeBT, ::Type{T}=Float64) where T
     from = trade.open.ts
     to = trade.close.ts
@@ -76,7 +96,6 @@ function lyzeTrade(f, trade::TradeBT, ::Type{T}=Float64) where T
     SS.run(from, to) do tim, chain
         otoq = ChainUtil.toOtoq(chain)
         lms = tosn(LegMetaClose, trade.open.lms, otoq)
-        # theta = getGreeks(lms).theta
         !isnothing(lms) || return
         y = f(tim.ts, lms)
         push!(xys, (tim.ts, y))
@@ -86,7 +105,7 @@ function lyzeTrade(f, trade::TradeBT, ::Type{T}=Float64) where T
 end
 
 lmsVal(lms, from::DateTime, to::DateTime) = lyzeLms(lms, from, to) do ts, lms
-    bap(lms, 0.0)
+    Pricing.price(lms)
 end
 
 function lyzeLms(f, lms0, from::DateTime, to::DateTime, ::Type{T}=Float64) where T
@@ -133,7 +152,7 @@ module pts
 using BaseTypes, BackTypes, ..bt.trad, Pricing
 balReal(prev::PT, trade::TradeBT) = prev + trad.pnlm(trade)
 theta(lms) = getGreeks(lms).theta
-price(lms) = bap(lms, .2)
+price(lms) = Pricing.price(lms, .2)
 end
 #endregion
 

@@ -71,11 +71,21 @@ ensureVector(o) = isnothing(o) ? [] : (isa(o, Array) ? o : [o])
 # sortExp!(f, v; kws...) = (sort!(StructArray((f.(v), v)); kws..., by=first); return)
 sortExp!(f, v; kws...) = Base.permute!!(v, sortperm(f.(v); kws...))
 
-# # TODO: optimize this
-# sortTuple(by, tup) = Tuple(sort!(collect(tup); by))
-# # uniqueSortTuple(tup; kws...) = Tuple(unique!(sort!(collect(tup); kws...)))
-
-# sortuple(t::NTuple{4,T})::NTuple{4,T} where T =
+# https://github.com/JeffreySarnoff/SortingNetworks.jl/blob/master/src/swapsort.jl
+(sortuple(t::NTuple{4,T}, by)::NTuple{4,T}) where T = sortuple(t..., by)
+function sortuple(x1::T, x2::T, x3::T, x4::T, by)::NTuple{4,T} where T
+    a, b, c, d = decorate(x1, x2, x3, x4, by)
+    a, b = minmax2(a, b)
+    c, d = minmax2(c, d)
+    a, c = minmax2(a, c)
+    b, d = minmax2(b, d)
+    b, c = minmax2(b, c)
+    return a[2], b[2], c[2], d[2]
+end
+function decorate(x1, x2, x3, x4, by)
+    return ((by(x1), x1), (by(x2), x2), (by(x3), x3), (by(x4), x4))
+end
+minmax2(x1, x2) = x1[1] < x2[1] ? (x1, x2) : (x2, x1)
 
 function prinsert!(v, newVal)::Bool
     newVal > v[1] || return false

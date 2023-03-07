@@ -23,8 +23,8 @@ struct Scoring
     kel::Float64
 end
 
-struct Cand
-    lms::NTuple{3,LegMetaOpen}
+struct Cand{N}
+    lms::NTuple{N,LegMetaOpen}
     score::Float64
     neto::Float64
     margin::Sides{Float64}
@@ -46,14 +46,14 @@ struct Params
 end
 
 makeStrat() = TStrat(
-    (3,Scoring),
-    Params(C(1000), 0.08, 0.315, 0.2, 0.9, 0.04, 0.001, 0.05, 0.5, 8, 84),
+    (4,Scoring),
+    Params(C(1000), 0.05, .21, 0.03, 0.55, 0.11, 0.01, 0.03, 0.25, 31, 57),
     makeCtx(),
 )
 
-struct Context
-    bufCandLong::Vector{Cand}
-    bufCandShort::Vector{Cand}
+struct Context{N}
+    bufCandLong::Vector{Cand{N}}
+    bufCandShort::Vector{Cand{N}}
 end
 
 struct TStrat <: Strat
@@ -64,7 +64,7 @@ end
 
 BackTypes.hasMultExpirs(::TStrat) = false
 
-makeCtx() = Context(Vector{Cand}(), Vector{Cand}())
+makeCtx() = Context(Vector{Cand{4}}(), Vector{Cand{4}}())
 #endregion
 
 #region InterfaceImpl
@@ -82,26 +82,29 @@ function (s::TStrat)(ops, tim, chain, otoq)::Nothing
     xpirs = ch.getXpirs(chain)
     starti = CollUtil.gtee(xpirs, bdaysAfter(tim.date, params.MinXpirBdays))
     endi = CollUtil.gtee(xpirs, bdaysAfter(tim.date, params.MaxXpirBdays))
-    for i in starti:endi
-        xpir = xpirs[i]
-        # extrais = max(starti-2, i * 3 ÷ 4):i
-        extrais = i:i # (i-2):i
-        xpirsExtra = xpirs[extrais]
-        # @show starti endi extrais
-        fromPrice = curp # TODO: could use recent extrema?
-        tmult = timult(tim.date, xpir)
-        searchLong = ch.toSearch(curp, chain.xsoqs[xpir].put)
-        # searchShort = ch.toSearch(curp, chain.xsoqs[xpir].call)
-        prob = ProbKde.probToClose(F(fromPrice), F(HistData.vixOpen(tim.date)), tim.ts, xpir)
-        # findEntry!(keepLong, params, prob, searchLong, otoq, xpirsExtra, tmult)
-        # findEntryShort!(keepShort, params, prob, searchShort, tmult)
-        findEntryFixed!(keepLong, params, prob, searchLong, otoq, xpirsExtra, tmult)
-    end
+    # for i in starti:endi
+    #     xpir = xpirs[i]
+    #     # extrais = max(starti-2, i * 3 ÷ 4):i
+    #     extrais = i:i # (i-2):i
+    #     xpirsExtra = xpirs[extrais]
+    #     tmult = timult(tim.date, xpir)
+    #     # searchLong = ch.toSearch(curp, chain.xsoqs[xpir].put)
+    #     # searchShort = ch.toSearch(curp, chain.xsoqs[xpir].call)
+    #     # fromPrice = curp # TODO: could use recent extrema?
+    #     # prob = ProbKde.probToClose(F(fromPrice), F(HistData.vixOpen(tim.date)), tim.ts, xpir)
+    #     # findEntry!(keepLong, params, prob, searchLong, otoq, xpirsExtra, tmult)
+    #     # findEntryShort!(keepShort, params, prob, searchShort, tmult)
+    #     # findEntryFixed!(keepLong, params, prob, searchLong, otoq, xpirsExtra, tmult)
+    # end
+
+    vix = HistData.vixOpen(tim.date)
+    findEntry4!(keepLong, params, xpirs[starti:endi], chain, vix)
+
     if !isempty(keepLong)
         # TODO: identify if new opportunity is better than currently open one
         if (closeEarlyForMargin(params, tim.ts, ops, otoq))
             x = keepLong[1]
-            multiple = qtyForMargin(s.params.maxMarginPerTradeRat * ops.bal(), ops.marginAvail(), x.margin, x.scoring.kel)
+            multiple = max(1, qtyForMargin(s.params.maxMarginPerTradeRat * ops.bal(), ops.marginAvail(), x.margin, x.scoring.kel))
             if multiple > 0
                 @assert getExpir(x.lms[1]) <= getExpir(x.lms[2])
                 ops.openTrade(tim.ts, x.lms, toPT(x.neto, RoundDown), toPT(x.margin), multiple, "best score $(rd5(x.score))", x.scoring)
@@ -127,9 +130,9 @@ function (s::TStrat)(ops, tim, chain, otoq)::Nothing
 end
 BaseTypes.toPT(sides::Sides{Float64})::Sides{PT} = Sides(toPT(sides.long, RoundDown), round(toPT(sides.short, RoundDown)))
 
-BackTypes.pricingOpen(::TStrat, lmso::NTuple{3,LegMetaOpen}) = calcPrice(lmso)
-BackTypes.pricingClose(::TStrat, lmsc::NTuple{3,LegMetaClose}) = calcPrice(lmsc)
-function BackTypes.checkExit(params::Params, tradeOpen::TradeBTOpen{3,Scoring}, tim, lmsc, curp)::Union{Nothing,String}
+BackTypes.pricingOpen(::TStrat, lmso::NTuple{N,LegMetaOpen}) where N = calcPrice(lmso)
+BackTypes.pricingClose(::TStrat, lmsc::NTuple{N,LegMetaClose}) where N = calcPrice(lmsc)
+function BackTypes.checkExit(params::Params, tradeOpen::TradeBTOpen{4,Scoring}, tim, lmsc, curp)::Union{Nothing,String}
     Date(tradeOpen.ts) < tim.date || return # No closing on the same day
     netc = calcPrice(lmsc)
     curVal = tradeOpen.neto + netc
@@ -173,6 +176,128 @@ firstNinf(x) = first(x)
 #endregion
 
 #region Find
+using ThreadPools, Combinatorics, OptionQuoteTypes
+function score4(params, lms, vix)
+    spread = abs(Pricing.priceSpread(lms))
+    spread <= 0.07 || ( @deb "spread" spread "< 0.1" ; return nothing )
+    gks = getGreeks(lms)
+    d2 = abs(gks.delta) # ^2
+    d2 < 0.0001 || ( @deb "delta2 < 0.00001" d2 ; return nothing )
+    gks.theta > 0.01 || ( @deb "theta > 0.01" gks.theta ; return nothing )
+    g2 = abs(gks.gamma) # ^2
+    g2 < 0.00001 || ( @deb "gamma2 < 0.000001" d2 ; return nothing )
+    vix < 12 && gks.vega < 0 && ( @deb vix "< 12" gks.vega "< 0" ; return nothing )
+    vix > 30 && gks.vega > 0 && ( @deb vix "> 30" gks.vega "> 0" ; return nothing )
+    neto = calcPriceFast(lms)
+    neto >= params.MinNeto || ( @deb "no score neto" neto params.MinNeto ; return nothing )
+    margin = Pricing.calcMarginFloat(lms)
+    risk = max(margin)
+    # if risk <= CZ
+    #     global lmsErr = lms
+    # end
+    # @assert risk > CZ "risk was <= 0"
+    # rate = calcRate(tmult, neto, risk)
+    # rate >= params.MinRate || ( @deb "no score rate" rate params.MinRate ; return nothing )
+    rate = 1.0
+    kel = 1.0
+    score = rate * (gks.theta + max(0.0, gks.vega) - d2 - g2)
+    return ((;score, neto, margin), Scoring(neto, risk, rate, kel))
+end
+function checkScore4!(keep, params, vix, lms)::Bool
+    r = score4(params, lms, vix)
+    if !isnothing(r) && (isempty(keep) || r[1].score > keep[end].score)
+        # TODO: not optimized
+        info, about = r
+        # TODO: sort(combo; by=getStrike)
+        push!(keep, Cand{4}(CollUtil.sortuple(lms, getStrike), info..., about))
+        sort!(keep; rev=true, by=x->x.score)
+        length(keep) <= 10 || pop!(keep)
+        return true
+    end
+    return false
+end
+makeLm(oq, dirq) = LegMetaOpen(oq, dirq < 0 ? Side.long : Side.short, F(abs(dirq)))
+function makeLms(oqs, dirqs)
+    map(makeLm, oqs, dirqs)
+end
+using ThreadsX
+const DIRQS = (-2,-1,1,2)
+function findEntry4!(keep, params, xpirs, chain, vix, args...)::Nothing
+    curp = chain.under.under
+    all = OptionQuote[]
+    for xpir in xpirs
+        all = vcat(all, chain.xsoqs[xpir].put, chain.xsoqs[xpir].call)
+    end
+    filter!(all) do oq
+        s = getStrike(oq)
+        s < curp * 1.1 && s > 0.8 * curp && !(isPut(oq) && s >= curp * 1.001)
+        # s < curp * 1.01 && s > 0.98 * curp
+    end
+    len = length(all)
+    MaxCount = 1000
+    if len > MaxCount
+        resize!(all, MaxCount)
+        blog("resized from ", len, " to ", MaxCount)
+        println("resized from ", len, " to ", MaxCount)
+        len = length(all)
+    end
+    numCombos = binomial(len, 4)
+    println("Checking $(len) options, combos: ", numCombos)
+
+    stop = false
+    # @qbthreads for combo in combos4(all)
+    # @sync qforeach(combos4(all)) do combo
+    ThreadsX.mapi(combos4(all); basesize=1000) do combo
+    # Threads.@threads for combo in combos4(all)
+        try
+            stop || runCombo(keep, params, vix, combo)
+        catch e
+            if e isa InterruptException
+                stop = true
+            end
+            rethrow(e)
+        end
+        if stop
+            # return
+            error("stop")
+        end
+    end
+    return
+end
+# Base.firstindex(x::Base.Generator{Combinatorics.Combinations}) = 1
+function combos4(v)
+    ((v[x[1]], v[x[2]], v[x[3]], v[x[4]]) for x in Combinatorics.Combinations(length(v), 4))
+end
+
+function runCombo(keep, params, vix, combo::NTuple{4,OptionQuote})::Nothing
+    s = 0
+    @inbounds for i1 in DIRQS
+        for i2 in DIRQS
+            s12 = i1 + i2
+            for i3 in DIRQS
+                s3 = s12 + i3
+                for i4 in DIRQS
+                    s4 = s3 + i4
+                    s4 >= 0 || continue
+                    # i1 + i2 + i3 + i4 >= 0 || continue
+                    # global RunComboArgs = (;keep, params, tmult, vix, combo)
+                    lms = makeLms(combo, (i1,i2,i3,i4))
+                    if checkScore4!(keep, params, vix, lms)
+                        global keepLms = lms
+                        # println("found one: ", lms)
+                    end
+                    # println("checked")
+                    # if i % 100000 == 0
+                    #     println("i: ", i)
+                    # end
+                    # i += 1
+                end
+            end
+        end
+    end
+    return
+end
+
 function findEntryFixed!(keep, params, prob, search, otoq, xpirsExtra, args...)
     curp = search.curp
     w1 = 0.04 * curp
@@ -205,7 +330,7 @@ end
 
 function findEntry!(keep, params, prob, search, otoq, xpirsExtra, args...)
     strikeExt, _ = ProbUtil.probFromRight(prob, params.ProbMin)
-    oqs = ch.oqsLteCurp(search, strikeExt)
+    oqs = ch.oqsLte(search, strikeExt)
 
     itr1 = Iterators.reverse(eachindex(oqs)[3:end])
     for i1 in itr1
@@ -286,8 +411,8 @@ function score(lms, params, prob, tmult)
     rate >= params.MinRate || ( @deb "no score rate" rate params.MinRate ; return nothing )
 
     # TODO: mult xpir won't work with this kel calc
-    kel = calcKel(params, tmult, neto, risk, prob, LL.toSections(lms))
-    kel > 0 || ( @deb "no score kel" kel rate tmult neto risk ; return nothing )
+    # kel = calcKel(params, tmult, neto, risk, prob, LL.toSections(lms))
+    # kel > 0 || ( @deb "no score kel" kel rate tmult neto risk ; return nothing )
 
     # score = rate * kel
     gks = getGreeks(lms)
@@ -296,9 +421,10 @@ function score(lms, params, prob, tmult)
 
     # score = rate * (gks.theta + gks.vega)
     # score = gks.theta + gks.vega - gks.delta
-    # score = rate * (gks.theta + gks.vega - gks.delta)
-    score = kel * (gks.theta + gks.vega - gks.delta)
+    score = rate * (gks.theta + gks.vega - gks.delta)
+    # score = kel * (gks.theta + gks.vega - gks.delta)
     # score = gks.theta + gks.vega - gks.delta
+    kel = 1.0
     return ((;score, neto, margin), Scoring(neto, risk, rate, kel))
 
     # Note: tested below for short entries
