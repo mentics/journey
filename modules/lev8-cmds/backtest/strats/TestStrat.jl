@@ -247,13 +247,15 @@ function findEntry4!(keep, params, xpirs, chain, vix, args...)::Nothing
     stop = false
     # @qbthreads for combo in combos4(all)
     # @sync qforeach(combos4(all)) do combo
-    ThreadsX.mapi(combos4(all); basesize=1000) do combo
+    ThreadsX.mapi(combos4(all); basesize=10000) do combo
     # Threads.@threads for combo in combos4(all)
         try
             stop || runCombo(keep, params, vix, combo)
         catch e
             if e isa InterruptException
                 stop = true
+            else
+                showerror(stderr, e, catch_backtrace()) ; println(stderr)
             end
             rethrow(e)
         end
@@ -270,17 +272,16 @@ function combos4(v)
 end
 
 function runCombo(keep, params, vix, combo::NTuple{4,OptionQuote})::Nothing
-    s = 0
     @inbounds for i1 in DIRQS
+        sizes1 = isCall(combo[1]) ? (i1, 0) : (0, i1)
         for i2 in DIRQS
-            s12 = i1 + i2
+            sizes2 = isCall(combo[2]) ? (sizes1[1] + i2, sizes1[2]) : (sizes1[1], sizes1[2] + i2)
             for i3 in DIRQS
-                s3 = s12 + i3
+                sizes3 = isCall(combo[3]) ? (sizes2[1] + i3, sizes2[2]) : (sizes2[1], sizes2[2] + i3)
                 for i4 in DIRQS
-                    s4 = s3 + i4
-                    s4 >= 0 || continue
-                    # i1 + i2 + i3 + i4 >= 0 || continue
-                    # global RunComboArgs = (;keep, params, tmult, vix, combo)
+                    sizes4 = isCall(combo[4]) ? (sizes3[1] + i4, sizes3[2]) : (sizes3[1], sizes3[2] + i4)
+                    (sizes4[1] >= 0 && sizes4[2] >= 0) || continue
+                    global RunComboArgs = (;keep, params, vix, combo)
                     lms = makeLms(combo, (i1,i2,i3,i4))
                     if checkScore4!(keep, params, vix, lms)
                         global keepLms = lms
