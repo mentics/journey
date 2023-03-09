@@ -72,6 +72,18 @@ ensureVector(o) = isnothing(o) ? [] : (isa(o, Array) ? o : [o])
 sortExp!(f, v; kws...) = Base.permute!!(v, sortperm(f.(v); kws...))
 
 # https://github.com/JeffreySarnoff/SortingNetworks.jl/blob/master/src/swapsort.jl
+(sortupleperm(lt, t::NTuple{4,T})::NTuple{4,Int}) where T = sortupleperm(lt, t...)
+function sortupleperm(lt, a, b, c, d)::NTuple{4,Int} where T
+    a, b, ia, ib = mmlt(lt, a, b, 1, 2)
+    c, d, ic, id = mmlt(lt, c, d, 3, 4)
+    a, c, ia, ic = mmlt(lt, a, c, ia, ic)
+    b, d, ib, id = mmlt(lt, b, d, ib, id)
+    b, c, ib, ic = mmlt(lt, b, c, ib, ic)
+    return ia, ib, ic, id
+end
+mmlt(lt, a, b, ia, ib) = lt(a, b) ? (a, b, ia, ib) : (b, a, ib, ia)
+(tupleperm(tup::NTuple{4,T}, inds::NTuple{4,Integer})::NTuple{4,T}) where T = (tup[inds[1]], tup[inds[2]], tup[inds[3]], tup[inds[4]])
+
 (sortuple(t::NTuple{4,T}, by)::NTuple{4,T}) where T = sortuple(t..., by)
 function sortuple(x1::T, x2::T, x3::T, x4::T, by)::NTuple{4,T} where T
     a, b, c, d = decorate(x1, x2, x3, x4, by)

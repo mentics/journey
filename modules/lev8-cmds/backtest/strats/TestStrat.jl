@@ -297,32 +297,25 @@ function runCombo(keep, params, vix, combo::NTuple{4,OptionQuote})::Nothing
         end
     end
     return
+end
 
-    # @inbounds for i1 in DIRQS
-    #     sizes1 = isCall(combo[1]) ? (i1, 0) : (0, i1)
-    #     for i2 in DIRQS
-    #         sizes2 = isCall(combo[2]) ? (sizes1[1] + i2, sizes1[2]) : (sizes1[1], sizes1[2] + i2)
-    #         for i3 in DIRQS
-    #             sizes3 = isCall(combo[3]) ? (sizes2[1] + i3, sizes2[2]) : (sizes2[1], sizes2[2] + i3)
-    #             for i4 in DIRQS
-    #                 sizes4 = isCall(combo[4]) ? (sizes3[1] + i4, sizes3[2]) : (sizes3[1], sizes3[2] + i4)
-    #                 (sizes4[1] >= 0 && sizes4[2] >= 0) || continue
-    #                 # global RunComboArgs = (;keep, params, vix, combo)
-    #                 lms = makeLms(combo, (i1,i2,i3,i4))
-    #                 if checkScore4!(keep, params, vix, lms)
-    #                     global keepLms = lms
-    #                     # println("found one: ", lms)
-    #                 end
-    #                 # println("checked")
-    #                 # if i % 100000 == 0
-    #                 #     println("i: ", i)
-    #                 # end
-    #                 # i += 1
-    #             end
-    #         end
-    #     end
-    # end
-    # return
+lmsToQty(lms) = map(lms) do lm
+    getQuantity(lm) * (isShort(lm) ? -1 : 1)
+end
+function byExpirSide((a, a1), (b, b1))
+    xa = getExpir(a)
+    xb = getExpir(b)
+    return xa < xb || (xa == xb && a1 < 0)
+end
+function checkShortExpirs(combo, qty)
+    perm = CollUtil.sortupleperm(byExpirSide, Tuple(zip(combo, qty)))
+    dirqs = CollUtil.tupleperm(qty, perm)
+    bal = 0
+    for dirq in dirqs
+        bal += dirq
+        bal >= 0 || return false
+    end
+    return true
 end
 
 const PERMS = Vector{Vector{NTuple{4,Int}}}(undef, 16)
