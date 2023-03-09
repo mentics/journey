@@ -1,7 +1,7 @@
 module TestStrat
 using Dates
 using SH, BaseTypes, SmallTypes, BackTypes, LegMetaTypes
-using LogUtil, OutputUtil, BacktestUtil, CollUtil, DateUtil
+using LogUtil, OutputUtil, BacktestUtil, CollUtil, DateUtil, ThreadUtil
 import DateUtil:timult,calcRate
 import ChainUtil as ch
 using Pricing
@@ -179,7 +179,8 @@ firstNinf(x) = first(x)
 using ThreadPools, Combinatorics, OptionQuoteTypes
 function score4(params, lms, vix)
     spread = abs(Pricing.priceSpread(lms))
-    spread <= 0.07 || ( @deb "spread" spread "< 0.1" ; return nothing )
+    # spread <= 0.07 || ( @deb "spread" spread "< 0.1" ; return nothing )
+    spread <= 0.12 || ( @deb "spread" spread "< 0.1" ; return nothing )
     gks = getGreeks(lms)
     d2 = abs(gks.delta) # ^2
     d2 < 0.0001 || ( @deb "delta2 < 0.00001" d2 ; return nothing )
@@ -191,16 +192,20 @@ function score4(params, lms, vix)
     neto = calcPriceFast(lms)
     neto >= params.MinNeto || ( @deb "no score neto" neto params.MinNeto ; return nothing )
     margin = Pricing.calcMarginFloat(lms)
+    # NOTE: If we allowed neto < 0, we'd need to add that payment to the risk
+    # neto > 0 || risk -= neto
     risk = max(margin)
-    # if risk <= CZ
-    #     global lmsErr = lms
-    # end
+    if risk <= CZ
+        global KeepScore4Params = (params, lms, vix)
+        @error "risk < 0" margin spread d2 g2 vix neto
+    end
     # @assert risk > CZ "risk was <= 0"
     # rate = calcRate(tmult, neto, risk)
     # rate >= params.MinRate || ( @deb "no score rate" rate params.MinRate ; return nothing )
     rate = 1.0
     kel = 1.0
-    score = rate * (gks.theta + max(0.0, gks.vega) - d2 - g2)
+    score = (1.0 + gks.theta + max(0.0, gks.vega) - d2 - g2) / risk
+    @assert score > 0
     return ((;score, neto, margin), Scoring(neto, risk, rate, kel))
 end
 function checkScore4!(keep, params, vix, lms)::Bool
@@ -208,15 +213,20 @@ function checkScore4!(keep, params, vix, lms)::Bool
     if !isnothing(r) && (isempty(keep) || r[1].score > keep[end].score)
         # TODO: not optimized
         info, about = r
-        # TODO: sort(combo; by=getStrike)
-        push!(keep, Cand{4}(CollUtil.sortuple(lms, getStrike), info..., about))
-        sort!(keep; rev=true, by=x->x.score)
-        length(keep) <= 10 || pop!(keep)
+        cand = Cand{4}(CollUtil.sortuple(lms, getStrike), info..., about)
+        runSync(LockKeep) do
+            push!(keep, cand)
+            sort!(keep; rev=true, by=x->x.score)
+            length(keep) <= 100 || pop!(keep)
+            push!(KeepCandCombos, cand)
+        end
         return true
     end
     return false
 end
-makeLm(oq, dirq) = LegMetaOpen(oq, dirq < 0 ? Side.long : Side.short, F(abs(dirq)))
+const LockKeep = ReentrantLock()
+const KeepCandCombos = Vector{Cand{4}}()
+makeLm(oq, dirq) = LegMetaOpen(oq, dirq > 0 ? Side.long : Side.short, F(abs(dirq)))
 function makeLms(oqs, dirqs)
     map(makeLm, oqs, dirqs)
 end
@@ -271,33 +281,83 @@ function combos4(v)
     ((v[x[1]], v[x[2]], v[x[3]], v[x[4]]) for x in Combinatorics.Combinations(length(v), 4))
 end
 
+function runruncombo()
+    for i in 1:10000
+        runCombo(RunComboArgs...)
+    end
+end
+
 function runCombo(keep, params, vix, combo::NTuple{4,OptionQuote})::Nothing
-    @inbounds for i1 in DIRQS
-        sizes1 = isCall(combo[1]) ? (i1, 0) : (0, i1)
+    qtys = PERMS[bool2int(isCall.(combo)...)]
+    for qty in qtys
+        lms = makeLms(combo, qty)
+        if checkScore4!(keep, params, vix, lms)
+            global keepLms = lms
+            println("found one: ", lms)
+        end
+    end
+    return
+
+    # @inbounds for i1 in DIRQS
+    #     sizes1 = isCall(combo[1]) ? (i1, 0) : (0, i1)
+    #     for i2 in DIRQS
+    #         sizes2 = isCall(combo[2]) ? (sizes1[1] + i2, sizes1[2]) : (sizes1[1], sizes1[2] + i2)
+    #         for i3 in DIRQS
+    #             sizes3 = isCall(combo[3]) ? (sizes2[1] + i3, sizes2[2]) : (sizes2[1], sizes2[2] + i3)
+    #             for i4 in DIRQS
+    #                 sizes4 = isCall(combo[4]) ? (sizes3[1] + i4, sizes3[2]) : (sizes3[1], sizes3[2] + i4)
+    #                 (sizes4[1] >= 0 && sizes4[2] >= 0) || continue
+    #                 # global RunComboArgs = (;keep, params, vix, combo)
+    #                 lms = makeLms(combo, (i1,i2,i3,i4))
+    #                 if checkScore4!(keep, params, vix, lms)
+    #                     global keepLms = lms
+    #                     # println("found one: ", lms)
+    #                 end
+    #                 # println("checked")
+    #                 # if i % 100000 == 0
+    #                 #     println("i: ", i)
+    #                 # end
+    #                 # i += 1
+    #             end
+    #         end
+    #     end
+    # end
+    # return
+end
+
+const PERMS = Vector{Vector{NTuple{4,Int}}}(undef, 16)
+
+function setupPerms()
+    inputs = boolInputs()
+    for i in eachindex(inputs)
+        input = inputs[i]
+        res = findValidCombos(input)
+        ind = bool2int(input...)
+        PERMS[ind] = res
+    end
+end
+
+boolInputs() = reshape(collect(Iterators.product((true, false), (true, false), (true, false), (true, false))), (16,))
+
+function findValidCombos(bools)
+    res = []
+    for i1 in DIRQS
+        sizes1 = bools[1] ? (i1, 0) : (0, i1)
         for i2 in DIRQS
-            sizes2 = isCall(combo[2]) ? (sizes1[1] + i2, sizes1[2]) : (sizes1[1], sizes1[2] + i2)
+            sizes2 = bools[2] ? (sizes1[1] + i2, sizes1[2]) : (sizes1[1], sizes1[2] + i2)
             for i3 in DIRQS
-                sizes3 = isCall(combo[3]) ? (sizes2[1] + i3, sizes2[2]) : (sizes2[1], sizes2[2] + i3)
+                sizes3 = bools[3] ? (sizes2[1] + i3, sizes2[2]) : (sizes2[1], sizes2[2] + i3)
                 for i4 in DIRQS
-                    sizes4 = isCall(combo[4]) ? (sizes3[1] + i4, sizes3[2]) : (sizes3[1], sizes3[2] + i4)
+                    sizes4 = bools[4] ? (sizes3[1] + i4, sizes3[2]) : (sizes3[1], sizes3[2] + i4)
                     (sizes4[1] >= 0 && sizes4[2] >= 0) || continue
-                    global RunComboArgs = (;keep, params, vix, combo)
-                    lms = makeLms(combo, (i1,i2,i3,i4))
-                    if checkScore4!(keep, params, vix, lms)
-                        global keepLms = lms
-                        # println("found one: ", lms)
-                    end
-                    # println("checked")
-                    # if i % 100000 == 0
-                    #     println("i: ", i)
-                    # end
-                    # i += 1
+                    push!(res, (i1, i2, i3, i4))
                 end
             end
         end
     end
-    return
+    return res
 end
+bool2int(a,b,c,d) = 1 + a<<3 + b<<2 + c<<1 + d
 
 function findEntryFixed!(keep, params, prob, search, otoq, xpirsExtra, args...)
     curp = search.curp

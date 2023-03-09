@@ -109,11 +109,11 @@ end
 combine(ls::Tuple{Left,Right,Right,Right}) = combine(ls...)
 function combine(l1::Left, l2::Right, l3::Right, l4::Right)::Segments{4}
     @assert l1.point.x < l2.point.x < l3.point.x < l4.point.x
+    slope23 = l2.slope + l3.slope
     y1 = l1.point.y + l2.point.y + l3.point.y + l4.point.y
     y2 = y1
     y3 = y2 + l2.slope * (l3.point.x - l2.point.x)
-    y4 = y3 + (l2.slope + l3.slope) * (l4.point.x - l3.point.x)
-    slope23 = l2.slope + l3.slope
+    y4 = y3 + (slope23) * (l4.point.x - l3.point.x)
     segs = Segments{4}(
         (l1.slope, 0.0, l2.slope, slope23, slope23 + l4.slope),
         (Point(l1.point.x, y1), Point(l2.point.x, y2), Point(l3.point.x, y3), Point(l4.point.x, y4))
@@ -128,9 +128,24 @@ function combine(l1::Left, l2::Left, l3::Right, l4::Right)::Segments{4}
     y3 = y2
     y1 = y2 - l2.slope * (l2.point.x - l1.point.x)
     y4 = y3 + l3.slope * (l4.point.x - l3.point.x)
-    slope23 = l2.slope + l3.slope
     segs = Segments{4}(
         (l1.slope + l2.slope, l2.slope, 0.0, l3.slope, l3.slope + l4.slope),
+        (Point(l1.point.x, y1), Point(l2.point.x, y2), Point(l3.point.x, y3), Point(l4.point.x, y4))
+    )
+    return segs
+end
+
+combine(ls::Tuple{Left,Left,Left,Left}) = combine(ls...)
+function combine(l1::Left, l2::Left, l3::Left, l4::Left)::Segments{4}
+    @assert l1.point.x <= l2.point.x <= l3.point.x <= l4.point.x
+    slope34 = l3.slope + l4.slope
+    slope234 = l2.slope + slope34
+    y4 = l1.point.y + l2.point.y + l3.point.y + l4.point.y
+    y3 = y4 - l4.slope * (l4.point.x - l3.point.x)
+    y2 = y3 - (slope34) * (l3.point.x - l2.point.x)
+    y1 = y2 - (slope234) * (l2.point.x - l1.point.x)
+    segs = Segments{4}(
+        (slope234 + l1.slope, slope234, slope34, l4.slope, 0.0),
         (Point(l1.point.x, y1), Point(l2.point.x, y2), Point(l3.point.x, y3), Point(l4.point.x, y4))
     )
     return segs

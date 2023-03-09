@@ -44,4 +44,8 @@ function sumQuotes(qs)
     return Quote(b, a)
 end
 
+function sumQuotes(qs::NTuple{4,Quote})
+    return Quote(qs[1].bid + qs[2].bid + qs[3].bid + qs[4].bid, qs[1].ask + qs[2].ask + qs[3].ask + qs[4].ask)
+end
+
 end

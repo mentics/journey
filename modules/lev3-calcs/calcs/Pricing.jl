@@ -32,8 +32,27 @@ function priceOpp(qt::Quote)::Currency
     end
 end
 
-priceSpread(has)::Currency = price(getQuote(has)) + priceOpp(getQuote(has))
-priceSpread(hass::Coll)::Currency = sum(price, hass) + sum(priceOpp, hass)
+function priceSpread(hass::NTuple{4,T})::Currency where T
+    priceSpread(sumQuotes(getQuote.(hass)))
+end
+function priceSpread(qt::Quote)::Currency
+    b = getBid(qt)
+    a = getAsk(qt)
+    spread = a - b
+    if spread < 0.4
+        # mult = round(Int, spread / 0.04, RoundDown)
+        mult = unsafe_trunc(Int, spread / 0.04)
+        return b - a + 2 * mult * 0.01 # (b + mult * 0.01) + (-a + mult * 0.01)
+    else
+        return b - a + 0.2 # (b + 0.1) + (-a  + 0.1)
+    end
+end
+
+# priceSpread(has)::Currency = price(getQuote(has)) + priceOpp(getQuote(has))
+# priceSpread(hass::Coll)::Currency = sum(price, hass) + sum(priceOpp, hass)
+# function priceSpread(hass::NTuple{4,T})::Currency where T
+#     sum(price, hass) + sum(priceOpp, hass)
+# end
 
 bap(qt::Quote, r=.2)::Currency = improve(qt, r)
 bap(hasQuote, r=.2)::Currency = improve(getQuote(hasQuote), r)
@@ -152,7 +171,6 @@ function calcMarginFloat(lms::NTuple{4,<:LegType})::Sides{Float64}
     marg = mult * abs(getStrike(longs[1]) - getStrike(shorts[1]))
     return Sides(marg, marg)
 end
-
 
 # TODO: could do more efficient if sorted?
 # Can't use, doesn't support quantities and would get complicated if did
