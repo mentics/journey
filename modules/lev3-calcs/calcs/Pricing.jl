@@ -118,19 +118,20 @@ end
 #     end
 # end
 
-function calcMargin(lms::NTuple{2,T})::Sides{Currency} where T
+function calcMargin(lms::NTuple{2,T})::Sides{PT} where T
     side1 = getSide(lms[1])
     @assert side1 != getSide(lms[2])
     width = calcWidth(lms[1], lms[2])
-    return side1 == Side.long ? Sides(width, CZ) : Sides(CZ, width)
+    return side1 == Side.long ? Sides(P(width), PZ) : Sides(PZ, P(width))
 end
 
-# function calcMarginFloat(lms::NTuple{2,T})::Sides{Float64} where T
-#     side1 = getSide(lms[1])
-#     @assert side1 != getSide(lms[2])
-#     width = F(calcWidth(lms[1], lms[2]))
-#     return side1 == Side.long ? Sides(width, 0.0) : Sides(0.0, width)
-# end
+# Assumes strike2 > strike1
+function calcMarginFloat(lms::NTuple{2,T})::Sides{Float64} where T
+    # side1 = getSide(lms[1])
+    # @assert side1 != getSide(lms[2])
+    width = F(calcWidth(lms[1], lms[2]))
+    return getSide(lms[1]) == Side.long ? Sides(width, 0.0) : Sides(0.0, width)
+end
 
 # function calcMargin(lms::NTuple{3,LegMetaOpen})::Sides{Currency}
 #     # TODO: compare performance to conditionals approach
@@ -157,6 +158,40 @@ function calcMarginFloat(lms::NTuple{3,<:LegType})::Sides{Float64}
     @assert side1 != side3
     width = side1 == Side.long ? F(getQuantity(lms[3])) * F(calcWidth(lms[2], lms[3])) : F(getQuantity(lms[1])) * F(calcWidth(lms[1], lms[2]))
     return side1 == Side.long ? Sides(width, 0.0) : Sides(0.0, width)
+end
+
+function calcMarg(center, segs)::Sides{Float64}
+    min_short = 0.0
+    min_long = 0.0
+    for seg in segs
+        mn = min(seg.left.y, seg.right.y)
+        if seg.left.x < center && mn < min_short
+            min_short = mn
+        end
+        if seg.right.x > center && mn < min_long
+            min_long = mn
+        end
+    end
+    return Sides(-min_short, -min_long)
+end
+
+function calcMarginFloat(center, lms::NTuple{3,<:LegType}, sections)::Sides{Float64}
+    short = 0.0
+    long = 0.0
+    for section in sections
+        y = section.y
+        if y < 0
+            if section.x2 < center
+                short += y
+            elseif section.x1 > center
+                long += y
+            else
+                short += y
+                long += y
+            end
+        end
+    end
+    return Sides(-short, -long)
 end
 
 # TODO: don't be lazy

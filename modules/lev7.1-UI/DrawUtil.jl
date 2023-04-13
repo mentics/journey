@@ -1,7 +1,7 @@
 module DrawUtil
 using Dates
 import PlotUtils
-import Makie:Makie, Figure, Axis, DataInspector, axislegend, Axis, AxisPlot, current_figure, current_axis
+import Makie:Makie, Figure, Axis, DataInspector, axislegend, Axis, AxisPlot, current_figure, current_axis, barplot!, barplot
 import GLMakie
 # import GLFW
 using SH, Bins, BaseTypes
@@ -55,19 +55,20 @@ function prob!(ax, prob, colorIndex, scale)
     return p
 end
 function prob!(center, vals; kws...)
-    fig = getFig(;newFig=false)
-    # ax = Axis(fig[1,1])
+    ax = getAxis(;newFig=false)
     # colors = (GLMakie.RGBA(0.5, 0.5, 1.0, 0.5), GLMakie.RGBA(0.0, 0.5, 0.5, 0.5), GLMakie.RGBA(0.5, 0.5, 0.5, 0.5))
-    p = barplot!(fig, center .* Bins.xs(), .01 * vals ./ Bins.width(); gap=0.0, width=center * Bins.width(), inspectable=false, kws...) #, color=colors[colorIndex])
-    vlines!(center)
+    v1 = center .* Bins.xs();
+    v2 = .01 * vals ./ Bins.width()
+    p = GLMakie.barplot!(ax, v1, v2; gap=0.0, width=center * Bins.width(), inspectable=false, kws...) #, color=colors[colorIndex])
+    GLMakie.vlines!(center)
     return p
 end
 
 function prob(center, vals; kws...) #, colorIndex=1)
-    fig = getFig()
+    # fig = getAxis()
     # colors = (GLMakie.RGBA(0.5, 0.5, 1.0, 0.5), GLMakie.RGBA(0.0, 0.5, 0.5, 0.5), GLMakie.RGBA(0.5, 0.5, 0.5, 0.5))
-    p = barplot(fig, center .* Bins.xs(), .01 * vals ./ Bins.width(); gap=0.0, width=center * Bins.width(), inspectable=false, kws...) # , color=colors[colorIndex])
-    vlines!(center)
+    p = GLMakie.barplot(F(center) .* Bins.xs(), .01 * vals ./ Bins.width(); gap=0.0, width=center * Bins.width(), inspectable=false, kws...) # , color=colors[colorIndex])
+    GLMakie.vlines!(center)
     return p
 end
 

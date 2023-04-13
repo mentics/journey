@@ -128,7 +128,6 @@ function (s::TStrat)(ops, tim, chain, otoq)::Nothing
     end
     return
 end
-BaseTypes.toPT(sides::Sides{Float64})::Sides{PT} = Sides(toPT(sides.long, RoundDown), round(toPT(sides.short, RoundDown)))
 
 BackTypes.pricingOpen(::TStrat, lmso::NTuple{N,LegMetaOpen}) where N = calcPrice(lmso)
 BackTypes.pricingClose(::TStrat, lmsc::NTuple{N,LegMetaClose}) where N = calcPrice(lmsc)
@@ -187,8 +186,8 @@ function score4(params, lms, vix)
     gks.theta > 0.01 || ( @deb "theta > 0.01" gks.theta ; return nothing )
     g2 = abs(gks.gamma) # ^2
     g2 < 0.00001 || ( @deb "gamma2 < 0.000001" d2 ; return nothing )
-    vix < 12 && gks.vega < 0 && ( @deb vix "< 12" gks.vega "< 0" ; return nothing )
-    vix > 30 && gks.vega > 0 && ( @deb vix "> 30" gks.vega "> 0" ; return nothing )
+    (vix < 15 && gks.vega < gks.theta) || ( @deb vix "< 15," gks.vega "<" gks.theta ; return nothing )
+    (vix > 25 && gks.vega > -gks.theta) || ( @deb vix "> 25," gks.vega ">" -gks.theta ; return nothing )
     neto = calcPriceFast(lms)
     neto >= params.MinNeto || ( @deb "no score neto" neto params.MinNeto ; return nothing )
     margin = Pricing.calcMarginFloat(lms)
@@ -257,8 +256,10 @@ function findEntry4!(keep, params, xpirs, chain, vix, args...)::Nothing
     stop = false
     # @qbthreads for combo in combos4(all)
     # @sync qforeach(combos4(all)) do combo
-    ThreadsX.mapi(combos4(all); basesize=10000) do combo
     # Threads.@threads for combo in combos4(all)
+    # ThreadsX.mapi(combos4(all); basesize=10000) do combo
+    # for combo in Iterators.take(combos4(all), 1000000)
+    ThreadsX.mapi(Iterators.takewhile(x -> isempty(keep), combos4(all)); basesize=10000) do combo
         try
             stop || runCombo(keep, params, vix, combo)
         catch e
@@ -290,6 +291,7 @@ end
 function runCombo(keep, params, vix, combo::NTuple{4,OptionQuote})::Nothing
     qtys = PERMS[bool2int(isCall.(combo)...)]
     for qty in qtys
+        checkShortExpirs(combo, qty) || continue
         lms = makeLms(combo, qty)
         if checkScore4!(keep, params, vix, lms)
             global keepLms = lms
@@ -308,14 +310,18 @@ function byExpirSide((a, a1), (b, b1))
     return xa < xb || (xa == xb && a1 < 0)
 end
 function checkShortExpirs(combo, qty)
-    perm = CollUtil.sortupleperm(byExpirSide, Tuple(zip(combo, qty)))
+    perm = CollUtil.sortupleperm8(byExpirSide, combo, qty)
     dirqs = CollUtil.tupleperm(qty, perm)
-    bal = 0
-    for dirq in dirqs
-        bal += dirq
-        bal >= 0 || return false
-    end
-    return true
+    bal = dirqs[4]
+    bal >= 0 || return false
+    bal += dirqs[3]
+    bal >= 0 || return false
+    bal += dirqs[2]
+    return bal >= 0
+    # We've already checked the complete sum in the creation of DIRQS
+    # bal >= 0 || return false
+    # bal += dirqs[1]
+    # return bal >= 0
 end
 
 const PERMS = Vector{Vector{NTuple{4,Int}}}(undef, 16)

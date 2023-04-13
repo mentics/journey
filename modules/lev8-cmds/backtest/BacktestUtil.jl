@@ -70,7 +70,7 @@ module trad
 
 using SH, Dates, BackTypes, LegMetaTypes, DateUtil, CollUtil
 side(trade::TradeBTOpen) = getSide(trade.lms[1])
-targetDate(t::TradeBTOpen) = getExpir(t.lms[1])
+targetDate(t::TradeBTOpen) = minimum(getExpir, t.lms)
 targetDate(trade::TradeBT) = targetDate(trade.open)
 targetRatio(t::TradeBTOpen, date::Date) = ( to = targetDate(t) ; bdays(date, to) / bdays(Date(t.ts), to) )
 tsClose(trade::TradeBT) = trade.close.ts
@@ -83,6 +83,7 @@ function rate(trade::TradeBT)
 end
 openDur(trade::TradeBT) = bdays(toDateMarket(trade.open.ts), toDateMarket(trade.close.ts)) + 1
 bdaysLeft(from::Date, trade) = bdays(from, targetDate(trade))
+open(acct, id) = CollUtil.find(x -> x.id == id, acct.open)
 closed(acct, id) = CollUtil.find(x -> x.open.id == id, acct.closed)
 function calcCloseInfo(trade::TradeBTOpen, ts, otoq, calcPrice)
     lmsc = tosn(LegMetaClose, trade.lms, otoq)

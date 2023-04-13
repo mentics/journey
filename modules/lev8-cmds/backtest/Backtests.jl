@@ -9,6 +9,7 @@ import OutputUtil:pp
 
 #region Public
 function run(strat::Strat, from::DateLike, to::DateLike; maxSeconds::Int=1)::Nothing
+    @time begin
     LogUtil.resetLog(:backtest)
 
     params = strat.params
@@ -21,6 +22,7 @@ function run(strat::Strat, from::DateLike, to::DateLike; maxSeconds::Int=1)::Not
     global keepAcct = acct
     # chainRef = Ref{Chain}()
     ops = makeOps(acct)
+    BackTypes.resetStrat(strat)
 
     SS.run(from, to; maxSeconds) do tim, chain
         otoq = ChainUtil.toOtoq(chain)
@@ -34,6 +36,7 @@ function run(strat::Strat, from::DateLike, to::DateLike; maxSeconds::Int=1)::Not
             verifyMargin(acct)
         end
         yield()
+    end
     end
 end
 #endregion
@@ -113,7 +116,8 @@ function calcMargin(trades::AbstractVector{<:TradeBTOpen}, bal::PT)::MarginInfo
     marginShort = CZ
     for trade in trades
         multiple = trade.multiple
-        margAdd = Pricing.calcMargin(trade.lms)
+        # margAdd = Pricing.calcMargin(trade.lms)
+        margAdd = trade.margin
         marginLong += multiple * margAdd.long
         marginShort += multiple * margAdd.short
         # side = trad.side(trade)
@@ -161,9 +165,9 @@ function openTrade(acct, ts, lmso, neto::PT, margin::Sides{PT}, multiple::Int, l
     tradeOpen = TradeBTOpen(id, ts, lmso, neto, margin, multiple, label, extra)
     push!(acct.open, tradeOpen)
     acct.bal += multiple * neto
-    acct.margin = ac.marginAdd(acct.bal, acct.margin, multiple, Pricing.calcMargin(tradeOpen.lms))
+    acct.margin = ac.marginAdd(acct.bal, acct.margin, multiple, margin) # Pricing.calcMargin(tradeOpen.lms))
     # blog("Open #$(tradeOpen.id) $(pp((;neto, multiple, strikes=getStrike.(lmso)))), $(pp(extra))")
-    @blog "Open $(label) #$(tradeOpen.id) $(Shorthand.sh(lmso))" neto multiple dmargin=(-max(Pricing.calcMargin(tradeOpen.lms))) extra
+    @blog "Open $(label) #$(tradeOpen.id) $(Shorthand.sh(lmso))" neto multiple dmargin=(-max(margin)) extra
     return
 end
 
@@ -173,10 +177,12 @@ function closeTrade(acct, tradeOpen, ts, lmsc, netc, label)::Nothing
     push!(acct.closed, trade)
     acct.bal += tradeOpen.multiple * netc
     pnl = tradeOpen.neto + netc
-    acct.margin = ac.marginAdd(acct.bal, acct.margin, -tradeOpen.multiple, Pricing.calcMargin(tradeOpen.lms))
-    @blog "Close $(label) #$(tradeOpen.id) $(Shorthand.sh(lmsc))" neto=tradeOpen.neto netc pnl multiple=tradeOpen.multiple rate=trad.rate(trade) dmargin=max(Pricing.calcMargin(tradeOpen.lms)) openDur=trad.openDur(trade) bdaysLeft=trad.bdaysLeft(Date(ts), trade)
+    acct.margin = ac.marginAdd(acct.bal, acct.margin, -tradeOpen.multiple, tradeOpen.margin) # Pricing.calcMargin(tradeOpen.lms))
+    @blog "Close $(label) #$(tradeOpen.id) $(Shorthand.sh(lmsc))" neto=tradeOpen.neto netc pnl multiple=tradeOpen.multiple rate=trad.rate(trade) dmargin=max(tradeOpen.margin) openDur=trad.openDur(trade) bdaysLeft=trad.bdaysLeft(Date(ts), trade)
     return
 end
 #endregion
+
+BaseTypes.toPT(sides::Sides{Float64})::Sides{PT} = Sides(toPT(sides.long, RoundDown), round(toPT(sides.short, RoundDown)))
 
 end

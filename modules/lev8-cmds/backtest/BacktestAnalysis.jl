@@ -5,6 +5,12 @@ import Backtests as bt, SimpleStore as SS
 using DateUtil, DrawUtil, CollUtil, ChainUtil, BacktestUtil, OutputUtil, Pricing
 import StatsBase
 
+#region Exports
+export topen, tclosed
+topen(id) = trad.open(bt.keepAcct, id)
+tclosed(id) = trad.closed(bt.keepAcct, id)
+#endregion
+
 #region Public
 function showResult(info=bt.info, acct=bt.keepAcct, params=bt.keepParams)::Nothing
     !isempty(acct.closed) || ( println("no trades closed") ; return )
@@ -17,11 +23,13 @@ function showResult(info=bt.info, acct=bt.keepAcct, params=bt.keepParams)::Nothi
     # total = rpnl + unreal
     dateFrom = Date(info.tsFrom)
     dateTo = Date(info.tsTo)
-    days = bdays(dateFrom, dateTo)
+    # days = bdays(dateFrom, dateTo)
+    dateToActual = Date(max(maximum(x -> x.ts, acct.open; init=DATE_ZERO), acct.closed[end].close.ts))
+    days = bdays(dateFrom, dateToActual)
     rateMean = StatsBase.mean(map(t -> trad.rate(t), acct.closed))
     rateMedian = StatsBase.median(map(t -> trad.rate(t), acct.closed))
     rr = rpnl < 0.0 ? rpnl : (1 + rpnl / params.balInit) ^ (1 / (days / DateUtil.bdaysPerYear())) - 1
-    @blog "Summary $(dateFrom) - $(dateTo) (ran $(days) bdays): $(pnlCount(acct))"
+    @blog "Summary $(dateFrom) - $(dateTo)($(dateToActual)) (ran $(days) bdays): $(pnlCount(acct))"
     @blog "  bal = $(acct.bal), balReal = $(balReal), rpnl = $(rpnl)" # , urpnl = $(unreal)")
     # blog("  Total: $(rd5(total))")
     @blog "  overall realized rate: $(rd5(rr))"
@@ -45,9 +53,19 @@ end
 rateMax() = ( (r, i) = findmax(x -> trad.rate(x), bt.keepAcct.closed) ; (i, r, bt.keepAcct.closed[i]) )
 rateMin() = ( (r, i) = findmin(x -> trad.rate(x), bt.keepAcct.closed) ; (i, r, bt.keepAcct.closed[i]) )
 
-reviewOpen(id::Int) = tradeVal(trad.closed(bt.keepAcct, id))
+reviewOpen(id::Int) = reviewOpen(trad.open(bt.keepAcct, id))
 reviewOpen(trade) = lyzeOpen(trade) do ts, lms
     trade.neto + Pricing.price(lms)
+end
+function lmssOpen(trade)
+    tss = []
+    lmss = []
+    lyzeOpen(trade) do ts, lms
+        push!(tss, ts)
+        push!(lmss, lms)
+        trade.neto + Pricing.price(lms)
+    end
+    return tss, lmss
 end
 
 tradeTheta(trade) = lyzeTrade(trade) do ts, lms
@@ -57,8 +75,11 @@ tradeVega(trade) = lyzeTrade(trade) do ts, lms
     getGreeks(lms).vega
 end
 tradeVal(id::Int) = tradeVal(trad.closed(bt.keepAcct, id))
-tradeVal(trade) = lyzeTrade(trade) do ts, lms
-    Pricing.price(lms)
+function tradeVal(trade)
+    neto = trade.open.neto
+    lyzeTrade(trade) do ts, lms
+        neto + Pricing.price(lms)
+    end
 end
 
 tradeVal2(id::Int) = tradeVal2(trad.closed(bt.keepAcct, id))
@@ -131,6 +152,14 @@ function drawRes(xys)
         draw!(:scatter, xs, yvs[i])
     end
 end
+
+drawTrade(i::Int) = drawTrade(bt.keepAcct.closed[i].open)
+function drawTrade(trade)
+    curp = SS.curpFor(trade.ts)
+    draw(:hlines, 0; color=:grey)
+    draw!(:vlines, curp; color=:grey)
+    draw!(:lines, toDraw(trade.lms))
+end
 #endregion
 
 #region LyzeClosed
@@ -138,6 +167,11 @@ function medianDurs(acct=bt.keepAcct)
     trades = acct.closed
     durs = map(trade -> trade.close.ts - trade.open.ts, trades)
     StatsBase.median(durs)
+end
+function xpirDays(acct=bt.keepAcct)
+    trades = acct.closed
+    dayss = map(trade -> bdays(Date(trade.open.ts), getExpir(trade.open.lms[1])), trades)
+    draw(:hist, dayss);
 end
 function pnlCount(acct=bt.keepAcct)
     wins, losses = reduce(acct.closed; init=(0,0)) do a, trade

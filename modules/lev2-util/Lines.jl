@@ -53,6 +53,7 @@ function combine(l1::Right, l2::Left)::Segments{2}
     return segs
 end
 
+combine(ls::Tuple{Left,Left}) = combine(ls...)
 function combine(l1::Left, l2::Left)::Segments{2}
     @assert l1.point.x < l2.point.x
     y2 = l1.point.y + l2.point.y
@@ -123,7 +124,7 @@ end
 
 combine(ls::Tuple{Left,Left,Right,Right}) = combine(ls...)
 function combine(l1::Left, l2::Left, l3::Right, l4::Right)::Segments{4}
-    @assert l1.point.x < l2.point.x < l3.point.x < l4.point.x
+    @assert l1.point.x <= l2.point.x <= l3.point.x <= l4.point.x
     y2 = l1.point.y + l2.point.y + l3.point.y + l4.point.y
     y3 = y2
     y1 = y2 - l2.slope * (l2.point.x - l1.point.x)
@@ -237,11 +238,13 @@ function Base.iterate(z::SegmentsZeros)::Union{Nothing,Tuple{Float64,Int}}
 end
 
 function Base.iterate(z::SegmentsZeros, i::Int)::Union{Nothing,Tuple{Float64,Int}}
+    error("check this code")
     s = z.s
     @assert i > 0
     lasti = lastindex(s.points)
     while i <= lasti
         if i == lasti
+            # TODO: is this broken beacuse if slope == 0 so will make NaN/Inf?
             if signbit(s.slopes[end]) != signbit(s.points[end].y)
                 # s.points[end].y + s.slopes[end] * (x - s.points[end].x) = 0
                 x = (s.points[end].y - s.slopes[end] * s.points[end].x) / s.slopes[end]
@@ -258,6 +261,85 @@ function Base.iterate(z::SegmentsZeros, i::Int)::Union{Nothing,Tuple{Float64,Int
         i += 1
     end
     return nothing
+end
+
+segmentsWithZeros(s::Segments{N}) where N = SegmentsWithZeros{N}(s)
+Base.IteratorSize(::Type{SegmentsWithZeros{N}}) where N = Base.SizeUnknown()
+Base.IteratorSize(::Type{SegmentsWithZeros{N,M}}) where {N,M} = Base.SizeUnknown()
+Base.eltype(::Type{SegmentsWithZeros{N,M}}) where {N,M} = Segment
+Base.eltype(::Type{SegmentsWithZeros{N}}) where N = Segment
+const SegWZIterType3 = Tuple{Segment,Tuple{Int,Union{Nothing,Point}}}
+
+function Base.iterate(z::SegmentsWithZeros)::Union{Nothing,SegWZIterType3}
+    s = z.s
+    slope0 = s.slopes[1]
+    pt1 = s.points[1]
+    width = s.points[end].x - pt1.x
+
+    if s.slopes[1] * s.points[1].y < 0 # signbit(s.slopes[1]) == signbit(s.points[1].y)
+        # s.points[1].y - s.slopes[1] * (s.points[1].x - x) = 0
+        segx2 = (slope0 * pt1.x - pt1.y) / slope0
+        segpt2 = Point(segx2, 0.0)
+
+        segx1 = pt1.x - width
+        segy1 = pt1.y - slope0 * (segpt2.x - pt1.x)
+        segpt1 = Point(segx1, segy1)
+
+        return (Segment(segpt1, segpt2, slope0), (0, segpt2))
+    else
+        segx1 = pt1.x - width
+        segy1 = pt1.y - slope0 * width
+        segpt1 = Point(segx1, segy1)
+
+        return (Segment(segpt1, pt1, slope0), (1, nothing))
+    end
+end
+
+function Base.iterate(z::SegmentsWithZeros, (i, pt1)::Tuple{Int,Point})::Union{Nothing,SegWZIterType3}
+    s = z.s
+    if i < lastindex(s.points)
+        pt2 = s.points[i+1]
+        return (Segment(pt1, pt2, s.slopes[i+1]), (i+1, nothing))
+    else
+        slopeEnd = s.slopes[end]
+        width = s.points[end].x - pt1.x
+        pt2 = Point(pt1.x + width, s.points[end].y + slopeEnd * width)
+        return (Segment(pt1, pt2, slopeEnd), (i+1, nothing))
+    end
+end
+
+function Base.iterate(z::SegmentsWithZeros, (i, _)::Tuple{Int, Nothing})::Union{Nothing,SegWZIterType3}
+    s = z.s
+    # @assert i > 0
+    lasti = lastindex(s.points)
+    i <= lasti || return nothing # All done iterating through them
+
+    if i == lasti
+        ptlast = s.points[i]
+        slopeEnd = s.slopes[end]
+        if slopeEnd * ptlast.y < 0 # slopeend != 0 && signbit(slopeend) != signbit(ptlast.y)
+            # s.points[end].y + s.slopes[end] * (x - s.points[end].x) = 0
+            segx2 = (ptlast.y - slopeEnd * ptlast.x) / slopeEnd
+            segpt2 = Point(segx2, 0.0)
+            return (Segment(ptlast, segpt2, slopeEnd), (i, segpt2))
+        else
+            width = s.points[end].x - ptlast.x
+            segpt2 = Point(ptlast.x + width, ptlast.y + slopeEnd * width)
+            return (Segment(ptlast, segpt2, slopeEnd), (i+1, nothing))
+        end
+    else
+        pt1 = s.points[i]
+        pt2 = s.points[i+1]
+        slope = s.slopes[i+1]
+        if pt1.y * pt2.y < 0 # signbit(pt1.y) != signbit(pt2.y)
+            # s.points[i].y + s.slopes[i+1] * (x - s.points[i].x) = 0
+            segx2 = (slope * pt1.x - pt1.y) / slope
+            segpt2 = Point(segx2, 0.0)
+            return (Segment(pt1, segpt2, slope), (i, segpt2))
+        else
+            return (Segment(pt1, pt2, slope), (i+1, nothing))
+        end
+    end
 end
 
 end

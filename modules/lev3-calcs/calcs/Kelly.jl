@@ -163,19 +163,24 @@ end
 function findZero(f, mn=0.001, mx=.999)
     # f1 = f(mn)
     # f2 = f(mx)
-    if f(mn) * f(mx) < 0.0
+    # if f(mn) * f(mx) < 0.0
         # TODO: this code might be doing 1 allocation. but have to check at higher level
         # try
+        try
             return solve(ZeroProblem(f, (mn, mx)))
+        catch e
+            # ignore
+            return NaN
+        end
         # catch e
         #     @error "findZero2" mn mx f(mn) f(mx) f1 f2 (f(mn) * f(mx)) (f(mn) * f(mx) < 0.0)
         #     rethrow(e)
         # end
         # TODO: find_zero is doing 12 allocations. Should be optimizable.
         # return find_zero(f, (min, max))
-    else
-        return NaN
-    end
+    # else
+    #     return NaN
+    # end
 end
 
 # kellyNormalize(vprob::AbstractVector{Float64}, vret::AbstractVector{Float64}, min=0.0001, max=.9999)::Float64 = kellySimple(vprob, vret ./ -minimum(vret), min, max)

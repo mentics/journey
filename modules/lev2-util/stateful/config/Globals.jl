@@ -43,8 +43,8 @@ function __init__()
     end
 end
 
-dirData() = "G:/My Drive/sync/data/journey"
-dirData(sub...) = mkpath(joinpath("G:/My Drive/sync/data/journey", sub...))
+dirData() = "G:/My Drive/sync/data/market"
+dirData(sub...) = mkpath(joinpath(dirData(), sub...))
 
 has(k::Symbol) = haskey(cfg, k)
 set(k::Symbol, v::Any) = cfg[k] = v

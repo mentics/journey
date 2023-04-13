@@ -72,6 +72,32 @@ ensureVector(o) = isnothing(o) ? [] : (isa(o, Array) ? o : [o])
 sortExp!(f, v; kws...) = Base.permute!!(v, sortperm(f.(v); kws...))
 
 # https://github.com/JeffreySarnoff/SortingNetworks.jl/blob/master/src/swapsort.jl
+using SH
+
+f1(x1, x2) = getStrike(x1[1]) < getStrike(x2[1])
+
+
+function sortupleperm2(x1, x2)
+    return getStrike(x1[1]) > 1 ? (1,2,3,4) : (2,3,4,5)
+end
+
+function sortupleperm3(lt, x1, x2)
+    return getStrike(x1[1]) > 1 ? (1,2,3,4) : (2,3,4,5)
+end
+
+
+(sortupleperm8(lt, t::NTuple{4,T}, t2::NTuple{4,T2})::NTuple{4,Int}) where {T,T2} = sortupleperm9(lt, t..., t2...)
+function sortupleperm9(lt, a1, b1, c1, d1, a2, b2, c2, d2)::NTuple{4,Int}
+    # return getStrike(a1) > 1 ? (1,2,3,4) : (2,3,4,5) # lt((a1, a2), (b1, b2))
+    a, b, ia, ib = mmlt(lt, (a1, a2), (b1, b2), 1, 2)
+    # return ia, ib, ia, ib
+    c, d, ic, id = mmlt(lt, (c1, c2), (d1, d2), 3, 4)
+    a, c, ia, ic = mmlt(lt, a, c, ia, ic)
+    b, d, ib, id = mmlt(lt, b, d, ib, id)
+    b, c, ib, ic = mmlt(lt, b, c, ib, ic)
+    return ia, ib, ic, id
+end
+
 (sortupleperm(lt, t::NTuple{4,T})::NTuple{4,Int}) where T = sortupleperm(lt, t...)
 function sortupleperm(lt, a, b, c, d)::NTuple{4,Int} where T
     a, b, ia, ib = mmlt(lt, a, b, 1, 2)
@@ -189,6 +215,13 @@ function ltee(v, x)::Int
     i = searchsortedlast(v, x)
     return max(i, firstindex(v))
 end
+
+function between(v, from, to)::Tuple{Int,Int}
+    left = searchsortedfirst(v, from)
+    right = searchsortedlast(v, to)
+    return (max(left, firstindex(v)), min(right, lastindex(v)))
+end
+
 
 function sublist(v, from, to)
     left = searchsortedfirst(v, from)

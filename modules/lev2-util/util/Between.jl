@@ -7,7 +7,8 @@ using Rets, LegTypes, TradeTypes, LegTradeTypes, Pricing
 #region Lines
 import LinesLeg:LinesLeg as LL,Segments
 (LL.toSegments(lms::NTuple{N,LegMeta})::Segments{N}) where N = LL.toSegments(lms, map(P ∘ Pricing.price, lms))
-LL.toSections(lms::NTuple{N,LegMeta}) where N = LL.toSections(lms, map(P ∘ Pricing.bapFast, lms))
+LL.toSegmentsWithZeros(lms::NTuple{N,LegMeta}) where N = LL.toSegmentsWithZeros(lms, map(P ∘ Pricing.price, lms))
+LL.toSections(lms::NTuple{N,LegMeta}) where N = LL.toSections(lms, map(P ∘ Pricing.price, lms))
 SH.toDraw(lms::NTuple{N,LegMeta}) where N = collect(LL.toLineTuples(LL.toSegments(lms))) # collect because Makie can't handle tuples of coords
 #end
 

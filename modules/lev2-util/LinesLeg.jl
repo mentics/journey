@@ -1,10 +1,12 @@
 module LinesLeg
 using SH, AbstractTypes, BaseTypes, SmallTypes
 using LineTypes
-import Lines:Segments, SegSide, Left, Right, at, combine, toLineTuples, findZeros
+import Lines:Segments, SegSide, Left, Right, at, combine, toLineTuples, findZeros, segmentsWithZeros
 
 export Segments, Section, toLineTuples
 
+# TODO: get rid of Section?
+# I think I just did it as a simplification/estimation, but I think it's too inaccurate
 struct Section
     x1::Float64
     x2::Float64
@@ -35,6 +37,8 @@ function toSegments(legs::NTuple{N,LegType}, netos::NTuple{N,PT})::Segments{N} w
     segs = toSeg.(legs, netos)
     return combine(segs)
 end
+
+toSegmentsWithZeros(legs::NTuple{N,LegType}, netos::NTuple{N,PT}) where N = segmentsWithZeros(toSegments(legs, netos))
 
 toSections(legs::NTuple{N,LegType}, netos::NTuple{N,PT}) where N = toSections(toSegments(legs, netos))
 function toSections(segs::Segments{N}) where N
