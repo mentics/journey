@@ -11,7 +11,7 @@ function price(qt::Quote)::Currency
     a = getAsk(qt)
     spread = a - b
     if spread < 0.4
-        mult = round(Int, spread / 0.04, RoundDown)
+        mult = round(Int, spread / 0.02, RoundDown)
         return b + mult * 0.01
     else
         return b + 0.1

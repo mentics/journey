@@ -41,8 +41,9 @@ for (root, dirs, files) in walkdir("modules")
     end
 end
 unique!(usings)
-ignore = ["Base","Base.Threads","Random","Transformers.Basic","Flux.Optimise"]
-filter!(us -> length(us) > 0 && !(us in mods) && !(us in ignore), usings)
+# ignore = ["Base","Base.Threads","Random","Transformers.Basic","Flux.Optimise"]
+ignore = ["Base","Random"]
+filter!(us -> length(us) > 0 && !occursin('.', us) && !(us in mods) && !(us in ignore), usings)
 
 precomp = "C:/data/tmp/precomp-journey.jl"
 precompFiltered = "C:/data/tmp/precomp-filtered.jl"

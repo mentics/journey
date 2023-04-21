@@ -23,16 +23,17 @@ function run(strat::Strat, from::DateLike, to::DateLike; maxSeconds::Int=1)::Not
     # chainRef = Ref{Chain}()
     ops = makeOps(acct)
     BackTypes.resetStrat(strat)
+    vix = F(HistData.vixOpen(tim.date))
 
     SS.run(from, to; maxSeconds) do tim, chain
-        otoq = ChainUtil.toOtoq(chain)
+        # otoq = ChainUtil.toOtoq(chain)
         if !tim.atClose
             @blog "Strat running" ts=tim.ts curp=getCurp(chain) bal=acct.bal margin=acct.margin
-            checkExits(strat, acct, tim, otoq, getCurp(chain))
-            strat(ops, tim, chain, otoq)
+            checkExits(strat, acct, tim, nothing, getCurp(chain))
+            strat(ops, tim, chain, vix)
         end
         if tim.lastOfDay
-            handleExpirations(strat, acct, tim, chain, otoq)
+            handleExpirations(strat, acct, tim, chain, nothing)
             verifyMargin(acct)
         end
         yield()

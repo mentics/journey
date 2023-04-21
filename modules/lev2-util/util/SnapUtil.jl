@@ -21,8 +21,8 @@ end
 
 snapDates() = unique!(map(Date, snapDateTimes()))
 
-function snapNames()::Vector{String}
-    return cache!(Vector{String}, :snapNames, Minute(50)) do
+function snapNames(; period=Minute(50))::Vector{String}
+    return cache!(Vector{String}, :snapNames, period) do
         return sort!(readdir(SnavePath; join=false, sort=false))
     end
 end

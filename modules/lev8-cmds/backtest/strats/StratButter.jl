@@ -11,10 +11,10 @@ import LinesLeg as LL
 # using ThreadPools, Combinatorics, OptionQuoteTypes
 
 macro deb(exs...)
-    return
-    # prblk = Expr(:call, (esc(LogUtil.logit)))
-    # LogUtil.inner((:backtest, exs...), prblk)
-    # return Expr(:block, prblk)
+    # return
+    prblk = Expr(:call, (esc(LogUtil.logit)))
+    LogUtil.inner((:backtest, exs...), prblk)
+    return Expr(:block, prblk)
 end
 
 #region Types
@@ -70,43 +70,47 @@ makeStrat() = TStrat(
     makeCtx(),
 )
 
-struct Context{N}
+struct Context3{N}
     bufCandLong::Vector{Cand{N}}
     bufCandShort::Vector{Cand{N}}
+    curpPrev::Ref{Currency}
 end
 
 struct TStrat <: Strat
     acctTypes::Tuple{Int,DataType}
     params::Params
-    ctx::Context
+    ctx::Context3
 end
 
 BackTypes.hasMultExpirs(::TStrat) = false
 
-makeCtx() = Context(Vector{Cand{NUM_LEGS}}(), Vector{Cand{NUM_LEGS}}())
-
-const CurpPrev = Ref(CZ)
+makeCtx() = Context3(Vector{Cand{NUM_LEGS}}(), Vector{Cand{NUM_LEGS}}(), Ref(CZ))
 #endregion
 
 #region InterfaceImpl
 function BackTypes.resetStrat(s::TStrat)
-    CurpPrev[] = CZ
-    # println("RESETTING $(CurpPrev)")
+    s.ctx.curpPrev[] = CZ
 end
 
-function (s::TStrat)(ops, tim, chain, otoq)::Nothing
+function filterXpirs(xpirs, fromDate, params)
+    starti = CollUtil.gtee(xpirs, bdaysAfter(fromDate, params.MinXpirBdays))
+    endi = CollUtil.gtee(xpirs, bdaysAfter(fromDate, params.MaxXpirBdays))
+    return xpirs[starti:endi]
+end
+
+function (s::TStrat)(ops, tim, chain, vix)::Nothing
+    println("Running StratButter for ", tim.ts)
     params = s.params
     curp = ch.getCurp(chain)
-    # if abs(curp - CurpPrev[]) < 1.0
-    # if curp - CurpPrev[] < 0.0025 * curp
     # TODO: goes back up % of recent down?
-    if curp - CurpPrev[] < 0.0025 * curp
-        if curp < CurpPrev[]
-            CurpPrev[] = curp
+    curpPrev = s.ctx.curpPrev
+    if curp - curpPrev[] < 0.0025 * curp
+        if curp < curpPrev[]
+            curpPrev[] = curp
         end
         return
     else
-        CurpPrev[] = CZ
+        curpPrev[] = CZ
     end
     fromPrice = curp
 
@@ -117,26 +121,25 @@ function (s::TStrat)(ops, tim, chain, otoq)::Nothing
     empty!(keepLong)
     empty!(keepShort)
 
-    xpirs = ch.getXpirs(chain)
-    starti = CollUtil.gtee(xpirs, bdaysAfter(tim.date, params.MinXpirBdays))
-    endi = CollUtil.gtee(xpirs, bdaysAfter(tim.date, params.MaxXpirBdays))
-    for i in starti:endi
-        xpir = xpirs[i]
+    xpirs = filterXpirs(ch.getXpirs(chain), tim.date, params)
+    for xpir in xpirs
         tmult = timult(tim.date, xpir)
         searchLong = ch.toSearch(curp, chain.xsoqs[xpir].put)
-        prob = ProbKde.probToClose(F(fromPrice), F(HistData.vixOpen(tim.date)), tim.ts, xpir)
-        findEntry!(keepLong, params, prob, searchLong, otoq, curp, tmult)
+        # TODO: multithreaded precalc all the probs and put in a lookup, and store in module cache
+        prob = ProbKde.probToClose(F(fromPrice), vix, tim.ts, xpir)
+        findEntry!(keepLong, params, prob, searchLong, nothing, curp, tmult)
     end
+    # println("Found ", length(keepLong))
 
     if !isempty(keepLong)
         # TODO: identify if new opportunity is better than currently open one
-        if (closeEarlyForMargin(params, tim.ts, ops, otoq))
+        if (closeEarlyForMargin(params, tim.ts, ops, nothing))
             x = keepLong[1]
             multiple = max(1, qtyForMargin(params, ops.bal(), ops.marginAvail(), x.margin, x.scoring.kel))
             if multiple > 0
                 @assert getExpir(x.lms[1]) <= getExpir(x.lms[2])
                 ops.openTrade(tim.ts, x.lms, toPT(x.neto, RoundDown), toPT(x.margin), multiple, "best score $(rd5(x.score))", x.scoring)
-                CurpPrev[] = curp
+                curpPrev[] = curp
             else
                 println("0 multiple found, odd.")
             end
@@ -203,7 +206,9 @@ firstNinf(x) = first(x)
 #region Find
 function score(lms, params, prob, curp, tmult)
     segs = LL.toSegmentsWithZeros(lms)
-    first(segs).left.y > params.MinNeto && collect(segs)[end].right.y > params.MinNeto || return nothing
+    global keepLms = lms
+    global keepSegs = segs
+    first(segs).left.y > params.MinNeto && collect(segs)[end].right.y > params.MinNeto || ( @deb "min neto not met" ; return nothing )
 
     neto = calcPriceFast(lms)
     # neto >= params.MinNeto || ( @deb "no score neto" neto params.MinNeto ; return nothing )
@@ -228,6 +233,7 @@ function score(lms, params, prob, curp, tmult)
     kel > 0.2 || ( @deb "no score kel" kel rate tmult neto risk ; return nothing )
 
     score = kel # rate * kel
+    println("Scored ", score)
     return ((;score, neto, margin), Scoring(neto, risk, rate, kel))
 end
 
@@ -326,7 +332,6 @@ function calcKel(prob, commit, segs)
                 cdfR2 = ProbUtil.cdfFromLeft(prob, right)
                 p = cdfR2 - cdfLeft
                 push!(pbs, (p * outcome, outcome))
-                # println("sloped segment: ", (;i, left, right, width, outcomeLeft, outcomeStep, outcome, cdfLeft, cdfR2, p))
                 left = right;
                 outcomeLeft += outcomeStep
                 cdfLeft = cdfR2
@@ -339,7 +344,6 @@ function calcKel(prob, commit, segs)
         s = sum(pbs) do (pb, b)
             pb / (1 + b*x)
         end
-        # println("for x $(x), was $(s)")
         return s
     end
 end
