@@ -1,5 +1,6 @@
 module MLExplore
 using Flux, Transformers, CUDA
+using Compat
 
 # const DATA_SPLIT4 = NamedTuple{(:train, :validation), Tuple{A,B}} where {A<:AbstractArray,B<:AbstractArray}
 # const DATA_XY_SPLIT = NamedTuple{(:train, :validation), Tuple{A,B}} where {A<:AbstractArray,B<:AbstractArray}
@@ -19,7 +20,7 @@ mlx.run()
 
 # This outputs a lenth x 2 matrix (sequence)
 function makeOrigSeqSinCos(length = 1000)
-    res = [[sin(i/100.0) cos(i/100.0)] for i in 1:length]
+    res = reduce(vcat, [sin(i/100.0) cos(i/100.0)] for i in 1:length)
 
     # res = Array{Float64}(undef, 0, 2)
     # for i in 1:length
@@ -59,16 +60,23 @@ end
 
 # TODO: this is generic, can be moved to util
 function splitTrainValidation(m, validationRatio = 0.1)
-    len = length(m)
+    len = size(m, 1)
     split = round(Int, (1 - validationRatio) * len)
+    println("len $(len) split $(split)")
     return (; train = (@view m[1:split,:]), validation = (@view m[split+1:len,:]))
 end
 
 # TODO: this is generic, can be moved to util
 function makeBatches(block_size, dataTokens)
-    num = length(dataTokens) - block_size - 1
-    x = [dataTokens[i:i + block_size - 1] for i in 1:num]
-    y = [dataTokens[i + 1:i + block_size] for i in 1:num]
+    ts_count = size(dataTokens, 1)
+    num = ts_count - block_size - 1
+    # x = [dataTokens[i:i + block_size - 1] for i in 1:num]
+    # y = [dataTokens[i + 1:i + block_size] for i in 1:num]
+
+    @assert size(dataTokens) == (ts_count,2) "$(size(dataTokens)) == $((num,2))"
+    x = stack(dataTokens[i:i + block_size - 1,:] for i in 1:num; dims=1)
+    y = stack(dataTokens[i:i + block_size - 1,:] for i in 1:num; dims=1)
+    @assert size(x) == (num, block_size, 2) "$(size(x)) == $((num, block_size, 2))"
 
     # x = Array{Float64}(undef, 0, ndims(dataTokens) + 1)
     # y = Array{Float64}(undef, 0, ndims(dataTokens) + 1)
@@ -82,15 +90,23 @@ function makeBatches(block_size, dataTokens)
     return (; x, y)
 end
 
+function intoNewDim(itr)
+    x1, itr = Iterators.peel(itr)
+    sz = size(x1)
+    return reduce(vcat, itr; init=reshape(x1, 1, sz...))
+end
+
 function makeModel1(paramsModel)
     return Flux.Dense(paramsModel.block_size => paramsModel.block_size)
 end
 
 function train!(params, model, data)
-    x1 = data.train.x[1]
-    y1 = data.train.y[1]
+    global dd = data
+    x1 = data.train.x[1,:,:]
+    y1 = data.train.y[1,:,:]
+    println(typeof(x1), ' ', size(x1))
     yhat1 = model(x1)
-    Flux.Losses.crossentropy(yhat1, y)
+    Flux.Losses.logitcrossentropy(yhat1, y1)
 end
 
 end
