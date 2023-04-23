@@ -63,9 +63,13 @@ function procFile(csvPath, fcall, fput, funder; maxLines)
     tsPrev = 0
     i = 1
     for line in itr
-        res = procLine(line, fcall, fput)
-        !isnothing(res) || continue
-        tsNew, under = res
+        tsNew, under = procLine(line, fcall, fput)
+        if under == CZ
+            println("Skipping ts $(tsNew)")
+            continue
+        end
+        # !isnothing(res) || continue
+        # tsNew, under = res
         if tsNew != tsPrev
             if !sameDate(tsPrev, tsNew)
                 open = under
@@ -81,13 +85,15 @@ function procFile(csvPath, fcall, fput, funder; maxLines)
             end
 
             funder(tsNew, under, open, hi, lo)
+            println("new ts $(tsPrev) -> $(tsNew)")
             tsPrev = tsNew
         end
 
         i += 1
         if i % 10000 == 0
             println(i)
-            if i > maxLines
+            if i >= maxLines
+                println("Stopping at $(i) >= maxLines $(maxLines)")
                 break
             end
         end
@@ -100,7 +106,7 @@ function procLine(line, fcall, fput)
         right = findnext(',', line, left)
         ts = parsem(Int, SubString(line, left:right-1))
         if !isBusDay(Date(unix2datetime(ts)))
-            return
+            return (ts, CZ)
         end
         left = right+1 ; right = findnext(',', line, left)
         left = right+1 ; right = findnext(',', line, left)
@@ -161,7 +167,7 @@ function procLine(line, fcall, fput)
         if cBid > cAsk
             if cBid > 1.5 * cAsk
                 @log hand "WARN: Suspicious cBid > 1.5 * cAsk, skipping" cBid cAsk line
-                return
+                return (ts, CZ)
             end
             tmp = cAsk
             cAsk = cBid
@@ -171,7 +177,7 @@ function procLine(line, fcall, fput)
         if pBid > pAsk
             if pBid > 1.5 * pAsk
                 @log hand "WARN: Suspicious pBid > 1.5 * pAsk, skipping" pBid pAsk line
-                return
+                return (ts, CZ)
             end
             tmp = pAsk
             pAsk = pBid
@@ -180,12 +186,12 @@ function procLine(line, fcall, fput)
 
         if xpir < ts
             @log hand "WARN: xpir < ts, skipping" xpir ts line
-            return
+            return (ts, CZ)
         end
 
         if !(1000 < strike < 1000000)
             @log hand "WARN: invalid strike, skipping" strike line
-            return
+            return (ts, CZ)
         end
 
         if !ismissing(cBid) # && !ismissing(cAsk)

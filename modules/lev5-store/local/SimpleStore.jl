@@ -91,12 +91,12 @@ ChainUtil.getXpirs(chi::ChainInfo) = chi.xpirs
 
 #region Local
 function __init__()
-    if ccall(:jl_generating_output, Cint, ()) != 1
-        println("Loading SimpleStore")
-        sizehint!(ChainCache, HINT_TSS * 12 * 12) # 12 months by 12 years
-        # sizehint!(XpirCache, HINT_TSS * 12 * 12)
-        loadTss()
-    end
+    # if ccall(:jl_generating_output, Cint, ()) != 1
+    #     println("Loading SimpleStore")
+    #     sizehint!(ChainCache, HINT_TSS * 12 * 12) # 12 months by 12 years
+    #     # sizehint!(XpirCache, HINT_TSS * 12 * 12)
+    #     loadTss()
+    # end
 end
 #endregion
 
@@ -142,13 +142,17 @@ function loadMonth(y, m)
     tunder = Dict{DateTime,UnderTime}()
     sizehint!(tunder, HINT_TSS)
     loadUnder(toUnd(tunder), pathUnder)
-    if !(keys(calls) == keys(puts) == keys(tunder))
+    # There are many cases of missing data, so tunder won't match, but should be a superset
+    keysCalls = keys(calls)
+    keysPuts = keys(puts)
+    keysUnder = keys(tunder)
+    if !(keysCalls == keysPuts && issubset(keysCalls, keysUnder))
         global keepCalls = calls
         global keepPuts = puts
         global keepUnder = tunder
-        error(string("loadMonth keys didn't match", (y,m)))
+        error("calls, puts, under keys don't match, saved globals")
     end
-    for ts in keys(calls)
+    for ts in keysCalls
         callsts = calls[ts]
         putsts = puts[ts]
         xpirsCalls = keys(callsts)
@@ -157,8 +161,8 @@ function loadMonth(y, m)
         if xpirsCalls != xpirsPuts
             global keepXpirsCalls = xpirsCalls
             global keepXpirsPuts = xpirsPuts
-            println("Unexpected xpirsCalls != xpirsPuts for year/month: $(y)/$(m)")
             xpirs = intersect(xpirsCalls, xpirsPuts)
+            println("Unexpected xpirsCalls != xpirsPuts for year/month: $(y)/$(m) $(length(xpirsCalls)) $(length(xpirsPuts)), saved globals")
         end
         xsoqs = Dict{Date,Styles{Vector{OptionQuote}}}()
         xpirs = filter!(x -> x < Date(2025, 1, 1), sort!(collect(xpirs)))
@@ -226,6 +230,8 @@ function loadOpt(f, path)
             end
             if 1 < strike < 1000 # TODO: can remove this after reload data filtering it
                 f(ts, xpir, strike, bid, ask, last, vol, delta, gamma, vega, theta, rho, iv)
+            else
+                # println("Ignoring bad strike $(stike)")
             end
         end
     end
