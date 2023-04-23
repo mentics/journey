@@ -7,5 +7,6 @@ ntt = NamedTupleTools
 using BaseTypes, OutputUtil
 
 using Flux
-using Far ; far = Far;
+# using Far ; far = Far;
 # far.run(4)
+import MLExplore as mlx

@@ -1,6 +1,6 @@
 module FluxLayers
 import Flux:Flux,Parallel,Dense
-import Transformers.Basic:Embed,PositionEmbedding
+# import Transformers.Basic:Embed,PositionEmbedding
 # import MLUtil:N
 
 export fl

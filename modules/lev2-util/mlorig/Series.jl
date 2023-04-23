@@ -7,7 +7,7 @@ module Series
 import Flux: Flux,Dense,ADAM,gradient,gpu
 import Flux.Optimise: update!
 import Transformers: Transformer,TransformerDecoder,todevice,enable_gpu
-import Transformers.Basic: PositionEmbedding
+# import Transformers.Basic: PositionEmbedding
 using CUDA
 # import CUDA:gpu
 
