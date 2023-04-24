@@ -1,6 +1,7 @@
 module MLExplore
 using Flux, Transformers, CUDA
 using Compat
+import Random
 
 # Fluxml expects batch to be the last dimension
 
@@ -20,32 +21,39 @@ To run test:
 mlx.run()
 =#
 
+function run(cfg=makeCfg(), input=makeOrigSeqSinCos())
+    enable_gpu(CUDA.functional())
+    Random.seed!(1)
+
+    global dataTokens = tokenizeData(input)
+    global dataSplit = splitTrainValidation(dataTokens)
+    global xySplitBatched = map(d -> makeBatches(cfg.block_size, d), dataSplit)
+    global model = makeModel1(cfg)
+    train!(cfg, model, xySplitBatched)
+    # global start = rand(Float32, cfg.block_size, 2, 1)
+    global starti = 1 # rand(1:(size(dataTokens,1) - cfg.block_size - 1))
+    global start = dataTokens[starti:(starti+cfg.block_size-1),:]
+    global genned = generate(model, start, 10)
+    return starti, genned
+end
+
+function makeCfg()
+    return (;
+        # Model related
+        block_size = 8,
+
+        # Execution related
+        batch_size = 32,
+        trainIterCount = 10000,
+        target_loss = 1e-10,
+        learning_rate = 1e-1,
+    )
+end
+
 # This outputs a lenth x 2 matrix (sequence)
 function makeOrigSeqSinCos(length = 1000)
     res = reduce(vcat, [Float32(sin(i/100.0)) Float32(cos(i/100.0))] for i in 1:length)
     return res
-end
-
-function makeParams()
-    return (;
-        model=(;
-            block_size = 8,
-        ),
-        train=(;
-            batch_size = 32,
-        )
-    )
-end
-
-function run(params=makeParams(), input=makeOrigSeqSinCos())
-    enable_gpu(CUDA.functional())
-    dataTokens = tokenizeData(input)
-    dataSplit = splitTrainValidation(dataTokens)
-    xySplitBatched = map(d -> makeBatches(params.model.block_size, d), dataSplit)
-    global model = makeModel1(params.model)
-    train!(params, model, xySplitBatched)
-    start = rand(Float32, params.model.block_size, 2, 1)
-    generate(model, start, 10);
 end
 
 # This doesn't have to return the same size as the input
@@ -58,7 +66,7 @@ end
 function splitTrainValidation(m, validationRatio = 0.1)
     len = size(m, 1)
     split = round(Int, (1 - validationRatio) * len)
-    println("len $(len) split $(split)")
+    # println("len $(len) split $(split)")
     return (; train = (@view m[1:split,:]), validation = (@view m[split+1:len,:]))
 end
 
@@ -74,35 +82,48 @@ function makeBatches(block_size, dataTokens)
     return (; x, y)
 end
 
-function intoNewDim(itr)
-    x1, itr = Iterators.peel(itr)
-    sz = size(x1)
-    return reduce(vcat, itr; init=reshape(x1, 1, sz...))
+function makeModel1(cfg)
+    model = Flux.Dense(cfg.block_size => cfg.block_size)
+    # return Flux.Dense(cfgModel.block_size => 1)
+    params = Flux.params(model)
+    opt = ADAM(cfg.learning_rate)
+    exec = function(x)
+        return model(x)
+    end
+    function loss(x, y)
+        yhat = exec(x)
+        return Flux.Losses.mse(yhat, y)
+        # return Flux.Losses.logitcrossentropy(yhat, y)
+    end
+    return (;cfg, exec, opt, params, loss)
 end
 
-function makeModel1(paramsModel)
-    return Flux.Dense(paramsModel.block_size => paramsModel.block_size)
-    # return Flux.Dense(paramsModel.block_size => 1)
-end
-
-function train!(params, model, data)
-    global dd = data
-    x1 = data.train.x[:,:,1]
-    y1 = data.train.y[:,:,1]
-    println(typeof(x1), ' ', size(x1))
-    yhat1 = model(x1)
-    Flux.Losses.logitcrossentropy(yhat1, y1)
+function train!(cfg, model, data)
+    prevLoss = 1e10
+    for i=0:cfg.trainIterCount
+        ind = 1 + i % size(data.train.x, ndims(data.train.x))
+        x = data.train.x[:,:,ind]
+        y = data.train.y[:,:,ind]
+        grad = gradient(() -> model.loss(x, y), model.params)
+        Flux.update!(model.opt, model.params, grad)
+        loss = model.loss(x, y)
+        if loss < prevLoss / 2
+            println("loss: ", loss)
+            prevLoss = loss
+        end
+    end
 end
 
 function generate(model, start, forecast_count)
     # T x C x B
+    start = reshape(start, size(start)..., 1)
     @assert size(start) == (8, 2, 1) string("expected ", (8, 2, 1), " but was ", size(start))
     res = start
     for _=1:forecast_count
-        y = model(res[end-7:end,:,:])
-        println("y size: ", size(y))
+        y = model.exec(res[end-7:end,:,:])
+        # println("y size: ", size(y))
         yend = y[end:end,:,:]
-        println("yend size: ", size(yend))
+        # println("yend size: ", size(yend))
         # logitsLast = logits[:,end,:]
         # probs = Flux.softmax(logitsLast)
         res = cat(res, yend; dims=1)
