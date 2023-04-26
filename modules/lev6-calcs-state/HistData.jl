@@ -66,6 +66,25 @@ function extrema(daily, from::Date, to::Date, hi1::Real, lo1::Real, sym::AStr="S
 end
 
 # daily is in descending date order.
+function makeRets(daily, interval::Int)::NamedTuple
+    rets = Vector{Float64}()
+    dates = Vector{Date}()
+    for i in 1:length(daily)-interval
+        rowStart = daily[i + interval]
+        priceStart = rowStart.close
+        rowEnd = daily[i]
+        priceEnd = rowEnd.close
+        ret = priceEnd / priceStart
+        push!(rets, ret)
+        push!(dates, rowStart.date)
+    end
+    # if length(rets[1]) > length(daily)
+    #     throw("Rets is too many $(length(rets[1])) > $(length(daily))")
+    # end
+    return (;rets, dates)
+end
+
+# daily is in descending date order.
 # pass in a view if you want to save a separate out-of-sample set.
 function makeRetsExpirs(daily, maxInterval::Int)::NamedTuple
     rets = [Vector{Float64}() for i in 1:maxInterval]

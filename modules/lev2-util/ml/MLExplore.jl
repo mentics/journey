@@ -33,26 +33,26 @@ function makeCfg()
 
         # Model related
         # General Lengths
-        enc_input_width = 180,
-        enc_output_width = 180,
-        dec_input_width = 20,
-        dec_output_width = 20,
+        enc_input_width = 180, #300,
+        enc_output_width = 180, #300,
+        dec_input_width = 2,
+        dec_output_width = 2,
 
         # Transformer Config
-        trf_input_width = 512,
-        trf_block_count = 4,
-        trf_hidden_dim = 512,
+        trf_input_width = 128, #512,
+        trf_block_count = 2, #4,
+        trf_hidden_dim = 128, #512,
         trf_head_count = 8,
         trf_head_dim = 64,
-        trf_ffn_dim = 2048,
+        trf_ffn_dim = 1024, #2048,
         trf_dropout = 0.1,
 
         # Execution related
         validation_ratio = 0.2,
-        batch_len = 64,
-        train_iters = 100,
+        batch_len = 128,
+        train_iters = 10,
         target_loss = 1e-4,
-        learning_rate = 1e-6,
+        learning_rate = 1e-4,
         learning_rate_mult = 1.2,
     )
 end
@@ -60,7 +60,7 @@ end
 seq_len(cfg) = cfg.enc_input_width + cfg.dec_output_width
 input_len(cfg) = cfg.enc_input_width + cfg.dec_input_width - 1
 
-function run(cfg=makeCfg(), input=makeSeqTrigSum2())
+function run(cfg=makeCfg(), input=makeSeqRets())
     enable_gpu(true) # CUDA.functional())
     Random.seed!(1)
 
@@ -92,8 +92,26 @@ function makeSeqTrigSum1(length = 40 * 20 * 2 * π + 5)
 end
 
 function makeSeqTrigSum2(length = 40 * 20 * 2 * π + 5)
-    res = reduce(vcat, [Float32((sin(i/6.0) + cos(7.0 + i/11.0) + sin(π/3 + i/252))/3) Float32(sin(i/23.0))] for i in 1:length)
+    res = reduce(vcat, trigSum2(i) for i in 1:length)
     return reshape(res, sizeTime(res), 2)
+end
+
+trigSum2(i) = [Float32((sin(i/6.0) + cos(7.0 + i/11.0) + sin(π/3 + i/252))/3) Float32(sin(i/23.0))]
+
+function makeSeqTrigSum2Delta(length = 40 * 20 * 2 * π + 5)
+    res = reduce(vcat, 100 * (trigSum2(i) .- trigSum2(i-1)) for i in 1:length)
+    return reshape(res, sizeTime(res), 2)
+end
+
+import HistData
+function makeSeqRets()
+    rets = HistData.makeRets(HistData.dataDaily(), 1)
+    return reshape(rets.rets, sizeTime(rets.rets), 1)
+end
+
+function makeSeqSpy()
+    rets = [row.close for row in HistData.dataDaily()]
+    return reshape(rets, sizeTime(rets), 1)
 end
 
 # This doesn't have to return the same size as the input
@@ -149,8 +167,9 @@ function batches(cfg, count, lfsr, ind)
             # println("Adding to batch for index $ind")
             push!(Inds[], ind)
             seq = dataTokens[ind:(ind + seqlen - 1),:]
+            range = 0.0:(π/(seqlen-1)/2):π/2
             ind, _ = iterate(lfsr, ind)
-            seq
+            cat(seq, [cos.(range) sin.(range)]; dims=ndims(seq))
         end for _ in 1:batchlen)
         push!(x, batch)
         @assert size(batch) == (seqlen, sizeChannel(batch)..., batchlen) "$(size(batch)) == $((seqlen, sizeChannel(batch), batchlen))"
@@ -206,19 +225,26 @@ function makeModel1(cfg)
     # https://arxiv.org/pdf/2001.08317.pdf
 
     encoder_input_layer = Dense(cfg.enc_input_width => cfg.trf_input_width) |> DEV[]
-    positional_encoding_layer = SinCosPositionEmbed(cfg.trf_input_width) |> DEV[]
+    # positional_encoding_layer = SinCosPositionEmbed(cfg.trf_input_width) |> DEV[]
+    # positional_encoding_layer = SinCosPositionEmbed(cfg.trf_input_width) |> DEV[]
+    # positional_encoding = positional_encoding_layer(cfg.enc_input_width)
+    # positional_encoding_layer = FixedLenPositionEmbed(cfg.trf_input_width) |> DEV[]
     encoder_trf = Transformer(TransformerBlock, cfg.trf_block_count, cfg.trf_head_count, cfg.trf_hidden_dim, cfg.trf_head_dim, cfg.trf_ffn_dim; dropout=cfg.trf_dropout) |> DEV[]
     decoder_input_layer = Dense(cfg.dec_input_width => cfg.trf_input_width) |> DEV[]
     decoder_trf = Transformer(TransformerDecoderBlock, cfg.trf_block_count, cfg.trf_head_count, cfg.trf_hidden_dim, cfg.trf_head_dim, cfg.trf_ffn_dim; dropout=cfg.trf_dropout) |> DEV[]
     decoder_output_layer = Dense(cfg.trf_hidden_dim => cfg.dec_output_width) |> DEV[]
 
-    all_layers = [encoder_input_layer, positional_encoding_layer, encoder_trf, decoder_trf, decoder_input_layer]
+    # positional_encoding_layer
+    all_layers = [encoder_input_layer, encoder_trf, decoder_trf, decoder_input_layer]
 
     function embedding(input)
         # we = word_embed(input.token)
         # pe = pos_embed(we)
         enced = encoder_input_layer(input)
-        posed = positional_encoding_layer(enced)
+        return enced
+        println(sizeTime(enced))
+        error("stop")
+        # posed = positional_encoding_layer(sizeTime(enced))
         return enced .+ posed
     end
 
@@ -260,7 +286,7 @@ function makeModel1(cfg)
     params = Flux.params(all_layers)
     opt = Adam(cfg.learning_rate)
 
-    return (;cfg, exec, opt, params, loss)
+    return (;cfg, exec, opt, params, loss, all_layers)
 end
 
 function train!(cfg, model, data)
@@ -285,8 +311,9 @@ function train!(cfg, model, data)
         if loss < min_loss
             model.opt.eta *= cfg.learning_rate_mult
             min_loss = loss
-        else
-            model.opt.eta /= cfg.learning_rate_mult
+        elseif loss > min_loss + cfg.learning_rate_mult
+            # model.opt.eta /= cfg.learning_rate_mult
+            model.opt.eta = max(1e-7, model.opt.eta / cfg.learning_rate_mult)
         end
 
         validation_loss = validationLoss()
@@ -336,10 +363,10 @@ import GLMakie, DrawUtil
 import ColorTypes:RGB,RGBA
 function plotGenned(genned, actual)
     display(GLMakie.lines(actual[:,1]; color=RGBA(.5, .0, .0, .5)))
-    display(GLMakie.lines!(actual[:,2]; color=RGBA(.0, .5, .0, .5)))
+    # display(GLMakie.lines!(actual[:,2]; color=RGBA(.0, .5, .0, .5)))
 
     display(GLMakie.lines!(genned[:,1]; color=RGBA(.9, .0, .0, .8)))
-    display(GLMakie.lines!(genned[:,2]; color=RGBA(.0, .9, .0, .8)))
+    # display(GLMakie.lines!(genned[:,2]; color=RGBA(.0, .9, .0, .8)))
 
     GLMakie.vlines!(input_len(gcfg); color=:green)
 end
