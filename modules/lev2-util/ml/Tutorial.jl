@@ -5,7 +5,7 @@ using Transformers
 using Transformers.Layers
 using Transformers.TextEncoders
 
-enable_gpu(CUDA.functional()) # make `todevice` work on gpu if available
+# enable_gpu(CUDA.functional()) # make `todevice` work on gpu if available
 
 labels = map(string, 1:10)
 startsym = "<s>"
