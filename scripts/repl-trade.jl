@@ -12,12 +12,15 @@ procOrders()
 display(todo())
 toc()
 todup()
-x3(1)
-xdr(5)
+# x3(1)
+# xdr(5)
 tradesOpen()
 
 c.findRoll("F", 14, .12, Style.put)
 c.findRoll("F", 14.5, 0, Style.call)
+
+import CmdTradeStrat as darts
+darts.run()
 
 # devon()
 # so(r.lms)

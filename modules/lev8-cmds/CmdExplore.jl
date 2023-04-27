@@ -35,7 +35,7 @@ end
 
 # shc(args...) = Tuple(lr for lr in sh(args...))
 sh(str::AStr, exs::Int...) = sh(str, expir.(exs)...)
-sh(str::AStr, exps::Date...)::Vector{LegMeta} = tos(LegMetaOpen, shLegs(str, collect(exps)), Chains.chainLookup)
+sh(str::AStr, exps::Date...) = Tuple(tos(LegMetaOpen, shLegs(str, collect(exps)), Chains.chainLookup))
 function shlr(str::AStr, exps=expirs(), curp=market().startPrice)
     lms = sh(str, exps...)
     # exp = minimum(getExpiration, lms)

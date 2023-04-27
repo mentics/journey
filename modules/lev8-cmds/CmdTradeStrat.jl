@@ -1,7 +1,7 @@
 module CmdTradeStrat
 using Dates
-using BaseTypes, BackTypes
-using LogUtil
+using SH, BaseTypes, BackTypes
+using LogUtil, DateUtil
 using Expirations, Chains, Markets
 import StratButter as stratb
 import SimpleStore as sstor
@@ -30,8 +30,12 @@ function toChainInfo(cht::ChainsType, curp, xpirs)
     return sstor.ChainInfo(xsoqs, under, xpirs)
 end
 
+keepOpen = nothing
+
 function run()
     LogUtil.resetLog(:backtest)
+    keep = keepOpen
+    global keepOpen = nothing
 
     mkt = market()
     strat = stratb.makeStrat()
@@ -40,6 +44,12 @@ function run()
     ci = toChainInfo(chains(xpirs)["SPY"], mkt.curp, xpirs)
     BackTypes.resetStrat(strat)
     strat(makeOps(nothing), tim, ci, F(mkt.vix))
+    if isnothing(keepOpen)
+        global keepOpen = keep
+        return nothing
+    else
+        return keepOpen.lmso
+    end
 end
 
 using Globals
@@ -67,6 +77,20 @@ end
 function closeTrade(acct, tradeOpen, ts, lmsc, netc, label)
     global keepClose = (;acct, ts, lmso, neto, margin, multiple, label, extra)
     println("closeTrade: ", (;acct, tradeOpen, ts, lmsc, netc, label))
+end
+
+import ProbKde, HistData
+function checkScore(lms)
+    strat = stratb.makeStrat()
+    (;tsMarket, curp, vix) = market()
+    prob = ProbKde.probToClose(F(curp), F(vix), tsMarket, getExpir(lms))
+    tmult = timult(Date(tsMarket), getExpir(lms))
+    return stratb.score(lms, strat.params, prob, curp, tmult)
+end
+
+function getProb(xpir)
+    (;tsMarket, curp, vix) = market()
+    return ProbKde.probToClose(F(curp), F(vix), tsMarket, xpir)
 end
 
 end

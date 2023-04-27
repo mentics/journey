@@ -11,10 +11,10 @@ import LinesLeg as LL
 # using ThreadPools, Combinatorics, OptionQuoteTypes
 
 macro deb(exs...)
-    # return
-    prblk = Expr(:call, (esc(LogUtil.logit)))
-    LogUtil.inner((:backtest, exs...), prblk)
-    return Expr(:block, prblk)
+    return
+    # prblk = Expr(:call, (esc(LogUtil.logit)))
+    # LogUtil.inner((:backtest, exs...), prblk)
+    # return Expr(:block, prblk)
 end
 
 #region Types
@@ -99,7 +99,7 @@ function filterXpirs(xpirs, fromDate, params)
 end
 
 function (s::TStrat)(ops, tim, chain, vix)::Nothing
-    println("Running StratButter for ", tim.ts)
+    # println("Running StratButter for ", tim.ts)
     params = s.params
     curp = ch.getCurp(chain)
     # TODO: goes back up % of recent down?
@@ -233,7 +233,7 @@ function score(lms, params, prob, curp, tmult)
     kel > 0.2 || ( @deb "no score kel" kel rate tmult neto risk ; return nothing )
 
     score = kel # rate * kel
-    println("Scored ", score)
+    # println("Scored ", score)
     return ((;score, neto, margin), Scoring(neto, risk, rate, kel))
 end
 
@@ -305,19 +305,21 @@ Can be integrated: https://bit.ly/3mud4SA
 const PROB_INTEGRAL_WIDTH2 = 1.0
 function calcKel(prob, commit, segs)
     cdfLeft = 0.0
-    pbs = Tuple{Float64,Float64}[]
+    pbs = NTuple{3,Float64}[]
     for seg in segs
-        cdfRight = ProbUtil.cdfFromLeft(prob, seg.right.x)
+        x_right = seg.right.x
+        cdfRight = ProbUtil.cdfFromLeft(prob, x_right)
+        # @show cdfLeft cdfRight x_right
         if seg.slope == 0.0
             # @assert seg.left.y == seg.right.y
             p = cdfRight - cdfLeft
             outcome = seg.left.y / commit
-            push!(pbs, (p * outcome, outcome))
+            push!(pbs, (p * outcome, outcome, p))
         else
             # chop it into more pieces
             # integral[ outcome ] = (outcome.left + outcome.right) / 2 # trapezoid area, I think width can be 1 because discrete and a type of "width" is in prob term
             # integral[ prob * outcome ] =
-            span = seg.right.x - seg.left.x
+            span = x_right - seg.left.x
             num = ceil(span / PROB_INTEGRAL_WIDTH2)
             width = span / num
             outcomeStep = (span / num) * seg.slope
@@ -331,7 +333,7 @@ function calcKel(prob, commit, segs)
                 outcome = (outcomeLeft + outcomeStep / 2) / commit
                 cdfR2 = ProbUtil.cdfFromLeft(prob, right)
                 p = cdfR2 - cdfLeft
-                push!(pbs, (p * outcome, outcome))
+                push!(pbs, (p * outcome, outcome, p))
                 left = right;
                 outcomeLeft += outcomeStep
                 cdfLeft = cdfR2
@@ -339,9 +341,14 @@ function calcKel(prob, commit, segs)
         end
         cdfLeft = cdfRight;
     end
-    # global keepPbs = pbs
+    global keepPbs = pbs
+    sumpbs = sum(x -> x[3], pbs)
+    if !(sumpbs ≈ 1.0)
+        println("sumpbs not 1: $sumpbs")
+        blog("sumpbs not 1: $sumpbs")
+    end
     Kelly.findZero() do x
-        s = sum(pbs) do (pb, b)
+        s = sum(pbs) do (pb, b, _)
             pb / (1 + b*x)
         end
         return s

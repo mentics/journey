@@ -21,13 +21,13 @@ function so(lms::Coll{LegMetaOpen}; ratio=nothing, at=nothing, pre=true, skipCon
     canTrade(pre)
     Globals.set(:soRunLast, now(UTC))
 
-    if ( exp = minimum(getExpiration.(lms)) ; exp == market().startDay || exp == today() )
+    if ( exp = minimum(getExpir.(lms)) ; exp == market().startDay || exp == today() )
         msg = string("Attempted to enter a trade that expires the same day ", exp)
         pre ? (@error msg) : error(msg)
     end
 
     # isnothing(at) && isnothing(ratio) && (ratio = 0.25)
-    !isnothing(at) || ( at = bap(lms) )
+    !isnothing(at) || ( at = Pricing.price(lms) )
     # pr = priceUse(quoter(lms), sumQuotes(getQuote.(lms)); ratio, at)
     # pr = priceUse(getQuote(tos(LegMetaOpen, lms, Chains.chainLookup)), sumQuotes(getQuote.(lms)); ratio, at)
     pr = priceUse(quoter(lms, Action.open), sumQuotes(getQuote.(lms)); ratio, at)

@@ -12,7 +12,7 @@ export findTradeEntered
 
 function newTrade(primitDir::PriceT, legs::Coll{LegMetaOpen}, underBid::Currency, underAsk::Currency)::Int
     @assert sum(getBid, legs) <= primitDir <= sum(getAsk, legs) "Invalid primitDir $(primitDir) $(sum(getBid, legs)) $(sum(getAsk, legs))\n$(legs)"
-    exp = minimum(getExpiration, legs)
+    exp = minimum(getExpir, legs)
     tid = 0
     inTransaction() do
         res = select("insert into Trade (status, tsCreated, primitDir, targetDate) values (?, ?, ?, ?) returning tid", Starting, now(UTC), primitDir, exp)

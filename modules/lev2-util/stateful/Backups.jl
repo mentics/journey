@@ -3,8 +3,8 @@ using Globals, FileUtil
 
 export logOrderRaw, loadOrderLogged
 
-setBasePath(path) = basePath[] = path
-setBasePath() = basePath[] = defBasePath()
+# setBasePath(path) = basePath[] = path
+# setBasePath() = basePath[] = defBasePath()
 
 function logOrderRaw(tord::Dict{String,Any})
     oid = tord["id"]
@@ -20,9 +20,10 @@ end
 loadOrderLogged(oid::Int)::Dict{String,Any} = loadJson(pathOrder(oid))
 
 #region Local
-defBasePath() = dirData("save")
-const basePath = Ref{String}(defBasePath())
-pathOrder(oid::Int)::String = joinpath(basePath[], "orders", string(oid) * ".json")
+# defBasePath() = dirData("save")
+# const basePath = Ref{String}(defBasePath())
+# pathOrder(oid::Int)::String = joinpath(basePath[], "orders", string(oid) * ".json")
+pathOrder(oid::Int)::String = joinpath(dirData("save", "orders"), string(oid) * ".json")
 #endregion
 
 end

@@ -1,5 +1,5 @@
 module MLExplore
-using Compat
+using Compat, Dates
 import Random
 using Flux, Transformers, CUDA
 using Transformers.Layers
@@ -26,38 +26,40 @@ References:
 
 const DEV = Ref(gpu)
 
+const MULT = Ref(4)
+
 function makeCfg()
     return (;
         # Data related
-        channel_width = 1,
+        channel_width = 3,
 
-        # Model related
+        ## Model related
         # General Lengths
-        enc_input_width = 180, #300,
-        enc_output_width = 180, #300,
-        dec_input_width = 2,
-        dec_output_width = 2,
+        enc_input_width = 300,
+        enc_output_width = 300,
+        dec_input_width = 20,
+        dec_output_width = 20,
 
         # Transformer Config
-        trf_input_width = 128, #512,
-        trf_block_count = 2, #4,
-        trf_hidden_dim = 128, #512,
-        trf_head_count = 8,
-        trf_head_dim = 64,
-        trf_ffn_dim = 1024, #2048,
+        trf_input_width = 128 * MULT[],
+        trf_block_count = 1 * MULT[],
+        trf_hidden_dim = 128 * MULT[],
+        trf_head_count = 2 * MULT[],
+        trf_head_dim = 16 * MULT[],
+        trf_ffn_dim = 512 * MULT[],
         trf_dropout = 0.1,
 
-        # Execution related
+        ## Execution related
         validation_ratio = 0.2,
-        batch_len = 128,
-        train_iters = 10,
+        batch_len = 64,
+        train_iters = 100,
         target_loss = 1e-4,
         learning_rate = 1e-4,
         learning_rate_mult = 1.2,
     )
 end
 
-seq_len(cfg) = cfg.enc_input_width + cfg.dec_output_width
+seq_len_train(cfg) = cfg.enc_input_width + cfg.dec_output_width # includes the target y at the end
 input_len(cfg) = cfg.enc_input_width + cfg.dec_input_width - 1
 
 function run(cfg=makeCfg(), input=makeSeqRets())
@@ -65,17 +67,23 @@ function run(cfg=makeCfg(), input=makeSeqRets())
     Random.seed!(1)
 
     global gcfg = cfg
+    println("Tokenizing data")
     global dataTokens = tokenizeData(input)
     # global dataSplit = splitTrainValidation(dataTokens, cfg.validation_ratio)
     # global xySplitBatched = makeBatchesSplit(cfg, dataSplit)
+    println("Making batches")
     global xySplitBatched = makeBatches(cfg, dataTokens)
+    println("Making model")
     global model = makeModel1(cfg)
+    println("Training")
     train!(cfg, model, xySplitBatched)
     starti = 1 # rand(1:(size(dataTokens,1) - input_len(cfg)))
     global gstart = dataTokens[starti:(starti + input_len(cfg) - 1),:]
     gen_count = input_len(cfg)
+    println("Generating")
     global genned = generate(cfg, model, gstart, gen_count)
     global gactual = dataTokens[starti:min(sizeTime(dataTokens),sizeTime(genned)),:]
+    println("Plotting")
     plotGenned(genned, gactual)
     return starti, genned
 end
@@ -135,14 +143,14 @@ import MaxLFSR
 function makeBatches(cfg, dataTokens)
     empty!(Inds[])
     ts_count = size(dataTokens, 1)
-    subseq_count = ts_count - seq_len(cfg) - 1
+    subseq_count = ts_count - seq_len_train(cfg) - 1
     batch_count = subseq_count ÷ cfg.batch_len
     validation_batch_count = max(1, ceil(Int, cfg.validation_ratio * batch_count))
     training_batch_count = batch_count - validation_batch_count
 
     if validation_batch_count <= 0
         @show ts_count subseq_count batch_count validation_batch_count train_batch_count
-        error("Insufficient data $(ts_count) for seq_size $(seq_len(cfg)) and batch len $(batch_len)")
+        error("Insufficient data $(ts_count) for seq_size $(seq_len_train(cfg)) and batch len $(batch_len)")
     end
 
     ind = 1
@@ -159,7 +167,7 @@ end
 const Inds = Ref(Int[])
 
 function batches(cfg, count, lfsr, ind)
-    seqlen = seq_len(cfg)
+    seqlen = seq_len_train(cfg)
     batchlen = cfg.batch_len
     x = Array{Float32, ndims(dataTokens)+1}[]
     for _ in 1:count
@@ -167,14 +175,26 @@ function batches(cfg, count, lfsr, ind)
             # println("Adding to batch for index $ind")
             push!(Inds[], ind)
             seq = dataTokens[ind:(ind + seqlen - 1),:]
-            range = 0.0:(π/(seqlen-1)/2):π/2
             ind, _ = iterate(lfsr, ind)
-            cat(seq, [cos.(range) sin.(range)]; dims=ndims(seq))
+            attachPositional(seq, ndims(seq))
         end for _ in 1:batchlen)
         push!(x, batch)
         @assert size(batch) == (seqlen, sizeChannel(batch)..., batchlen) "$(size(batch)) == $((seqlen, sizeChannel(batch), batchlen))"
     end
     return x, ind
+end
+
+# len could be seqlen or inputlen
+function attachPositional(seq, dim)
+    len = size(seq, 1)
+    # range = 0.0:(π/(len-1)/2):π/2
+    pos = Array{Float32}(undef, len, 2)
+    for i in 1:len
+        t = (π / 2) * ((i-1) / (len-1))
+        pos[i,1] = cos(t)
+        pos[i,2] = sin(t)
+    end
+    cat(seq, pos; dims=dim)
 end
 
 # function makeBatches(dataTokens, seq_len, batch_len)
@@ -212,9 +232,8 @@ end
 
 function ins(cfg, seq)
     (;enc_input_width, dec_input_width) = cfg
-    seq_len = size(seq, 1)
-    @assert seq_len >= enc_input_width + dec_input_width - 1 (@str seq_len >= enc_input_width + dec_input_width - 1 seq_len enc_input_width dec_input_width)
     enc_input = seq[1:enc_input_width,:,:]
+    # the following might not go all the way to the end if this is being used for ins_and_outs which would include the y (actual)
     dec_input = seq[enc_input_width:(enc_input_width + dec_input_width - 1),:,:]
     @assert size(dec_input, 1) == dec_input_width
     return enc_input, dec_input
@@ -224,7 +243,7 @@ function makeModel1(cfg)
     # The diagram on page 2 of this paper is most informative
     # https://arxiv.org/pdf/2001.08317.pdf
 
-    encoder_input_layer = Dense(cfg.enc_input_width => cfg.trf_input_width) |> DEV[]
+    encoder_input_layer = Dense(cfg.enc_input_width * cfg.channel_width => cfg.trf_input_width * cfg.channel_width) |> DEV[]
     # positional_encoding_layer = SinCosPositionEmbed(cfg.trf_input_width) |> DEV[]
     # positional_encoding_layer = SinCosPositionEmbed(cfg.trf_input_width) |> DEV[]
     # positional_encoding = positional_encoding_layer(cfg.enc_input_width)
@@ -235,17 +254,19 @@ function makeModel1(cfg)
     decoder_output_layer = Dense(cfg.trf_hidden_dim => cfg.dec_output_width) |> DEV[]
 
     # positional_encoding_layer
-    all_layers = [encoder_input_layer, encoder_trf, decoder_trf, decoder_input_layer]
+    all_layers = (;encoder_input_layer, encoder_trf, decoder_trf, decoder_input_layer, decoder_output_layer)
 
     function embedding(input)
         # we = word_embed(input.token)
         # pe = pos_embed(we)
-        enced = encoder_input_layer(input)
+        sz = size(input)
+        chan_len = (*)(sz[2:end-1]...)
+        input_flat = reshape(input, sz[1] * chan_len, sz[end])
+        enced_flat = encoder_input_layer(input_flat)
+        enced = reshape(enced_flat, cfg.trf_input_width, sz[2:end-1]..., sz[end])
         return enced
-        println(sizeTime(enced))
-        error("stop")
         # posed = positional_encoding_layer(sizeTime(enced))
-        return enced .+ posed
+        # return enced .+ posed
     end
 
     function encoder_forward(input)
@@ -272,7 +293,7 @@ function makeModel1(cfg)
         return p
     end
 
-    exec = function(enc_input, dec_input)
+    function exec(enc_input, dec_input)
         enced = encoder_forward(enc_input)
         deced = decoder_forward(dec_input, enced)
         return deced
@@ -283,10 +304,26 @@ function makeModel1(cfg)
         return Flux.Losses.mse(yhat, y)
     end
 
+    function gen(seq; batched=false)
+        # @show size(seq)
+        if !batched
+            seq_pos = reshape(seq_pos, size(seq_pos)..., 1)
+        end
+        dim_pos = 2 # skip time dim
+        seq_pos = attachPositional(seq, dim_pos)
+        enc_input, dec_input = ins(cfg, seq_pos)
+        # @show size(enc_input)
+        res = exec(enc_input, dec_input)
+        # @show size(res)
+        res2 = selectdim(res, 2, 1:(size(res, 2)-2))
+        # @show size(res)
+        return res2
+    end
+
     params = Flux.params(all_layers)
     opt = Adam(cfg.learning_rate)
 
-    return (;cfg, exec, opt, params, loss, all_layers)
+    return (;cfg, exec, gen, opt, params, loss, all_layers)
 end
 
 function train!(cfg, model, data)
@@ -317,7 +354,7 @@ function train!(cfg, model, data)
         end
 
         validation_loss = validationLoss()
-        println("iter $(i) training loss: ", loss, " validation loss: ", validation_loss, " learning rate: ", model.opt.eta)
+        println("$(now()): Iteration $(i) training loss: ", loss, " validation loss: ", validation_loss, " learning rate: ", model.opt.eta)
         if loss < cfg.target_loss
             @goto done
         end
@@ -345,13 +382,11 @@ function generate(cfg, model, start, forecast_count)
     Flux.testmode!(model)
     # T x C x B
     start = reshape(start, size(start)..., 1)
-    @assert size(start) == (input_len(cfg), sizeChannel(start)..., 1) string("expected ", (input_len(cfg), sizeChannel(start), 1), " but was ", size(start))
+    @assert size(start) == (input_len(cfg), size(start)[2:end]...) string("expected ", (input_len(cfg), sizeChannel(start)), " but was ", size(start))
     res = gpu(start)
     # enc_input, _ = ins(cfg, res)
     for _=1:forecast_count
-        enc_input, dec_input = ins(cfg, res[(end - input_len(cfg) + 1):end,:,:])
-        # _, dec_input = ins(cfg, res[(end - input_len(cfg) + 1):end,:,:])
-        y = model.exec(enc_input, dec_input)
+        y = model.gen(res[(end - input_len(cfg) + 1):end,:,:]; batched=true)
         yend = y[end:end,:,:]
         res = cat(res, yend; dims=1)
     end
@@ -380,6 +415,7 @@ end
 sizeBatch(x) = size(x, ndims(x))
 # time is always the first dim
 sizeTime(x) = size(x, 1)
-sizeChannel(x) = size(x)[2:(ndims(x)-1)]
+sizeChannel(x) = size(x)[2:end-1] # [2:(ndims(x)-1)]
+# lengthChannel(x) = (*)(size(x)[2:(end-1)]...)
 
 end

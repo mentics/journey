@@ -11,6 +11,8 @@ import LinesLeg as LL
 # import StratPutSpread as pstrat
 import StratButter as stratb
 
+sstor.loadTss()
+
 bt.run(stratb.makeStrat(), DateTime(2020,1,1), DateTime(2020,2,1); maxSeconds=1) ; lyze.showResult()
 bt.run(stratb.makeStrat(), DateTime(2020,1,1), DateTime(2020,2,1); maxSeconds=4) ; lyze.showResult()
 # bt.run(strat1.makeStrat(), DateTime(2022,1,1), DateTime(2022,3,4); maxSeconds=1)

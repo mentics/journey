@@ -4,6 +4,7 @@ Pkg.activate(".")
 
 include("../repl-backtest.jl")
 include("../repl-trade.jl")
+include("../repl-ml.jl")
 
 # using Snapshots
 # import TestUtil:TU

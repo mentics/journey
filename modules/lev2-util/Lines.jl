@@ -275,19 +275,19 @@ function Base.iterate(z::SegmentsWithZeros)::Union{Nothing,SegWZIterType3}
     slope0 = s.slopes[1]
     pt1 = s.points[1]
     width = s.points[end].x - pt1.x
+    # segx1 = pt1.x - width
+    segx1 = 0
 
     if s.slopes[1] * s.points[1].y < 0 # signbit(s.slopes[1]) == signbit(s.points[1].y)
         # s.points[1].y - s.slopes[1] * (s.points[1].x - x) = 0
         segx2 = (slope0 * pt1.x - pt1.y) / slope0
         segpt2 = Point(segx2, 0.0)
 
-        segx1 = pt1.x - width
         segy1 = pt1.y - slope0 * (segpt2.x - pt1.x)
         segpt1 = Point(segx1, segy1)
 
         return (Segment(segpt1, segpt2, slope0), (0, segpt2))
     else
-        segx1 = pt1.x - width
         segy1 = pt1.y - slope0 * width
         segpt1 = Point(segx1, segy1)
 
@@ -323,7 +323,8 @@ function Base.iterate(z::SegmentsWithZeros, (i, _)::Tuple{Int, Nothing})::Union{
             segpt2 = Point(segx2, 0.0)
             return (Segment(ptlast, segpt2, slopeEnd), (i, segpt2))
         else
-            width = s.points[end].x - ptlast.x
+            # This is the final segment
+            width = 1000.0 * (s.points[end].x - s.points[1].x)
             segpt2 = Point(ptlast.x + width, ptlast.y + slopeEnd * width)
             return (Segment(ptlast, segpt2, slopeEnd), (i+1, nothing))
         end
