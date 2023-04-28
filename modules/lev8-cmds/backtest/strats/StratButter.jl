@@ -49,14 +49,14 @@ Base.@kwdef struct Params
     MaxXpirBdays::Int
 end
 
-const NUM_LEGS = 3
+const NUM_LEGS2 = 4
 
 makeStrat() = TStrat(
-    (NUM_LEGS, Scoring),
+    (NUM_LEGS2, Scoring),
     Params(
         balInit = C(1000),
         MaxMarginPerTradeRat = 0.08,
-        MaxQtyPerTrade = 100,
+        MaxQtyPerTrade = 100, # 21 losses at 100; 21 losses at 1; 21 losses at 10
         InitTakeRate = 0.8,
         FinalTakeRate = -0.4,
         MaxWidthRat = 0.04,
@@ -84,7 +84,7 @@ end
 
 BackTypes.hasMultExpirs(::TStrat) = false
 
-makeCtx() = Context3(Vector{Cand{NUM_LEGS}}(), Vector{Cand{NUM_LEGS}}(), Ref(CZ))
+makeCtx() = Context3(Vector{Cand{NUM_LEGS2}}(), Vector{Cand{NUM_LEGS2}}(), Ref(CZ))
 #endregion
 
 #region InterfaceImpl
@@ -98,7 +98,7 @@ function filterXpirs(xpirs, fromDate, params)
     return xpirs[starti:endi]
 end
 
-function (s::TStrat)(ops, tim, chain, vix)::Nothing
+function (s::TStrat)(ops, tim, chain, otoq, vix)::Nothing
     # println("Running StratButter for ", tim.ts)
     params = s.params
     curp = ch.getCurp(chain)
@@ -124,16 +124,17 @@ function (s::TStrat)(ops, tim, chain, vix)::Nothing
     xpirs = filterXpirs(ch.getXpirs(chain), tim.date, params)
     for xpir in xpirs
         tmult = timult(tim.date, xpir)
-        searchLong = ch.toSearch(curp, chain.xsoqs[xpir].put)
+        searchLeft = ch.toSearch(curp, chain.xsoqs[xpir].put)
+        searchRight = ch.toSearch(curp, chain.xsoqs[xpir].call)
         # TODO: multithreaded precalc all the probs and put in a lookup, and store in module cache
         prob = ProbKde.probToClose(F(fromPrice), vix, tim.ts, xpir)
-        findEntry!(keepLong, params, prob, searchLong, nothing, curp, tmult)
+        findEntry!(keepLong, params, prob, searchLeft, searchRight, ops.canOpenPos, curp, tmult)
     end
     # println("Found ", length(keepLong))
 
     if !isempty(keepLong)
         # TODO: identify if new opportunity is better than currently open one
-        if (closeEarlyForMargin(params, tim.ts, ops, nothing))
+        if (closeEarlyForMargin(params, tim.ts, ops, otoq))
             x = keepLong[1]
             multiple = max(1, qtyForMargin(params, ops.bal(), ops.marginAvail(), x.margin, x.scoring.kel))
             if multiple > 0
@@ -156,19 +157,19 @@ BackTypes.pricingClose(::TStrat, lmsc::NTuple{N,LegMetaClose}) where N = calcPri
 calcPrice(lms)::PT = toPT(Pricing.price(lms)) # toPT(bap(lms, 0.0)) + P(0.02)
 calcPriceFast(lms)::Float64 = Pricing.price(lms) # Pricing.bapFast(lms, 0.0) + 0.02
 
-function BackTypes.checkExit(params::Params, tradeOpen::TradeBTOpen{NUM_LEGS,Scoring}, tim, lmsc, curp)::Union{Nothing,String}
-    dateOpen = Date(tradeOpen.ts)
+function BackTypes.checkExit(params::Params, tradeOpen, tim, lmsc, curp)::Union{Nothing,String}
+    dateOpen = getDateOpen(tradeOpen)
     dateOpen < tim.date || return # No closing on the same day
     netc = calcPrice(lmsc)
-    curVal = tradeOpen.neto + netc
-    rate = calcRate(Date(tradeOpen.ts), tim.date, curVal, tradeOpen.extra.risk)
+    curVal = getNetOpen(tradeOpen) + netc
+    rate = calcRate(dateOpen, tim.date, curVal, getRisk(tradeOpen))
     # rateOrig = tradeOpen.extra.rate
     # blog("checkExit: $(tradeOpen.id) $(round(rate;digits=5)) $(round(rateOrig;digits=5))")
     # if rate >= 1.5 * rateOrig
     # if rate >= 0.4 || rate >= 1.5 * rateOrig
     #     return "rate $(rate) >= 0.4 or 1.5 * $(rateOrig)"
     # end
-    ratio = trad.targetRatio(tradeOpen, Date(tim.date))
+    ratio = trad.targetRatio(tradeOpen, tim.date)
     if rate >= params.FinalTakeRate + ratio * (params.InitTakeRate - params.FinalTakeRate)
         # Avoid exiting on last day when would be better to expire
         if rate >= tradeOpen.extra.rate || !(tim.date == trad.targetDate(tradeOpen) && curp > getStrike(tradeOpen.lms[end]) + 2)
@@ -237,35 +238,58 @@ function score(lms, params, prob, curp, tmult)
     return ((;score, neto, margin), Scoring(neto, risk, rate, kel))
 end
 
-function findEntry!(keep, params, prob, search, otoq, args...)
-    strikeMin, _ = ProbUtil.probFromLeft(prob, params.ProbMin/2)
-    strikeMax, _ = ProbUtil.probFromRight(prob, params.ProbMin/2)
-    oqs = ch.oqsBetween(search, strikeMin, strikeMax)
-    if length(oqs) < NUM_LEGS
-        blog("WARN: oqs < $(NUM_LEGS)")
+function findEntry!(keep, params, prob, searchLeft, searchRight, canOpenPos, args...)
+    strikeMin = CZ # , _ = ProbUtil.probFromLeft(prob, params.ProbMin/2)
+    strikeMax = C(10000.0) # , _ = ProbUtil.probFromRight(prob, params.ProbMin/2)
+    # oqs = ch.oqsBetween(search, strikeMin, strikeMax)
+    # mid = prob.center
+    # @show mid (strikeMin, 1.01*mid) (0.99 * mid, strikeMax)
+    # oqsLeft = ch.oqsBetween(searchLeft, strikeMin, 1.01 * mid)
+    # oqsRight = ch.oqsBetween(searchRight, 0.99 * mid, strikeMax)
+    oqsLeft = ch.oqsBetween(searchLeft, strikeMin, strikeMax)
+    oqsRight = ch.oqsBetween(searchRight, strikeMin, strikeMax)
+    global keepProb = prob
+    if length(oqsLeft) < 2 || length(oqsRight) < 2
+        blog("WARN: oqs < $(NUM_LEGS2)")
         return nothing
     end
     maxWidth = params.MaxWidthRat * prob.center
 
-    lasti = lastindex(oqs)
-    for i1 in eachindex(oqs)[1:end-2]
-        oq1 = oqs[i1]
+    lastiLeft = lastindex(oqsLeft)
+    lastiRight = lastindex(oqsRight)
+    # for i1 in eachindex(oqs)[1:end-2]
+    for i1 in 1:(lastiLeft-1)
+        oq1 = oqsLeft[i1]
+        # TODO: optimize this check: can maintain a lookup or all that would conflict and check with hashmap
+        canOpenPos(getOption(oq1), Side.short) || continue
         str1 = getStrike(oq1)
-        for i2 in i1+1:lasti
-            oq2 = oqs[i2]
-            for i3 in i2+1:lasti
-                oq3 = oqs[i3]
-                str3 = getStrike(oq2)
-                str3 - str1 <= maxWidth || break
+        # for i2 in i1+1:lasti
+        for i2 in (i1+1):lastiLeft
+            oq2 = oqsLeft[i2]
+            str2 = getStrike(oq2)
+            canOpenPos(getOption(oq2), Side.long) || continue
+            # for i3 in i2+1:lasti
+            for i3 in 1:(lastiRight-1)
+                oq3 = oqsRight[i3]
+                str3 = getStrike(oq3)
+                str3 >= str2 || continue
+                canOpenPos(getOption(oq3), Side.long) || continue
+                for i4 in (i3+1):lastiRight
+                    oq4 = oqsRight[i4]
+                    canOpenPos(getOption(oq4), Side.short) || continue
+                    getStrike(oq4) - str1 <= maxWidth || break
+                    # @show (oq1, oq2, oq3, oq4)
 
-                lms = (LegMetaOpen(oq1, Side.short), LegMetaOpen(oq2, Side.long, 2.0), LegMetaOpen(oq3, Side.short))
-                r = score(lms, params, prob, args...)
-                if !isnothing(r) && (isempty(keep) || r[1].score > keep[end].score)
-                    # TODO: not optimized
-                    info, about = r
-                    push!(keep, Cand(lms, info..., about))
-                    sort!(keep; rev=true, by=x->x.score)
-                    length(keep) <= 10 || pop!(keep)
+                    lms = CollUtil.sortuple(x -> getStrike(x) + (isCall(x) ? eps(Currency) : 0.0), LegMetaOpen(oq1, Side.short), LegMetaOpen(oq2, Side.long), LegMetaOpen(oq3, Side.long), LegMetaOpen(oq4, Side.short))
+                    # global checkLms = lms
+                    r = score(lms, params, prob, args...)
+                    if !isnothing(r) && (isempty(keep) || r[1].score > keep[end].score)
+                        # TODO: not optimized
+                        info, about = r
+                        push!(keep, Cand(lms, info..., about))
+                        sort!(keep; rev=true, by=x->x.score)
+                        length(keep) <= 10 || pop!(keep)
+                    end
                 end
             end
         end

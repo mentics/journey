@@ -37,6 +37,7 @@ SH.getPnl(o::Trade) = getPrillDirOpen(o) + getPrillDirClose(o)
 SH.getMeta(o::Trade) = o.meta
 import DateUtil
 getDateFilled(o::Trade) = DateUtil.toDateMarket(tsFilled(o))
+SH.getDateOpen(o::Trade) = DateUtil.toDateMarket(tsFilled(o))
 getDateClosed(o::Trade) = DateUtil.toDateMarket(tsClosed(o))
 
 using CollUtil

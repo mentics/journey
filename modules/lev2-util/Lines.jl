@@ -1,5 +1,5 @@
 module Lines
-using LineTypes
+using BaseTypes ,LineTypes
 
 export Segments, SegSide, Left, Right, Point
 
@@ -150,6 +150,28 @@ function combine(l1::Left, l2::Left, l3::Left, l4::Left)::Segments{4}
         (Point(l1.point.x, y1), Point(l2.point.x, y2), Point(l3.point.x, y3), Point(l4.point.x, y4))
     )
     return segs
+end
+
+combine(ls::Tuple{Right,Right,Left,Left}) = combine(ls...)
+function combine(l1::Right, l2::Right, l3::Left, l4::Left)::Segments{4}
+    @assert l1.point.x <= l2.point.x <= l3.point.x <= l4.point.x @str l1 l2 l3 l4
+    y12 = l1.point.y + l2.point.y
+    y34 = l3.point.y + l4.point.y
+
+    y2 = y12 + y34
+    y1 = y2 - l2.slope * (l2.point.x - l1.point.x)
+    y3 = y2
+    y4 = y3 + l3.slope * (l4.point.x - l3.point.x)
+    segs = Segments{4}(
+        (0.0, l2.slope, 0.0, l3.slope, 0.0),
+        (Point(l1.point.x, y1), Point(l2.point.x, y2), Point(l3.point.x, y3), Point(l4.point.x, y4))
+    )
+    return segs
+end
+
+combine(ls::Tuple{Left,Right,Left,Right}) = combine(ls...)
+function combine(l1::Left, l2::Right, l3::Left, l4::Right)::Segments{4}
+    error("Disallowed option strategy because not finite risk")
 end
 # TODO: test above
 

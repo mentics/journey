@@ -14,7 +14,7 @@ end
 #region Account
 module ac
 using Dates
-using BaseTypes, SmallTypes, BackTypes
+using SH, BaseTypes, SmallTypes, BackTypes
 
 acctTsStart(acct)::DateTime =
     isempty(acct.open) ?
@@ -93,6 +93,10 @@ function calcCloseInfo(trade::TradeBTOpen, ts, otoq, calcPrice)
     rate = calcRate(Date(trade.ts), Date(ts), cv, trade.extra.risk)
     return (;rate, curVal=cv, trade.neto, netc, lmsc, trade)
 end
+SH.getDateOpen(tradeOpen::TradeBTOpen) = Date(tradeOpen.ts)
+SH.getRisk(tradeOpen::TradeBTOpen) = tradeOpen.extra.risk
+SH.getNetOpen(tradeOpen::TradeBTOpen) = tradeOpen.neto
+SH.getLegs(tradeOpen::TradeBTOpen) = tradeOpen.lms
 #endregion
 
 end

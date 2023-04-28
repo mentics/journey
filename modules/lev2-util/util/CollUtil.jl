@@ -111,6 +111,8 @@ mmlt(lt, a, b, ia, ib) = lt(a, b) ? (a, b, ia, ib) : (b, a, ib, ia)
 (tupleperm(tup::NTuple{4,T}, inds::NTuple{4,Integer})::NTuple{4,T}) where T = (tup[inds[1]], tup[inds[2]], tup[inds[3]], tup[inds[4]])
 
 (sortuple(t::NTuple{4,T}, by)::NTuple{4,T}) where T = sortuple(t..., by)
+(sortuple(by::Function, t::NTuple{4,T})::NTuple{4,T}) where T = sortuple(t..., by)
+(sortuple(by::Function, t::T...)::NTuple{4,T}) where T = sortuple(t..., by)
 function sortuple(x1::T, x2::T, x3::T, x4::T, by)::NTuple{4,T} where T
     a, b, c, d = decorate(x1, x2, x3, x4, by)
     a, b = minmax2(a, b)

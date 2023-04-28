@@ -10,8 +10,10 @@ function price(qt::Quote)::Currency
     b = getBid(qt)
     a = getAsk(qt)
     spread = a - b
-    if spread < 0.4
-        mult = round(Int, spread / 0.02, RoundDown)
+    if spread <= 0.03
+        return b
+    elseif spread <= 0.4
+        mult = round(Int, spread / 0.025, RoundDown)
         return b + mult * 0.01
     else
         return b + 0.1
@@ -173,6 +175,12 @@ function calcMarg(center, segs)::Sides{Float64}
         end
     end
     return Sides(-min_short, -min_long)
+end
+
+function calcCommit(segs)::Float64
+    return minimum(segs) do seg
+        min(seg.left.y, seg.right.y)
+    end
 end
 
 function calcMarginFloat(center, lms::NTuple{3,<:LegType}, sections)::Sides{Float64}

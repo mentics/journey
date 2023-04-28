@@ -1,6 +1,6 @@
 module Backtests
 using Dates
-using SH, BaseTypes, SmallTypes, BackTypes, LegMetaTypes
+using SH, BaseTypes, SmallTypes, BackTypes, LegMetaTypes, LegTypes, OptionTypes, ChainTypes
 using LogUtil, DateUtil, ChainUtil, CollUtil
 using SimpleStore, BacktestUtil
 import SimpleStore as SS
@@ -31,7 +31,7 @@ function run(strat::Strat, from::DateLike, to::DateLike; maxSeconds::Int=1)::Not
         if !tim.atClose
             @blog "Strat running" ts=tim.ts curp=getCurp(chain) bal=acct.bal margin=acct.margin
             checkExits(strat, acct, tim, otoq, getCurp(chain))
-            strat(ops, tim, chain, vix)
+            strat(ops, tim, chain, otoq, vix)
         end
         if tim.lastOfDay
             handleExpirations(strat, acct, tim, chain, otoq)
@@ -70,8 +70,26 @@ function makeOps(acct::Account)
         bal = () -> acct.bal,
         tradesOpen = () -> acct.open,
         openTrade = (ts, lmso, neto, margin, multiple, label, extra) -> openTrade(acct, ts, lmso, neto, margin, multiple, label, extra),
-        closeTrade = (tradeOpen, ts, lmsc, netc, label) -> ( closeTrade(acct, tradeOpen, ts, lmsc, netc, label) ; del!(acct.open, tradeOpen) )
+        closeTrade = (tradeOpen, ts, lmsc, netc, label) -> ( closeTrade(acct, tradeOpen, ts, lmsc, netc, label) ; del!(acct.open, tradeOpen) ),
+        canOpenPos = (oq::Option, side::Side.T) -> canOpenPos(acct, oq, side),
     )
+end
+
+import LegTypes
+function canOpenPos(acct, oq::Option, side::Side.T)
+    for tradeOpen in acct.open
+        for lm in tradeOpen.lms
+            # if getStrike(lm) == C(272)
+                # println("Checking")
+                # @show oq side
+            # end
+            if LegTypes.isConflict(lm, oq, side)
+                # println("Found conflict:\n", getLeg(lm), "\n", side, ", ", oq)
+                return false
+            end
+        end
+    end
+    return true
 end
 
 function handleExpirations(strat, acct::Account, tim::TimeInfo, chain::ChainInfo, otoq)::Nothing
@@ -162,6 +180,14 @@ function checkExits(strat, acct::Account, tim, otoq, curp)
 end
 
 function openTrade(acct, ts, lmso, neto::PT, margin::Sides{PT}, multiple::Int, label::String, extra)::Nothing
+    # This should never happen because we check during search, but this is to validate that check is working correctly.
+    for lm in lmso
+        if !canOpenPos(acct, getOption(lm), getSide(lm))
+            global keepConflict = lmso
+            @blog "ERROR: tried to open conflicting position" lmso
+            error("ERROR: tried to open conflicting position")
+        end
+    end
     id = acct.nextTradeId
     acct.nextTradeId += 1
     tradeOpen = TradeBTOpen(id, ts, lmso, neto, margin, multiple, label, extra)

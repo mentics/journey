@@ -1,9 +1,11 @@
 module CmdTradeStrat
 using Dates
-using SH, BaseTypes, BackTypes
-using LogUtil, DateUtil
-using Expirations, Chains, Markets
+using SH, BaseTypes, BackTypes, OptionTypes, TradeTypes, LegMetaTypes
+using LogUtil, DateUtil, ChainUtil
+using Expirations, Chains, Markets, StoreTrade
 import StratButter as stratb
+import TradierAccount, StoreTrade
+
 import SimpleStore as sstor
 
 # TODO: move ChainInfo to shared place for live and backtest?
@@ -42,13 +44,28 @@ function run()
     tim = makeTim()
     xpirs = stratb.filterXpirs(expirs(), tim.date, strat.params)
     ci = toChainInfo(chains(xpirs)["SPY"], mkt.curp, xpirs)
+    otoq = ChainUtil.toOtoq(ci.xsoqs)
     BackTypes.resetStrat(strat)
-    strat(makeOps(nothing), tim, ci, F(mkt.vix))
+
+    checkExits(strat, tim, otoq, mkt.curp)
+    strat(makeOps(), tim, ci, otoq, F(mkt.vix))
+
     if isnothing(keepOpen)
         global keepOpen = keep
-        return nothing
+        return (nothing, nothing)
     else
-        return keepOpen.lmso
+        return keepOpen.lmso, keepOpen.neto
+    end
+end
+
+function checkExits(strat, tim, otoq, curp)
+    for tradeOpen in StoreTrade.tradesLive()
+        lmsc = tosn(LegMetaClose, Tuple(getLegs(tradeOpen)), otoq)
+        !isnothing(lmsc) || ( println("couldn't quote") ; return true ) # skip if can't quote
+        label = BackTypes.checkExit(strat.params, tradeOpen, tim, lmsc, curp)
+        if !isnothing(label)
+            closeTrade(tradeOpen, tim.ts, lmsc, BackTypes.pricingClose(strat, lmsc), label)
+        end
     end
 end
 
@@ -59,24 +76,33 @@ function makeTim()
     return (;ts, date)
 end
 
-function makeOps(acct)
+SH.getRisk(tradeOpen::Trade) = Pricing.calcCommit(toSegs(tradeOpen))
+
+function makeOps()
+    tierBals = TradierAccount.tradierBalances()
+    marginInfo = tierBals["margin"]
+    if marginInfo["fed_call"] != 0 || marginInfo["maintenance_call"] != 0
+        error("Margin call on account detected: fed: $(marginInfo["fed_call"]), maintenance: $(marginInfo["maintenance_call"])")
+    end
+    buyingPower = marginInfo["option_buying_power"] / 100
     return (;
-        marginAvail = () -> Sides(1000, 1000), # ac.marginAvail(acct),
-        bal = () -> C(1000), # acct.bal,
-        tradesOpen = () -> acct.open,
-        openTrade = (ts, lmso, neto, margin, multiple, label, extra) -> openTrade(acct, ts, lmso, neto, margin, multiple, label, extra),
-        closeTrade = (tradeOpen, ts, lmsc, netc, label) -> ( closeTrade(acct, tradeOpen, ts, lmsc, netc, label) ; del!(acct.open, tradeOpen) )
+        marginAvail = () -> Sides(buyingPower, buyingPower),
+        bal = () -> C(tierBals["total_cash"] / 100),
+        tradesOpen = () -> StoreTrade.tradesOpen(),
+        openTrade, # = (ts, lmso, neto, margin, multiple, label, extra) -> openTrade(acct, ts, lmso, neto, margin, multiple, label, extra),
+        closeTrade, # = (tradeOpen, ts, lmsc, netc, label) -> ( closeTrade(acct, tradeOpen, ts, lmsc, netc, label) ; del!(acct.open, tradeOpen) ),
+        canOpenPos,
     )
 end
 
-function openTrade(acct, ts, lmso, neto, margin, multiple, label, extra)
-    global keepOpen = (;acct, ts, lmso, neto, margin, multiple, label, extra)
-    println("openTrade: ", (;acct, ts, lmso, neto, margin, multiple, label, extra))
+function openTrade(ts, lmso, neto, margin, multiple, label, extra)
+    global keepOpen = (;ts, lmso, neto, margin, multiple, label, extra)
+    println("openTrade: ", (;ts, lmso, neto, margin, multiple, label, extra))
 end
 
-function closeTrade(acct, tradeOpen, ts, lmsc, netc, label)
-    global keepClose = (;acct, ts, lmso, neto, margin, multiple, label, extra)
-    println("closeTrade: ", (;acct, tradeOpen, ts, lmsc, netc, label))
+function closeTrade(tradeOpen, ts, lmsc, netc, label)
+    global keepClose = (;ts, lmso, neto, margin, multiple, label, extra)
+    println("closeTrade: ", (;tradeOpen, ts, lmsc, netc, label))
 end
 
 import ProbKde, HistData
@@ -91,6 +117,18 @@ end
 function getProb(xpir)
     (;tsMarket, curp, vix) = market()
     return ProbKde.probToClose(F(curp), F(vix), tsMarket, xpir)
+end
+
+import Positions
+function canOpenPos(oq::Option, side::Side.T)
+    poss = Positions.positions()
+    for pos in poss
+        if isConflict(pos.leg, oq, side)
+            println("Found conflict:\n", pos.leg, "\n", side, ", ", oq)
+            return false
+        end
+    end
+    return true
 end
 
 end

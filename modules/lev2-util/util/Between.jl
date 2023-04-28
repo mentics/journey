@@ -16,8 +16,8 @@ SH.toDraw(lms::NTuple{N,LegMeta}) where N = collect(LL.toLineTuples(LL.toSegment
 SH.to(::Type{LegMetaOpen}, leg::Leg, lup) = LegMetaOpen(lup(getOption(leg)), getSide(leg), getQuantity(leg))
 SH.to(::Type{LegMetaOpen}, lm::LegMetaOpen, otoq) = ( leg = getLeg(lm) ; LegMetaOpen(leg, ChainUtil.oToOq(otoq, getOption(leg))) )
 SH.to(::Type{LegMetaOpen}, lm::LegMetaOpen, fotoq::Function) = ( leg = getLeg(lm) ; LegMetaOpen(leg, fotoq(getOption(leg))) )
-SH.to(::Type{LegMetaClose}, lm::LegMetaOpen, otoq) = ( leg = getLeg(lm) ; LegMetaClose(leg, ChainUtil.oToOq(otoq, getOption(leg))) )
-SH.to(::Type{LegMetaClose}, lm::LegMetaOpen, fotoq::Function) = ( leg = getLeg(lm) ; LegMetaClose(leg, fotoq(getOption(lm))) )
+SH.to(::Type{LegMetaClose}, lm::Union{LegMetaOpen,LegTrade}, otoq) = ( leg = getLeg(lm) ; LegMetaClose(leg, ChainUtil.oToOq(otoq, getOption(leg))) )
+SH.to(::Type{LegMetaClose}, lm::Union{LegMetaOpen,LegTrade}, fotoq::Function) = ( leg = getLeg(lm) ; LegMetaClose(leg, fotoq(getOption(lm))) )
 #endregion
 
 #region ToRet
