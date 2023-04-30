@@ -124,6 +124,7 @@ end
 
 combine(ls::Tuple{Left,Left,Right,Right}) = combine(ls...)
 function combine(l1::Left, l2::Left, l3::Right, l4::Right)::Segments{4}
+    # println("llrr")
     @assert l1.point.x <= l2.point.x <= l3.point.x <= l4.point.x
     y2 = l1.point.y + l2.point.y + l3.point.y + l4.point.y
     y3 = y2
@@ -138,6 +139,8 @@ end
 
 combine(ls::Tuple{Left,Left,Left,Left}) = combine(ls...)
 function combine(l1::Left, l2::Left, l3::Left, l4::Left)::Segments{4}
+    # println("llll")
+
     @assert l1.point.x <= l2.point.x <= l3.point.x <= l4.point.x
     slope34 = l3.slope + l4.slope
     slope234 = l2.slope + slope34
@@ -157,7 +160,7 @@ function combine(l1::Right, l2::Right, l3::Left, l4::Left)::Segments{4}
     @assert l1.point.x <= l2.point.x <= l3.point.x <= l4.point.x @str l1 l2 l3 l4
     y12 = l1.point.y + l2.point.y
     y34 = l3.point.y + l4.point.y
-
+# println("rrll")
     y2 = y12 + y34
     y1 = y2 - l2.slope * (l2.point.x - l1.point.x)
     y3 = y2

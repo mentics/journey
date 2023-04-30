@@ -79,7 +79,7 @@ pnlm(trade) = trade.open.multiple * (trade.open.neto + trade.close.netc)
 # rate(trade) = DateUtil.calcRate(Date(trade.open.ts), Date(trade.close.ts), pnl(trade), max(trade.open.margin))
 function rate(trade::TradeBT)
     # @show Date(trade.open.ts) Date(trade.close.ts) pnl(trade) max(trade.open.margin)
-    DateUtil.calcRate(Date(trade.open.ts), Date(trade.close.ts), pnl(trade), max(trade.open.margin))
+    DateUtil.calcRate(Date(trade.open.ts), Date(trade.close.ts), pnl(trade), getRisk(trade.open))
 end
 openDur(trade::TradeBT) = bdays(toDateMarket(trade.open.ts), toDateMarket(trade.close.ts)) + 1
 bdaysLeft(from::Date, trade) = bdays(from, targetDate(trade))

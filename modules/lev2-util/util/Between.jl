@@ -6,7 +6,19 @@ using Rets, LegTypes, TradeTypes, LegTradeTypes, Pricing
 
 #region Lines
 import LinesLeg:LinesLeg as LL,Segments
-(LL.toSegments(lms::NTuple{N,LegMeta})::Segments{N}) where N = LL.toSegments(lms, map(P ∘ Pricing.price, lms))
+# (LL.toSegments(lms::NTuple{N,LegMeta})::Segments{N}) where N = LL.toSegments(lms, map(P ∘ Pricing.price, lms))
+function LL.toSegments(lms::NTuple{N,LegMeta})::Segments{N} where N
+    netos = map(P ∘ Pricing.price, lms)
+    # # TODO: remove validation after checking
+    # for i in eachindex(lms)
+    #     q = getQuote(lms[i])
+    #     @assert q.bid < netos[i] < q.ask
+    # end
+    segs = LL.toSegments(lms, netos)
+    return segs
+end
+
+
 LL.toSegmentsWithZeros(lms::NTuple{N,LegMeta}) where N = LL.toSegmentsWithZeros(lms, map(P ∘ Pricing.price, lms))
 LL.toSections(lms::NTuple{N,LegMeta}) where N = LL.toSections(lms, map(P ∘ Pricing.price, lms))
 SH.toDraw(lms::NTuple{N,LegMeta}) where N = collect(LL.toLineTuples(LL.toSegments(lms))) # collect because Makie can't handle tuples of coords

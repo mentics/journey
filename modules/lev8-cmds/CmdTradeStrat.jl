@@ -76,7 +76,7 @@ function makeTim()
     return (;ts, date)
 end
 
-SH.getRisk(tradeOpen::Trade) = Pricing.calcCommit(toSegs(tradeOpen))
+SH.getRisk(tradeOpen::Trade) = tradeOpen.extra.risk # Pricing.calcCommit(toSegs(tradeOpen))
 
 function makeOps()
     tierBals = TradierAccount.tradierBalances()

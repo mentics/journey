@@ -8,6 +8,9 @@ using Pricing
 import ProbKde, ProbUtil, Kelly, HistData
 import LinesLeg as LL
 
+# TODO: updating margin is probably using the close mid instead of the open mid when choosing between short and long
+# TODO: try using delta vix in choosing between high/low findEntry
+
 # using ThreadPools, Combinatorics, OptionQuoteTypes
 
 macro deb(exs...)
@@ -19,7 +22,7 @@ end
 
 #region Types
 struct Scoring
-    ret::Currency
+    profit::Currency
     risk::Currency
     rate::Float64
     kel::Float64
@@ -41,7 +44,7 @@ Base.@kwdef struct Params
     FinalTakeRate::Float64
     MaxWidthRat::Float64
     ProbMin::Float64
-    MinNeto::PT
+    MinProfit::PT
     MinRate::Float64
     MoneyValueAPR::Float64
     ExpDurRatioAvg::Float64
@@ -49,19 +52,19 @@ Base.@kwdef struct Params
     MaxXpirBdays::Int
 end
 
-const NUM_LEGS2 = 4
+const NUM_LEGS = 4
 
 makeStrat() = TStrat(
-    (NUM_LEGS2, Scoring),
+    (NUM_LEGS, Scoring),
     Params(
         balInit = C(1000),
         MaxMarginPerTradeRat = 0.08,
         MaxQtyPerTrade = 100, # 21 losses at 100; 21 losses at 1; 21 losses at 10
-        InitTakeRate = 0.8,
+        InitTakeRate = 0.6, # 0.8
         FinalTakeRate = -0.4,
-        MaxWidthRat = 0.04,
-        ProbMin = 0.87,
-        MinNeto = 0.07,
+        MaxWidthRat = 0.032,
+        ProbMin = 0.976, # 0.87,
+        MinProfit = 0.07,
         MinRate = 0.4,
         MoneyValueAPR = 0.05,
         ExpDurRatioAvg = 0.5,
@@ -84,7 +87,7 @@ end
 
 BackTypes.hasMultExpirs(::TStrat) = false
 
-makeCtx() = Context3(Vector{Cand{NUM_LEGS2}}(), Vector{Cand{NUM_LEGS2}}(), Ref(CZ))
+makeCtx() = Context3(Vector{Cand{NUM_LEGS}}(), Vector{Cand{NUM_LEGS}}(), Ref(CZ))
 #endregion
 
 #region InterfaceImpl
@@ -116,10 +119,8 @@ function (s::TStrat)(ops, tim, chain, otoq, vix)::Nothing
 
     # min(ops.marginAvail()) > 0 || return
 
-    keepLong = s.ctx.bufCandLong
-    keepShort = s.ctx.bufCandShort
-    empty!(keepLong)
-    empty!(keepShort)
+    keep = s.ctx.bufCandLong
+    empty!(keep)
 
     xpirs = filterXpirs(ch.getXpirs(chain), tim.date, params)
     for xpir in xpirs
@@ -128,14 +129,18 @@ function (s::TStrat)(ops, tim, chain, otoq, vix)::Nothing
         searchRight = ch.toSearch(curp, chain.xsoqs[xpir].call)
         # TODO: multithreaded precalc all the probs and put in a lookup, and store in module cache
         prob = ProbKde.probToClose(F(fromPrice), vix, tim.ts, xpir)
-        findEntry!(keepLong, params, prob, searchLeft, searchRight, ops.canOpenPos, curp, tmult)
+        # TODO: try both and keep best score
+        if vix > 21.0 # TODO: params.VixThreshold
+            findEntryHigh!(keep, params, prob, searchLeft, searchRight, ops.canOpenPos, curp, tmult)
+        else
+            findEntryLow!(keep, params, prob, searchLeft, searchRight, ops.canOpenPos, curp, tmult)
+        end
     end
-    # println("Found ", length(keepLong))
 
-    if !isempty(keepLong)
+    if !isempty(keep)
         # TODO: identify if new opportunity is better than currently open one
         if (closeEarlyForMargin(params, tim.ts, ops, otoq))
-            x = keepLong[1]
+            x = keep[1]
             multiple = max(1, qtyForMargin(params, ops.bal(), ops.marginAvail(), x.margin, x.scoring.kel))
             if multiple > 0
                 @assert getExpir(x.lms[1]) <= getExpir(x.lms[2])
@@ -205,56 +210,91 @@ firstNinf(x) = first(x)
 #endregion
 
 #region Find
-function score(lms, params, prob, curp, tmult)
+function scoreHigh(lms, params, prob, curp, tmult)
     segs = LL.toSegmentsWithZeros(lms)
     global keepLms = lms
     global keepSegs = segs
-    first(segs).left.y > params.MinNeto && collect(segs)[end].right.y > params.MinNeto || ( @deb "min neto not met" ; return nothing )
-
     neto = calcPriceFast(lms)
-    # neto >= params.MinNeto || ( @deb "no score neto" neto params.MinNeto ; return nothing )
+    # profit = Pricing.calcMaxProfit(segs) # first(segs).left.y
+    profit = min(first(segs).left.y, collect(segs)[end].right.y)
+    profit > params.MinProfit || ( @deb "min profit not met" profit neto; return nothing )
+    # first(segs).left.y > params.MinProfit && collect(segs)[end].right.y > params.MinProfit
 
     margin = Pricing.calcMarg(curp, segs)
+    @assert margin.long >= 0.0
+    @assert margin.short >= 0.0
     risk = max(margin)
     # global keepRiskErr = (; risk, margin, lms, segs, curp)
     # error("stop")
-    if risk < 0.01
-        global keepRiskErr = (; risk, margin, lms, segs, curp)
-        println("Risk $(risk) was < 0.01")
-        blog("Risk $(risk) was < 0.01")
+    if risk < 0.009
+        # global keepRiskErr = (; risk, margin, lms, segs, curp)
+        # println("Risk $(risk) was < 0.01")
+        # blog("Risk $(risk) was < 0.01")
         return nothing
         # error("stop")
     end
     # @assert risk > 0.01 "risk $(risk) was <= 0 "
 
-    rate = calcRate(tmult, neto, risk)
+    rate = calcRate(tmult, profit, risk)
     rate >= params.MinRate || ( @deb "no score rate" rate params.MinRate ; return nothing )
 
     kel = calcKel(prob, risk, segs)
-    kel > 0.2 || ( @deb "no score kel" kel rate tmult neto risk ; return nothing )
+    kel >= 1.0 || ( @deb "no score kel" tmult neto rate profit risk kel ; return nothing )
 
     score = kel # rate * kel
     # println("Scored ", score)
-    return ((;score, neto, margin), Scoring(neto, risk, rate, kel))
+    return ((;score, neto, margin), Scoring(profit, risk, rate, kel))
 end
 
-function findEntry!(keep, params, prob, searchLeft, searchRight, canOpenPos, args...)
-    strikeMin = CZ # , _ = ProbUtil.probFromLeft(prob, params.ProbMin/2)
-    strikeMax = C(10000.0) # , _ = ProbUtil.probFromRight(prob, params.ProbMin/2)
-    # oqs = ch.oqsBetween(search, strikeMin, strikeMax)
-    # mid = prob.center
-    # @show mid (strikeMin, 1.01*mid) (0.99 * mid, strikeMax)
-    # oqsLeft = ch.oqsBetween(searchLeft, strikeMin, 1.01 * mid)
-    # oqsRight = ch.oqsBetween(searchRight, 0.99 * mid, strikeMax)
+function scoreLow(lms, params, prob, curp, tmult)
+    segs = LL.toSegmentsWithZeros(lms)
+    global keepLms = lms
+    global keepSegs = segs
+    neto = calcPriceFast(lms)
+    profit = neto
+    profit > params.MinProfit || ( @deb "min profit not met" profit neto; return nothing )
+
+    margin = Pricing.calcMarg(curp, segs)
+    @assert margin.long >= 0.0
+    @assert margin.short >= 0.0
+    risk = max(margin)
+    if risk < 0.009
+        return nothing
+    end
+
+    rate = calcRate(tmult, profit, risk)
+    rate >= params.MinRate || ( @deb "no score rate" rate params.MinRate ; return nothing )
+
+    kel = calcKel(prob, risk, segs)
+    kel >= 1.0 || ( @deb "no score kel" tmult neto rate profit risk kel ; return nothing )
+
+    score = kel
+    return ((;score, neto, margin), Scoring(profit, risk, rate, kel))
+end
+
+function findEntryHigh!(keep, params, prob, searchLeft, searchRight, canOpenPos, args...)
+    # TODO: test which mid works better
+    mid = prob.center
+    # mid = probFromLeft(prob, .5)
+
+    # strikeMin = CZ # , _ = ProbUtil.probFromLeft(prob, params.ProbMin/2)
+    # strikeMax = C(10000.0) # , _ = ProbUtil.probFromRight(prob, params.ProbMin/2)
+    # # oqs = ch.oqsBetween(search, strikeMin, strikeMax)
+    # # @show mid (strikeMin, 1.01*mid) (0.99 * mid, strikeMax)
+    # # oqsLeft = ch.oqsBetween(searchLeft, strikeMin, 1.01 * mid)
+    # # oqsRight = ch.oqsBetween(searchRight, 0.99 * mid, strikeMax)
+    strikeMin = .98 * mid
+    strikeMax = 1.02 * mid
     oqsLeft = ch.oqsBetween(searchLeft, strikeMin, strikeMax)
     oqsRight = ch.oqsBetween(searchRight, strikeMin, strikeMax)
     global keepProb = prob
     if length(oqsLeft) < 2 || length(oqsRight) < 2
-        blog("WARN: oqs < $(NUM_LEGS2)")
+        blog("WARN: High oqs < $(NUM_LEGS)")
         return nothing
     end
     maxWidth = params.MaxWidthRat * prob.center
 
+    count = 0
     lastiLeft = lastindex(oqsLeft)
     lastiRight = lastindex(oqsRight)
     # for i1 in eachindex(oqs)[1:end-2]
@@ -267,22 +307,29 @@ function findEntry!(keep, params, prob, searchLeft, searchRight, canOpenPos, arg
         for i2 in (i1+1):lastiLeft
             oq2 = oqsLeft[i2]
             str2 = getStrike(oq2)
+            str2 - str1 <= maxWidth - 2 || break
             canOpenPos(getOption(oq2), Side.long) || continue
             # for i3 in i2+1:lasti
             for i3 in 1:(lastiRight-1)
                 oq3 = oqsRight[i3]
                 str3 = getStrike(oq3)
                 str3 >= str2 || continue
+                str3 - str1 <= maxWidth - 1 || break
                 canOpenPos(getOption(oq3), Side.long) || continue
                 for i4 in (i3+1):lastiRight
                     oq4 = oqsRight[i4]
                     canOpenPos(getOption(oq4), Side.short) || continue
-                    getStrike(oq4) - str1 <= maxWidth || break
+                    str4 = getStrike(oq4)
+                    str4 - str1 <= maxWidth || break
                     # @show (oq1, oq2, oq3, oq4)
 
                     lms = CollUtil.sortuple(x -> getStrike(x) + (isCall(x) ? eps(Currency) : 0.0), LegMetaOpen(oq1, Side.short), LegMetaOpen(oq2, Side.long), LegMetaOpen(oq3, Side.long), LegMetaOpen(oq4, Side.short))
-                    # global checkLms = lms
-                    r = score(lms, params, prob, args...)
+                    if mid - str1 <= 4 && str4 - mid <= 4
+                        # println("found new")
+                        global checkLms = lms
+                    end
+                    r = scoreHigh(lms, params, prob, args...)
+                    count += 1
                     if !isnothing(r) && (isempty(keep) || r[1].score > keep[end].score)
                         # TODO: not optimized
                         info, about = r
@@ -294,6 +341,67 @@ function findEntry!(keep, params, prob, searchLeft, searchRight, canOpenPos, arg
             end
         end
     end
+    @blog "High scored $count candidates"
+    return
+end
+
+function findEntryLow!(keep, params, prob, searchLeft, searchRight, canOpenPos, args...)
+    mid = prob.center
+    # TODO: should we use a different prob for low/high?
+    strikeLow, _ = ProbUtil.probFromRight(prob, params.ProbMin)
+    strikeHigh, _ = ProbUtil.probFromLeft(prob, params.ProbMin)
+    oqsLeft = ch.oqsBetween(searchLeft, 0, strikeLow)
+    oqsRight = ch.oqsBetween(searchRight, strikeHigh, 1e9)
+    if length(oqsLeft) < 2 || length(oqsRight) < 2
+        blog("WARN: Low oqs < $(NUM_LEGS): $mid: $strikeLow - $strikeHigh")
+        # global keepSearchLeft = searchLeft
+        # global keepSearchRight = searchLeft
+        # error("stop")
+        return nothing
+    end
+    maxWidth = params.MaxWidthRat * prob.center / 2
+
+    count = 0
+    lastiLeft = lastindex(oqsLeft)
+    lastiRight = lastindex(oqsRight)
+    # for i1 in eachindex(oqs)[1:end-2]
+    for i1 in 1:(lastiLeft-1)
+        oq1 = oqsLeft[i1]
+        # TODO: optimize this check: can maintain a lookup or all that would conflict and check with hashmap
+        canOpenPos(getOption(oq1), Side.long) || continue
+        str1 = getStrike(oq1)
+        # for i2 in i1+1:lasti
+        for i2 in (i1+1):lastiLeft
+            oq2 = oqsLeft[i2]
+            str2 = getStrike(oq2)
+            str2 - str1 <= maxWidth || break
+            canOpenPos(getOption(oq2), Side.short) || continue
+            # for i3 in i2+1:lasti
+            for i3 in 1:(lastiRight-1)
+                oq3 = oqsRight[i3]
+                str3 = getStrike(oq3)
+                canOpenPos(getOption(oq3), Side.short) || continue
+                for i4 in (i3+1):lastiRight
+                    oq4 = oqsRight[i4]
+                    str4 = getStrike(oq4)
+                    str4 - str3 <= maxWidth || break
+                    canOpenPos(getOption(oq4), Side.long) || continue
+
+                    lms = CollUtil.sortuple(x -> getStrike(x) + (isCall(x) ? eps(Currency) : 0.0), LegMetaOpen(oq1, Side.long), LegMetaOpen(oq2, Side.short), LegMetaOpen(oq3, Side.short), LegMetaOpen(oq4, Side.long))
+                    r = scoreLow(lms, params, prob, args...)
+                    count += 1
+                    if !isnothing(r) && (isempty(keep) || r[1].score > keep[end].score)
+                        # TODO: not optimized
+                        info, about = r
+                        push!(keep, Cand(lms, info..., about))
+                        sort!(keep; rev=true, by=x->x.score)
+                        length(keep) <= 10 || pop!(keep)
+                    end
+                end
+            end
+        end
+    end
+    @blog "Low scored $count candidates"
     return
 end
 #endregion
@@ -302,20 +410,27 @@ end
 function qtyForMargin(params, bal, avail, marginTrade, kel)::Int
     maxMargin = params.MaxMarginPerTradeRat * bal
     # @show maxMarginPerTrade avail marginTrade kel
-    long = marginTrade.long > 0 ? qtyForAvail(avail.long, marginTrade.long, kel) : typemax(Int)
-    short = marginTrade.short > 0 ? qtyForAvail(avail.short, marginTrade.short, kel) : typemax(Int)
+    long = marginTrade.long > 0 ? qtyForAvail(avail.long, marginTrade.long, kel) : params.MaxQtyPerTrade
+    short = marginTrade.short > 0 ? qtyForAvail(avail.short, marginTrade.short, kel) : params.MaxQtyPerTrade
     margin = max(marginTrade)
     @assert margin > 0
-    qty = min(long, short, round(Int, F(maxMargin / margin), RoundDown))
+    qty = min(long, short, floor(Int, F(maxMargin / margin)))
     # println("qty for margin: $((;avail, maxMarginPerTrade, margin, kel, qty, long, short, fromMax=round(Int, F(maxMarginPerTrade / margin), RoundDown)))")
     if qty > 0 && (avail.long < 0 || avail.short < 0)
         @show maxMargin avail marginTrade kel long short margin qty
         error("qtyformargin not working")
     end
-    return min(params.MaxQtyPerTrade, qty)
+    return floor(Int, min(params.MaxQtyPerTrade, qty))
 end
 # qtyForAvail(avail, risk, kel)::Int = round(Int, kel * avail / risk, RoundDown)
-qtyForAvail(avail, risk, kel)::Int = round(Int, 0.5 * kel * avail / risk, RoundDown)
+function qtyForAvail(avail, risk, kel)::Int
+    if kel > 100 || avail > 100000 || risk < 0.001
+        s = @str "ERROR: qtyForAvail args" avail risk kel
+        println(s)
+        @blog(s)
+    end
+    res = floor(Int, 0.5 * kel * avail / risk)
+end
 
 #=
 integral(s)[ ( pdf(s) * out(s) ds ) / ( 1 + out(s) x ) ]
@@ -365,12 +480,12 @@ function calcKel(prob, commit, segs)
         end
         cdfLeft = cdfRight;
     end
-    global keepPbs = pbs
-    sumpbs = sum(x -> x[3], pbs)
-    if !(sumpbs ≈ 1.0)
-        println("sumpbs not 1: $sumpbs")
-        blog("sumpbs not 1: $sumpbs")
-    end
+    # global keepPbs = pbs
+    # sumpbs = sum(x -> x[3], pbs)
+    # if !(sumpbs ≈ 1.0)
+    #     println("sumpbs not 1: $sumpbs")
+    #     blog("sumpbs not 1: $sumpbs")
+    # end
     Kelly.findZero() do x
         s = sum(pbs) do (pb, b, _)
             pb / (1 + b*x)

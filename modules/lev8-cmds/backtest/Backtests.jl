@@ -1,7 +1,7 @@
 module Backtests
 using Dates
 using SH, BaseTypes, SmallTypes, BackTypes, LegMetaTypes, LegTypes, OptionTypes, ChainTypes
-using LogUtil, DateUtil, ChainUtil, CollUtil
+using LogUtil, DateUtil, ChainUtil, CollUtil, DictUtil
 using SimpleStore, BacktestUtil
 import SimpleStore as SS
 import Pricing, Between, Shorthand
@@ -12,6 +12,7 @@ import HistData
 function run(strat::Strat, from::DateLike, to::DateLike; maxSeconds::Int=1)::Nothing
     @time begin
     LogUtil.resetLog(:backtest)
+    empty!(QuoteFailed)
 
     params = strat.params
     global keepParams = params
@@ -135,19 +136,21 @@ function calcMargin(trades::AbstractVector{<:TradeBTOpen}, bal::PT)::MarginInfo
     marginLong = CZ
     marginShort = CZ
     for trade in trades
-        multiple = trade.multiple
-        # margAdd = Pricing.calcMargin(trade.lms)
-        margAdd = trade.margin
-        marginLong += multiple * margAdd.long
-        marginShort += multiple * margAdd.short
-        # side = trad.side(trade)
-        # if side == Side.long
-        #     marginLong += margAdd
-        #     countLong += multiple
-        # else
-        #     marginShort += margAdd
-        #     countShort += multiple
-        # end
+        if trade.neto > 0 # TODO: this is probably not general
+            multiple = trade.multiple
+            # margAdd = Pricing.calcMargin(trade.lms)
+            margAdd = trade.margin
+            marginLong += multiple * margAdd.long
+            marginShort += multiple * margAdd.short
+            # side = trad.side(trade)
+            # if side == Side.long
+            #     marginLong += margAdd
+            #     countLong += multiple
+            # else
+            #     marginShort += margAdd
+            #     countShort += multiple
+            # end
+        end
     end
     marginTotal = max(marginLong, marginShort)
     return MarginInfo(marginTotal, F(marginTotal) / bal, MarginSide(marginLong, 0), MarginSide(marginShort, 0))
@@ -157,12 +160,14 @@ end
 #endregion
 
 #region Trading
+const QuoteFailed = Dict{Int,Int}()
 function checkExits(strat, acct::Account, tim, otoq, curp)
     filter!(acct.open) do tradeOpen
         lmsc = nothing
         # try
             lmsc = tosn(LegMetaClose, tradeOpen.lms, otoq)
-            !isnothing(lmsc) || ( println("couldn't quote") ; return true ) # skip if can't quote
+            !isnothing(lmsc) || ( DictUtil.incKey(QuoteFailed, tradeOpen.id) ; return true ) # skip if can't quote
+            # !isnothing(lmsc) || ( println("couldn't quote") ; return true ) # skip if can't quote
             label = BackTypes.checkExit(strat.params, tradeOpen, tim, lmsc, curp)
             if !isnothing(label)
                 closeTrade(acct, tradeOpen, tim.ts, lmsc, BackTypes.pricingClose(strat, lmsc), label)
@@ -193,7 +198,9 @@ function openTrade(acct, ts, lmso, neto::PT, margin::Sides{PT}, multiple::Int, l
     tradeOpen = TradeBTOpen(id, ts, lmso, neto, margin, multiple, label, extra)
     push!(acct.open, tradeOpen)
     acct.bal += multiple * neto
-    acct.margin = ac.marginAdd(acct.bal, acct.margin, multiple, margin) # Pricing.calcMargin(tradeOpen.lms))
+    if neto > 0 # TODO: this is probably not general
+        acct.margin = ac.marginAdd(acct.bal, acct.margin, multiple, margin) # Pricing.calcMargin(tradeOpen.lms))
+    end
     # blog("Open #$(tradeOpen.id) $(pp((;neto, multiple, strikes=getStrike.(lmso)))), $(pp(extra))")
     @blog "Open $(label) #$(tradeOpen.id) $(Shorthand.sh(lmso))" neto multiple dmargin=(-max(margin)) extra
     return
@@ -205,7 +212,9 @@ function closeTrade(acct, tradeOpen, ts, lmsc, netc, label)::Nothing
     push!(acct.closed, trade)
     acct.bal += tradeOpen.multiple * netc
     pnl = tradeOpen.neto + netc
-    acct.margin = ac.marginAdd(acct.bal, acct.margin, -tradeOpen.multiple, tradeOpen.margin) # Pricing.calcMargin(tradeOpen.lms))
+    if tradeOpen.neto > 0 # TODO: this is probably not general
+        acct.margin = ac.marginAdd(acct.bal, acct.margin, -tradeOpen.multiple, tradeOpen.margin) # Pricing.calcMargin(tradeOpen.lms))
+    end
     @blog "Close $(label) #$(tradeOpen.id) $(Shorthand.sh(lmsc))" neto=tradeOpen.neto netc pnl multiple=tradeOpen.multiple rate=trad.rate(trade) dmargin=max(tradeOpen.margin) openDur=trad.openDur(trade) bdaysLeft=trad.bdaysLeft(Date(ts), trade)
     return
 end

@@ -1,5 +1,5 @@
 module DrawUtil
-using Dates
+using Dates, NamedTupleTools
 import PlotUtils
 import Makie:Makie, Figure, Axis, DataInspector, axislegend, Axis, AxisPlot, current_figure, current_axis, barplot!, barplot
 import GLMakie
@@ -18,17 +18,19 @@ function draw(type::Symbol, points::AbstractVector{<:Tuple{DateLike,T}}; kws...)
     draw(type, getindex.(points, 1), getindex.(points, 2); kws...)
 end
 function draw(type::Symbol, xs::Coll{<:DateLike}, ys; dtformat="mm/dd/yyyy", kws...)::Axis
-    ax = _draw(type, datetime2unix.(xs), ys; kws...)
+    ax = _draw(type, tounix.(xs), ys; kws...)
     dateticks = PlotUtils.optimize_datetime_ticks(Dates.value(xs[1]), Dates.value(xs[end]))[1]
     tickdts = dtFromValue.(dateticks)
     ax.xticks[] = (datetime2unix.(tickdts), Dates.format.(tickdts, dtformat));
     return ax
 end
+# tounix(d::Date) = datetime2unix(DateTime(d))
+tounix(d::DateTime) = datetime2unix(d)
 
 function _draw(type::Symbol, args...; kws...)::Axis
     f = getproperty(Makie, Symbol(string(type) * '!'))
     ax = getAxis(; kws...)
-    f(ax, args...; kws...)
+    f(ax, args...; delete(NamedTuple(kws), :axis)...)
     afterDraw(;kws...)
     return ax
 end
@@ -111,6 +113,19 @@ end
 function drawDates!(tups; kws...)
     drawDates!([x[1] for x in tups], [x[2] for x in tups]; kws...)
 end
+
+function draw(d::Dict{T,<:Real}) where T
+    xs = 1:length(d)
+    labels = String[]
+    ys = Float32[]
+    for (k, v) in d
+        push!(labels, string(k))
+        push!(ys, v)
+    end
+    ax = getAxis()
+    ax.xticks = (xs, labels)
+    barplot!(ax, xs, ys)
+end
 #endregion
 
 #region Local
@@ -132,9 +147,9 @@ end
 
 makeFig() = Figure(;resolution = (1200, 1000))
 
-function getAxis(args...; kws...)::Axis
+function getAxis(args...; axis=nothing, kws...)::Axis
     fig = getFig(args...; kws...)
-    ax = @coal current_axis() Axis(fig[1,1])
+    ax = @coal axis current_axis() Axis(fig[1,1])
     return ax
 end
 

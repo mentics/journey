@@ -10,10 +10,17 @@ function price(qt::Quote)::Currency
     b = getBid(qt)
     a = getAsk(qt)
     spread = a - b
+    # if spread < 0.4
+    #     mult = round(Int, spread / 0.02, RoundDown)
+    #     return b + mult * 0.01
+    # else
+    #     return b + 0.1
+    # end
+
     if spread <= 0.03
         return b
     elseif spread <= 0.4
-        mult = round(Int, spread / 0.025, RoundDown)
+        mult = round(Int, spread / 0.04, RoundDown)
         return b + mult * 0.01
     else
         return b + 0.1
@@ -179,7 +186,15 @@ end
 
 function calcCommit(segs)::Float64
     return minimum(segs) do seg
+        # TODO: optimize: don't have to check both sides
         min(seg.left.y, seg.right.y)
+    end
+end
+
+function calcMaxProfit(segs)::Float64
+    return maximum(segs) do seg
+        # TODO: optimize: don't have to check both sides
+        max(seg.left.y, seg.right.y)
     end
 end
 
