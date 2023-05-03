@@ -8,7 +8,6 @@ function pricingOpen end
 function pricingClose end
 function checkExit end
 function hasMultExpirs end
-function resetStrat end
 
 abstract type Strat end
 abstract type TradeBTStage end

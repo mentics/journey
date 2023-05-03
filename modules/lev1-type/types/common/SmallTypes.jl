@@ -47,6 +47,9 @@ SH.to(::Type{Action.T}, s::AbstractString) = s in ("o", "O", "open") ? Action.op
 checkDirOrder(side::Side.T, n::Number)::Bool = iszero(n) || Int(side) * n < 0
 checkDirTrade(action::Action.T, side::Side.T, n::Number)::Bool = iszero(n) || xor(signbit(Int(action) * Int(side)), signbit(n))
 
+using BaseTypes
+BaseTypes.toPT(sides::Sides{Float64})::Sides{PT} = Sides(toPT(sides.long, RoundDown), round(toPT(sides.short, RoundDown)))
+
 export isCall, isPut, isLong, isShort
 isCall(s::Style.T) = s == Style.call
 isCall(o) = getStyle(o) == Style.call

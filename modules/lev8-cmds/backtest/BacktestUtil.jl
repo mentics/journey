@@ -70,19 +70,24 @@ module trad
 
 using SH, Dates, BackTypes, LegMetaTypes, DateUtil, CollUtil
 side(trade::TradeBTOpen) = getSide(trade.lms[1])
-targetDate(t::TradeBTOpen) = minimum(getExpir, t.lms)
-targetDate(trade::TradeBT) = targetDate(trade.open)
-targetRatio(t::TradeBTOpen, date::Date) = ( to = targetDate(t) ; bdays(date, to) / bdays(Date(t.ts), to) )
+SH.getTargetDate(t::TradeBTOpen) = minimum(getExpir, t.lms)
+SH.getTargetDate(trade::TradeBT) = getTargetDate(trade.open)
+targetRatio(t, from::Date) = ( to = getTargetDate(t) ; bdays(from, to) / bdays(Date(getDateOpen(t)), to) )
 tsClose(trade::TradeBT) = trade.close.ts
-pnl(trade) = trade.open.neto + trade.close.netc
-pnlm(trade) = trade.open.multiple * (trade.open.neto + trade.close.netc)
+pnl(trade) = getNetOpen(trade) + getNetClose(trade)
+pnlm(trade) = trade.open.multiple * pnl(trade)
+function calcRateOrig(trade)
+    # @show getDateOpen(trade) getTargetDate(trade) getNetOpen(trade) getRisk(trade)
+    DateUtil.calcRate(getDateOpen(trade), getTargetDate(trade), getNetOpen(trade), getRisk(trade))
+end
+calcRateOrig(tradeOpen::TradeBTOpen) = tradeOpen.extra.rate
 # rate(trade) = DateUtil.calcRate(Date(trade.open.ts), Date(trade.close.ts), pnl(trade), max(trade.open.margin))
 function rate(trade::TradeBT)
     # @show Date(trade.open.ts) Date(trade.close.ts) pnl(trade) max(trade.open.margin)
-    DateUtil.calcRate(Date(trade.open.ts), Date(trade.close.ts), pnl(trade), getRisk(trade.open))
+    DateUtil.calcRate(Date(getDateOpen(trade)), Date(trade.close.ts), pnl(trade), getRisk(trade.open))
 end
 openDur(trade::TradeBT) = bdays(toDateMarket(trade.open.ts), toDateMarket(trade.close.ts)) + 1
-bdaysLeft(from::Date, trade) = bdays(from, targetDate(trade))
+bdaysLeft(from::Date, trade) = bdays(from, getTargetDate(trade))
 open(acct, id) = CollUtil.find(x -> x.id == id, acct.open)
 closed(acct, id) = CollUtil.find(x -> x.open.id == id, acct.closed)
 function calcCloseInfo(trade::TradeBTOpen, ts, otoq, calcPrice)

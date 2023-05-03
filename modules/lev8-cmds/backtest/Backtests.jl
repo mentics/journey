@@ -24,7 +24,6 @@ function run(strat::Strat, from::DateLike, to::DateLike; maxSeconds::Int=1)::Not
     global keepAcct = acct
     # chainRef = Ref{Chain}()
     ops = makeOps(acct)
-    BackTypes.resetStrat(strat)
 
     SS.run(from, to; maxSeconds) do tim, chain
         vix = F(HistData.vixOpen(tim.date))
@@ -219,7 +218,5 @@ function closeTrade(acct, tradeOpen, ts, lmsc, netc, label)::Nothing
     return
 end
 #endregion
-
-BaseTypes.toPT(sides::Sides{Float64})::Sides{PT} = Sides(toPT(sides.long, RoundDown), round(toPT(sides.short, RoundDown)))
 
 end

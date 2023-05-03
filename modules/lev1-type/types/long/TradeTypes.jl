@@ -23,7 +23,7 @@ struct Trade{S}
 end
 Trade(id::Int, ::Nothing, primitDir::PriceT, rargs...) = Trade{Starting}(id, minimum(getExpiration.(rargs[3])), primitDir, rargs...)
 SH.getId(o::Trade) = o.id
-getTargetDate(o::Trade) = o.targetDate # minimum(getExpiration.(getLegs(o)))
+SH.getTargetDate(o::Trade) = o.targetDate # minimum(getExpiration.(getLegs(o)))
 SH.getPrimitDir(o::Trade) = o.primitDir
 SH.getPrillDirOpen(o::Trade) = o.prillDirOpen
 SH.getPrillDirClose(o::Trade) = o.prillDirClose

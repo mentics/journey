@@ -1,7 +1,8 @@
 module LinesLeg
-using SH, AbstractTypes, BaseTypes, SmallTypes
+using SH, BaseTypes, SmallTypes
 using LineTypes
 import Lines:Segments, SegSide, Left, Right, at, combine, toLineTuples, findZeros, segmentsWithZeros
+import LegTypes:LegLike
 
 export Segments, Section, toLineTuples
 
@@ -13,12 +14,12 @@ struct Section
     y::Float64
 end
 
-# toPoint(leg::LegType, neto::Float64)::Point = Point(getStrike(leg), neto)
+# toPoint(leg::LegLike, neto::Float64)::Point = Point(getStrike(leg), neto)
 # slopeLeft(style::Style.T, side::Side.T, qty::Float64)::Float64 =
 #         style == Style.call ? 0.0 : (side == Side.long ? -qty : qty)
 # slopeRight(style::Style.T, side::Side.T, qty::Float64)::Float64 =
 #         style == Style.put ? 0.0 : (side == Side.long ? qty : -qty)
-# toLines(leg::LegType, neto::Float64)::Segments{1} = Segments(
+# toLines(leg::LegLike, neto::Float64)::Segments{1} = Segments(
 #         slopeLeft(getStyle(leg), getSide(leg), Float64(getQuantity(leg))),
 #         toPoint(leg, neto),
 #         slopeRight(getStyle(leg), getSide(leg), Float64(getQuantity(leg)))
@@ -26,21 +27,22 @@ end
 segCall(strike::Currency, side::Side.T, qty::Float64, neto::PT)::Right = Right(Point(strike, F(neto)), side == Side.long ? qty : -qty)
 segPut(strike::Currency, side::Side.T, qty::Float64, neto::PT)::Left = Left(side == Side.long ? -qty : qty, Point(strike, F(neto)))
 # TODO: clean up after moving style/side into types
-function toSeg(leg::LegType, neto::PT)::SegSide
+function toSeg(leg::LegLike, neto::PT)::SegSide
     strike = getStrike(leg)
     side = getSide(leg)
     qty = getQuantity(leg)
     return getStyle(leg) == Style.call ? segCall(strike, side, qty, neto) : segPut(strike, side, qty, neto)
 end
-function toSegments(legs::NTuple{N,LegType}, netos::NTuple{N,PT})::Segments{N} where N
+function toSegments(legs::NTuple{N,LegLike}, netos::NTuple{N,PT})::Segments{N} where N
     # @assert issorted(legs; by=getStrike)
     segs = toSeg.(legs, netos)
     return combine(segs)
 end
 
-toSegmentsWithZeros(legs::NTuple{N,LegType}, netos::NTuple{N,PT}) where N = segmentsWithZeros(toSegments(legs, netos))
+toSegmentsWithZeros(legs::NTuple{N,LegLike}, netos::NTuple{N,PT}) where N = toSegmentsWithZeros(toSegments(legs, netos))
+toSegmentsWithZeros(segs::Segments) = segmentsWithZeros(segs)
 
-toSections(legs::NTuple{N,LegType}, netos::NTuple{N,PT}) where N = toSections(toSegments(legs, netos))
+toSections(legs::NTuple{N,LegLike}, netos::NTuple{N,PT}) where N = toSections(toSegments(legs, netos))
 function toSections(segs::Segments{N}) where N
     zs = findZeros(segs)
     x1 = first(segs.points).x

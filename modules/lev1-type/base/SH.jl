@@ -18,6 +18,7 @@ export getNetOpen, getNetClose, getLegs, getPnl
 export bap
 export isValid
 export getDateOpen, getRisk
+export getTargetDate
 
 # export tsOpen, tsClose, getNetClose
 # export getMaxClose
@@ -103,6 +104,7 @@ function isValid() end
 
 function getDateOpen end
 function getRisk end
+function getTargetDate end
 
 ## conversions
 

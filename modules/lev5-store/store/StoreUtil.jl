@@ -147,7 +147,7 @@ end
 function pingDb()
     try
         return rowtable(execute(db[], "select 17 as num"))[1].num == 17
-    catch
+    catch e
         if e isa InterruptException
             rethrow(e)
         else

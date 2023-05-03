@@ -7,17 +7,18 @@ using Rets, LegTypes, TradeTypes, LegTradeTypes, Pricing
 #region Lines
 import LinesLeg:LinesLeg as LL,Segments
 # (LL.toSegments(lms::NTuple{N,LegMeta})::Segments{N}) where N = LL.toSegments(lms, map(P ∘ Pricing.price, lms))
-function LL.toSegments(lms::NTuple{N,LegMeta})::Segments{N} where N
-    netos = map(P ∘ Pricing.price, lms)
-    # # TODO: remove validation after checking
-    # for i in eachindex(lms)
-    #     q = getQuote(lms[i])
-    #     @assert q.bid < netos[i] < q.ask
-    # end
-    segs = LL.toSegments(lms, netos)
-    return segs
-end
-
+(LL.toSegments(legs::NTuple{N,LegLike})::Segments{N}) where N = LL.toSegments(legs, map(P ∘ Pricing.price, legs))
+# function LL.toSegments(legs::NTuple{N,LegLike}, netos)::Segments{N} where N
+#     # netos = map(P ∘ Pricing.price, lms)
+#     # # TODO: remove validation after checking
+#     # for i in eachindex(lms)
+#     #     q = getQuote(lms[i])
+#     #     @assert q.bid < netos[i] < q.ask
+#     # end
+#     segs = LL.toSegments(legs, netos)
+#     return segs
+# end
+(LL.toSegments(legs::NTuple{N,LegTrade})::Segments{N}) where N = LL.toSegments(legs, map(P ∘ getNetOpen, legs))
 
 LL.toSegmentsWithZeros(lms::NTuple{N,LegMeta}) where N = LL.toSegmentsWithZeros(lms, map(P ∘ Pricing.price, lms))
 LL.toSections(lms::NTuple{N,LegMeta}) where N = LL.toSections(lms, map(P ∘ Pricing.price, lms))

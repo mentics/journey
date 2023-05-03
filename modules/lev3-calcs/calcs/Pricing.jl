@@ -1,5 +1,5 @@
 module Pricing
-using AbstractTypes, SH, BaseTypes, SmallTypes, QuoteTypes, OptionQuoteTypes, OptionMetaTypes, LegMetaTypes
+using SH, BaseTypes, SmallTypes, QuoteTypes, OptionQuoteTypes, OptionMetaTypes, LegTypes, LegMetaTypes
 import OptionUtil
 
 export bap
@@ -104,7 +104,7 @@ end
 import OptionUtil, ChainUtil
 
 netExpired(lms, curp::Currency)::PT = sum(x -> netExpired1(x, curp), lms)
-function netExpired1(lm::LegType, curp::Currency)::PT
+function netExpired1(lm::LegLike, curp::Currency)::PT
     return getQuantity(lm) * Int(getSide(lm)) * netExpired(getStyle(lm), getStrike(lm), curp)
 end
 netExpired(style::Style.T, strike::Currency, curp::Currency)::PT = (OptionUtil.extrinSub(style, strike, curp) ? abs(curp - strike) : 0.0)
@@ -152,7 +152,7 @@ end
 # end
 
 # This assumes two longs and a short and that the short is not in the middle
-function calcMargin(lms::NTuple{3,<:LegType})::Sides{PT}
+function calcMargin(lms::NTuple{3,<:LegLike})::Sides{PT}
     side1 = getSide(lms[1])
     side3 = getSide(lms[3])
     @assert side1 != side3
@@ -161,7 +161,7 @@ function calcMargin(lms::NTuple{3,<:LegType})::Sides{PT}
 end
 
 # This assumes two longs and a short and that the short is not in the middle
-function calcMarginFloat(lms::NTuple{3,<:LegType})::Sides{Float64}
+function calcMarginFloat(lms::NTuple{3,<:LegLike})::Sides{Float64}
     side1 = getSide(lms[1])
     side3 = getSide(lms[3])
     @assert side1 != side3
@@ -169,27 +169,22 @@ function calcMarginFloat(lms::NTuple{3,<:LegType})::Sides{Float64}
     return side1 == Side.long ? Sides(width, 0.0) : Sides(0.0, width)
 end
 
-function calcMarg(center, segs)::Sides{Float64}
+import LineTypes:Segments
+function calcMarg(center, segs::Segments)::Sides{Float64}
     min_short = 0.0
     min_long = 0.0
-    for seg in segs
-        mn = min(seg.left.y, seg.right.y)
-        if seg.left.x < center && mn < min_short
-            min_short = mn
-        end
-        if seg.right.x > center && mn < min_long
-            min_long = mn
+    for point in segs.points
+        y = point.y
+        if point.x < center && y < min_short
+            min_short = y
+        elseif point.x > center && y < min_long
+            min_long = y
         end
     end
     return Sides(-min_short, -min_long)
 end
 
-function calcCommit(segs)::Float64
-    return minimum(segs) do seg
-        # TODO: optimize: don't have to check both sides
-        min(seg.left.y, seg.right.y)
-    end
-end
+calcCommit(segs)::Float64 = minimum(point -> point.y, segs.points)
 
 function calcMaxProfit(segs)::Float64
     return maximum(segs) do seg
@@ -198,7 +193,7 @@ function calcMaxProfit(segs)::Float64
     end
 end
 
-function calcMarginFloat(center, lms::NTuple{3,<:LegType}, sections)::Sides{Float64}
+function calcMarginFloat(center, lms::NTuple{3,<:LegLike}, sections)::Sides{Float64}
     short = 0.0
     long = 0.0
     for section in sections
@@ -218,11 +213,11 @@ function calcMarginFloat(center, lms::NTuple{3,<:LegType}, sections)::Sides{Floa
 end
 
 # TODO: don't be lazy
-function calcMargin(lms::NTuple{4,<:LegType})::Sides{PT}
+function calcMargin(lms::NTuple{4,<:LegLike})::Sides{PT}
     m = calcMarginFloat(lms)
     return Sides(P(m.long), P(m.short))
 end
-function calcMarginFloat(lms::NTuple{4,<:LegType})::Sides{Float64}
+function calcMarginFloat(lms::NTuple{4,<:LegLike})::Sides{Float64}
     longs = filter(isLong, lms)
     shorts = filter(isShort, lms)
     mult = sum(getQuantity, shorts)
@@ -232,7 +227,7 @@ end
 
 # TODO: could do more efficient if sorted?
 # Can't use, doesn't support quantities and would get complicated if did
-# function calcMarginFloat(lms::NTuple{4,<:LegType})::Sides{Float64}
+# function calcMarginFloat(lms::NTuple{4,<:LegLike})::Sides{Float64}
 #     longs = [-1,-1]
 #     shorts = [-1,-1]
 #     strikesShort = [0.0, 0.0]

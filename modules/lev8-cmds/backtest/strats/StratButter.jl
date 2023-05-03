@@ -50,49 +50,80 @@ Base.@kwdef struct Params
     ExpDurRatioAvg::Float64
     MinXpirBdays::Int
     MaxXpirBdays::Int
+    MinMoveRat::Float64
+    MaxQtyPerMove::Float64
 end
 
 const NUM_LEGS = 4
 
-makeStrat() = TStrat(
-    (NUM_LEGS, Scoring),
-    Params(
-        balInit = C(1000),
-        MaxMarginPerTradeRat = 0.08,
-        MaxQtyPerTrade = 100, # 21 losses at 100; 21 losses at 1; 21 losses at 10
-        InitTakeRate = 0.6, # 0.8
-        FinalTakeRate = -0.4,
-        MaxWidthRat = 0.032,
-        ProbMin = 0.976, # 0.87,
-        MinProfit = 0.07,
-        MinRate = 0.4,
-        MoneyValueAPR = 0.05,
-        ExpDurRatioAvg = 0.5,
-        MinXpirBdays = 1,
-        MaxXpirBdays = 48),
-    makeCtx(),
-)
+#     Params(
+#         balInit = C(1000),
+#         MaxMarginPerTradeRat = 0.08,
+#         MaxQtyPerTrade = 100, # 21 losses at 100; 21 losses at 1; 21 losses at 10
+#         InitTakeRate = 0.6, # 0.8
+#         FinalTakeRate = -0.4,
+#         MaxWidthRat = 0.032,
+#         ProbMin = 0.976, # 0.87,
+#         MinProfit = 0.07,
+#         MinRate = 0.4,
+#         MoneyValueAPR = 0.05,
+#         ExpDurRatioAvg = 0.5,
+#         MinXpirBdays = 1,
+#         MaxXpirBdays = 48),
+# Summary 2018-01-02 - 2022-09-30 (ran 1195 bdays): (wins = 1014, losses = 77)
+#   bal = 3759.21, balReal = 3759.21, rpnl = 2759.21
+#   overall realized rate: 0.32219
+#   trade rate mean: 3.76522
+#   trade rate median: 0.96675
 
-struct Context3{N}
+function makeStrat()
+    s = TStrat(
+        (NUM_LEGS, Scoring),
+        Params(
+            balInit = C(1000),
+            MaxMarginPerTradeRat = 0.08,
+            MaxQtyPerTrade = 100,
+            InitTakeRate = 0.6, # 0.8
+            FinalTakeRate = -0.4,
+            MaxWidthRat = 0.02,
+            ProbMin = 0.975, # 0.87,
+            MinProfit = 0.07,
+            MinRate = 0.4,
+            MoneyValueAPR = 0.05,
+            ExpDurRatioAvg = 0.5,
+            MinXpirBdays = 1,
+            MaxXpirBdays = 48,
+            MinMoveRat = 0.0025,
+            MaxQtyPerMove = 100,
+        ),
+        makeCtx(),
+    )
+    resetStrat(s)
+    return s
+end
+
+struct Context{N}
     bufCandLong::Vector{Cand{N}}
     bufCandShort::Vector{Cand{N}}
     curpPrev::Ref{Currency}
+    qtyPerMove::Ref{Float64}
 end
 
 struct TStrat <: Strat
     acctTypes::Tuple{Int,DataType}
     params::Params
-    ctx::Context3
+    ctx::Context
 end
 
 BackTypes.hasMultExpirs(::TStrat) = false
 
-makeCtx() = Context3(Vector{Cand{NUM_LEGS}}(), Vector{Cand{NUM_LEGS}}(), Ref(CZ))
+makeCtx() = Context(Vector{Cand{NUM_LEGS}}(), Vector{Cand{NUM_LEGS}}(), Ref(CZ), Ref(0.0))
 #endregion
 
 #region InterfaceImpl
-function BackTypes.resetStrat(s::TStrat)
+function resetStrat(s::TStrat)
     s.ctx.curpPrev[] = CZ
+    s.ctx.qtyPerMove[] = 0.0
 end
 
 function filterXpirs(xpirs, fromDate, params)
@@ -105,15 +136,14 @@ function (s::TStrat)(ops, tim, chain, otoq, vix)::Nothing
     # println("Running StratButter for ", tim.ts)
     params = s.params
     curp = ch.getCurp(chain)
-    # TODO: goes back up % of recent down?
     curpPrev = s.ctx.curpPrev
-    if curp - curpPrev[] < 0.0025 * curp
-        if curp < curpPrev[]
-            curpPrev[] = curp
+    if abs(curp - curpPrev[]) < params.MinMoveRat * curp
+        if s.ctx.qtyPerMove[] >= params.MaxQtyPerMove
+            return
         end
-        return
     else
-        curpPrev[] = CZ
+        curpPrev[] = CZ # set it far away from curp so can open trades freely
+        s.ctx.qtyPerMove[] = 0.0
     end
     fromPrice = curp
 
@@ -129,7 +159,7 @@ function (s::TStrat)(ops, tim, chain, otoq, vix)::Nothing
         searchRight = ch.toSearch(curp, chain.xsoqs[xpir].call)
         # TODO: multithreaded precalc all the probs and put in a lookup, and store in module cache
         prob = ProbKde.probToClose(F(fromPrice), vix, tim.ts, xpir)
-        # TODO: try both and keep best score
+        # TODO: try both and keep best score. tried once and didnt' look that good.
         if vix > 21.0 # TODO: params.VixThreshold
             findEntryHigh!(keep, params, prob, searchLeft, searchRight, ops.canOpenPos, curp, tmult)
         else
@@ -146,6 +176,7 @@ function (s::TStrat)(ops, tim, chain, otoq, vix)::Nothing
                 @assert getExpir(x.lms[1]) <= getExpir(x.lms[2])
                 ops.openTrade(tim.ts, x.lms, toPT(x.neto, RoundDown), toPT(x.margin), multiple, "best score $(rd5(x.score))", x.scoring)
                 curpPrev[] = curp
+                s.ctx.qtyPerMove[] += multiple
             else
                 println("0 multiple found, odd.")
             end
@@ -168,6 +199,8 @@ function BackTypes.checkExit(params::Params, tradeOpen, tim, lmsc, curp)::Union{
     netc = calcPrice(lmsc)
     curVal = getNetOpen(tradeOpen) + netc
     rate = calcRate(dateOpen, tim.date, curVal, getRisk(tradeOpen))
+    # @show dateOpen, tim.date, curVal, getRisk(tradeOpen)
+
     # rateOrig = tradeOpen.extra.rate
     # blog("checkExit: $(tradeOpen.id) $(round(rate;digits=5)) $(round(rateOrig;digits=5))")
     # if rate >= 1.5 * rateOrig
@@ -177,7 +210,7 @@ function BackTypes.checkExit(params::Params, tradeOpen, tim, lmsc, curp)::Union{
     ratio = trad.targetRatio(tradeOpen, tim.date)
     if rate >= params.FinalTakeRate + ratio * (params.InitTakeRate - params.FinalTakeRate)
         # Avoid exiting on last day when would be better to expire
-        if rate >= tradeOpen.extra.rate || !(tim.date == trad.targetDate(tradeOpen) && curp > getStrike(tradeOpen.lms[end]) + 2)
+        if rate >= trad.calcRateOrig(tradeOpen) || !(tim.date == trad.targetDate(tradeOpen) && curp > getStrike(tradeOpen.lms[end]) + 2)
             return "rate $(rd5(rate)) >= $(params.InitTakeRate) * $(ratio) ($(.4*ratio))"
         end
     end
@@ -211,7 +244,7 @@ firstNinf(x) = first(x)
 
 #region Find
 function scoreHigh(lms, params, prob, curp, tmult)
-    segs = LL.toSegmentsWithZeros(lms)
+    segs = LL.toSegments(lms)
     global keepLms = lms
     global keepSegs = segs
     neto = calcPriceFast(lms)
@@ -238,7 +271,9 @@ function scoreHigh(lms, params, prob, curp, tmult)
     rate = calcRate(tmult, profit, risk)
     rate >= params.MinRate || ( @deb "no score rate" rate params.MinRate ; return nothing )
 
-    kel = calcKel(prob, risk, segs)
+    segsWithZeros = LL.toSegmentsWithZeros(segs)
+    kel = calcKel(prob, risk, segsWithZeros)
+    # TODO: maybe change targets depending on low/high
     kel >= 1.0 || ( @deb "no score kel" tmult neto rate profit risk kel ; return nothing )
 
     score = kel # rate * kel
@@ -247,7 +282,7 @@ function scoreHigh(lms, params, prob, curp, tmult)
 end
 
 function scoreLow(lms, params, prob, curp, tmult)
-    segs = LL.toSegmentsWithZeros(lms)
+    segs = LL.toSegments(lms)
     global keepLms = lms
     global keepSegs = segs
     neto = calcPriceFast(lms)
@@ -265,8 +300,10 @@ function scoreLow(lms, params, prob, curp, tmult)
     rate = calcRate(tmult, profit, risk)
     rate >= params.MinRate || ( @deb "no score rate" rate params.MinRate ; return nothing )
 
-    kel = calcKel(prob, risk, segs)
-    kel >= 1.0 || ( @deb "no score kel" tmult neto rate profit risk kel ; return nothing )
+    segsWithZeros = LL.toSegmentsWithZeros(segs)
+    kel = calcKel(prob, risk, segsWithZeros)
+    # TODO: maybe change targets depending on low/high
+    kel >= 0.75 || ( @deb "no score kel" tmult neto rate profit risk kel ; return nothing )
 
     score = kel
     return ((;score, neto, margin), Scoring(profit, risk, rate, kel))
@@ -429,7 +466,8 @@ function qtyForAvail(avail, risk, kel)::Int
         println(s)
         @blog(s)
     end
-    res = floor(Int, 0.5 * kel * avail / risk)
+    # TODO: was .5 kel
+    res = floor(Int, 0.25 * kel * avail / risk)
 end
 
 #=

@@ -3,7 +3,7 @@ include("inc.jl")
 try
 using LogUtil
 LogUtil.init("C:/data/log/daily")
-LogUtil.deleteAll()
+# LogUtil.deleteAll()
 catch
   # ignore
 end
@@ -15,8 +15,13 @@ using Dates
 
 # TODO: move to util
 using Store, TimeZones
-pathLatest = joinpath(dirOrderBackup(), sort!(readdir(dirOrderBackup(); sort=false); rev=true)[1])
-tsBak = astimezone(TimeZones.unix2zdt(mtime(pathLatest)), localzone())
+bakDirs = sort!(readdir(dirOrderBackup(); sort=false); rev=true)
+if !isempty(bakDirs)
+  pathLatest = joinpath(dirOrderBackup(), bakDirs[1])
+  tsBak = astimezone(TimeZones.unix2zdt(mtime(pathLatest)), localzone())
+else
+  tsBak = ZonedDateTime(DateTime(0), localzone())
+end
 
 io = IOBuffer()
 println(io, "Most recent bak order: $(tsBak)")

@@ -4,7 +4,7 @@ using SH, BaseTypes, StatusTypes, LegTypes, OptionMetaTypes
 
 export LegTrade, LegTradeMeta, getTid
 
-struct LegTradeMeta
+struct LegTradeMeta <: LegLike
     bid::Currency
     ask::Currency
     iv::Float64
@@ -15,7 +15,7 @@ SH.getIv(ltm::LegTradeMeta) = ltm.iv
 # TODO: store all the greeks
 SH.getOptionMeta(ltm::LegTradeMeta) = OptionMeta(;mid_iv=ltm.iv)
 
-struct LegTrade
+struct LegTrade <: LegLike
     id::Int
     tid::Int
     status::Type{<:Status}

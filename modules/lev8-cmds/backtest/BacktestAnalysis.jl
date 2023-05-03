@@ -249,9 +249,28 @@ function shapes()
     end
 end
 
+function vv(trade)
+    ts1 = DrawUtil.tounix(trade.open.ts)
+    ts2 = DrawUtil.tounix(trade.close.ts)
+    pnlm = F(pnlmult(trade))
+    return ((ts1, pnlm), (ts2, pnlm))
+end
+
+function pnlvv2()
+    dataHigh = map(vv, filter(isHigh, bt.keepAcct.closed))
+    dataLow = map(vv, filter(!isHigh, bt.keepAcct.closed))
+    left = min(first(dataHigh)[1][1], first(dataLow)[1][1])
+    right = max(last(dataHigh)[1][1], last(dataLow)[1][1])
+    # println(typeof(dataHigh))
+    # Makie.linesegments(dataHigh)
+    DrawUtil.drawWithDates(:linesegments, left, right, dataHigh; color=:lightblue)
+    DrawUtil.drawWithDates!(:linesegments, left, right, dataLow; color=:blue)
+    plotVix()
+end
+
 function pnlvv()
-    dataHigh = map(t -> (t.open.ts, pnl(t)), filter(isHigh, bt.keepAcct.closed))
-    dataLow = map(t -> (t.open.ts, pnl(t)), filter(!isHigh, bt.keepAcct.closed))
+    dataHigh = map(vv, filter(isHigh, bt.keepAcct.closed))
+    dataLow = map(vv, filter(!isHigh, bt.keepAcct.closed))
     draw(:scatter, dataHigh; color=:lightblue)
     draw!(:scatter, dataLow; color=:blue)
     plotVix()
@@ -296,6 +315,7 @@ isHigh(t) = !isLong(t.open.lms[1])
 strikeWidth(t) = getStrike(t.open.lms[end]) - getStrike(t.open.lms[1])
 SH.getNetOpen(t::TradeBT) = t.open.neto
 pnl(t::TradeBT) = t.open.neto + t.close.netc
+pnlmult(t::TradeBT) = t.open.multiple * (t.open.neto + t.close.netc)
 vix(t::TradeBT) = HistData.vixOpen(Date(t.open.ts))
 # score(t::TradeBT) = t.open.extra.score
 rate(t::TradeBT) = t.open.extra.rate

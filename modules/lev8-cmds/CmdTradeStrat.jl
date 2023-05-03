@@ -39,13 +39,13 @@ function run()
     keep = keepOpen
     global keepOpen = nothing
 
-    mkt = market()
     strat = stratb.makeStrat()
+
+    mkt = market()
     tim = makeTim()
     xpirs = stratb.filterXpirs(expirs(), tim.date, strat.params)
     ci = toChainInfo(chains(xpirs)["SPY"], mkt.curp, xpirs)
     otoq = ChainUtil.toOtoq(ci.xsoqs)
-    BackTypes.resetStrat(strat)
 
     checkExits(strat, tim, otoq, mkt.curp)
     strat(makeOps(), tim, ci, otoq, F(mkt.vix))
@@ -76,7 +76,11 @@ function makeTim()
     return (;ts, date)
 end
 
-SH.getRisk(tradeOpen::Trade) = tradeOpen.extra.risk # Pricing.calcCommit(toSegs(tradeOpen))
+import Pricing
+import LinesLeg as LL
+# SH.getRisk(tradeOpen::Trade) = tradeOpen.extra.risk
+# TODO: remove Tuple?
+SH.getRisk(tradeOpen::Trade) = -Pricing.calcCommit(LL.toSegments(Tuple(getLegs(tradeOpen))))
 
 function makeOps()
     tierBals = TradierAccount.tradierBalances()
@@ -101,7 +105,7 @@ function openTrade(ts, lmso, neto, margin, multiple, label, extra)
 end
 
 function closeTrade(tradeOpen, ts, lmsc, netc, label)
-    global keepClose = (;ts, lmso, neto, margin, multiple, label, extra)
+    global keepClose = (;tradeOpen, ts, lmsc, netc, label)
     println("closeTrade: ", (;tradeOpen, ts, lmsc, netc, label))
 end
 
@@ -119,12 +123,13 @@ function getProb(xpir)
     return ProbKde.probToClose(F(curp), F(vix), tsMarket, xpir)
 end
 
-import Positions
+import Positions, LegTypes
 function canOpenPos(oq::Option, side::Side.T)
+    # TODO: check current open orders also
     poss = Positions.positions()
     for pos in poss
-        if isConflict(pos.leg, oq, side)
-            println("Found conflict:\n", pos.leg, "\n", side, ", ", oq)
+        if LegTypes.isConflict(pos.leg, oq, side)
+            # println("Found conflict:\n", pos.leg, "\n", side, ", ", oq)
             return false
         end
     end

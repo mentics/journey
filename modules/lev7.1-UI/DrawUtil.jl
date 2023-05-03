@@ -26,6 +26,17 @@ function draw(type::Symbol, xs::Coll{<:DateLike}, ys; dtformat="mm/dd/yyyy", kws
 end
 # tounix(d::Date) = datetime2unix(DateTime(d))
 tounix(d::DateTime) = datetime2unix(d)
+fromunix(ts::Float64) = unix2datetime(ts)
+
+# left::DateLike, right::DateLike
+drawWithDates!(type::Symbol, left, right, args...; kws...)::Axis = drawWithDates(type, left, right, args...; newFig=false, kws...)
+function drawWithDates(type::Symbol, left, right, args...; dtformat="mm/dd/yyyy", kws...)::Axis
+    ax = _draw(type, args...; kws...)
+    dateticks = PlotUtils.optimize_datetime_ticks(Dates.value(fromunix(left)), Dates.value(fromunix(right)))[1]
+    tickdts = dtFromValue.(dateticks)
+    ax.xticks[] = (datetime2unix.(tickdts), Dates.format.(tickdts, dtformat));
+    return ax
+end
 
 function _draw(type::Symbol, args...; kws...)::Axis
     f = getproperty(Makie, Symbol(string(type) * '!'))
