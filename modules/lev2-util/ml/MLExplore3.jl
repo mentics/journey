@@ -1,4 +1,4 @@
-module MLExplore2
+module MLExplore3
 using Compat, Dates
 import Random
 using Flux, Transformers, CUDA
@@ -6,7 +6,7 @@ using Transformers.Layers
 using NeuralAttentionlib.Masks
 using BaseTypes
 
-const DEV2 = Ref{Function}(gpu)
+const DEV = Ref{Function}(gpu)
 
 const MULT = Ref(1)
 
@@ -14,30 +14,30 @@ function makeCfg()
     return (;
         # Data related
         channel_width = 4, # 23 + 2, # add 2 for the positional encoding
-        encode_width = 32,
+        encode_width = 8,
 
         ## Model related
         # General Lengths
-        enc_input_width = 128, # number of timesteps in a single input to the encoder
-        enc_output_width = 128,
-        dec_input_width = 4,
-        dec_output_width = 4,
+        enc_input_width = 100, # number of timesteps in a single input to the encoder
+        enc_output_width = 100,
+        dec_input_width = 10,
+        dec_output_width = 10,
 
         # Transformer Config
-        trf_block_count = 1, # 1 * MULT[],
-        trf_head_count = 2, # 2 * MULT[], Reducing this too much might decrease loss at the risk of overfitting?
-        trf_head_dim = 16 * MULT[],
-        trf_ffn_dim = 32 * MULT[],
+        trf_block_count = 1 * MULT[],
+        trf_hidden_dim = 19 * MULT[],
+        trf_head_count = 2 * MULT[],
+        trf_head_dim = 27 * MULT[],
+        trf_ffn_dim = 97 * MULT[],
         trf_dropout = 0.1,
 
         ## Execution related
         validation_ratio = 0.2,
-        batch_len = 128, # should develop rule of thumb for batch_len, maybe start with same as number of timesteps?
+        batch_len = 512,
         train_iters = 100,
         target_loss = 1e-4,
-        learning_rate = 1e-2,
+        learning_rate = 1,
         learning_rate_mult = 1.2,
-        learning_rate_max_div = 20,
     )
 end
 
@@ -53,9 +53,9 @@ function run(;cfg=makeCfg(), update=false, input=makeSeqTrigSum2Delta())
     global gstart = nothing
     global genned = nothing
     global gactual = nothing
-    global BatchesCache = nothing
-    GC.gc(true)
 
+    global BatchesCache = nothing
+    return
     # return
     enable_gpu(true)
     Random.seed!(1)
@@ -130,8 +130,8 @@ function makeBatches(cfg, dataTokens; update=false)
     train_x, ind = batches(cfg, training_batch_count, lfsr, ind)
     println("Creating $(validation_batch_count) validation batches")
     validation_x, ind = batches(cfg, validation_batch_count, lfsr,ind)
-    train_x = train_x |> DEV2[]
-    validation_x = validation_x |> DEV2[]
+    train_x = train_x |> DEV[]
+    validation_x = validation_x |> DEV[]
     res = (; train=(;x=train_x), validation=(;x=validation_x))
     global BatchesCache = res
     return res
@@ -226,34 +226,33 @@ function makeModel1(cfg)
     # The diagram on page 2 of this paper is most informative
     # https://arxiv.org/pdf/2001.08317.pdf
 
-    # encoder_input_layer = Dense(cfg.channel_width => cfg.trf_input_width) |> DEV2[]
-    encoder_input_layer = Dense(cfg.channel_width => cfg.encode_width) |> DEV2[]
-    encoder_trf = Transformer(TransformerBlock, cfg.trf_block_count, cfg.trf_head_count, cfg.encode_width, cfg.trf_head_dim, cfg.trf_ffn_dim; dropout=cfg.trf_dropout) |> DEV2[]
-    # decoder_input_layer = Dense(cfg.channel_width => cfg.trf_input_width) |> DEV2[]
-    decoder_input_layer = Dense(cfg.channel_width => cfg.encode_width) |> DEV2[] # TODO: use same dense layer as in encoder?
-    decoder_trf = Transformer(TransformerDecoderBlock, cfg.trf_block_count, cfg.trf_head_count, cfg.encode_width, cfg.trf_head_dim, cfg.trf_ffn_dim; dropout=cfg.trf_dropout) |> DEV2[]
-    decoder_output_layer = Dense(cfg.encode_width => cfg.channel_width) |> DEV2[]
+    encoder_input_layer = Dense(cfg.channel_width => cfg.encode_width) |> DEV[]
+    encoder_trf = Transformer(TransformerBlock, cfg.trf_block_count, cfg.trf_head_count, cfg.enc_input_width, cfg.trf_head_dim, cfg.trf_ffn_dim; dropout=cfg.trf_dropout) |> DEV[]
+    decoder_input_layer = Dense(cfg.channel_width => cfg.encode_width) |> DEV[] # TODO: use same dense layer as in encoder?
+    # decoder_trf = Transformer(TransformerDecoderBlock, cfg.trf_block_count, cfg.trf_head_count, cfg.dec_input_width, cfg.trf_head_dim, cfg.trf_ffn_dim; dropout=cfg.trf_dropout) |> DEV[]
+    decoder_trf = Transformer(TransformerDecoderBlock, 1, 2, 10, 25, 73; dropout=cfg.trf_dropout) |> DEV[]
+    decoder_output_layer = Dense(cfg.dec_input_width => cfg.channel_width) |> DEV[]
     global all_layers = (;encoder_input_layer, encoder_trf, decoder_trf, decoder_input_layer, decoder_output_layer)
 
     function encoder_forward(input)
         enced = encoder_input_layer(input)
-        input = enced # permutedims(enced, [2,1,3])
+        input = permutedims(enced, [2,1,3])
         att_mask = CausalMask()
         # @show size(input) size(e)
         t = encoder_trf(input, att_mask) # return a NamedTuples (hidden_state = ..., ...)
-        nt_output = t # permutedims(t.hidden_state, [2,1,3])
+        output = t.hidden_state # permutedims(t.hidden_state, [2,1,3])
         # println("type of enc output ", typeof(nt_output)) # , " size: ", size(output))
-        return nt_output
+        return output
     end
 
-    function decoder_forward(dec_input, nt_enc_output)
+    function decoder_forward(dec_input, enc_output)
         enced = decoder_input_layer(dec_input)
-        input = enced # permutedims(enced, [2,1,3])
-        # @show size(dec_input) size(nt_enc_output.hidden_state) size(enced) size(input)
+        input = permutedims(enced, [2,1,3])
+        @show size(dec_input) size(enc_output) size(enced) size(input)
         # t = decoder_trf(input, nt_enc_output.hidden_state, CausalMask(), nt_enc_output.attention_mask) # return a NamedTuple (hidden_state = ..., ...)
-        t = decoder_trf(input, nt_enc_output.hidden_state, nothing, nothing) # return a NamedTuple (hidden_state = ..., ...)
-        p = decoder_output_layer(t.hidden_state)
-        output = p # permutedims(p, [2,1,3])
+        t = decoder_trf(input, enc_output, nothing, nothing) # return a NamedTuple (hidden_state = ..., ...)
+        out1 = permutedims(t.hidden_state, [2,1,3])
+        output = decoder_output_layer(out1)
         return output
     end
 
@@ -312,7 +311,7 @@ function train!(cfg, model, data)
         loss = ls / batch_count
 
         if loss < min_loss
-            model.opt.eta = min(loss / cfg.learning_rate_max_div, model.opt.eta * cfg.learning_rate_mult)
+            model.opt.eta = min(loss / 100, model.opt.eta * cfg.learning_rate_mult)
             min_loss = loss
         elseif loss > min_loss * cfg.learning_rate_mult
             # model.opt.eta /= cfg.learning_rate_mult

@@ -88,7 +88,7 @@ getTradeClosed(tid::Int) = get(tradictClosed(), tid, nothing)
 tradesOpen(xpir::Date; kws...)::Vector{Trade} = tradesOpen(x -> getTargetDate(x) == xpir) # filter(x -> getTargetDate(x) == xpir, tradesOpen(; kws...))
 tradesOpenEntered(d::Date; kws...)::Vector{Trade} = tradesOpen(x -> toDateMarket(tsCreated(x)) == d; kws...) # filter(x -> toDateMarket(tsCreated(x)) == d, tradesOpen(; kws...))
 tradesOpen(f; kws...)::Vector{Trade} = filter(f, tradesOpen(; kws...))
-tradesLive(; kws...)::Vector{Trade} = tradesOpen(t -> isStatus(t, StatusTypes.TradeLive); kws...)
+tradesLive(; kws...)::Vector{Trade} = tradesOpen(t -> isStatus(t, StatusTypes.TradeLive2); kws...)
 
 tradictOpen(;age=Minute(10))::Dict{Int,Trade} =
         tradesCache(loadOpen, CACHE_TRADES_OPEN; age)[2]

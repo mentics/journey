@@ -92,7 +92,7 @@ function makeOps()
     return (;
         marginAvail = () -> Sides(buyingPower, buyingPower),
         bal = () -> C(tierBals["total_cash"] / 100),
-        tradesOpen = () -> StoreTrade.tradesOpen(),
+        tradesOpen = () -> StoreTrade.tradesLive(),
         openTrade, # = (ts, lmso, neto, margin, multiple, label, extra) -> openTrade(acct, ts, lmso, neto, margin, multiple, label, extra),
         closeTrade, # = (tradeOpen, ts, lmsc, netc, label) -> ( closeTrade(acct, tradeOpen, ts, lmsc, netc, label) ; del!(acct.open, tradeOpen) ),
         canOpenPos,

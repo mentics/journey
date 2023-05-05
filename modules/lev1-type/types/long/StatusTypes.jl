@@ -28,7 +28,7 @@ const StatusPending = Union{Starting,Accepted,PartialFilled}
 const Deleted = Union{Canceled,Rejected}
 const Closeable = Union{Filled,PartialClosed}
 # const Open = Union{Preview,Starting,Accepted,PartialFilled,Filled,PartialClosed,Closing}
-const TradeLive = Union{PartialFilled,Filled,PartialClosed,Closing}
+const TradeLive2 = Union{PartialFilled,Filled} # ,PartialClosed,Closing}
 # TODO: clean up unused of above after store simplification
 
 export StatusClosed

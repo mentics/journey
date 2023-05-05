@@ -166,8 +166,8 @@ function makeBatches(cfg, dataTokens; update=false)
         println("Using cached batches: $(batch_size(BatchesCache.train.x)) training batches, $(batch_size(BatchesCache.validation.x)) validation batches")
         return BatchesCache
     end
-    empty!(Inds[])
     ts_count = time_input_size(dataTokens)
+    # @show ts_count
     subseq_count = ts_count - seq_len_train(cfg) - 1
     batch_count = subseq_count ÷ cfg.batch_len
     validation_batch_count = max(1, ceil(Int, cfg.validation_ratio * batch_count))
@@ -184,29 +184,26 @@ function makeBatches(cfg, dataTokens; update=false)
     train_x, ind = batches(cfg, training_batch_count, lfsr, ind)
     println("Creating $(validation_batch_count) validation batches")
     validation_x, ind = batches(cfg, validation_batch_count, lfsr,ind)
-    train_x = train_x |> DEV[]
-    validation_x = validation_x |> DEV[]
+    train_x = train_x |> DEV2[]
+    validation_x = validation_x |> DEV2[]
     res = (; train=(;x=train_x), validation=(;x=validation_x))
     global BatchesCache = res
     return res
 end
 
-const Inds = Ref(Int[])
-
 function batches(cfg, count, lfsr, ind)
     seqlen = seq_len_train(cfg)
     batchlen = cfg.batch_len
-    x = Array{Float32, ndims(dataTokens)+1}[]
+    # x = Array{Float32, ndims(dataTokens)+1}[]
+    x = []
     for _ in 1:count
         batch = stack(begin
-            # println("Adding to batch for index $ind")
-            push!(Inds[], ind)
             seq = input_subseq(dataTokens, ind:(ind + seqlen - 1))
             ind, _ = iterate(lfsr, ind)
             attachPositional(seq, pos_dim(seq))
         end for _ in 1:batchlen)
-        push!(x, batch)
-        @assert size(batch) == (seqlen, cfg.channel_width, batchlen) "$(size(batch)) == $((seqlen, cfg.channel_width, batchlen))"
+        push!(x, ins_and_outs(cfg, batch))
+        @assert size(batch) == (cfg.channel_width, seqlen, batchlen) "$(size(batch)) == $((cfg.channel_width, seqlen, batchlen))"
     end
     return x, ind
 end
@@ -251,20 +248,23 @@ end
 function ins_and_outs(cfg, seq)
     enc_input, dec_input = ins(cfg, seq)
     (;enc_input_width, dec_output_width) = cfg
-    seq_len = size(seq, 1)
+    seq_len = time_size(seq)
     @assert seq_len == enc_input_width + dec_output_width (@str seq_len == enc_input_width + dec_output_width seq_len enc_input_width dec_output_width)
-    dec_output = seq[seq_len - dec_output_width + 1:seq_len,:,:]
-    @assert size(dec_output, 1) == dec_output_width
-    return enc_input, dec_input, dec_output
+    # dec_output = selectdim(seq, time_dim(seq), (seq_len - dec_output_width + 1):seq_len)
+    dec_output = Array(selectdim(seq, time_dim(seq), (seq_len - dec_output_width + 1):seq_len))
+    @assert size(dec_output, time_dim(seq)) == dec_output_width
+    return (;enc_input, dec_input, dec_output)
 end
 
 function ins(cfg, seq)
     (;enc_input_width, dec_input_width) = cfg
-    enc_input = seq[1:enc_input_width,:,:]
+    # enc_input = selectdim(seq, time_dim(seq), 1:enc_input_width)
+    enc_input = Array(selectdim(seq, time_dim(seq), 1:enc_input_width))
     # the following might not go all the way to the end if this is being used for ins_and_outs which would include the y (actual)
-    dec_input = seq[enc_input_width:(enc_input_width + dec_input_width - 1),:,:]
-    @assert size(dec_input, 1) == dec_input_width
-    return enc_input, dec_input
+    # dec_input = selectdim(seq, time_dim(seq), enc_input_width:(enc_input_width + dec_input_width - 1))
+    dec_input = Array(selectdim(seq, time_dim(seq), enc_input_width:(enc_input_width + dec_input_width - 1)))
+    @assert size(dec_input, time_dim(seq)) == dec_input_width
+    return (;enc_input, dec_input)
 end
 
 function makeModel1(cfg)
@@ -272,37 +272,20 @@ function makeModel1(cfg)
     # https://arxiv.org/pdf/2001.08317.pdf
 
     # encoder_input_layer = Dense(cfg.enc_input_width * cfg.channel_width => cfg.trf_input_width * cfg.channel_width) |> DEV[]
-    encoder_input_layer = Dense(cfg.channel_width => cfg.trf_input_width) |> DEV[]
-
-    # positional_encoding_layer = SinCosPositionEmbed(cfg.trf_input_width) |> DEV[]
-    # positional_encoding_layer = SinCosPositionEmbed(cfg.trf_input_width) |> DEV[]
-    # positional_encoding = positional_encoding_layer(cfg.enc_input_width)
-    # positional_encoding_layer = FixedLenPositionEmbed(cfg.trf_input_width) |> DEV[]
-    encoder_trf = Transformer(TransformerBlock, cfg.trf_block_count, cfg.trf_head_count, cfg.trf_hidden_dim, cfg.trf_head_dim, cfg.trf_ffn_dim; dropout=cfg.trf_dropout) |> DEV[]
+    encoder_input_layer = Dense(cfg.channel_width => cfg.encode_width) |> DEV[]
+    encoder_trf = Transformer(TransformerBlock, cfg.trf_block_count, cfg.trf_head_count, cfg.encode_width, cfg.trf_head_dim, cfg.trf_ffn_dim; dropout=cfg.trf_dropout) |> DEV[]
 
     # decoder_input_layer = Dense(cfg.dec_input_width => cfg.trf_input_width) |> DEV[]
-    decoder_input_layer = Dense(cfg.channel_width => cfg.trf_input_width) |> DEV[]
+    decoder_input_layer = Dense(cfg.channel_width => cfg.encode_width) |> DEV[]
 
-    decoder_trf = Transformer(TransformerDecoderBlock, cfg.trf_block_count, cfg.trf_head_count, cfg.trf_hidden_dim, cfg.trf_head_dim, cfg.trf_ffn_dim; dropout=cfg.trf_dropout) |> DEV[]
+    decoder_trf = Transformer(TransformerDecoderBlock, cfg.trf_block_count, cfg.trf_head_count, cfg.encode_width, cfg.trf_head_dim, cfg.trf_ffn_dim; dropout=cfg.trf_dropout) |> DEV[]
 
     # decoder_output_layer = Dense(cfg.trf_hidden_dim => cfg.dec_output_width) |> DEV[]
-    decoder_output_layer = Dense(cfg.trf_hidden_dim => cfg.channel_width) |> DEV[]
+    decoder_output_layer = Dense(cfg.encode_width => cfg.channel_width) |> DEV[]
 
     # positional_encoding_layer
-    all_layers = (;encoder_input_layer, encoder_trf, decoder_trf, decoder_input_layer, decoder_output_layer)
+    all_layers = (;encoder_input_layer, encoder_trf, decoder_input_layer, decoder_trf, decoder_output_layer)
 
-    # function embedding(input)
-    #     # we = word_embed(input.token)
-    #     # pe = pos_embed(we)
-    #     sz = size(input)
-    #     chan_len = (*)(sz[2:end-1]...)
-    #     input_flat = reshape(input, sz[1] * chan_len, sz[end])
-    #     enced_flat = encoder_input_layer(input_flat)
-    #     enced = reshape(enced_flat, cfg.trf_input_width, sz[2:end-1]..., sz[end])
-    #     return enced
-    #     # posed = positional_encoding_layer(sizeTime(enced))
-    #     # return enced .+ posed
-    # end
     function embedding(input)
         # NOTE: this is an experiment changing input to channels x time x batch
         # sz = size(input)
