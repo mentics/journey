@@ -98,9 +98,12 @@ function calcCloseInfo(trade::TradeBTOpen, ts, otoq, calcPrice)
     rate = calcRate(Date(trade.ts), Date(ts), cv, trade.extra.risk)
     return (;rate, curVal=cv, trade.neto, netc, lmsc, trade)
 end
+SH.getDateOpen(tradeOpen::TradeBT) = Date(tradeOpen.open.ts)
 SH.getDateOpen(tradeOpen::TradeBTOpen) = Date(tradeOpen.ts)
 SH.getRisk(tradeOpen::TradeBTOpen) = tradeOpen.extra.risk
+SH.getNetOpen(tradeOpen::TradeBT) = tradeOpen.open.neto
 SH.getNetOpen(tradeOpen::TradeBTOpen) = tradeOpen.neto
+SH.getNetClose(tradeOpen::TradeBT) = tradeOpen.close.netc
 SH.getLegs(tradeOpen::TradeBTOpen) = tradeOpen.lms
 #endregion
 

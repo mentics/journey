@@ -1,3 +1,5 @@
+Gr8ner%ertsoforcim
+
 What if instead of exiting, we roll? Considering how far it would have fallen to get there, it seems very likely it would be safe to do so.
 Except 2000 drop, and the current drop is about a year. But if we try to lower the strike price gradually... it at least means we could probably preserve capital
 and maybe make a few percent.
@@ -10,8 +12,6 @@ Exit:
 Maybe whenever the rate is higher than if it was held until expration? Though that might be too low?
 What about loss exits?
 There should be a way to calculate the likelihood of the rate increasing and getting out when it's unlikely to do so significantly.
-
-
 
 
 Process:

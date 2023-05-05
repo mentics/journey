@@ -49,6 +49,9 @@ function procOrderRaw(tord::Dict{String,Any})::Bool
         global comboOrder = tord
         @error "TODO: Combo order still not handled, skipping: " tord["id"]
         return false
+    elseif tord["class"] == "equity"
+        # Ignore equity purchases
+        return false
     end
     status = tord["status"]
     @log debug "procOrder: proc status" status

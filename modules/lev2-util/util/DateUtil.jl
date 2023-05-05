@@ -27,6 +27,8 @@ export nextLocalTime, nextMarketPeriod
 export isweekend # reexport from BusinessDays
 export getDate
 
+export daysinquarter, daysinyear
+
 #region ConstAndTypes
 export LOCALZONE
 const LOCALZONE = localzone()
@@ -177,5 +179,8 @@ function toMonths(from::Date, to::Date)
     @assert from < to
     firstdayofmonth(from):Month(1):firstdayofmonth(to)
 end
+
+daysinquarter(d)::UInt16 = ( q1 = Dates.firstdayofquarter(d) ; (q1 + Dates.Month(3) - q1).value )
+daysinyear(d)::UInt16 = ( q1 = Dates.firstdayofquarter(d) ; (q1 + Dates.Month(3) - q1).value )
 
 end

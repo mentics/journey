@@ -1,5 +1,6 @@
 include("repl-simple.jl")
 
+using DrawUtil
 using Calendars, Markets, Chains, Expirations
 using Store, StoreTrade, ProcOrder
 using CmdTrading, CmdPos

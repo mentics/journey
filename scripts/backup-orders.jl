@@ -7,3 +7,6 @@ LogUtil.init("C:/data/log/backup")
 catch
   # ignore
 end
+
+import ProcSched
+ProcSched.backupOrders()

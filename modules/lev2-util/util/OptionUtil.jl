@@ -19,13 +19,16 @@ using SH, BaseTypes, SmallTypes, OptionQuoteTypes
 # #     return max(.0, m1) - max(0., m2) # TODO: always using 25%, should consider other improvs?
 # # end
 
-function calcExtrin(oq::OptionQuote, curp::Real)::Tuple{Currency,Currency,Currency}
+# function calcExtrin(oq::OptionQuote, curp::Real)::Tuple{Currency,Currency,Currency}
+function calcExtrin(oq::OptionQuote, curp::Real)::Tuple{Currency,Currency}
     bid = getBid(oq)
     ask = getAsk(oq)
     s = getStrike(oq)
     dist = abs(curp - s)
+    # return !xor(Style.call == getStyle(oq), s >= curp) ?
+    #         (bid, ask, max(0., (bid + ask)/2)) : (bid - dist, ask - dist, max(0., (bid + ask)/2 - dist))
     return !xor(Style.call == getStyle(oq), s >= curp) ?
-            (bid, ask, max(0., (bid + ask)/2)) : (bid - dist, ask - dist, max(0., (bid + ask)/2 - dist))
+            (bid, ask) : (bid - dist, ask - dist)
     # if Style.call == getStyle(oq)
     #     return s > curp ? (bid, ask, max(0., (bid + ask)/2)) : (bid - dist, ask - dist, max(0., (bid - dist + ask - dist))/2)
     # else
@@ -33,23 +36,23 @@ function calcExtrin(oq::OptionQuote, curp::Real)::Tuple{Currency,Currency,Curren
     # end
 end
 
-function calcExtrins(oq::OptionQuote, curp::Real)::Tuple{Currency,Currency,Currency}
-    bid = getBid(oq)
-    ask = getAsk(oq)
-    imp = bap(oq, 0.0) # TODO: is 0.0 right here?
-    dist = abs(curp - getStrike(oq))
-    if extrinSub(getStyle(oq), getStrike(oq), curp)
-        res = (bid - dist, ask - dist, imp - dist)
-    else
-        res = (bid, ask, imp)
-    end
-    foreach(res) do x
-        if isnan(x) || x < 0.0
-            @error "calcExtrins: unexpected < 0.0" x res
-        end
-    end
-    return res
-end
+# function calcExtrins(oq::OptionQuote, curp::Real)::Tuple{Currency,Currency,Currency}
+#     bid = getBid(oq)
+#     ask = getAsk(oq)
+#     imp = bap(oq, 0.0) # TODO: is 0.0 right here?
+#     dist = abs(curp - getStrike(oq))
+#     if extrinSub(getStyle(oq), getStrike(oq), curp)
+#         res = (bid - dist, ask - dist, imp - dist)
+#     else
+#         res = (bid, ask, imp)
+#     end
+#     foreach(res) do x
+#         if isnan(x) || x < 0.0
+#             @error "calcExtrins: unexpected < 0.0" x res
+#         end
+#     end
+#     return res
+# end
 
 extrinSub(style::Style.T, strike::Real, curp::Real)::Bool = xor(Style.call == style, strike >= curp)
 

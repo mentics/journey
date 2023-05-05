@@ -82,6 +82,7 @@ const lockPrint = ReentrantLock()
 # preloading the most likely keys to avoid needing to lock for multiple threads (ie. few/no changes to the dict keys)
 function init(basePath)
     BasePath[] = basePath
+    mkpath(basePath)
     foreach(init, (:debug, :info, :warn, :error, :sql, :tradier))
 end
 

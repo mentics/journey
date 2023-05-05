@@ -5,13 +5,13 @@ import Backtests as bt
 using BacktestUtil
 import BacktestAnalysis as lyze
 # import TestStrat as strat1
-import SimpleStore as sstor
+import SimpleStore as SS
 import ChainUtil as ch
 import LinesLeg as LL
 # import StratPutSpread as pstrat
 import StratButter as stratb
 
-sstor.loadTss()
+SS.loadTss()
 
 bt.run(stratb.makeStrat(), DateTime(2020,1,1), DateTime(2020,2,1); maxSeconds=1) ; lyze.showResult()
 bt.run(stratb.makeStrat(), DateTime(2020,1,1), DateTime(2020,2,1); maxSeconds=4) ; lyze.showResult()

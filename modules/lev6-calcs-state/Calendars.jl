@@ -78,6 +78,7 @@ function calcDur(from::DateTime, to::DateTime)::MarketDur
     end
 end
 
+calcDurToClose(tsFrom::DateTime, dateTo::Date) = calcDur(tsFrom, getMarketClose(dateTo))
 # function calcDurToExpr(tsFrom::DateTime, dateTo::Date)::MarketDur
 #     dateFrom = toDateMarket(tsFrom)
 #     if dateFrom == dateTo
@@ -92,7 +93,7 @@ end
 #     end
 # end
 
-calcDurCloses(from::Date, to::Date)::MarketDur = calcDurToExpr(getMarketClose(from), to)
+calcDurCloses(from::Date, to::Date)::MarketDur = calcDur(getMarketClose(from), getMarketClose(to))
 
 #region Local
 mutable struct MarketState

@@ -4,12 +4,6 @@ using Globals, SH, BaseTypes, SmallTypes, OptionTypes, LegTypes, LegMetaTypes, C
 using CollUtil
 import DictUtil:dictFromVals
 
-#region Types
-export Chain, ChainSearch
-abstract type Chain end
-abstract type ChainSearch end
-#endregion
-
 #region Public
 function getXpirs end
 function getCurp end
@@ -19,6 +13,16 @@ function getCurp end
 # end
 function toSearch(curp, oqs::Vector{OptionQuote})::ChainSearch
     return ChainSearchType(curp, oqs, getStrike.(oqs))
+end
+function toSearch(info::ChainInfo, xpr::Int)
+    curp = info.under.under
+    xpir = info.xpirs[xpr]
+    return Styles(toSearch(curp, info.xsoqs[xpir].call), toSearch(curp, info.xsoqs[xpir].put))
+end
+function getAtm(search::ChainSearch)::NTuple{2,OptionQuote}
+    left = CollUtil.ltee(search.strikes, search.curp)
+    right = CollUtil.gtee(search.strikes, search.curp)
+    return search.oqs[left], search.oqs[right]
 end
 
 # function toStoq(oqs::Vector{OptionQuote})

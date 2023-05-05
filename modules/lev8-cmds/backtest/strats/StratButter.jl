@@ -76,6 +76,31 @@ const NUM_LEGS = 4
 #   trade rate mean: 3.76522
 #   trade rate median: 0.96675
 
+
+# Params(
+#     balInit = C(1000),
+#     MaxMarginPerTradeRat = 0.08,
+#     MaxQtyPerTrade = 100,
+#     InitTakeRate = 0.6, # 0.8
+#     FinalTakeRate = -0.4,
+#     MaxWidthRat = 0.02,
+#     ProbMin = 0.99, # 0.87,
+#     MinProfit = 0.07,
+#     MinRate = 0.4,
+#     MoneyValueAPR = 0.05,
+#     ExpDurRatioAvg = 0.5,
+#     MinXpirBdays = 1,
+#     MaxXpirBdays = 48,
+#     MinMoveRat = 0.0025,
+#     MaxQtyPerMove = 100,
+# ),
+# 1165.542947 seconds (14.83 G allocations: 2.135 TiB, 36.36% gc time)
+# Summary 2018-01-02 - 2022-09-30 (ran 1195 bdays): (wins = 1745, losses = 113)
+#   bal = 5787.82, balReal = 5877.82, rpnl = 4877.82
+#   overall realized rate: 0.45293
+#   trade rate mean: 3.8906
+#   trade rate median: 1.04132
+
 function makeStrat()
     s = TStrat(
         (NUM_LEGS, Scoring),
@@ -86,7 +111,7 @@ function makeStrat()
             InitTakeRate = 0.6, # 0.8
             FinalTakeRate = -0.4,
             MaxWidthRat = 0.02,
-            ProbMin = 0.975, # 0.87,
+            ProbMin = 0.99, # 0.87,
             MinProfit = 0.07,
             MinRate = 0.4,
             MoneyValueAPR = 0.05,
@@ -210,7 +235,7 @@ function BackTypes.checkExit(params::Params, tradeOpen, tim, lmsc, curp)::Union{
     ratio = trad.targetRatio(tradeOpen, tim.date)
     if rate >= params.FinalTakeRate + ratio * (params.InitTakeRate - params.FinalTakeRate)
         # Avoid exiting on last day when would be better to expire
-        if rate >= trad.calcRateOrig(tradeOpen) || !(tim.date == trad.targetDate(tradeOpen) && curp > getStrike(tradeOpen.lms[end]) + 2)
+        if rate >= trad.calcRateOrig(tradeOpen) || !(tim.date == trad.getTargetDate(tradeOpen) && curp > getStrike(tradeOpen.lms[end]) + 2)
             return "rate $(rd5(rate)) >= $(params.InitTakeRate) * $(ratio) ($(.4*ratio))"
         end
     end
@@ -249,7 +274,7 @@ function scoreHigh(lms, params, prob, curp, tmult)
     global keepSegs = segs
     neto = calcPriceFast(lms)
     # profit = Pricing.calcMaxProfit(segs) # first(segs).left.y
-    profit = min(first(segs).left.y, collect(segs)[end].right.y)
+    profit = min(segs.points[1].y, segs.points[end].y)
     profit > params.MinProfit || ( @deb "min profit not met" profit neto; return nothing )
     # first(segs).left.y > params.MinProfit && collect(segs)[end].right.y > params.MinProfit
 

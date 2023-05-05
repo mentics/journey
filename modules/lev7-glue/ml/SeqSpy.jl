@@ -1,5 +1,5 @@
 module SeqSpy
-import Dates:Dates,Date,Second
+using Dates
 import Flux
 import CollUtil
 import MLUtil:MLUtil,N,BinDef
@@ -60,10 +60,10 @@ function make()
             ),
             dur,
             (
-                N(Dates.dayofweek(s.date) / 7),
-                N(Dates.dayofmonth(s.date) / Dates.daysinmonth(s.date)),
-                N(Dates.dayofquarter(s.date) / daysinquarter(s.date)),
-                N(Dates.dayofyear(s.date) / daysinyear(s.date))
+                N(dayofweek(s.date) / 7),
+                N(dayofmonth(s.date) / daysinmonth(s.date)),
+                N(dayofquarter(s.date) / DateUtil.daysinquarter(s.date)),
+                N(dayofyear(s.date) / DateUtil.daysinyear(s.date))
             )
         )
     end
@@ -124,8 +124,6 @@ function durToLogits(dur::MarketDur)
 end
 
 prep2(x, xp, binner)::UInt8 = binner((x - xp) / xp)
-daysinquarter(d)::UInt16 = ( q1 = Dates.firstdayofquarter(d) ; (q1 + Dates.Month(3) - q1).value )
-daysinyear(d)::UInt16 = ( q1 = Dates.firstdayofquarter(d) ; (q1 + Dates.Month(3) - q1).value )
 
 end
 

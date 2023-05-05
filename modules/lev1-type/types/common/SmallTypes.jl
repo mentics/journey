@@ -25,6 +25,8 @@ SH.toOther(x::Side.T) = x === Side.long ? Side.short : Side.long
 SH.toCode(s::Side.T) = s === Side.long ? 'l' : 's'
 SH.to(::Type{Side.T}, s::AbstractString) = s in ("l", "L", "long") ? Side.long : (s in ("s", "S", "short") ? Side.short : error("Invalid Side code ", s))
 # SH.random(::Type{Side.T}) = rand((Side.call, Side.put))
+# Base.iterate(s::Styles) = iterate((s.call, s.put))
+# Base.iterate(s::Styles, i::Int) = iterate((s.call, s.put))[i]
 
 struct Sides{T}
     long::T

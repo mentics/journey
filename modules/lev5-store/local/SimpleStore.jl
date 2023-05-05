@@ -1,10 +1,10 @@
 module SimpleStore
 using Dates
-using SH, BaseTypes, SmallTypes, OptionTypes, QuoteTypes, OptionQuoteTypes, OptionMetaTypes
+using SH, BaseTypes, SmallTypes, OptionTypes, QuoteTypes, OptionQuoteTypes, OptionMetaTypes, ChainTypes
 using DateUtil, DictUtil, CollUtil, ChainUtil
 import Calendars as cal
 
-export ChainInfo, UnderTime, TimeInfo
+export TimeInfo
 
 #region ConstAndTypes
 const HINT_TSS = 24 * 28
@@ -14,19 +14,6 @@ const HINT_XPIRS = 40
 const DirOut = "C:/data/db/hand/"
 const FileTss = joinpath(DirOut, "tss.ser")
 const DF_FILE = DateFormat("yyyymm")
-
-struct UnderTime
-    under::Currency
-    open::Currency
-    hi::Currency
-    lo::Currency
-end
-
-struct ChainInfo # <: Chain
-    xsoqs::Dict{Date,Styles{Vector{OptionQuote}}}
-    under::UnderTime
-    xpirs::Vector{Date}
-end
 
 struct TimeInfo
     ts::DateTime
@@ -40,8 +27,8 @@ end
 #region Public
 ChainUtil.getCurp(chain::ChainInfo) = chain.under.under
 
-function run(f, from::DateLike, to::DateLike; maxSeconds=10)
-    tss = getTss(from, to)
+run(f, from::DateLike, to::DateLike; maxSeconds=10, max_iterations=typemax(Int)) = run(f, getTss(from, to); maxSeconds, max_iterations)
+function run(f, tss; maxSeconds=10, max_iterations=typemax(Int))
     start = time()
     lasti = lastindex(tss)
     firstOfDay = true
@@ -57,10 +44,22 @@ function run(f, from::DateLike, to::DateLike; maxSeconds=10)
 
         firstOfDay = i == lasti || day(tss[i+1]) != day(ts)
 
+        if i >= max_iterations
+            break
+        end
         if time() > start + maxSeconds
             break
         end
     end
+end
+# makeTimFirst(ts) = TimeInfo(ts, Date(ts), true, false, false)
+function runFirst(from::DateLike)
+    tim, chain = nothing, nothing
+    run(from, tsLast(); max_iterations=1) do t, c
+        @assert isnothing(tim)
+        tim, chain = t, c
+    end
+    return tim, chain
 end
 
 # function getOq(ts::DateTime, xpir::Date, style::Style.T, strike::Currency)::Union{Nothing,OptionQuote}
@@ -80,10 +79,12 @@ end
 # getExpirs(data::HistChain, ts::DateTime)::Vector{Date} = sort(collect(filter(x -> x < Date(2025, 1, 1), keys(data.chain[ts]))))
 
 getTss(from::DateLike, to::DateLike)::Vector{DateTime} = CollUtil.sublist(Tss[], from, to)
+countTss(from::DateLike, to::DateLike)::Int = CollUtil.countSublist(Tss[], from, to)
 getTss(filt, from::DateLike, to::DateLike)::Vector{DateTime} = filter(ts -> from <= ts <= to && filt(ts), Tss[])
 # TODO: test the above two return the same for no filter
 
 tsFirst(dts::DateLike)::DateTime = Tss[][searchsortedfirst(Tss[], dts)]
+tsLast()::DateTime = Tss[][end]
 
 ChainUtil.toOtoq(chi::ChainInfo) = ChainUtil.toOtoq(chi.xsoqs)
 ChainUtil.getXpirs(chi::ChainInfo) = chi.xpirs

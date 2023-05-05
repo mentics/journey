@@ -228,7 +228,12 @@ end
 function sublist(v, from, to)
     left = searchsortedfirst(v, from)
     right = searchsortedlast(v, to)
-    return v[left:right]
+    return @view v[left:right]
+end
+function countSublist(v, from, to)
+    left = searchsortedfirst(v, from)
+    right = searchsortedlast(v, to)
+    return right - left + 1
 end
 
 #=
