@@ -31,18 +31,24 @@ function saveSeq()
 end
 
 function loadSeq()
-    return open(fileSave()) do io
-        tc = read(io, Int)
-        w = read(io, Int)
-        inseq = InputSequence(tc, w)
-        read!(io, inseq.matrix)
-        return inseq
+    file = fileSave()
+    if isfile(file)
+        return open(file) do io
+            tc = read(io, Int)
+            w = read(io, Int)
+            inseq = InputSequence(tc, w)
+            read!(io, inseq.matrix)
+            return inseq
+        end
+    else
+        return
     end
 end
 
 function make(;update=false)
     if !update
-        return loadSeq()
+        seq = loadSeq()
+        isnothing(seq) || return seq
     end
     InputWidth = 23
 

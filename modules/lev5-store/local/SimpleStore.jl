@@ -135,8 +135,12 @@ function loadChainInfo(ts::DateTime)::ChainInfo
     end
 end
 
-function loadMonth(y, m)
+function loadMonth(y, m; cache=true)
     pathCall, pathPut, pathUnder = paths(y, m)
+    if !isfile(pathCall)
+        println("WARN: Tried to load SimpleStore $y-$m but skipping because file not found: $pathCall")
+        return
+    end
     calls = Dict{DateTime,Dict{Date,Vector{OptionQuote}}}()
     sizehint!(calls, HINT_TSS)
     loadOpt(proc(calls, Style.call), pathCall)
@@ -156,25 +160,29 @@ function loadMonth(y, m)
         global keepUnder = tunder
         error("calls, puts, under keys don't match, saved globals")
     end
-    for ts in keysCalls
-        callsts = calls[ts]
-        putsts = puts[ts]
-        xpirsCalls = keys(callsts)
-        xpirsPuts = keys(putsts)
-        xpirs = xpirsCalls
-        if xpirsCalls != xpirsPuts
-            global keepXpirsCalls = xpirsCalls
-            global keepXpirsPuts = xpirsPuts
-            xpirs = intersect(xpirsCalls, xpirsPuts)
-            println("Unexpected xpirsCalls != xpirsPuts for year/month: $(y)/$(m) $(length(xpirsCalls)) $(length(xpirsPuts)), saved globals")
+    tss = union(keysCalls, keysPuts, keysUnder)
+    if cache
+        for ts in tss
+            callsts = calls[ts]
+            putsts = puts[ts]
+            xpirsCalls = keys(callsts)
+            xpirsPuts = keys(putsts)
+            xpirs = xpirsCalls
+            if xpirsCalls != xpirsPuts
+                global keepXpirsCalls = xpirsCalls
+                global keepXpirsPuts = xpirsPuts
+                xpirs = intersect(xpirsCalls, xpirsPuts)
+                println("Unexpected xpirsCalls != xpirsPuts for year/month: $(y)/$(m) $(length(xpirsCalls)) $(length(xpirsPuts)), saved globals")
+            end
+            xsoqs = Dict{Date,Styles{Vector{OptionQuote}}}()
+            xpirs = filter!(x -> x < Date(2025, 1, 1), sort!(collect(xpirs)))
+            for xpir in xpirs
+                xsoqs[xpir] = Styles(callsts[xpir], putsts[xpir])
+            end
+            ChainCache[ts] = ChainInfo(xsoqs, tunder[ts], xpirs)
         end
-        xsoqs = Dict{Date,Styles{Vector{OptionQuote}}}()
-        xpirs = filter!(x -> x < Date(2025, 1, 1), sort!(collect(xpirs)))
-        for xpir in xpirs
-            xsoqs[xpir] = Styles(callsts[xpir], putsts[xpir])
-        end
-        ChainCache[ts] = ChainInfo(xsoqs, tunder[ts], xpirs)
     end
+    return tss
 end
 
 # function loadRaw(y, m)::HistChain
@@ -270,14 +278,17 @@ function updateTssFile()
     # end
     tssLoaded = sort!(collect(keys(ChainCache)))
     notFound = lastindex(tssLoaded) + 1
-    for date in Date(2010,1):Month(1):Date(2022,9)
+    global tss = DateTime[]
+    for date in Date(2016,1):Month(1):Date(2023,1)
         println("processing $(date)")
         i = searchsortedfirst(tssLoaded, date)
         if i == notFound || year(tssLoaded[i]) != year(date) || month(tssLoaded[i]) != month(date)
-            loadMonth(year(date), month(date))
+            tss_add = loadMonth(year(date), month(date); cache=false)
+            isnothing(tss_add) || append!(tss, tss_add)
         end
     end
-    tssLoaded = sort!(collect(keys(ChainCache)))
+    # tssLoaded = sort!(collect(keys(ChainCache)))
+    tssLoaded = sort!(tss)
     open(FileTss; write=true) do io
         write(io, tss)
     end
