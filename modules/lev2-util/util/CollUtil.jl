@@ -99,7 +99,7 @@ function sortupleperm9(lt, a1, b1, c1, d1, a2, b2, c2, d2)::NTuple{4,Int}
 end
 
 (sortupleperm(lt, t::NTuple{4,T})::NTuple{4,Int}) where T = sortupleperm(lt, t...)
-function sortupleperm(lt, a, b, c, d)::NTuple{4,Int} where T
+function sortupleperm(lt, a, b, c, d)::NTuple{4,Int}
     a, b, ia, ib = mmlt(lt, a, b, 1, 2)
     c, d, ic, id = mmlt(lt, c, d, 3, 4)
     a, c, ia, ic = mmlt(lt, a, c, ia, ic)

@@ -25,6 +25,6 @@ segs = LL.toSegmentsWithZeros(lms)
 lyze.drawTrade(1)
 # draw(:lines, toDraw(lms))
 
-prob = stratb.probFor(tcs[1].open.ts, trad.targetDate(tcs[1]))
+prob = stratb.probFor(tcs[1].open.ts, trad.getTargetDate(tcs[1]))
 curp = prob.center
-commit = max(Pricing.calcMarg(curp, segs))
+# commit = max(Pricing.calcMarg(curp, segs))

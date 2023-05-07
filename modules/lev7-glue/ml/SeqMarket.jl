@@ -12,15 +12,37 @@ struct InputSequence{N}
     time_count::Int
     width::Int
     matrix::Array{Float32,N}
-    InputSequence(time_count, width) = new{2}(time_count, width, Array{Float32,2}(undef, time_count, width))
+    InputSequence(time_count, width) = new{2}(time_count, width, Array{Float32,2}(undef, width, time_count))
 end
 function insert!(seq::InputSequence, time, values)
-    seq.matrix[time,:] = values
+    seq.matrix[:,time] = values
+end
+
+const DirSave = "C:/data/db/stage/"
+fileSave() = joinpath(mkpath(DirSave), "SeqMarket.ser")
+
+function saveSeq()
+    inseq = make(;update=true)
+    open(fileSave(); write=true) do io
+        write(io, inseq.time_count)
+        write(io, inseq.width)
+        write(io, inseq.matrix)
+    end
+end
+
+function loadSeq()
+    return open(fileSave()) do io
+        tc = read(io, Int)
+        w = read(io, Int)
+        inseq = InputSequence(tc, w)
+        read!(io, inseq.matrix)
+        return inseq
+    end
 end
 
 function make(;update=false)
-    if !update && hasproperty(@__MODULE__, :Cache)
-        return Cache
+    if !update
+        return loadSeq()
     end
     InputWidth = 23
 
@@ -48,10 +70,10 @@ function make(;update=false)
 
             dur...
 
-            N2(Dates.dayofweek(tim.date) / 7)
-            N2(Dates.dayofmonth(tim.date) / daysinmonth(tim.date))
-            N2(Dates.dayofquarter(tim.date) / daysinquarter(tim.date))
-            N2(Dates.dayofyear(tim.date) / daysinyear(tim.date))
+            N2(dayofweek(tim.date) / 7)
+            N2(dayofmonth(tim.date) / daysinmonth(tim.date))
+            N2(dayofquarter(tim.date) / daysinquarter(tim.date))
+            N2(dayofyear(tim.date) / Dates.daysinyear(tim.date))
 
             N2(tim.atClose)
             N2(tim.lastOfDay)
@@ -61,7 +83,9 @@ function make(;update=false)
         tim_prev = tim
         chain_prev = chain
     end
-    println("set $i rows, expected $time_count")
+    if i != time_count
+        println("ERROR: unexpected $i rows, expected $time_count")
+    end
     global Cache = seq
     return seq
 end

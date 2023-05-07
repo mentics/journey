@@ -124,6 +124,9 @@ function paths(y, m)
 end
 
 const ChainCache = Dict{DateTime,ChainInfo}()
+function clearCache()
+    empty!(ChainCache)
+end
 # const XpirCache = Dict{DateTime,Vector{Date}}()
 function loadChainInfo(ts::DateTime)::ChainInfo
     get(ChainCache, ts) do

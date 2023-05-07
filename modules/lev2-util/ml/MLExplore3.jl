@@ -107,7 +107,7 @@ end
 # TODO: this is generic, can be moved to util
 import MaxLFSR
 function makeBatches(cfg, dataTokens; update=false)
-    if !update && hasproperty(@__MODULE__, :BatchesCache)
+    if !update && isdefined(@__MODULE__, :BatchesCache)
         println("Using cached batches: $(batch_size(BatchesCache.train.x)) training batches, $(batch_size(BatchesCache.validation.x)) validation batches")
         return BatchesCache
     end

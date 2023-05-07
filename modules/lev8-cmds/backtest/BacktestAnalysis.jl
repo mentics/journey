@@ -313,7 +313,6 @@ SS.curpFor(t::TradeBT) = SS.curpFor(t.open.ts)
 isHigh(t) = !isLong(t.open.lms[1])
 
 strikeWidth(t) = getStrike(t.open.lms[end]) - getStrike(t.open.lms[1])
-SH.getNetOpen(t::TradeBT) = t.open.neto
 pnl(t::TradeBT) = t.open.neto + t.close.netc
 pnlmult(t::TradeBT) = t.open.multiple * (t.open.neto + t.close.netc)
 vix(t::TradeBT) = HistData.vixOpen(Date(t.open.ts))

@@ -7,8 +7,6 @@ using Dates
 using BaseTypes, OutputUtil, CudaUtil
 
 using Flux, Transformers
-# using Far ; far = Far;
-# far.run(4)
 import MLExplore as mlx
 
 import SimpleStore as SS
