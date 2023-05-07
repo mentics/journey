@@ -66,29 +66,29 @@ function makeCfg()
     return Config(
         # Data related
         channel_width = 23 + 2, # add 2 for the positional encoding
-        embed_width = 256,
+        embed_width = 128,
 
         ## Model related
         # General Lengths
         enc_input_width = 256 + 32, # number of timesteps in a single input to the encoder
         enc_output_width = 256 + 32,
-        dec_input_width = 4,
-        dec_output_width = 4,
+        dec_input_width = 32,
+        dec_output_width = 32,
 
         # Transformer Config
-        trf_input_width = 256,
+        trf_input_width = 64,
         trf_block_count = 1,
-        trf_head_count = 8, # Reducing this too much might decrease loss at the risk of overfitting?
-        trf_head_dim = 64,
-        trf_ffn_dim = 2048,
-        trf_dropout = 0.1,
+        trf_head_count = 2, # Reducing this too much might decrease loss at the risk of overfitting?
+        trf_head_dim = 16,
+        trf_ffn_dim = 512,
+        trf_dropout = 0.0,
 
         ## Execution related
         validation_ratio = 0.2,
         batch_len = 128, # should develop rule of thumb for batch_len, maybe start with same as number of timesteps?
-        train_iters = 2,
+        train_iters = 10000,
         target_loss = 1e-4,
-        learning_rate = 1e-3,
+        learning_rate = 1e-4,
         learning_rate_mult = 1.0, # 1.2,
         learning_rate_max_div = 1, # 20,
     )
@@ -125,12 +125,11 @@ function run(;cfg=makeCfg(), updateSeq=false, updateBatches=false, input=makeSeq
 end
 
 function showResult()
-    cfg = gcfg
     starti = 1 # rand(1:(size(dataTokens,1) - input_len(cfg)))
-    global gstart = input_subseq(dataTokens, starti:(starti + input_len(cfg) - 1))
-    gen_count = input_len(cfg)
+    global gstart = input_subseq(dataTokens, starti:(starti + input_len(ctx.cfg) - 1))
+    gen_count = input_len(ctx.cfg)
     println("Generating")
-    global genned = generate(cfg, model, gstart, gen_count)
+    global genned = generate(ctx, gstart, gen_count)
     global gactual = input_subseq(dataTokens, starti:min(time_input_size(dataTokens), time_input_size(genned)))
     println("Plotting")
     plotGenned(genned, gactual)
@@ -298,12 +297,12 @@ function makeModel(cfg)
     # The diagram on page 2 of this paper is most informative
     # https://arxiv.org/pdf/2001.08317.pdf
 
-    embed_layer = Dense(cfg.channel_width => cfg.embed_width, tanh; bias=false)
-    encoder_input_layer = Dense(cfg.embed_width => cfg.trf_input_width, relu; bias=false)
+    embed_layer = Dense(cfg.channel_width => cfg.embed_width; bias=false)
+    encoder_input_layer = Dense(cfg.embed_width => cfg.trf_input_width, swish; bias=false)
     encoder_trf = Transformer(TransformerBlock, cfg.trf_block_count, cfg.trf_head_count, cfg.trf_input_width, cfg.trf_head_dim, cfg.trf_ffn_dim; dropout=cfg.trf_dropout)
-    decoder_input_layer = Dense(cfg.embed_width => cfg.trf_input_width, relu; bias=false)
+    decoder_input_layer = Dense(cfg.embed_width => cfg.trf_input_width, swish; bias=false)
     decoder_trf = Transformer(TransformerDecoderBlock, cfg.trf_block_count, cfg.trf_head_count, cfg.trf_input_width, cfg.trf_head_dim, cfg.trf_ffn_dim; dropout=cfg.trf_dropout)
-    decoder_output_layer = Dense(cfg.trf_input_width => cfg.channel_width, tanh; bias=false)
+    decoder_output_layer = Dense(cfg.trf_input_width => cfg.channel_width; bias=false)
     model = MyModel2(embed_layer, encoder_input_layer, encoder_trf, decoder_input_layer, decoder_trf, decoder_output_layer)
 
     return @coal loadModel(model) (model, Flux.setup(Optimisers.AdamW(cfg.learning_rate), model))
@@ -327,7 +326,6 @@ function loadModel(model, file = lastStateFile())
 end
 
 function encoder_forward(model, input)
-    println("ef: ", typeof(model), ' ', typeof(input))
     in1 = model.embed_layer(input)
     enced = model.encoder_input_layer(in1)
     input = enced # permutedims(enced, [2,1,3])
@@ -340,7 +338,6 @@ function encoder_forward(model, input)
 end
 
 function decoder_forward(model, dec_input, nt_enc_output)
-    println("decoder forward: ", typeof(model), ' ', typeof(dec_input), ' ', typeof(nt_enc_output))
     in1 = model.embed_layer(dec_input)
     enced = model.decoder_input_layer(in1)
     input = enced # permutedims(enced, [2,1,3])
@@ -357,59 +354,18 @@ function model_loss(model, enc_input, dec_input, y)
     return Flux.Losses.mse(yhat, y)
 end
 
-function gen(model,seq; batched=false)
+
+function model_gen(ctx, seq; batched=false)
     if !batched
         seq = reshape(seq, size(seq)..., 1)
     end
     posd = pos_dim(seq)
     seq_pos = attachPositional(seq, posd)
-    enc_input, dec_input = ins(cfg, seq_pos)
-    res = model(enc_input, dec_input)
+    enc_input, dec_input = ins(ctx.cfg, seq_pos)
+    res = ctx.model(gpu(enc_input), gpu(dec_input))
     res2 = selectdim(res, posd, 1:(pos_size(res)-2)) # remove positional
     return res2
 end
-
-# function train!(cfg, model, data)
-#     Flux.trainmode!(model)
-#     prevLoss = 1e10
-#     loss = 0
-#     batch_count = batch_size(data.train.x)
-#     min_loss = Inf
-#     for i in 1:cfg.train_iters
-#         ls = 0
-#         # @time "        training of $batch_count batches" begin
-#         for batch in 1:batch_count
-#             println("    - Running batch $batch")
-#             enc_input, dec_input, y = map(DEV2[], data.train.x[batch])
-#             grad = gradient(() -> (ls += model.loss(enc_input, dec_input, y) ; return ls), model.params)
-#             sleep(0.01)
-#             Flux.update!(model.opt, model.params, grad)
-#             # ls += model.loss(enc_input, dec_input, y)
-#             sleep(0.01)
-#         end
-#         # end
-#         loss = ls / batch_count
-
-#         if loss < min_loss
-#             model.opt.eta = min(loss / cfg.learning_rate_max_div, model.opt.eta * cfg.learning_rate_mult)
-#             min_loss = loss
-#         elseif loss > min_loss * cfg.learning_rate_mult
-#             # model.opt.eta /= cfg.learning_rate_mult
-#             model.opt.eta = max(1e-7, model.opt.eta / cfg.learning_rate_mult)
-#             min_loss = loss
-#         end
-
-#         validation_loss = validationLoss()
-#         println("$(now()): Iteration $(i) training loss: ", loss, " validation loss: ", validation_loss, " learning rate: ", model.opt.eta)
-#         if loss < cfg.target_loss
-#             @goto done
-#         end
-#         prevLoss = loss
-#     end
-#     @label done
-#     println("Final loss: ", loss)
-#     Flux.testmode!(model)
-# end
 
 function train!(ctx, data)
     (;cfg, model::MyModel2, opt_state) = ctx
@@ -435,9 +391,10 @@ function train!(ctx, data)
                 copyto!(enc_input, b.enc_input)
                 copyto!(dec_input, b.dec_input)
                 copyto!(y, b.dec_output)
-                loss_add, grad = Zygote.withgradient((m) -> model_loss(m, enc_input, dec_input, y), model)
+                # loss_add, grad = Zygote.withgradient(m -> model_loss(m, enc_input, dec_input, y), model)
+                loss_add, grad = Zygote.withgradient(model_loss, model, enc_input, dec_input, y)
                 ls += loss_add
-                opt_state, model = Optimisers.update!(opt_state, model, grad)
+                opt_state, model = Optimisers.update!(opt_state, model, grad[1])
                 sleep(0.01)
             end
             # end
@@ -452,8 +409,8 @@ function train!(ctx, data)
             #     min_loss = loss
             # end
 
-            validation_loss = validationLoss()
-            println("$(now()): Iteration $(i) training loss: ", loss, " validation loss: ", validation_loss, " learning rate: ", model.opt.eta)
+            validation_loss = validationLoss(model)
+            println("$(now()): Iteration $(i) training loss: ", loss, " validation loss: ", validation_loss) # , " learning rate: ", model.opt.eta)
             if loss < cfg.target_loss
                 @goto done
             end
@@ -467,7 +424,7 @@ function train!(ctx, data)
     Flux.testmode!(model)
 end
 
-function validationLoss()
+function validationLoss(model)
     Flux.testmode!(model)
     batches = xySplitBatched.validation.x
     loss = 0
@@ -475,7 +432,7 @@ function validationLoss()
     for x in batches
         # enc_input, dec_input, y = ins_and_outs(gcfg, x)
         enc_input, dec_input, y = map(DEV2[], x)
-        loss += model.loss(enc_input, dec_input, y)
+        loss += model_loss(model, enc_input, dec_input, y)
         yield()
     end
     # end
@@ -483,32 +440,17 @@ function validationLoss()
     return loss / batch_size(batches)
 end
 
-
-function modelgen(cfg, model, seq; batched=false)
-    if !batched
-        seq = reshape(seq, size(seq)..., 1)
-    end
-    posd = pos_dim(seq)
-    seq_pos = attachPositional(seq, posd)
-    enc_input, dec_input = ins(cfg, seq_pos)
-    res = model.exec(gpu(enc_input), gpu(dec_input))
-    res2 = selectdim(res, posd, 1:(pos_size(res)-2)) # remove positional
-    return res2
-end
-
-function generate(cfg, model, start, forecast_count)
+function generate(ctx, start, forecast_count)
     # TODO: Can we "adjust" the values in the non-primary input data that is forecasted?
     Flux.testmode!(model)
     start = reshape(start, size(start)..., 1)
     # @assert size(start) == (input_len(cfg), size(start)[2:end]...) string("expected ", (input_len(cfg), channel_size(start)), " but was ", size(start))
     res = gpu(start)
-    # enc_input, _ = ins(cfg, res)
     for _=1:forecast_count
         len = time_size(res)
-        input = selectdim(res, time_dim(res), (len - input_len(cfg) + 1):len)
-        y = modelgen(cfg, model, input; batched=true)
+        input = selectdim(res, time_dim(res), (len - input_len(ctx.cfg) + 1):len)
+        y = model_gen(ctx, input; batched=true)
         yend = selectdim(y, time_dim(y), time_size(y))
-        # println("yhat gen size ", size(y), " for res ", size(res), " with yend ", size(yend))
         res = cat(res, yend; dims=time_dim(res))
         sleep(0.01)
     end

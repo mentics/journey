@@ -65,6 +65,7 @@ function make(;update=false)
         i += 1
         vix = F(HistData.vixOpen(tim.date)) / 100
         dur = durToInputs(Calendars.calcDur(tim_prev.ts, tim.ts))
+        # TODO: consider using log of changes?
         curp, curp_prev = ChainUtil.getCurp(chain), ChainUtil.getCurp(chain_prev)
         atm = calcAtm(chain)
         values = Float32[
