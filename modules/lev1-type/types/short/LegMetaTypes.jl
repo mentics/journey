@@ -63,6 +63,7 @@ SH.getQuantity(lm::LegMeta) = getQuantity(lm.leg)
 SH.getBid(lm::LegMeta) = getBid(lm.quot)
 SH.getAsk(lm::LegMeta) = getAsk(lm.quot)
 SH.getIv(lm::LegMeta) = getIv(lm.meta)
+SH.getMeta(lm::LegMeta) = lm.meta
 
 # function SH.withQuantity(lm::LegMeta{T}, qty::Float64) where T
 #     rat = qty / getQuantity(lm)
@@ -70,5 +71,18 @@ SH.getIv(lm::LegMeta) = getIv(lm.meta)
 # end
 
 SH.getGreeks(lm::LegMeta)::Greeks = lm.meta.greeks
+function metaToFlat(lm::LegMeta)
+    meta = lm.meta
+    greeks = meta.greeks
+    return (
+        greeks.delta,
+        greeks.theta,
+        greeks.phi,
+        greeks.vega,
+        greeks.rho,
+        greeks.gamma,
+        meta.mid_iv
+    )
+end
 
 end

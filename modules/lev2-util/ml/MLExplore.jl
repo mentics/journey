@@ -6,6 +6,7 @@ using Transformers.Layers
 using NeuralAttentionlib.Masks
 using BaseTypes
 using BaseUtil, CudaUtil
+import MLBatches
 
 const DEV2 = Ref{Function}(CudaUtil.DEV)
 
@@ -86,9 +87,9 @@ function makeCfg()
         ## Execution related
         validation_ratio = 0.2,
         batch_len = 128, # should develop rule of thumb for batch_len, maybe start with same as number of timesteps?
-        train_iters = 10000,
+        train_iters = 10,
         target_loss = 1e-4,
-        learning_rate = 1e-4,
+        learning_rate = 1e-8,
         learning_rate_mult = 1.0, # 1.2,
         learning_rate_max_div = 1, # 20,
     )
@@ -100,7 +101,7 @@ input_len(cfg) = cfg.enc_input_width + cfg.dec_input_width - 1
 function run(;cfg=makeCfg(), updateSeq=false, updateBatches=false, input=makeSeqMarket(;update=updateSeq))
     global gcfg = nothing
     global dataTokens = nothing
-    global xySplitBatched = nothing
+    global batches_split = nothing
     global model = nothing
     global gstart = nothing
     global genned = nothing
@@ -116,21 +117,25 @@ function run(;cfg=makeCfg(), updateSeq=false, updateBatches=false, input=makeSeq
     println("Tokenizing data")
     global dataTokens = tokenizeData(input)
     println("Making batches")
-    global xySplitBatched = makeBatches(cfg, dataTokens; update=updateBatches)
+    batches = MLBatches.make_batches_seq(dataTokens, seq_len_train(cfg), cfg.batch_len; update=updateBatches,
+            modify_seq = seq -> attachPositional(seq, pos_dim(seq)),
+            modify_batch = batch -> ins_and_outs(cfg, batch))
+    global batches_split = MLBatches.split_batches(batches, cfg.validation_ratio)
     println("Making model")
     global ctx = setupModel(cfg)
     println("Training")
-    train!(ctx, xySplitBatched)
+    train!(ctx, batches_split)
     return showResult()
 end
 
 function showResult()
     starti = 1 # rand(1:(size(dataTokens,1) - input_len(cfg)))
-    global gstart = input_subseq(dataTokens, starti:(starti + input_len(ctx.cfg) - 1))
+    start_end = (starti + input_len(ctx.cfg) - 1)
+    global gstart = MLBatches.input_subseq(dataTokens, starti:start_end)
     gen_count = input_len(ctx.cfg)
     println("Generating")
-    global genned = generate(ctx, gstart, gen_count)
-    global gactual = input_subseq(dataTokens, starti:min(time_input_size(dataTokens), time_input_size(genned)))
+    global gactual = MLBatches.input_subseq(dataTokens, starti:(start_end + gen_count)) # min(time_input_size(dataTokens), time_input_size(genned))
+    global genned = generate(ctx, gstart, gen_count, gactual)
     println("Plotting")
     plotGenned(genned, gactual)
     return starti, genned
@@ -158,60 +163,6 @@ end
 function tokenizeData(m)
     # TODO
     return m
-end
-
-# TODO: this is generic, can be moved to util
-import MaxLFSR
-function makeBatches(cfg, dataTokens; update=false)
-    if !update && isdefined(@__MODULE__, :BatchesCache) && !isnothing(BatchesCache)
-        println("Using cached batches: $(batch_size(BatchesCache.train.x)) training batches, $(batch_size(BatchesCache.validation.x)) validation batches")
-        return BatchesCache
-    end
-    empty!(Inds[])
-    ts_count = time_input_size(dataTokens)
-    # @show ts_count
-    subseq_count = ts_count - seq_len_train(cfg) - 1
-    batch_count = subseq_count ÷ cfg.batch_len
-    validation_batch_count = max(1, ceil(Int, cfg.validation_ratio * batch_count))
-    training_batch_count = batch_count - validation_batch_count
-
-    if validation_batch_count <= 0
-        @show ts_count subseq_count batch_count validation_batch_count train_batch_count
-        error("Insufficient data $(ts_count) for seq_size $(seq_len_train(cfg)) and batch len $(batch_len)")
-    end
-
-    ind = 1
-    lfsr = MaxLFSR.LFSR(subseq_count; seed=ind)
-    println("Creating $(training_batch_count) training batches")
-    train_x, ind = batches(cfg, training_batch_count, lfsr, ind)
-    println("Creating $(validation_batch_count) validation batches")
-    validation_x, ind = batches(cfg, validation_batch_count, lfsr,ind)
-    train_x = train_x # |> DEV2[]
-    validation_x = validation_x # |> DEV2[]
-    res = (; train=(;x=train_x), validation=(;x=validation_x))
-    global BatchesCache = res
-    return res
-end
-
-const Inds = Ref(Int[])
-
-function batches(cfg, count, lfsr, ind)
-    seqlen = seq_len_train(cfg)
-    batchlen = cfg.batch_len
-    # x = Array{Float32, ndims(dataTokens)+1}[]
-    x = []
-    for _ in 1:count
-        batch = stack(begin
-            # println("Adding to batch for index $ind")
-            push!(Inds[], ind)
-            seq = input_subseq(dataTokens, ind:(ind + seqlen - 1))
-            ind, _ = iterate(lfsr, ind)
-            attachPositional(seq, pos_dim(seq))
-        end for _ in 1:batchlen)
-        push!(x, ins_and_outs(cfg, batch))
-        @assert size(batch) == (cfg.channel_width, seqlen, batchlen) "$(size(batch)) == $((cfg.channel_width, seqlen, batchlen))"
-    end
-    return x, ind
 end
 
 # len could be seqlen or inputlen
@@ -372,11 +323,11 @@ function train!(ctx, data)
     Flux.trainmode!(model)
     prevLoss = 1e10
     loss = 0
-    batch_count = batch_size(data.train.x)
+    batch_count = batch_size(data.train)
     min_loss = Inf
 
     # Create GPU arrays in advance and reuse them
-    ex = data.train.x[1]
+    ex = data.train[1]
     enc_input = CuArray(ex.enc_input)
     dec_input = CuArray(ex.dec_input)
     y = CuArray(ex.dec_output)
@@ -387,7 +338,7 @@ function train!(ctx, data)
             # @time "        training of $batch_count batches" begin
             for batch in 1:batch_count
                 println("    - Running batch $batch")
-                b = data.train.x[batch]
+                b = data.train[batch]
                 copyto!(enc_input, b.enc_input)
                 copyto!(dec_input, b.dec_input)
                 copyto!(y, b.dec_output)
@@ -426,7 +377,7 @@ end
 
 function validationLoss(model)
     Flux.testmode!(model)
-    batches = xySplitBatched.validation.x
+    batches = batches_split.validation
     loss = 0
     # @time "        validation loss across $(length(batches)) batches" begin
     for x in batches
@@ -440,7 +391,7 @@ function validationLoss(model)
     return loss / batch_size(batches)
 end
 
-function generate(ctx, start, forecast_count)
+function generate(ctx, start, forecast_count, actual)
     # TODO: Can we "adjust" the values in the non-primary input data that is forecasted?
     Flux.testmode!(model)
     start = reshape(start, size(start)..., 1)
@@ -451,6 +402,7 @@ function generate(ctx, start, forecast_count)
         input = selectdim(res, time_dim(res), (len - input_len(ctx.cfg) + 1):len)
         y = model_gen(ctx, input; batched=true)
         yend = selectdim(y, time_dim(y), time_size(y))
+        # yend2 = modifyTemporal() # TODO
         res = cat(res, yend; dims=time_dim(res))
         sleep(0.01)
     end
@@ -491,7 +443,5 @@ channel_input_dims(x) = 1:(ndims(x) - 1)
 pos_dim(x) = 1
 pos_size(x) = channel_size(x)[1]
 pos_input_size(x) = 1
-
-input_subseq(seq, inds) = selectdim(seq, ndims(seq), inds)
 
 end

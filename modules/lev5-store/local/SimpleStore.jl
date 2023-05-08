@@ -1,5 +1,5 @@
 module SimpleStore
-using Dates
+using Dates, DataStructures
 using SH, BaseTypes, SmallTypes, OptionTypes, QuoteTypes, OptionQuoteTypes, OptionMetaTypes, ChainTypes
 using DateUtil, DictUtil, CollUtil, ChainUtil
 import Calendars as cal
@@ -88,6 +88,12 @@ tsLast()::DateTime = Tss[][end]
 
 ChainUtil.toOtoq(chi::ChainInfo) = ChainUtil.toOtoq(chi.xsoqs)
 ChainUtil.getXpirs(chi::ChainInfo) = chi.xpirs
+
+function chains_for(from, to)
+    st1 = searchsortedfirst(OtoqCache, from)
+    st2 = searchsortedlast(OtoqCache, to)
+    return inclusive(OtoqCache, st1, st2)
+end
 #endregion
 
 #region Local
@@ -132,6 +138,14 @@ function loadChainInfo(ts::DateTime)::ChainInfo
     get(ChainCache, ts) do
         loadMonth(year(ts), month(ts))
         return ChainCache[ts]
+    end
+end
+
+const OtoqCache = SortedDict{DateTime,Otoq}()
+function make_otoqs()
+    empty!(OtoqCache)
+    for (ts, ch) in ChainCache
+        OtoqCache[ts] = ChainUtil.toOtoq(ch.xsoqs)
     end
 end
 

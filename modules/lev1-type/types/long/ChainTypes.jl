@@ -6,6 +6,9 @@ export OptionQuote, OptionChain
 export ChainsType, SymChainsType, Oqss
 export UnderTime, ChainInfo
 export Chain, ChainSearch
+export Otoq
+
+const Otoq = Dict{Date,Styles{Dict{Currency,OptionQuote}}}
 
 struct OptionChain
     chain::Vector{OptionQuote}

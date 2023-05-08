@@ -64,10 +64,10 @@ function make(;update=false)
     SS.run(tss_rest; maxSeconds=1000) do tim, chain
         i += 1
         vix = F(HistData.vixOpen(tim.date)) / 100
-        dur = durToInputs(Calendars.calcDur(tim_prev.ts, tim.ts))
         # TODO: consider using log of changes?
         curp, curp_prev = ChainUtil.getCurp(chain), ChainUtil.getCurp(chain_prev)
-        atm = calcAtm(chain)
+        atm = calc_atm(chain)
+        temporal = makeTemporal(tim_prev, tim)
         values = Float32[
             curp / curp_prev - 1.0
 
@@ -75,16 +75,7 @@ function make(;update=false)
 
             log(vix)
 
-            dur...
-
-            N2(dayofweek(tim.date) / 7)
-            N2(dayofmonth(tim.date) / daysinmonth(tim.date))
-            N2(dayofquarter(tim.date) / daysinquarter(tim.date))
-            N2(dayofyear(tim.date) / Dates.daysinyear(tim.date))
-
-            N2(tim.atClose)
-            N2(tim.lastOfDay)
-            N2(tim.firstOfDay)
+            temporal...
         ]
         insert!(seq, i, values)
         tim_prev = tim
@@ -95,6 +86,22 @@ function make(;update=false)
     end
     global Cache = seq
     return seq
+end
+
+function makeTemporal(tim_prev, tim)
+    dur = durToInputs(Calendars.calcDur(tim_prev.ts, tim.ts))
+    return (
+        dur...,
+
+        N2(dayofweek(tim.date) / 7),
+        N2(dayofmonth(tim.date) / daysinmonth(tim.date)),
+        N2(dayofquarter(tim.date) / daysinquarter(tim.date)),
+        N2(dayofyear(tim.date) / Dates.daysinyear(tim.date)),
+
+        N2(tim.atClose),
+        N2(tim.lastOfDay),
+        N2(tim.firstOfDay),
+    )
 end
 
 #region Util
@@ -112,14 +119,6 @@ function durToInputs(dur::MarketDur)
     ))
     # return N.((inputs..., sqrt.(inputs)...))
     return N2.(inputs)
-end
-
-import OptionUtil
-function calcAtm(chinfo)
-    ss = ChainUtil.toSearch(chinfo, 1)
-    calls, puts = (ss.call, ss.put)
-    # return Iterators.flatten(map(x -> OptionUtil.calcExtrin(x, calls.curp), ChainUtil.getAtm(calls)..., ChainUtil.getAtm(puts)...))
-    return Iterators.flatten(map(x -> N2.(OptionUtil.calcExtrin(x, calls.curp)), (ChainUtil.getAtm(calls)..., ChainUtil.getAtm(puts)...)))
 end
 #endregion
 

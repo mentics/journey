@@ -224,6 +224,7 @@ function BackTypes.checkExit(params::Params, tradeOpen, tim, lmsc, curp)::Union{
     netc = calcPrice(lmsc)
     curVal = getNetOpen(tradeOpen) + netc
     rate = calcRate(dateOpen, tim.date, curVal, getRisk(tradeOpen))
+    println("checkexit rate: ", rate)
     # @show dateOpen, tim.date, curVal, getRisk(tradeOpen)
 
     # rateOrig = tradeOpen.extra.rate

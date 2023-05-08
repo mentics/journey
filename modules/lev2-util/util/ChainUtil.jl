@@ -1,7 +1,7 @@
 module ChainUtil
 import Dates:Date
 using Globals, SH, BaseTypes, SmallTypes, OptionTypes, LegTypes, LegMetaTypes, ChainTypes
-using CollUtil
+using CollUtil, OptionUtil
 import DictUtil:dictFromVals
 
 #region Public
@@ -28,7 +28,6 @@ end
 # function toStoq(oqs::Vector{OptionQuote})
 #     return DictUtil.dictFromKeys(getStrike, oqs)
 # end
-const Otoq = Dict{Date,Styles{Dict{Currency,OptionQuote}}}
 function toOtoq(xsoqs::Dict{Date,Styles{Vector{OptionQuote}}})::Otoq
     # from: xsoqs::Dict{Date,Styles{Vector{OptionQuote}}} in SimpleStore
     Dict(Iterators.map(xsoqs) do (date, styles)
@@ -246,5 +245,12 @@ end
 #     return res
 # end
 #endregion
+
+function calc_atm(chinfo)
+    ss = ChainUtil.toSearch(chinfo, 1)
+    calls, puts = (ss.call, ss.put)
+    # return Iterators.flatten(map(x -> OptionUtil.calcExtrin(x, calls.curp), ChainUtil.getAtm(calls)..., ChainUtil.getAtm(puts)...))
+    return Iterators.flatten(map(x -> (OptionUtil.calcExtrin(x, calls.curp)), (ChainUtil.getAtm(calls)..., ChainUtil.getAtm(puts)...)))
+end
 
 end
