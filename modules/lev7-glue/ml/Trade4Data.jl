@@ -147,8 +147,8 @@ function enc_lm(lm, curp)
         SCALAR(Int(getStyle(lm))),
         SCALAR(getStrike(lm) / curp),
         SCALAR(side),
-        SCALAR(Pricing.price(lm) * side),
-        SCALAR(spread),
+        SCALAR(Pricing.price(lm) * side), # TODO: consider dividing by curp
+        SCALAR(spread), # TODO: consider dividing by curp
         # SCALAR(getQuantity(lm)),
         # TODO: flatten get meta
         SCALAR.(LegMetaTypes.metaToFlat(lm))...,
