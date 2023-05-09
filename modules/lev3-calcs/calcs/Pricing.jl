@@ -6,10 +6,14 @@ export bap
 
 price(has)::Currency = price(getQuote(has))
 price(hass::Coll)::Currency = sum(price, hass)
-function price(qt::Quote)::Currency
-    b = getBid(qt)
-    a = getAsk(qt)
-    spread = a - b
+price(qt::Quote)::Currency = price(getBid(qt), getAsk(qt))
+
+priceOpp(has)::Currency = priceOpp(getQuote(has))
+priceOpp(hass::Coll)::Currency = sum(priceOpp, hass)
+priceOpp(qt::Quote)::Currency = price(-getAsk(qt), -getBid(qt))
+
+function price(bid, ask)::Currency
+    spread = ask - bid
     # if spread < 0.4
     #     mult = round(Int, spread / 0.02, RoundDown)
     #     return b + mult * 0.01
@@ -18,27 +22,14 @@ function price(qt::Quote)::Currency
     # end
 
     if spread <= 0.03
-        return b
+        return bid
     elseif spread <= 0.4
         mult = round(Int, spread / 0.04, RoundDown)
-        return b + mult * 0.01
+        return bid + mult * 0.01
     else
-        return b + 0.1
+        return bid + 0.1
     end
-end
-
-priceOpp(has)::Currency = priceOpp(getQuote(has))
-priceOpp(hass::Coll)::Currency = sum(priceOpp, hass)
-function priceOpp(qt::Quote)::Currency
-    a = -getBid(qt)
-    b = -getAsk(qt)
-    spread = a - b
-    if spread < 0.4
-        mult = round(Int, spread / 0.04, RoundDown)
-        return b + mult * 0.01
-    else
-        return b + 0.1
-    end
+    return max(p, C(0.01))
 end
 
 function priceSpread(hass::NTuple{4,T})::Currency where T
@@ -185,6 +176,7 @@ function calcMarg(center, segs::Segments)::Sides{Float64}
 end
 
 calcCommit(segs)::Float64 = minimum(point -> point.y, segs.points)
+
 
 function calcMaxProfit(segs)::Float64
     return maximum(segs) do seg

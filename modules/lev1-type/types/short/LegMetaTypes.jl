@@ -77,7 +77,7 @@ function metaToFlat(lm::LegMeta)
     return (
         greeks.delta,
         greeks.theta,
-        greeks.phi,
+        # greeks.phi, # always seems to be NaN
         greeks.vega,
         greeks.rho,
         greeks.gamma,

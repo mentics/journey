@@ -1,7 +1,7 @@
 module Trade4Data
 using Dates
 using SH, BaseTypes, SmallTypes, ChainTypes, LegMetaTypes
-using DateUtil, ChainUtil
+using DateUtil, ChainUtil, CollUtil
 import Pricing, Calendars
 import SimpleStore as SS
 import MarketHist
@@ -42,10 +42,10 @@ const SCALAR = Float32
 
 function make_data()
     # res = Array{SCALAR,2}(undef, 2, 0)
-    global cands_all = Vector{Vector{SCALAR}}()
+    cands_all = Vector{Vector{SCALAR}}()
 
     i = 0
-    SS.run(Date(2020,1,1), Date(2023,1,1); maxSeconds=1000) do tim, chain
+    SS.run(Date(2016,1,4), Date(2016,1,5); maxSeconds=1) do tim, chain
         # println("processing: ", tim.ts)
         ts = tim.ts
         i += 1
@@ -54,12 +54,20 @@ function make_data()
             log(curp / MarketHist.curp_for_tex(tim.ts, tex_ago))
         end
         vix_hist =  map(2.0 .^ (3:10)) do tex_ago
-            log(MarketHist.vix_for_tex(ts, tex_ago))
+            # log(MarketHist.vix_for_tex(ts, tex_ago))
+            MarketHist.vix_for_tex(ts, tex_ago)
         end
         atm = ChainUtil.calc_atm(chain)
         temporal = makeTemporal(tim)
         cands = proc_ts(ts, chain)
 
+        parts = (length(cands[1]), length(curp_hist), length(vix_hist), length(atm), length(temporal))
+        ind = 1
+        global inds = []
+        for part in parts
+            push!(inds, ind:(ind + part - 1))
+            ind += part
+        end
         for cand in cands
             push!(cands_all, SCALAR[
                 cand...
@@ -69,6 +77,7 @@ function make_data()
                 temporal...
             ])
         end
+        println("Added $(length(cands)) cands for ts $ts")
     end
  # TODO: change to matrix
     return cands_all
@@ -87,8 +96,10 @@ end
 SH.getStrike(x::Real) = x # This is because searchsorted* calls by on the search object
 function proc_ts(ts::DateTime, chain::ChainInfo)
     curp = ChainUtil.getCurp(chain)
-    xpir = ChainUtil.getXpirs(chain)[1]
-    global soqs = chain.xsoqs[xpir]
+    xpirs = ChainUtil.getXpirs(chain)
+    xpir = CollUtil.gteev(xpirs, Date(ts + Day(1)))
+    @assert xpir > ts "Invalid xpir $xpir for ts $ts"
+    soqs = chain.xsoqs[xpir]
     call_left = searchsortedfirst(soqs.call, curp - 4.0; by=getStrike)
     calls = @view soqs.call[call_left:end]
     put_right = searchsortedlast(soqs.put, curp + 4.0; by=getStrike)
@@ -106,8 +117,8 @@ function proc_ts(ts::DateTime, chain::ChainInfo)
 end
 
 function prices(calls, puts)
-    call_prices = map(oq -> Pricing.price(oq), calls)
-    put_prices = map(oq -> Pricing.price(oq), puts)
+    call_prices = map(oq -> Sides(Pricing.priceOpp(oq), Pricing.price(oq)), calls)
+    put_prices = map(oq -> Sides(Pricing.priceOpp(oq), Pricing.price(oq)), puts)
     return call_prices, put_prices
 end
 
@@ -116,11 +127,13 @@ end
 
 function proc_lms(lms, neto, ts, curp)
     texp = Calendars.calcTex(ts, Calendars.getMarketClose(getExpir(lms)))
+    risk = getRisk(lms)
     return (
         texp,
         neto,
+        risk,
+        make_label(ts, lms, neto, risk)...,
         enc_lms(lms, curp)...,
-        make_label(ts, lms)...,
     )
 end
 
@@ -142,22 +155,36 @@ function enc_lm(lm, curp)
     )
 end
 
-function make_label(ts, lms)
+# TODO: move to where it belongs
+import LinesLeg as LL
+SH.getRisk(lms::Coll{<:LegMeta}) = -Pricing.calcCommit(LL.toSegments(Tuple(lms)))
+# SH.getProfit(lms::Coll{<:LegMeta}) = -Pricing.calcCommit(LL.toSegments(Tuple(lms)))
+function DateUtil.calcRate(from::DateTime, to::DateTime, ret, risk)::Float64
+    texy = Calendars.texToYear(Calendars.calcTex(from, to))
+    return ret / Float64(risk) / texy
+end
+
+function make_label(ts_start, lms::NTuple, neto, risk)
     xpirts = Calendars.getMarketClose(getExpir(lms))
-    otoqs = SS.chains_for(Calendars.getMarketOpen(bdaysAfter(Date(ts), 1)), Calendars.getMarketClose(getExpir(lms)))
+    otoqs = SS.chains_for(SS.first_ts_for(bdaysAfter(Date(ts_start), 1)), SS.last_ts_for(getExpir(lms)))
     rate_min, rate_max = (typemax(Float64), typemin(Float64))
     price_min, price_max = (typemax(Float64), typemin(Float64))
-    map(otoqs) do ts, otoq
-        p = Pricing.price(requote(otoq, lms))
+    # TODO: store a separate vector of: ts_start, lms, neto, risk, rate that can be added to the common fields in make_data to be used to train exit
+    map(otoqs) do (ts, otoq)
+        req = requote(otoq, lms)
+        !isnothing(req) || return # sometimes it can't quote things
+        p = Pricing.price(req)
         if p < price_min
             price_min = p
-            r = calcRate(ts, xpirts)
+            # TODO: consider tex based rate?
+            r = calcRate(ts_start, ts, neto + p, risk)
             if r < rate_min
                 rate_min = r
             end
-        elseif p > price_max
+        end
+        if p > price_max
             price_max = p
-            r = calcRate(ts, xpirts)
+            r = calcRate(ts_start, ts, neto + p, risk)
             if r > rate_max
                 rate_max = r
             end
@@ -166,21 +193,28 @@ function make_label(ts, lms)
     return rate_min, rate_max
 end
 
-requote(otoq, lms) = tosn(LegMetaClose, lms, otoq)
+using Between
+requote(otoq, lms::NTuple) = tosn(LegMetaClose, lms, otoq)
 
 #region Util move
 Pricing.price(x::Real) = x # to deal with searchsorted*
+
 make_condors_long(f, calls, puts; max_spread=4) = make_condors_long(f, calls, puts, prices(calls, puts)...; max_spread)
 function make_condors_long(f, calls, puts, call_prices, put_prices; max_spread=4)
+    # global kcalls = calls
+    # global kputs = puts
+    # global kcall_prices = call_prices
+    # global kput_prices = put_prices
     put_right0 = searchsortedfirst(puts, 0.04; by=Pricing.price)
     put_right0 > 1 || return
-    call_left0 = searchsortedlast(calls, 0.04; by=Pricing.price)
+    call_left0 = searchsortedlast(calls, 0.04; rev=true, by=Pricing.price)
     call_left0 < length(calls) || return
-    # println("Long condors: ", (lastindex(puts) - put_right0), ' ', call_left0)
+    # global kput_right0 = put_right0
+    # global kcall_left0 = call_left0
     for put_right_ind in put_right0:lastindex(puts)
         put_right_strike = getStrike(puts[put_right_ind])
         for put_left_ind in max(1, put_right_ind - max_spread):(put_right_ind - 1)
-            put_price = put_prices[put_right_ind] + put_prices[put_left_ind]
+            put_price = put_prices[put_left_ind].long + put_prices[put_right_ind].short
             if put_price < 0.03
                 continue
             end
@@ -190,7 +224,7 @@ function make_condors_long(f, calls, puts, call_prices, put_prices; max_spread=4
                 end
                 for call_right_ind in min(lastindex(calls), call_left_ind + max_spread):-1:(call_left_ind+1)
                     # @show call_left0 call_left_ind call_right_ind
-                    call_price = call_prices[call_right_ind] + call_prices[call_left_ind]
+                    call_price = call_prices[call_left_ind].short + call_prices[call_right_ind].long
                     if call_price < 0.03
                         continue
                     end

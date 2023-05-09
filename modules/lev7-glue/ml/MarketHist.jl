@@ -17,13 +17,18 @@ function populate_curps()
         tex = Calendars.calcTex(tim.ts, Tex0[])
         push!(Curps, (tex, curp))
     end
+    sort!(Curps; by=x->x[1])
 end
 
 function curp_for_tex(base::DateTime, tex_ago::Float64)
     tex = Calendars.calcTex(base, Tex0[]) + tex_ago
-    ind_left = searchsortedlast(Curps, tex; rev=true, by = x -> x[1])
+    ind_left = searchsortedlast(Curps, tex; by = x -> x[1])
+    if ind_left <= 0 || ind_left >= length(Curps)
+        @show base tex_ago tex extrema(Curps)
+        error("Not found")
+    end
     left = Curps[ind_left]
-    right = Curps[ind_left]
+    right = Curps[ind_left+1]
     dx = right[1] - left[1]
     dy = right[2] - left[2]
     return left[2] + dy * (tex - left[1]) / dx
@@ -50,7 +55,7 @@ function vix_for_tex(base::DateTime, tex_ago::Float64)
     tex = Calendars.calcTex(base, Tex0[]) + tex_ago
     ind_left = searchsortedlast(Vixs, tex; rev=true, by = x -> x[1])
     left = Vixs[ind_left]
-    right = Vixs[ind_left]
+    right = Vixs[ind_left+1]
     dx = right[1] - left[1]
     dy = right[2] - left[2]
     return left[2] + dy * (tex - left[1]) / dx

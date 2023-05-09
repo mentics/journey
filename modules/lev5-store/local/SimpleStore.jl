@@ -90,9 +90,17 @@ ChainUtil.toOtoq(chi::ChainInfo) = ChainUtil.toOtoq(chi.xsoqs)
 ChainUtil.getXpirs(chi::ChainInfo) = chi.xpirs
 
 function chains_for(from, to)
+    @assert from < to "chains_for invalid input: $from < $to"
+    loadChainInfo(from)
+    loadChainInfo(to)
     st1 = searchsortedfirst(OtoqCache, from)
     st2 = searchsortedlast(OtoqCache, to)
-    return inclusive(OtoqCache, st1, st2)
+    res = inclusive(OtoqCache, st1, st2)
+    if isempty(res)
+        @show from to extrema(keys(OtoqCache))
+        println("ERROR: no chains for $from - $to")
+    end
+    return res
 end
 #endregion
 
@@ -140,6 +148,9 @@ function loadChainInfo(ts::DateTime)::ChainInfo
         return ChainCache[ts]
     end
 end
+
+first_ts_for(date::Date) = cal.getMarketOpen(date) + Second(10)
+last_ts_for(date::Date) = cal.getMarketClose(date)
 
 const OtoqCache = SortedDict{DateTime,Otoq}()
 function make_otoqs()
