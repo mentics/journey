@@ -145,10 +145,10 @@ function enc_lm(lm, curp)
     spread = q.ask - q.bid
     return (
         SCALAR(Int(getStyle(lm))),
-        SCALAR(getStrike(lm) / curp),
+        SCALAR(log(getStrike(lm) / curp)),
         SCALAR(side),
-        SCALAR(Pricing.price(lm) * side), # TODO: consider dividing by curp
-        SCALAR(spread), # TODO: consider dividing by curp
+        SCALAR(Pricing.price(lm) * side / curp), # TODO: consider dividing by curp
+        SCALAR(spread / curp), # TODO: consider dividing by curp
         # SCALAR(getQuantity(lm)),
         # TODO: flatten get meta
         SCALAR.(LegMetaTypes.metaToFlat(lm))...,
@@ -166,7 +166,10 @@ end
 
 function make_label(ts_start, lms::NTuple, neto, risk)
     xpirts = Calendars.getMarketClose(getExpir(lms))
-    otoqs = SS.chains_for(SS.first_ts_for(bdaysAfter(Date(ts_start), 1)), SS.last_ts_for(getExpir(lms)))
+    ts_last = SS.last_ts_for(getExpir(lms))
+    otoqs = SS.chains_for(SS.first_ts_for(bdaysAfter(Date(ts_start), 1)), ts_last)
+    println(length(otoqs))
+    error(typeof(otoqs))
     rate_min, rate_max = (typemax(Float64), typemin(Float64))
     price_min, price_max = (typemax(Float64), typemin(Float64))
     # TODO: store a separate vector of: ts_start, lms, neto, risk, rate that can be added to the common fields in make_data to be used to train exit
@@ -190,11 +193,14 @@ function make_label(ts_start, lms::NTuple, neto, risk)
             end
         end
     end
-    return rate_min, rate_max
+    otoq = SS.chain_for(ts_last)
+    rate_end = calcRate(ts_start, ts_last, neto + reprice(otoq, lms), risk)
+    return rate_min, rate_max, rate_end
 end
 
 using Between
 requote(otoq, lms::NTuple) = tosn(LegMetaClose, lms, otoq)
+reprice(otoq, lms::NTuple) = ( req = requote(otoq, lms) ; isnothing(req) ? nothing : Pricing.price(req) )
 
 #region Util move
 Pricing.price(x::Real) = x # to deal with searchsorted*

@@ -89,6 +89,7 @@ tsLast()::DateTime = Tss[][end]
 ChainUtil.toOtoq(chi::ChainInfo) = ChainUtil.toOtoq(chi.xsoqs)
 ChainUtil.getXpirs(chi::ChainInfo) = chi.xpirs
 
+chain_for(ts::DateTime)::ChainInfo = OtoqCache[ts]
 function chains_for(from, to)
     @assert from < to "chains_for invalid input: $from < $to"
     loadChainInfo(from)
