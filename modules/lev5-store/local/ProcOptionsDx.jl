@@ -85,7 +85,7 @@ function procFile(csvPath, fcall, fput, funder; maxLines)
             end
 
             funder(tsNew, under, open, hi, lo)
-            println("new ts $(tsPrev) -> $(tsNew)")
+            # println("new ts $(tsPrev) -> $(tsNew)")
             tsPrev = tsNew
         end
 
@@ -106,6 +106,7 @@ function procLine(line, fcall, fput)
         right = findnext(',', line, left)
         ts = parsem(Int, SubString(line, left:right-1))
         if !isBusDay(Date(unix2datetime(ts)))
+            @log hand "skipping non business day" line
             return (ts, CZ)
         end
         left = right+1 ; right = findnext(',', line, left)
@@ -164,25 +165,25 @@ function procLine(line, fcall, fput)
         left = right+1 ; right = findnext(',', line, left)
         pVol = parsem(Float64, SubString(line, left:right-1))
 
-        if cBid > cAsk
-            if cBid > 1.5 * cAsk
-                @log hand "WARN: Suspicious cBid > 1.5 * cAsk, skipping" cBid cAsk line
-                return (ts, CZ)
-            end
-            tmp = cAsk
-            cAsk = cBid
-            cBid = tmp
-        end
+        # if cBid > cAsk
+        #     if cAsk > 30 && cBid > 1.5 * cAsk
+        #         @log hand "WARN: Suspicious cBid > 1.5 * cAsk, skipping" cBid cAsk line
+        #         return (ts, CZ)
+        #     end
+        #     tmp = cAsk
+        #     cAsk = cBid
+        #     cBid = tmp
+        # end
 
-        if pBid > pAsk
-            if pBid > 1.5 * pAsk
-                @log hand "WARN: Suspicious pBid > 1.5 * pAsk, skipping" pBid pAsk line
-                return (ts, CZ)
-            end
-            tmp = pAsk
-            pAsk = pBid
-            pBid = tmp
-        end
+        # if pBid > pAsk
+        #     if pAsk > 30 && pBid > 1.5 * pAsk
+        #         @log hand "WARN: Suspicious pBid > 1.5 * pAsk, skipping" pBid pAsk line
+        #         return (ts, CZ)
+        #     end
+        #     tmp = pAsk
+        #     pAsk = pBid
+        #     pBid = tmp
+        # end
 
         if xpir < ts
             @log hand "WARN: xpir < ts, skipping" xpir ts line
@@ -215,5 +216,11 @@ end
 parsem(type::Type{Int}, s) = isempty(strip(s)) ? error("missing int") : parse(type, s)
 parsem(type::Type{Float64}, s) = isempty(strip(s)) ? NaN : parse(type, s)
 parsem(type::Type{Currency}, s) = isempty(s) ? error("missing currency") : Int(parse(type, s))
+
+function test_line(line)
+    fcall = (args...) -> println("Parsed call: ", args)
+    fput = (args...) -> println("Parsed put: ", args)
+    procLine(line, fcall, fput)
+end
 
 end

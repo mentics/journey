@@ -5,7 +5,7 @@ import Calendars
 import SimpleStore as SS
 import HistData
 
-const Tex0 = Ref(now())
+const Tex0 = Ref(DateTime(2023,1,1))
 
 #region Curp
 const Curps = Vector{NTuple{2,Float64}}() # (tex, curp)

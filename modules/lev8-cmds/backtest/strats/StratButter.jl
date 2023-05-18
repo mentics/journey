@@ -193,6 +193,7 @@ function (s::TStrat)(ops, tim, chain, otoq, vix)::Nothing
     end
 
     if !isempty(keep)
+        println("Found $(length(keep)) candidates for expirs: ", join(map(x->getExpir(x.lms), keep), ','))
         # TODO: identify if new opportunity is better than currently open one
         if (closeEarlyForMargin(params, tim.ts, ops, otoq))
             x = keep[1]
@@ -213,15 +214,17 @@ function (s::TStrat)(ops, tim, chain, otoq, vix)::Nothing
 end
 # BaseTypes.toPT(sides::Sides{Float64})::Sides{PT} = Sides(toPT(sides.long, RoundDown), round(toPT(sides.short, RoundDown)))
 
-BackTypes.pricingOpen(::TStrat, lmso::NTuple{N,LegMetaOpen}) where N = calcPrice(lmso)
-BackTypes.pricingClose(::TStrat, lmsc::NTuple{N,LegMetaClose}) where N = calcPrice(lmsc)
-calcPrice(lms)::PT = toPT(Pricing.price(lms)) # toPT(bap(lms, 0.0)) + P(0.02)
-calcPriceFast(lms)::Float64 = Pricing.price(lms) # Pricing.bapFast(lms, 0.0) + 0.02
+BackTypes.pricingOpen(::TStrat, lmso::NTuple{N,LegMetaOpen}) where N = toPT(price_open(lmso))
+BackTypes.pricingClose(::TStrat, lmsc::NTuple{N,LegMetaClose}) where N = toPT(price_close(lmsc))
+price_open(lms) = Pricing.price(lms, false)
+price_close(lms) = Pricing.price(lms, true)
+# calcPrice(lms)::PT = toPT(Pricing.price(lms)) # toPT(bap(lms, 0.0)) + P(0.02)
+# calcPriceFast(lms)::Float64 = Pricing.price(lms) # Pricing.bapFast(lms, 0.0) + 0.02
 
 function BackTypes.checkExit(params::Params, tradeOpen, tim, lmsc, curp)::Union{Nothing,String}
     dateOpen = getDateOpen(tradeOpen)
     dateOpen < tim.date || return # No closing on the same day
-    netc = calcPrice(lmsc)
+    netc = price_close(lmsc)
     curVal = getNetOpen(tradeOpen) + netc
     rate = calcRate(dateOpen, tim.date, curVal, getRisk(tradeOpen))
     # println("checkexit rate: ", rate)
@@ -256,7 +259,7 @@ function closeEarlyForMargin(params, ts, ops, otoq)
     # TODO: handle long short separately
     avail = min(ops.marginAvail())
     if avail < 54.0
-        cv = CollUtil.findMaxDom(firstNinf, Iterators.map(t -> trad.calcCloseInfo(t, ts, otoq, calcPrice), ops.tradesOpen()))
+        cv = CollUtil.findMaxDom(firstNinf, Iterators.map(t -> trad.calcCloseInfo(t, ts, otoq, price_close), ops.tradesOpen()))
         !isnothing(cv) || ( println("Ran out of margin? Or couldn't quote a lot.") ; return false )
         cv.rate > 0.1 || return false
         blog("Closing for margin $(cv.curVal)")
@@ -273,7 +276,8 @@ function scoreHigh(lms, params, prob, curp, tmult)
     segs = LL.toSegments(lms)
     global keepLms = lms
     global keepSegs = segs
-    neto = calcPriceFast(lms)
+    # neto = calcPriceFast(lms)
+    neto = price_open(lms) # TODO: fast version?
     # profit = Pricing.calcMaxProfit(segs) # first(segs).left.y
     profit = min(segs.points[1].y, segs.points[end].y)
     profit > params.MinProfit || ( @deb "min profit not met" profit neto; return nothing )
@@ -308,10 +312,18 @@ function scoreHigh(lms, params, prob, curp, tmult)
 end
 
 function scoreLow(lms, params, prob, curp, tmult)
-    segs = LL.toSegments(lms)
+    # TODO: clean up without exception?
+    segs = nothing
+    try
+        segs = LL.toSegments(lms)
+    catch e
+        # ignore for now, but we can't use this lms
+        ( @deb "can't quote" ; return nothing )
+    end
     global keepLms = lms
     global keepSegs = segs
-    neto = calcPriceFast(lms)
+    # neto = calcPriceFast(lms)
+    neto = F(price_open(lms)) # TODO: fast version?
     profit = neto
     profit > params.MinProfit || ( @deb "min profit not met" profit neto; return nothing )
 

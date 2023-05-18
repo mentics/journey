@@ -104,9 +104,9 @@ function openTrade(ts, lmso, neto, margin, multiple, label, extra)
     println("openTrade: ", (;ts, lmso, neto, margin, multiple, label, extra))
 end
 
-function closeTrade(tradeOpen, ts, lmsc, netc, label)
-    global keepClose = (;tradeOpen, ts, lmsc, netc, label)
-    println("closeTrade: ", (;tradeOpen, ts, lmsc, netc, label))
+function closeTrade(trade, ts, lmsc, netc, label)
+    global keepClose = (;trade, ts, lmsc, netc, label)
+    println("closeTrade $(getId(trade)) at $(netc): ", (;trade, ts, label)) # lmsc
 end
 
 import ProbKde, HistData

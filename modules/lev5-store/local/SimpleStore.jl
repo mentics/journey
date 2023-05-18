@@ -89,7 +89,7 @@ tsLast()::DateTime = Tss[][end]
 ChainUtil.toOtoq(chi::ChainInfo) = ChainUtil.toOtoq(chi.xsoqs)
 ChainUtil.getXpirs(chi::ChainInfo) = chi.xpirs
 
-chain_for(ts::DateTime)::ChainInfo = OtoqCache[ts]
+chain_for(ts::DateTime)::Otoq = OtoqCache[ts]
 function chains_for(from, to)
     @assert from < to "chains_for invalid input: $from < $to"
     loadChainInfo(from)
@@ -102,6 +102,12 @@ function chains_for(from, to)
         println("ERROR: no chains for $from - $to")
     end
     return res
+end
+
+function ts_prev(ts::DateTime)::DateTime
+    tk = searchsortedfirst(OtoqCache, ts)
+    tk_prev = regress((OtoqCache, tk))
+    return deref_key((OtoqCache, tk_prev))
 end
 #endregion
 
@@ -152,6 +158,7 @@ end
 
 first_ts_for(date::Date) = cal.getMarketOpen(date) + Second(10)
 last_ts_for(date::Date) = cal.getMarketClose(date)
+is_ts_eod(ts) = ts == cal.getMarketClose(Date(ts))
 
 const OtoqCache = SortedDict{DateTime,Otoq}()
 function make_otoqs()
@@ -245,6 +252,7 @@ function toUnd(data)
     end
 end
 
+import Calendars
 function loadOpt(f, path)
     open(path) do io
         while !eof(io)
@@ -261,10 +269,19 @@ function loadOpt(f, path)
             theta = read(io, Float64)
             rho = read(io, Float64)
             iv = read(io, Float64)
-            if bid <= 0.0 && ask <= 0.0
-                # TODO: Is just ignoring the right solution? Could skew results. Probably should double check the original data to see if maybe it was a parsing issue.
-                # println("Ignoring bad quote: $((;ts,strike,bid,ask))")
-                continue
+            # TODO: Is there ever a situation where knowing how negative it was would matter?
+            if bid <= 0.0
+                bid = CZ
+            end
+            if ask <= 0.0
+                ask = CZ
+            end
+            if bid > ask
+                date = Date(ts)
+                if ts != first_ts_for(date) && ts != last_ts_for(date)
+                    println("WARN: bid < ask for non-first, non-last ts")
+                    @show ts xpir strike bid ask
+                end
             end
             if 1 < strike < 1000 # TODO: can remove this after reload data filtering it
                 f(ts, xpir, strike, bid, ask, last, vol, delta, gamma, vega, theta, rho, iv)
