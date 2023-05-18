@@ -277,11 +277,12 @@ function loadOpt(f, path)
                 ask = CZ
             end
             if bid > ask
-                date = Date(ts)
-                if ts != first_ts_for(date) && ts != last_ts_for(date)
-                    println("WARN: bid < ask for non-first, non-last ts")
-                    @show ts xpir strike bid ask
-                end
+                # TODO: should we do anything for these cases?
+                # date = Date(ts)
+                # if ts != first_ts_for(date) && ts != last_ts_for(date)
+                #     println("WARN: bid < ask for non-first, non-last ts")
+                #     @show ts xpir strike bid ask
+                # end
             end
             if 1 < strike < 1000 # TODO: can remove this after reload data filtering it
                 f(ts, xpir, strike, bid, ask, last, vol, delta, gamma, vega, theta, rho, iv)
@@ -322,7 +323,7 @@ function updateTssFile()
     tssLoaded = sort!(collect(keys(ChainCache)))
     notFound = lastindex(tssLoaded) + 1
     global tss = DateTime[]
-    for date in Date(2016,1):Month(1):Date(2023,1)
+    for date in Date(2016,1):Month(1):Date(2022,10)
         println("processing $(date)")
         i = searchsortedfirst(tssLoaded, date)
         if i == notFound || year(tssLoaded[i]) != year(date) || month(tssLoaded[i]) != month(date)

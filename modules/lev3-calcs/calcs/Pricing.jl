@@ -57,9 +57,6 @@ function price_long(bid::Currency, ask::Currency, closing::Bool = false) # ::Uni
             # return nothing
         end
     end
-    if bid > ask
-        error("Tried to price when bid > ask")
-    end
     return price_raw(bid, ask)
 end
 
@@ -74,13 +71,14 @@ function price_short(bid::Currency, ask::Currency, closing::Bool = false) # ::Un
             # return nothing
         end
     end
-    if bid > ask
-        error("Tried to price when bid > ask")
-    end
     return price_raw(bid, ask)
 end
 
 function price_raw(bid::Currency, ask::Currency)::Currency
+    if bid > ask
+        println("WARN: Tried to price when bid > ask ", (;bid, ask))
+        return min(bid, ask)
+    end
     if ask <= 0
         return bid
     end
