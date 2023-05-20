@@ -20,7 +20,7 @@ function price(legs::Coll{<:LegLike}, closing = false) # ::Union{Nothing,Currenc
     return psum
 end
 
-function price(leg, closing = false)
+function price(leg::LegLike, closing = false)
     if (getSide(leg) == Side.long) ⊻ closing
         return price_long(leg, closing)
     else

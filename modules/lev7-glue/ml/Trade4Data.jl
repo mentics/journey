@@ -41,13 +41,18 @@ curp for those two points
 
 const SCALAR = Float32
 
-function make_data()
+function make_data(;timeout=1)
     # res = Array{SCALAR,2}(undef, 2, 0)
-    global cands_all = Vector{Vector{SCALAR}}()
+    xs = Vector{Vector{SCALAR}}()
+    ys = Vector{NTuple{3,SCALAR}}()
+    labels = Vector{NTuple{2,SCALAR}}() # one-host yes/no
+    global kxs = xs
+    global kys = ys
+    global klabels = labels
 
     i = 0
-    SS.run(Date(2016,1,4), Date(2016,1,5); maxSeconds=1) do tim, chain
-        # println("processing: ", tim.ts)
+    SS.run(Date(2022,6,1), Date(2022,7,1); maxSeconds=timeout) do tim, chain
+        println("processing: ", tim.ts)
         ts = tim.ts
         i += 1
         curp = ChainUtil.getCurp(chain)
@@ -60,30 +65,30 @@ function make_data()
         end
         atm = ChainUtil.calc_atm(chain)
         temporal = makeTemporal(tim)
-        cands = proc_ts(ts, chain)
+        scores, cands = proc_ts(tim, chain)
 
-        parts = (length(cands[1]), length(curp_hist), length(vix_hist), length(atm), length(temporal))
-        ind = 1
-        global inds = []
-        for part in parts
-            push!(inds, ind:(ind + part - 1))
-            ind += part
-        end
-        for cand in cands
-            push!(cands_all, SCALAR[
+        for (cand, score) in zip(cands, scores)
+            push!(xs, SCALAR[
                 cand...
                 curp_hist...
                 vix_hist...
                 atm...
                 temporal...
             ])
+            push!(ys, score)
+            push!(labels, label(score))
         end
         println("Spec:\n", "cand, curp_hist, vix_hist, atm, temporal\n", join(length.((first(cands), curp_hist, vix_hist, atm, temporal)), ", "))
         println("Added $(length(cands)) cands for ts $ts")
     end
+    yesrat = count(x -> x[1] == 1, labels) / length(labels)
+    println("Out of $(length(labels)): yes ratio: $(yesrat)")
  # TODO: change to matrix
-    return cands_all
+    # return xs
 end
+
+# TODO: stuff right around the threshold shouldn't be penalized?
+label(score) = score[2] >= 1.0 && score[3] >= -10.0 ? (1., 0.) : (0., 1.0)
 
 function makeTemporal(tim)
     return (
@@ -98,7 +103,9 @@ end
 SH.getStrike(x::Real) = x # This is because searchsorted* calls by on the search object
 function proc_ts(ts::DateTime, chain::ChainInfo)
     curp = ChainUtil.getCurp(chain)
+    date = Date(ts)
     xpirs = ChainUtil.getXpirs(chain)
+    # TODO: do multiple expirations
     xpir = CollUtil.gteev(xpirs, Date(ts + Day(1)))
     @assert xpir > ts "Invalid xpir $xpir for ts $ts"
     soqs = chain.xsoqs[xpir]
@@ -111,11 +118,21 @@ function proc_ts(ts::DateTime, chain::ChainInfo)
     # @assert length(call_prices) == length(calls)
     # @assert length(put_prices) == length(puts)
 
-    res = []
-    proc = (lms, neto) -> push!(res, proc_lms(lms, neto, ts, curp))
-    make_condors_long(proc, calls, puts) # , call_prices, put_prices)
+    # TODO: use tex isntead of dates?
+    days, tmult = durtimult(date, xpir)
+    prob = ProbKde.probToClose(F(fromPrice), vix, tim.ts, xpir)
+    tex = Calendars.calcTex(ts, Calendars.getMarketClose(xpir))
+
+    xs = []
+    ys = []
+    proc = (lms, score) -> begin
+        y, x = proc_lms(ts, curp, lms, score)
+        push!(xs, (SCALAR(tex), SCALAR(days), SCALAR(tmult), x...))
+        push!(ys, y)
+    end
+    make_condors_long(proc, prob, curp, tmult, calls, puts) # , call_prices, put_prices)
     # proc_condors_short(proc, puts, calls, call_prices, put_prices)
-    return res
+    return ys, xs
 end
 
 # function prices(calls, puts)
@@ -127,16 +144,15 @@ end
 # function proc_condors_short(puts, put_prices, calls, call_prices)
 # end
 
-function proc_lms(lms, neto, ts, curp)
-    texp = Calendars.calcTex(ts, Calendars.getMarketClose(getExpir(lms)))
-    risk = getRisk(lms)
-    return (
-        make_label(ts, lms, neto, risk)...,
-        texp,
-        neto,
-        risk,
+function proc_lms(ts, curp, lms, score)
+    return (make_label(ts, lms, score.neto, score.data.risk), (
+        SCALAR(score.neto),
+        SCALAR(score.data.profit),
+        SCALAR(score.data.risk),
+        SCALAR(score.data.rate),
+        SCALAR(score.data.kel),
         enc_lms(lms, curp)...,
-    )
+    ))
 end
 
 enc_lms(lms, curp) = Iterators.flatten(map(lm -> enc_lm(lm, curp), lms))
@@ -158,18 +174,14 @@ function enc_lm(lm, curp)
 end
 
 # TODO: move to where it belongs
-import LinesLeg as LL
-SH.getRisk(lms::Coll{<:LegMeta}) = -Pricing.calcCommit(LL.toSegments(Tuple(lms)))
-# SH.getProfit(lms::Coll{<:LegMeta}) = -Pricing.calcCommit(LL.toSegments(Tuple(lms)))
-function DateUtil.calcRate(from::DateTime, to::DateTime, ret, risk)::Float64
-    texy = Calendars.texToYear(Calendars.calcTex(from, to))
-    return ret / Float64(risk) / texy
-end
+# import LinesLeg as LL
+# SH.getRisk(lms::Coll{<:LegMeta}) = -Pricing.calcCommit(LL.toSegments(Tuple(lms)))
 
 function make_label(ts_start, lms::NTuple, neto, risk)
+    date_start = Date(ts_start)
     # xpirts = Calendars.getMarketClose(getExpir(lms))
     ts_last = SS.last_ts_for(getExpir(lms))
-    otoqs = SS.chains_for(SS.first_ts_for(bdaysAfter(Date(ts_start), 1)), ts_last)
+    otoqs = SS.chains_for(SS.first_ts_for(bdaysAfter(date_start, 1)), ts_last)
     # println(length(otoqs))
     # error(typeof(otoqs))
     rate_min, rate_max = (typemax(Float64), typemin(Float64))
@@ -183,15 +195,14 @@ function make_label(ts_start, lms::NTuple, neto, risk)
             # !isnothing(p) || return
             if p < price_min
                 price_min = p
-                # TODO: consider tex based rate?
-                r = calcRate(ts_start, ts, neto + p, risk)
+                r = calcRate(date_start, Date(ts), neto + p, risk)
                 if r < rate_min
                     rate_min = r
                 end
             end
             if p > price_max
                 price_max = p
-                r = calcRate(ts_start, ts, neto + p, risk)
+                r = calcRate(date_start, Date(ts), neto + p, risk)
                 if r > rate_max
                     rate_max = r
                 end
@@ -271,10 +282,17 @@ which_is_missing(otoq, lms) = findfirst(lm -> isnothing(to(LegMetaClose, lm, oto
 
 #region Util move
 Pricing.price_short(x::Real) = x # to deal with searchsorted*
+function price_short_guard(oq)
+    try
+        return Pricing.price_short(oq)
+    catch
+        return CZ
+    end
+end
 
 # make_condors_long(f, calls, puts; max_spread=4) = make_condors_long(f, calls, puts, prices(calls, puts)...; max_spread)
 # function make_condors_long(f, calls, puts, call_prices, put_prices; max_spread=4)
-function make_condors_long(f, calls, puts; max_spread=4)
+function make_condors_long(f, prob, curp, tmult, calls, puts; max_spread=4) # TODO: bigger max spread might be fine
     # global kcalls = calls
     # global kputs = puts
     # global kcall_prices = call_prices
@@ -283,10 +301,12 @@ function make_condors_long(f, calls, puts; max_spread=4)
     put_right0 = searchsortedfirst(puts, 0.04; by=Pricing.price_short)
     put_right0 > 1 || return
     # this search assumes price and strike sort the same which isn't always the case, but is probably close enough
-    call_left0 = searchsortedlast(calls, 0.04; rev=true, by=Pricing.price_short)
+    call_left0 = searchsortedlast(calls, 0.04; rev=true, by=price_short_guard)
     call_left0 < length(calls) || return
     # global kput_right0 = put_right0
     # global kcall_left0 = call_left0
+    count = 0
+    added = 0
     for put_right_ind in put_right0:lastindex(puts)
         put_right_strike = getStrike(puts[put_right_ind])
         for put_left_ind in max(1, put_right_ind - max_spread):(put_right_ind - 1)
@@ -310,12 +330,16 @@ function make_condors_long(f, calls, puts; max_spread=4)
                         continue
                     end
                     lms = (LegMetaOpen(put_left, Side.long), LegMetaOpen(put_right, Side.short), LegMetaOpen(call_left, Side.short), LegMetaOpen(call_right, Side.long))
-                    f(lms, put_price + call_price)
+                    score = Scoring.score_condor_long(prob, curp, tmult, lms; params=ScoringParams[])
+                    count += 1
+                    isnothing(score) || ( added += 1 ; f(lms, score) )
                 end
             end
         end
     end
+    println("Scored $count condors, added $added")
 end
+const ScoringParams = Ref((;MinProfit=0.1, MinRate=0.2, MinKel=0.1, PriceAdjust=-0.01))
 #endregion
 
 end

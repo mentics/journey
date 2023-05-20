@@ -1,6 +1,6 @@
 module Calendars
 using Dates
-using MarketDurTypes
+using BaseTypes, MarketDurTypes
 using Globals, DateUtil, LogUtil, ThreadUtil, MarketDurUtil, FileUtil
 using TradierData
 
@@ -28,8 +28,15 @@ end
 
 # in hours
 # texPerYear() = 6.5 * 252 + .3 * (8760 - 6.5 * 252)
-texPerYear() = 6844.8 # calced with calcTex(now(UTC), now(UTC)+Year(1))
-texToYear(tex) = tex / texPerYear()
+texPerYear()::Float64 = 6844.8 # calced with calcTex(now(UTC), now(UTC)+Year(1))
+texToYear(tex)::Float64 = tex / texPerYear()
+
+# @inline DateUtil.calcRate(from::DateTime, to::DateTime, ret::Real, risk::Integer)::Float64 = calcRate(from, to, ret, Float64(Float64(risk))
+# function DateUtil.calcRate(from::DateTime, to::DateTime, ret::Union{Float64,Currency}, risk::Union{Float64,Currency})::Float64
+#     texy = texToYear(calcTex(from, to))
+#     return ret / risk / texy
+# end
+
 # 9:30 am - 4 pm = 6.5 hours / day
 # 252 days per year
 # 8760 hours per year

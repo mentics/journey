@@ -1,5 +1,5 @@
 module Lines
-using BaseTypes ,LineTypes
+using BaseTypes, LineTypes
 
 export Segments, SegSide, Left, Right, Point
 

@@ -194,8 +194,8 @@ function findRoll(sym, at, cost=0.0, style=Style.put, improve=false; silent=fals
             # strike == at || continue
             strikeDiff = abs(strike - at)
             strikeDiff <= 5.3 || continue
-            getBid(oq) >= 0.0 || ( println("skipping non-positive bid") ; continue )
-            entry = Pricing.price(oq) # , .2)
+            getBid(oq) > 0.0 || ( println("skipping non-positive bid") ; continue )
+            entry = Pricing.price_short(oq) # , .2)
             # reduct = style == Style.put ? max(0.0, strike - at) : max(0.0, strike - at)
             primitDir = entry - cost - max(0.0, Int(style) * (at - strike)) # (strike > at ? (strike - at) : 0.0)
             # @show primitDir cost

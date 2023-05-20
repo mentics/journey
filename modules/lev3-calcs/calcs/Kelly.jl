@@ -2,6 +2,69 @@ module Kelly
 using Roots
 using BaseTypes
 
+#=
+integral(s)[ ( pdf(s) * out(s) ds ) / ( 1 + out(s) x ) ]
+integral(s(0:k))[ ( (pdf_m * s + pdf_left) * (out_m * s + out_left) ds ) / ( 1 + (out_m * s + out_left) x ) ]
+integral of (q * x + p) * (m * x + o) / (1 + (m * x + o) * b) <- x is s, not the x above
+Can be integrated: https://bit.ly/3mud4SA
+(x (2 b m p + b m q x - 2 q))/(2 b^2 m) - ((b m p - b o q - q) log(b m x + b o + 1))/(b^3 m^2) + constant
+=#
+
+# https://math.stackexchange.com/a/662210/235608
+const PROB_INTEGRAL_WIDTH2 = 1.0
+# TODO: is this commit or risk?
+function calcKel(prob, commit, segs)
+    cdfLeft = 0.0
+    pbs = NTuple{3,Float64}[]
+    for seg in segs
+        x_right = seg.right.x
+        cdfRight = ProbUtil.cdfFromLeft(prob, x_right)
+        # @show cdfLeft cdfRight x_right
+        if seg.slope == 0.0
+            # @assert seg.left.y == seg.right.y
+            p = cdfRight - cdfLeft
+            outcome = seg.left.y / commit
+            push!(pbs, (p * outcome, outcome, p))
+        else
+            # chop it into more pieces
+            # integral[ outcome ] = (outcome.left + outcome.right) / 2 # trapezoid area, I think width can be 1 because discrete and a type of "width" is in prob term
+            # integral[ prob * outcome ] =
+            span = x_right - seg.left.x
+            num = ceil(span / PROB_INTEGRAL_WIDTH2)
+            width = span / num
+            outcomeStep = (span / num) * seg.slope
+
+            left = seg.left.x
+            outcomeLeft = seg.left.y
+            for i in 0:num-1
+                right = left + width
+                # outcomeRight = outcomeLeft + outcomeStep
+                # outcome = ((outcomeLeft + outcomeRight) / 2) / commit
+                outcome = (outcomeLeft + outcomeStep / 2) / commit
+                cdfR2 = ProbUtil.cdfFromLeft(prob, right)
+                p = cdfR2 - cdfLeft
+                push!(pbs, (p * outcome, outcome, p))
+                left = right;
+                outcomeLeft += outcomeStep
+                cdfLeft = cdfR2
+            end
+        end
+        cdfLeft = cdfRight;
+    end
+    # global keepPbs = pbs
+    # sumpbs = sum(x -> x[3], pbs)
+    # if !(sumpbs ≈ 1.0)
+    #     println("sumpbs not 1: $sumpbs")
+    #     blog("sumpbs not 1: $sumpbs")
+    # end
+    Kelly.findZero() do x
+        s = sum(pbs) do (pb, b, _)
+            pb / (1 + b*x)
+        end
+        return s
+    end
+end
+
 # calc(pvals, vals) = ded(pvals, vals)
 calc!(pvals, vals) = ded(buf, pvals, vals)
 

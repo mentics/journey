@@ -27,8 +27,8 @@ end
 #region Public
 ChainUtil.getCurp(chain::ChainInfo) = chain.under.under
 
-run(f, from::DateLike, to::DateLike; maxSeconds=10, max_iterations=typemax(Int)) = run(f, getTss(from, to); maxSeconds, max_iterations)
-function run(f, tss; maxSeconds=10, max_iterations=typemax(Int))
+run(f, from::DateLike, to::DateLike; maxSeconds=1000000, max_iterations=typemax(Int)) = run(f, getTss(from, to); maxSeconds, max_iterations)
+function run(f, tss; maxSeconds=1000000, max_iterations=typemax(Int))
     start = time()
     lasti = lastindex(tss)
     firstOfDay = true
@@ -45,9 +45,11 @@ function run(f, tss; maxSeconds=10, max_iterations=typemax(Int))
         firstOfDay = i == lasti || day(tss[i+1]) != day(ts)
 
         if i >= max_iterations
+            println("Reached max iterations")
             break
         end
         if time() > start + maxSeconds
+            println("Reached max seconds $maxSeconds")
             break
         end
     end
@@ -323,7 +325,7 @@ function updateTssFile()
     tssLoaded = sort!(collect(keys(ChainCache)))
     notFound = lastindex(tssLoaded) + 1
     global tss = DateTime[]
-    for date in Date(2016,1):Month(1):Date(2022,10)
+    for date in Date(2014,1):Month(1):Date(2022,10)
         println("processing $(date)")
         i = searchsortedfirst(tssLoaded, date)
         if i == notFound || year(tssLoaded[i]) != year(date) || month(tssLoaded[i]) != month(date)

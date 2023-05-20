@@ -1,11 +1,10 @@
-ATUS
-CMAX
-IPI: 2
-LUMN: 3
-LXU
-NNVC
-STNE: 2
+CLOV 1 @ 3
+FSR 1 @ 9
 
+MLUtils.oversample: use this for dealing with imbalanced data: we don't have many "rate is never positive" in the Trade4Data, so this might help.
+Also, maybe oversample on ones that StratButter usually fails on?
+
+-------------
 
 What if instead of exiting, we roll? Considering how far it would have fallen to get there, it seems very likely it would be safe to do so.
 Except 2000 drop, and the current drop is about a year. But if we try to lower the strike price gradually... it at least means we could probably preserve capital

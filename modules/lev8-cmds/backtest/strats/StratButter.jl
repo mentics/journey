@@ -7,6 +7,7 @@ import ChainUtil as ch
 using Pricing
 import ProbKde, ProbUtil, Kelly, HistData
 import LinesLeg as LL
+using Scoring
 
 # TODO: updating margin is probably using the close mid instead of the open mid when choosing between short and long
 # TODO: try using delta vix in choosing between high/low findEntry
@@ -21,19 +22,12 @@ macro deb(exs...)
 end
 
 #region Types
-struct Scoring
-    profit::Currency
-    risk::Currency
-    rate::Float64
-    kel::Float64
-end
-
 struct Cand{N}
     lms::NTuple{N,LegMetaOpen}
     score::Float64
     neto::Float64
     margin::Sides{Float64}
-    scoring::Scoring
+    scoring::Scores
 end
 
 Base.@kwdef struct Params
@@ -103,7 +97,7 @@ const NUM_LEGS = 4
 
 function makeStrat()
     s = TStrat(
-        (NUM_LEGS, Scoring),
+        (NUM_LEGS, Scores),
         Params(
             balInit = C(1000),
             MaxMarginPerTradeRat = 0.08,
@@ -316,43 +310,11 @@ function scoreHigh(lms, params, prob, curp, tmult)
 
     score = kel # rate * kel
     # println("Scored ", score)
-    return ((;score, neto, margin), Scoring(profit, risk, rate, kel))
+    return ((;score, neto, margin), Scores(profit, risk, rate, kel))
 end
 
 function scoreLow(lms, params, prob, curp, tmult)
-    # TODO: clean up without exception?
-    segs = nothing
-    try
-        segs = LL.toSegments(lms)
-    catch e
-        # ignore for now, but we can't use this lms
-        ( @deb "can't quote" ; return nothing )
-    end
-    global keepLms = lms
-    global keepSegs = segs
-    # neto = calcPriceFast(lms)
-    neto = F(price_open(lms)) # TODO: fast version?
-    profit = neto
-    profit > params.MinProfit || ( @deb "min profit not met" profit neto; return nothing )
-
-    margin = Pricing.calcMarg(curp, segs)
-    @assert margin.long >= 0.0
-    @assert margin.short >= 0.0
-    risk = max(margin)
-    if risk < 0.009
-        return nothing
-    end
-
-    rate = calcRate(tmult, profit, risk)
-    rate >= params.MinRate || ( @deb "no score rate" rate params.MinRate ; return nothing )
-
-    segsWithZeros = LL.toSegmentsWithZeros(segs)
-    kel = calcKel(prob, risk, segsWithZeros)
-    # TODO: maybe change targets depending on low/high
-    kel >= 0.75 || ( @deb "no score kel" tmult neto rate profit risk kel ; return nothing )
-
-    score = kel
-    return ((;score, neto, margin), Scoring(profit, risk, rate, kel))
+    return Scores.score_condor_long(prob, curp, tmult, lms; params)
 end
 
 function findEntryHigh!(keep, params, prob, searchLeft, searchRight, canOpenPos, args...)
@@ -514,68 +476,6 @@ function qtyForAvail(avail, risk, kel)::Int
     end
     # TODO: was .5 kel
     res = floor(Int, 0.25 * kel * avail / risk)
-end
-
-#=
-integral(s)[ ( pdf(s) * out(s) ds ) / ( 1 + out(s) x ) ]
-integral(s(0:k))[ ( (pdf_m * s + pdf_left) * (out_m * s + out_left) ds ) / ( 1 + (out_m * s + out_left) x ) ]
-integral of (q * x + p) * (m * x + o) / (1 + (m * x + o) * b) <- x is s, not the x above
-Can be integrated: https://bit.ly/3mud4SA
-(x (2 b m p + b m q x - 2 q))/(2 b^2 m) - ((b m p - b o q - q) log(b m x + b o + 1))/(b^3 m^2) + constant
-=#
-
-# https://math.stackexchange.com/a/662210/235608
-const PROB_INTEGRAL_WIDTH2 = 1.0
-function calcKel(prob, commit, segs)
-    cdfLeft = 0.0
-    pbs = NTuple{3,Float64}[]
-    for seg in segs
-        x_right = seg.right.x
-        cdfRight = ProbUtil.cdfFromLeft(prob, x_right)
-        # @show cdfLeft cdfRight x_right
-        if seg.slope == 0.0
-            # @assert seg.left.y == seg.right.y
-            p = cdfRight - cdfLeft
-            outcome = seg.left.y / commit
-            push!(pbs, (p * outcome, outcome, p))
-        else
-            # chop it into more pieces
-            # integral[ outcome ] = (outcome.left + outcome.right) / 2 # trapezoid area, I think width can be 1 because discrete and a type of "width" is in prob term
-            # integral[ prob * outcome ] =
-            span = x_right - seg.left.x
-            num = ceil(span / PROB_INTEGRAL_WIDTH2)
-            width = span / num
-            outcomeStep = (span / num) * seg.slope
-
-            left = seg.left.x
-            outcomeLeft = seg.left.y
-            for i in 0:num-1
-                right = left + width
-                # outcomeRight = outcomeLeft + outcomeStep
-                # outcome = ((outcomeLeft + outcomeRight) / 2) / commit
-                outcome = (outcomeLeft + outcomeStep / 2) / commit
-                cdfR2 = ProbUtil.cdfFromLeft(prob, right)
-                p = cdfR2 - cdfLeft
-                push!(pbs, (p * outcome, outcome, p))
-                left = right;
-                outcomeLeft += outcomeStep
-                cdfLeft = cdfR2
-            end
-        end
-        cdfLeft = cdfRight;
-    end
-    # global keepPbs = pbs
-    # sumpbs = sum(x -> x[3], pbs)
-    # if !(sumpbs ≈ 1.0)
-    #     println("sumpbs not 1: $sumpbs")
-    #     blog("sumpbs not 1: $sumpbs")
-    # end
-    Kelly.findZero() do x
-        s = sum(pbs) do (pb, b, _)
-            pb / (1 + b*x)
-        end
-        return s
-    end
 end
 
 blog(args...) = LogUtil.logit(:backtest, args...)

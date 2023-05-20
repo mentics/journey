@@ -6,33 +6,38 @@ import MaxLFSR
 
 #=
 Returns a Vector of Arrays (or whatever is returned by modify_batch) with size = (size(data)..., batch_len)
+Batches across the last dim.
 =#
 function make_batches(
-            data::Vector{AbstractArray{T,N}},
+            data::Vector{<:AbstractArray{T,N}},
             batch_len::N2;
             update=false,
             modify_sample=identity,
             modify_batch=identity,
             seed=1)::Vector where {T,N,N2}
-    data_len = length(data)
+    data_len = length(data) # size(data, ndims(data))
     batch_count = ceil(N2, data_len / batch_len)
     println("Creating $(batch_count) batches")
-    lfsr = MaxLFSR.LFSR(seq_count; seed)
+    lfsr = MaxLFSR.LFSR(data_len; seed)
 
-    res = []
+    res = Vector{Array{T,N}}()
     ind = seed
     for _ in 1:(batch_count-1)
         batch = stack(begin
+            println(ind)
             sample = data[ind]
             ind, _ = iterate(lfsr, ind)
-            modify_sample(seq)
+            modify_sample(sample)
         end for _ in 1:batch_len)
         push!(res, modify_batch(batch))
+        println(ind)
     end
 
     # there might be a smaller last batch
-    if !isnothing(iterate(lfsr, ind))
-        push!(res, modify_batch(stack(modify_seq(data[ind]) for ind in Iterators.rest(lfsr, ind))))
+    println(ind)
+    # if !isnothing(iterate(lfsr, ind))
+    if !isnothing(ind)
+        push!(res, modify_batch(stack(modify_sample(data[ind]) for ind in Iterators.flatten(((ind,),Iterators.rest(lfsr, ind))))))
     end
 
     # @assert size(batches[1]) == (size(data)..., batch_len)

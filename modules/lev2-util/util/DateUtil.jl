@@ -42,6 +42,7 @@ export timult, calcRate
 bdaysPerYear() = 252.0
 durRisk(from::Date, to::Date) = 1 + bdays(from, to)
 timult(from::Date, to::Date) = bdaysPerYear() / durRisk(from, to)
+durtimult(from::Date, to::Date) = ( dur = durRisk(from, to) ; (dur, bdaysPerYear() / dur) )
 calcRate(from::Date, to::Date, ret, risk)::Float64 = (ret / Float64(risk)) * timult(from, to)
 calcRate(tmult, ret, risk)::Float64 = (ret / Float64(risk)) * tmult
 vixToSdev(vix, bdays) = vix / sqrt(bdaysPerYear() / bdays)
