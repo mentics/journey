@@ -1,8 +1,9 @@
 module SimpleStore
-using Dates, DataStructures
+using Dates, DataStructures, Intervals
 using SH, BaseTypes, SmallTypes, OptionTypes, QuoteTypes, OptionQuoteTypes, OptionMetaTypes, ChainTypes
 using DateUtil, DictUtil, CollUtil, ChainUtil
 import Calendars as cal
+import MLBase
 
 export TimeInfo
 
@@ -28,6 +29,7 @@ end
 ChainUtil.getCurp(chain::ChainInfo) = chain.under.under
 
 run(f, from::DateLike, to::DateLike; maxSeconds=1000000, max_iterations=typemax(Int)) = run(f, getTss(from, to); maxSeconds, max_iterations)
+run(f, range::Interval; maxSeconds=1000000, max_iterations=typemax(Int)) = run(f, getTss(range); maxSeconds, max_iterations)
 function run(f, tss; maxSeconds=1000000, max_iterations=typemax(Int))
     start = time()
     lasti = lastindex(tss)
@@ -81,8 +83,9 @@ end
 # getExpirs(data::HistChain, ts::DateTime)::Vector{Date} = sort(collect(filter(x -> x < Date(2025, 1, 1), keys(data.chain[ts]))))
 
 getTss(from::DateLike, to::DateLike)::Vector{DateTime} = CollUtil.sublist(Tss[], from, to)
-countTss(from::DateLike, to::DateLike)::Int = CollUtil.countSublist(Tss[], from, to)
+getTss(range::Interval)::Vector{DateTime} = filter(ts -> ts in range, Tss[])
 getTss(filt, from::DateLike, to::DateLike)::Vector{DateTime} = filter(ts -> from <= ts <= to && filt(ts), Tss[])
+countTss(from::DateLike, to::DateLike)::Int = CollUtil.countSublist(Tss[], from, to)
 # TODO: test the above two return the same for no filter
 
 tsFirst(dts::DateLike)::DateTime = Tss[][searchsortedfirst(Tss[], dts)]
@@ -134,7 +137,11 @@ function loadTss()
     end
 
     # Ignore first ts of the day because data might be questionnable, and just use 30 minute because that's all we have for older dates
-    Tss[] = filter!(ts -> minute(ts) != 15 && minute(ts) != 45 && Time(ts) != Time(cal.getMarketOpen(Date(ts))) + Second(10), tss)
+    Tss[] = filter!(tss) do ts
+        return ts in MLBase.DateRangeExt[]
+            minute(ts) != 15 && minute(ts) != 45 &&
+            Time(ts) != Time(cal.getMarketOpen(Date(ts))) + Second(10)
+    end
 end
 
 function paths(y, m)
@@ -152,6 +159,7 @@ function clearCache()
 end
 # const XpirCache = Dict{DateTime,Vector{Date}}()
 function loadChainInfo(ts::DateTime)::ChainInfo
+    @assert ts in MLBase.DateRangeExt[]
     get(ChainCache, ts) do
         loadMonth(year(ts), month(ts))
         return ChainCache[ts]
@@ -176,6 +184,7 @@ function loadMonth(y, m; cache=true)
         println("WARN: Tried to load SimpleStore $y-$m but skipping because file not found: $pathCall")
         return
     end
+    println("SimpleStore Loading $y-$m")
     calls = Dict{DateTime,Dict{Date,Vector{OptionQuote}}}()
     sizehint!(calls, HINT_TSS)
     loadOpt(proc(calls, Style.call), pathCall)

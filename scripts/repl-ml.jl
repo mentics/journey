@@ -14,10 +14,10 @@ import MarketHist
 import Trade4Data as T4
 
 SS.loadTss()
-SS.make_otoqs()
 
 MarketHist.populate_curps()
 MarketHist.populate_vixs()
+SS.make_otoqs()
 
 import LyzeT4 as lt4
 ;

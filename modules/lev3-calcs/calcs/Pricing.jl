@@ -76,7 +76,8 @@ end
 
 function price_raw(bid::Currency, ask::Currency)::Currency
     if bid > ask
-        println("WARN: Tried to price when bid > ask ", (;bid, ask))
+        # TODO: do something else?
+        # println("WARN: Tried to price when bid > ask ", (;bid, ask))
         return min(bid, ask)
     end
     if ask <= 0

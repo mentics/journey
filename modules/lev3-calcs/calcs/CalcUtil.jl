@@ -1,7 +1,7 @@
 module CalcUtil
 using SH, BaseTypes, Bins, ProbTypes, RetTypes
 
-export calcMetrics #, calcKelly, calcKelly!
+export calcMetrics
 export adjust!
 
 # TODO: probably everywhere that calls calcMetrics needs to call adjust! first
@@ -116,7 +116,6 @@ function calcMetrics2(pv::AVec{Float64}, v::AVec{Float64})
     return (; profit, loss, ev, evr, prob)
 end
 
-
 # calcEvRatio(pvals, vals) = ( (p, l) = calcEvPnl(pvals, vals) ; l >= -0.01 ? 100 * p : p / abs(l) )
 # function calcEvPnl(pvals, vals)
 #     profit = loss = 0.0
@@ -135,26 +134,6 @@ end
 #     end
 #     return s
 # end
-
-using Kelly
-calcKelly(pv, rets) = calcKelly!(pv, copy(rets))
-function calcKelly!(pv, rets)
-    # mn, mx = extrema(rets)
-    # risk = abs(mn)
-    mn = minimum(rets)
-    risk = abs(mn)
-    if mn > 0.0
-        return 17 + 1000 * mn
-    end
-    rets ./= risk
-    # @assert minimum(rets) ≈ -1.0
-    if abs(minimum(rets) + 1.0) > 0.0001
-        error("What the hog doin'? ", minimum(rets))
-    end
-    kel = Kelly.optimize(pv, rets)
-    isnan(kel) && return NaN
-    return kel
-end
 
 # function smooth!(v::Vector{Float64}, k::Float64=1.0)
 #     # Skip first and last

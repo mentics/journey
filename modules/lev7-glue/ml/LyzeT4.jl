@@ -6,6 +6,7 @@ import Trade4Data as T4
 const BatchSize = Ref(128)
 const LossClassWeights = Ref([0.25f0, 1.0f0] |> gpu)
 
+# TODO: need to do this with the particular ratio of categories in data
 function compare_random(batch_size=BatchSize[])
     rnd1 = rand(2, batch_size)
     rnd2 = stack(Flux.onehot.(rand(1:2, batch_size), Ref([1,2])))
@@ -48,8 +49,10 @@ end
 
 function run(make_new=false; iters=10)
     if make_new
-        data = (stack(T4.kxs), stack(T4.klabels))
-        data_train, data_test = splitobs(data; at=.9, shuffle=true)
+        LossClassWeights[] = [0.25f0, 1.0f0] |> gpu
+        xbal, ybal = MLUtils.oversample(T4.kxs, T4.klabels; shuffle=true, fraction=0.25)
+        data = (stack(xbal), stack(ybal))
+        data_train, data_test = splitobs(data; at=.9, shuffle=false)
         model = make_model(size(data[1], 1))
         opt = AdamW(1e-3)
         opt_state = Flux.setup(opt, model)
@@ -98,8 +101,35 @@ function test(model, data)
     println("Test loss: ", loss_sum / batch_count)
 end
 
-function test1(i=1)
-    kmodel(kdata_test[1][:,i] |> gpu) |> cpu
+function test1(i=1; data=kdata_test)
+    x = data[1][:,i]
+    y = data[2][:,i]
+    yh = kmodel(x |> gpu) |> cpu
+    (;x, y, yh, match=Flux.onecold(y) == argmax(yh))
+end
+
+function check_all(; data=kdata_test)
+    len = size(data[1], ndims(data[1]))
+    falsepos = []
+    falseneg = []
+    truepos = []
+    trueneg = []
+    count = 0
+
+    for i in 1:len
+        val = test1(i; data)
+        x, y, yh, match = val
+        pos = argmax(yh) == 1
+        if match
+            push!(pos ? truepos : trueneg, val)
+        else
+            push!(pos ? falsepos : falseneg, val)
+        end
+        count += 1
+    end
+    global kcheck_results = (;falsepos, falseneg, truepos, trueneg)
+    println("Checked $count observations, found: ", map(length, kcheck_results))
+    return
 end
 
 function check_model()
@@ -115,10 +145,10 @@ function check_model()
         yhat = model(x)
         yh = argmax(yhat)
         val = (;x, y, yhat, rates)
-        if yh != Flux.onecold(y)
-            push!(yh == 1 ? falsepos : falseneg, val)
-        else
+        if yh == Flux.onecold(y)
             push!(yh == 1 ? truepos : trueneg, val)
+        else
+            push!(yh == 1 ? falsepos : falseneg, val)
         end
         count += 1
     end
@@ -126,5 +156,17 @@ function check_model()
     println("Checked $count observations, found: ", map(length, kcheck_results))
     return
 end
+
+# MLUtils.group_indices(classes::) where T<:AbstractVector
+#     dict = Dict{eltype(T), Vector{Int}}()
+#     for (idx, elem) in enumerate(classes)
+#         if !haskey(dict, elem)
+#             push!(dict, elem => [idx])
+#         else
+#             push!(dict[elem], idx)
+#         end
+#     end
+#     return dict
+# end
 
 end

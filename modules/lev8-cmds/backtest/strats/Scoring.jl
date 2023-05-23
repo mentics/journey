@@ -1,4 +1,5 @@
 module Scoring
+using BaseTypes
 import Kelly, Pricing
 import DateUtil:calcRate
 import LinesLeg as LL
@@ -23,7 +24,7 @@ function score_condor_long(prob, curp, tmult, lms; params=(;MinProfit=0.1, MinRa
         # ignore for now, but we can't use this lms
         return nothing
     end
-    neto = Pricing.price(lms, false) + PriceAdjust
+    neto = Pricing.price(lms, false) + params.PriceAdjust
     profit = neto
     profit > params.MinProfit || return nothing
 

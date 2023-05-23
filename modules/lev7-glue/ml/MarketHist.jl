@@ -4,6 +4,7 @@ import DateUtil
 import Calendars
 import SimpleStore as SS
 import HistData
+using MLBase
 
 const Tex0 = Ref(DateTime(2023,1,1))
 
@@ -12,7 +13,7 @@ const Curps = Vector{NTuple{2,Float64}}() # (tex, curp)
 
 function populate_curps()
     empty!(Curps)
-    SS.run(Date(2014,1,1), Date(2023,1,1)) do tim, chain
+    SS.run(MLBase.DateRangeExt[]) do tim, chain
         curp = chain.under.under
         tex = Calendars.calcTex(tim.ts, Tex0[])
         push!(Curps, (tex, curp))
@@ -40,8 +41,9 @@ const Vixs = Vector{NTuple{2,Float64}}() # (tex, vix)
 
 function populate_vixs()
     empty!(Vixs)
-    from = DateUtil.nextTradingDay(Date(2014,1,1))
-    to = DateUtil.lastTradingDay(Date(2023,1,1))
+    MLBase.DateRangeExt[]
+    from = DateUtil.nextTradingDay(MLBase.DateRangeExt[].first)
+    to = DateUtil.lastTradingDay(MLBase.DateRangeExt[].last)
     date = from
     while true
         tex = Calendars.calcTex(Calendars.getMarketOpen(date), Tex0[])

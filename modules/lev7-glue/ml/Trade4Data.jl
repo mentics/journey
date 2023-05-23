@@ -5,6 +5,8 @@ using BaseUtil, DateUtil, ChainUtil, CollUtil
 import Pricing, Calendars
 import SimpleStore as SS
 import MarketHist
+import Scoring
+import MLBase, ProbKde, HistData
 
 #=
 Train two models: entry policy and exit policy.
@@ -41,7 +43,7 @@ curp for those two points
 
 const SCALAR = Float32
 
-function make_data(;timeout=1)
+function make_data(range=MLBase.DateRange[];timeout=1)
     # res = Array{SCALAR,2}(undef, 2, 0)
     xs = Vector{Vector{SCALAR}}()
     ys = Vector{NTuple{3,SCALAR}}()
@@ -51,7 +53,7 @@ function make_data(;timeout=1)
     global klabels = labels
 
     i = 0
-    SS.run(Date(2022,6,1), Date(2022,7,1); maxSeconds=timeout) do tim, chain
+    SS.run(range; maxSeconds=timeout) do tim, chain
         println("processing: ", tim.ts)
         ts = tim.ts
         i += 1
@@ -78,8 +80,12 @@ function make_data(;timeout=1)
             push!(ys, score)
             push!(labels, label(score))
         end
-        println("Spec:\n", "cand, curp_hist, vix_hist, atm, temporal\n", join(length.((first(cands), curp_hist, vix_hist, atm, temporal)), ", "))
-        println("Added $(length(cands)) cands for ts $ts")
+        if !isempty(cands)
+            # println("Spec:\n", "cand, curp_hist, vix_hist, atm, temporal\n", join(length.((first(cands), curp_hist, vix_hist, atm, temporal)), ", "))
+            println("Added $(length(cands)) cands for ts $ts")
+        else
+            println("No cands found for $ts")
+        end
     end
     yesrat = count(x -> x[1] == 1, labels) / length(labels)
     println("Out of $(length(labels)): yes ratio: $(yesrat)")
@@ -101,12 +107,13 @@ function makeTemporal(tim)
 end
 
 SH.getStrike(x::Real) = x # This is because searchsorted* calls by on the search object
-function proc_ts(ts::DateTime, chain::ChainInfo)
+function proc_ts(tim::SS.TimeInfo, chain::ChainInfo)
     curp = ChainUtil.getCurp(chain)
-    date = Date(ts)
+    ts = tim.ts
+    date = tim.date
     xpirs = ChainUtil.getXpirs(chain)
     # TODO: do multiple expirations
-    xpir = CollUtil.gteev(xpirs, Date(ts + Day(1)))
+    xpir = CollUtil.gteev(xpirs, bdaysAfter(Date(ts), 4))
     @assert xpir > ts "Invalid xpir $xpir for ts $ts"
     soqs = chain.xsoqs[xpir]
     call_left = searchsortedfirst(soqs.call, curp - 4.0; by=getStrike)
@@ -118,9 +125,10 @@ function proc_ts(ts::DateTime, chain::ChainInfo)
     # @assert length(call_prices) == length(calls)
     # @assert length(put_prices) == length(puts)
 
-    # TODO: use tex isntead of dates?
-    days, tmult = durtimult(date, xpir)
-    prob = ProbKde.probToClose(F(fromPrice), vix, tim.ts, xpir)
+    # TODO: use tex instead of dates?
+    vix = F(HistData.vixOpen(tim.date))
+    days, tmult = DateUtil.durtimult(date, xpir)
+    prob = ProbKde.probToClose(F(curp), vix, ts, xpir)
     tex = Calendars.calcTex(ts, Calendars.getMarketClose(xpir))
 
     xs = []
@@ -232,7 +240,8 @@ function make_label(ts_start, lms::NTuple, neto, risk)
     end
     otoq = SS.chain_for(ts_last)
     price_last = find_price_last(otoq, lms, ts_last)
-    rate_end = calcRate(ts_start, ts_last, neto + price_last, risk)
+    # rate_end = calcRate(ts_start, ts_last, neto + price_last, risk)
+    rate_end = calcRate(date_start, Date(ts_last), neto + price_last, risk)
     return rate_min, rate_max, rate_end
 end
 
@@ -298,7 +307,7 @@ function make_condors_long(f, prob, curp, tmult, calls, puts; max_spread=4) # TO
     # global kcall_prices = call_prices
     # global kput_prices = put_prices
     # this search assumes price and strike sort the same which isn't always the case, but is probably close enough
-    put_right0 = searchsortedfirst(puts, 0.04; by=Pricing.price_short)
+    put_right0 = searchsortedfirst(puts, 0.04; by=price_short_guard)
     put_right0 > 1 || return
     # this search assumes price and strike sort the same which isn't always the case, but is probably close enough
     call_left0 = searchsortedlast(calls, 0.04; rev=true, by=price_short_guard)
@@ -313,10 +322,8 @@ function make_condors_long(f, prob, curp, tmult, calls, puts; max_spread=4) # TO
             put_left = puts[put_left_ind]
             put_right = puts[put_right_ind]
             # put_price = put_prices[put_left_ind].long + put_prices[put_right_ind].short
-            put_price = Pricing.price_long_flip(put_left) + Pricing.price_short(put_right)
-            if put_price < 0.03
-                continue
-            end
+            put_price = get_put_price(put_left, put_right)
+            (!isnothing(put_price) && put_price >= 0.03) || continue
             for call_left_ind in call_left0:-1:1
                 if getStrike(calls[call_left_ind]) < put_right_strike
                     break
@@ -325,10 +332,8 @@ function make_condors_long(f, prob, curp, tmult, calls, puts; max_spread=4) # TO
                     call_left = calls[call_left_ind]
                     call_right = calls[call_right_ind]
                     # call_price = call_prices[call_left_ind].short + call_prices[call_right_ind].long
-                    call_price = Pricing.price_short(call_left) + Pricing.price_long_flip(call_right)
-                    if call_price < 0.03
-                        continue
-                    end
+                    call_price = get_call_price(call_left, call_right)
+                    (!isnothing(call_price) && call_price >= 0.03) || continue
                     lms = (LegMetaOpen(put_left, Side.long), LegMetaOpen(put_right, Side.short), LegMetaOpen(call_left, Side.short), LegMetaOpen(call_right, Side.long))
                     score = Scoring.score_condor_long(prob, curp, tmult, lms; params=ScoringParams[])
                     count += 1
@@ -339,7 +344,21 @@ function make_condors_long(f, prob, curp, tmult, calls, puts; max_spread=4) # TO
     end
     println("Scored $count condors, added $added")
 end
-const ScoringParams = Ref((;MinProfit=0.1, MinRate=0.2, MinKel=0.1, PriceAdjust=-0.01))
+const ScoringParams = Ref((;MinProfit=0.1, MinRate=0.4, MinKel=0.75, PriceAdjust=-0.01))
+function get_put_price(put_left, put_right)
+    try
+        return Pricing.price_long_flip(put_left) + Pricing.price_short(put_right)
+    catch e
+        return nothing
+    end
+end
+function get_call_price(call_left, call_right)
+    try
+        return Pricing.price_short(call_left) + Pricing.price_long_flip(call_right)
+    catch e
+        return nothing
+    end
+end
 #endregion
 
 end

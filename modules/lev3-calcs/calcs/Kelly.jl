@@ -1,6 +1,7 @@
 module Kelly
 using Roots
 using BaseTypes
+import ProbUtil
 
 #=
 integral(s)[ ( pdf(s) * out(s) ds ) / ( 1 + out(s) x ) ]
@@ -261,6 +262,27 @@ end
 #     k = ret / risk
 #     return prob * k / (1.0 + ratio * k)
 # end
+
+
+# calcKelly(pv, rets) = calcKelly!(pv, copy(rets))
+# function calcKelly!(pv, rets)
+#     # mn, mx = extrema(rets)
+#     # risk = abs(mn)
+#     mn = minimum(rets)
+#     risk = abs(mn)
+#     if mn > 0.0
+#         return 17 + 1000 * mn
+#     end
+#     rets ./= risk
+#     # @assert minimum(rets) ≈ -1.0
+#     if abs(minimum(rets) + 1.0) > 0.0001
+#         error("What the hog doin'? ", minimum(rets))
+#     end
+#     kel = Kelly.optimize(pv, rets)
+#     isnan(kel) && return NaN
+#     return kel
+# end
+
 
 # kelly = winprob + (winprob - 1)/gain%
 # 2:1 odds at 50% = .5 + (.5 - 1)/2 = .25

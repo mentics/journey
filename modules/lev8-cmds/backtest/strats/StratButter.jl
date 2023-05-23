@@ -27,10 +27,10 @@ struct Cand{N}
     score::Float64
     neto::Float64
     margin::Sides{Float64}
-    scoring::Scores
+    scoring::ScoreData
 end
 
-Base.@kwdef struct Params
+Base.@kwdef struct Params3
     balInit::PT
     MaxMarginPerTradeRat::Float64
     MaxQtyPerTrade::Float64
@@ -40,12 +40,14 @@ Base.@kwdef struct Params
     ProbMin::Float64
     MinProfit::PT
     MinRate::Float64
+    MinKel::Float64
     MoneyValueAPR::Float64
     ExpDurRatioAvg::Float64
     MinXpirBdays::Int
     MaxXpirBdays::Int
     MinMoveRat::Float64
     MaxQtyPerMove::Float64
+    PriceAdjust::Float64
 end
 
 const NUM_LEGS = 4
@@ -96,9 +98,9 @@ const NUM_LEGS = 4
 #   trade rate median: 1.04132
 
 function makeStrat()
-    s = TStrat(
-        (NUM_LEGS, Scores),
-        Params(
+    s = TStrat3(
+        (NUM_LEGS, ScoreData),
+        Params3(
             balInit = C(1000),
             MaxMarginPerTradeRat = 0.08,
             MaxQtyPerTrade = 100,
@@ -108,12 +110,14 @@ function makeStrat()
             ProbMin = 0.99, # 0.87,
             MinProfit = 0.07,
             MinRate = 0.4,
+            MinKel = 0.75,
             MoneyValueAPR = 0.05,
             ExpDurRatioAvg = 0.5,
             MinXpirBdays = 1,
             MaxXpirBdays = 48,
             MinMoveRat = 0.0025,
             MaxQtyPerMove = 100,
+            PriceAdjust = -0.01,
         ),
         makeCtx(),
     )
@@ -128,19 +132,19 @@ struct Context{N}
     qtyPerMove::Ref{Float64}
 end
 
-struct TStrat <: Strat
+struct TStrat3 <: Strat
     acctTypes::Tuple{Int,DataType}
-    params::Params
+    params::Params3
     ctx::Context
 end
 
-BackTypes.hasMultExpirs(::TStrat) = false
+BackTypes.hasMultExpirs(::TStrat3) = false
 
 makeCtx() = Context(Vector{Cand{NUM_LEGS}}(), Vector{Cand{NUM_LEGS}}(), Ref(CZ), Ref(0.0))
 #endregion
 
 #region InterfaceImpl
-function resetStrat(s::TStrat)
+function resetStrat(s::TStrat3)
     s.ctx.curpPrev[] = CZ
     s.ctx.qtyPerMove[] = 0.0
 end
@@ -151,7 +155,7 @@ function filterXpirs(xpirs, fromDate, params)
     return xpirs[starti:endi]
 end
 
-function (s::TStrat)(ops, tim, chain, otoq, vix)::Nothing
+function (s::TStrat3)(ops, tim, chain, otoq, vix)::Nothing
     # println("Running StratButter for ", tim.ts)
     params = s.params
     curp = ch.getCurp(chain)
@@ -204,18 +208,19 @@ function (s::TStrat)(ops, tim, chain, otoq, vix)::Nothing
     else
         # println("No entry");
     end
+    global kkeep = keep
     return
 end
 # BaseTypes.toPT(sides::Sides{Float64})::Sides{PT} = Sides(toPT(sides.long, RoundDown), round(toPT(sides.short, RoundDown)))
 
-BackTypes.pricingOpen(::TStrat, lmso::NTuple{N,LegMetaOpen}) where N = toPT(price_open(lmso))
-BackTypes.pricingClose(::TStrat, lmsc::NTuple{N,LegMetaClose}) where N = toPT(price_close(lmsc))
+BackTypes.pricingOpen(::TStrat3, lmso::NTuple{N,LegMetaOpen}) where N = toPT(price_open(lmso))
+BackTypes.pricingClose(::TStrat3, lmsc::NTuple{N,LegMetaClose}) where N = toPT(price_close(lmsc))
 price_open(lms) = Pricing.price(lms, false)
 price_close(lms) = Pricing.price(lms, true)
 # calcPrice(lms)::PT = toPT(Pricing.price(lms)) # toPT(bap(lms, 0.0)) + P(0.02)
 # calcPriceFast(lms)::Float64 = Pricing.price(lms) # Pricing.bapFast(lms, 0.0) + 0.02
 
-function BackTypes.checkExit(params::Params, tradeOpen, tim, lmsc, curp)::Union{Nothing,String}
+function BackTypes.checkExit(params::Params3, tradeOpen, tim, lmsc, curp)::Union{Nothing,String}
     dateOpen = getDateOpen(tradeOpen)
     dateOpen < tim.date || return # No closing on the same day
     netc = price_close(lmsc)
@@ -310,11 +315,11 @@ function scoreHigh(lms, params, prob, curp, tmult)
 
     score = kel # rate * kel
     # println("Scored ", score)
-    return ((;score, neto, margin), Scores(profit, risk, rate, kel))
+    return ((;score, neto, margin), ScoreData(profit, risk, rate, kel))
 end
 
 function scoreLow(lms, params, prob, curp, tmult)
-    return Scores.score_condor_long(prob, curp, tmult, lms; params)
+    return Scoring.score_condor_long(prob, curp, tmult, lms; params)
 end
 
 function findEntryHigh!(keep, params, prob, searchLeft, searchRight, canOpenPos, args...)
@@ -435,10 +440,10 @@ function findEntryLow!(keep, params, prob, searchLeft, searchRight, canOpenPos, 
                     lms = CollUtil.sortuple(x -> getStrike(x) + (isCall(x) ? eps(Currency) : 0.0), LegMetaOpen(oq1, Side.long), LegMetaOpen(oq2, Side.short), LegMetaOpen(oq3, Side.short), LegMetaOpen(oq4, Side.long))
                     r = scoreLow(lms, params, prob, args...)
                     count += 1
-                    if !isnothing(r) && (isempty(keep) || r[1].score > keep[end].score)
+                    if !isnothing(r) && (isempty(keep) || r.score > keep[end].score)
                         # TODO: not optimized
-                        info, about = r
-                        push!(keep, Cand(lms, info..., about))
+                        score, neto, margin, data = r
+                        push!(keep, Cand(lms, score, neto, margin, data))
                         sort!(keep; rev=true, by=x->x.score)
                         length(keep) <= 10 || pop!(keep)
                     end
