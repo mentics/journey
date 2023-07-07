@@ -55,7 +55,16 @@ using IterTools
 const VEC_EMPTY_TRADES = Trade[]
 loadTrades(tids::Coll{Int})::Vector{Trade} = loadTrades(qmarks(length(tids)), tids)
 function loadTrades(clauseIn::String, clauseArgs...)::Vector{Trade}
-    ts = select("select * from VTrade where tid in ($(clauseIn))", clauseArgs...)
+    # ts = select("select * from VTrade where tid in ($(clauseIn))", clauseArgs...)
+    # TODO: There's a bug in db
+    tids = [t.tid for t in select(clauseIn, clauseArgs...)]
+    ts = map(tids) do tid
+        select("select * from vtrade where tid=?", tid)[1]
+    end
+    # println(join(tids, ','))
+    # println(clauseIn)
+    # println(clauseArgs)
+    global kts = ts
     !isempty(ts) || return VEC_EMPTY_TRADES
     legsRows = select("select * from VLegTrade where tid in ($(clauseIn)) order by tid asc, strike asc", clauseArgs...)
     return map(zip(ts, groupby(x -> x.tid, legsRows))) do (t, tlrs)
@@ -70,6 +79,7 @@ function loadTrades(clauseIn::String, clauseArgs...)::Vector{Trade}
             @assert getStyle(legs[1]) == getStyle(legs[2])
             @assert getStyle(legs[3]) == getStyle(legs[4])
         end
+        # @show t
         return Trade{strToStatus(t.status)}(t.tid, t.targetdate, dbdc(t.primitdir), dbdc(t.prilldiropen), dbdc(t.prilldirclose),
               legs, t.tscreated, noth(t.tsfilled), noth(t.tsclosed), TradeMeta(dbdc(t.underbid), dbdc(t.underask)))
     end

@@ -122,7 +122,18 @@ ordinfo(tord) = "oid:$(tord["id"]) status:$(tord["status"]) price:$(tord["price"
 
 tradeRate(trade::Trade{Filled}, to::Date, netc) = calcRate(getDateFilled(trade), to, getNetOpen(trade) + netc, tradeRisk(trade))
 tradeRate(trade::Trade{Closed}) = calcRate(getDateFilled(trade), getDateClosed(trade), getPnl(trade), tradeRisk(trade))
-tradeRisk(trade) = -min(OptionUtil.legsExtrema(getNetOpen(trade), getLegs(trade)...)...)
+# tradeRisk(trade) = -min(OptionUtil.legsExtrema(getNetOpen(trade), getLegs(trade)...)...)
+# SH.getRisk(tradeOpen::Trade{Filled}) = -Pricing.calcCommit(LL.toSegments(Tuple(getLegs(tradeOpen))))
+import LinesLeg as LL
+function SH.getRisk(trade::Trade{Closed})
+    legs = getLegs(trade)
+    if length(legs) < 2
+        println("WARN: not impl, risk for single leg")
+        return 100.0
+    end
+    -Pricing.calcCommit(LL.toSegments(Tuple(legs)))
+end
+tradeRisk(trade) = getRisk(trade)
 #endregion
 
 #region CurrentPosition

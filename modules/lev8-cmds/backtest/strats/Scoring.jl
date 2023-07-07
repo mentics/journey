@@ -46,4 +46,39 @@ function score_condor_long(prob, curp, tmult, lms; params=(;MinProfit=0.1, MinRa
     return (;score=kel, neto, margin, data=ScoreData(profit, risk, rate, kel))
 end
 
+function score_condor_short(prob, curp, tmult, lms; params=(;MinProfit=0.1, MinRate=0.4, MinKel=0.1, PriceAdjust=-0.01))
+    # TODO: clean up without exception?
+    segs = nothing
+    try
+        segs = LL.toSegments(lms)
+    catch e
+        # ignore for now, but we can't use this lms
+        return nothing
+    end
+
+
+    neto = F(Pricing.price(lms, false)) # F(price_open(lms)) # TODO: fast version?
+    profit = min(segs.points[1].y, segs.points[end].y)
+    profit > params.MinProfit || return nothing
+
+    margin = Pricing.calcMarg(curp, segs)
+    @assert margin.long >= 0.0
+    @assert margin.short >= 0.0
+    risk = max(margin)
+    if risk < 0.009
+        return nothing
+    end
+
+    rate = calcRate(tmult, profit, risk)
+    rate >= params.MinRate || return nothing
+
+    segsWithZeros = LL.toSegmentsWithZeros(segs)
+    kel = Kelly.calcKel(prob, risk, segsWithZeros)
+    kel >= params.MinKel || return nothing
+    # TODO: maybe change targets depending on low/high
+    kel >= params.MinKel || return nothing
+
+    return (;score=kel, neto, margin, data=ScoreData(profit, risk, rate, kel))
+end
+
 end

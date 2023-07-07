@@ -15,7 +15,7 @@ The loss for the entry policy is if it entered a trade that had < threshold max 
 The loss for the exit policy could be its distance below the best result which would work on both winning and losing trades. Then we can train it with losing trades, also.
 We should probably try training exit policy both ways: only on potential winners, and all.
 
-Challange for temporal things is because market days aren't continuous, we need to somehow
+Challenge for temporal things is because market days aren't continuous, we need to somehow
 interpolate the underlying price for any point in time, so we can have a regularized set of returns
 over the past for each observation.
 
@@ -58,12 +58,15 @@ function make_data(range=MLBase.DateRange[];timeout=1)
         ts = tim.ts
         i += 1
         curp = ChainUtil.getCurp(chain)
-        curp_hist = map(2.0 .^ (3:10)) do tex_ago
-            log(curp / MarketHist.curp_for_tex(tim.ts, tex_ago))
+        #
+        # curp_hist = map(2.0 .^ (3:10)) do tex_ago
+        curp_hist = map((24*i + 1.41^i)/24 for i in 1:20) do tex_ago
+            # log(curp / MarketHist.curp_for_tex(tim.ts, tex_ago))
+            curp / MarketHist.curp_for_tex(tim.ts, tex_ago)
         end
-        vix_hist =  map(2.0 .^ (3:10)) do tex_ago
-            # log(MarketHist.vix_for_tex(ts, tex_ago))
-            MarketHist.vix_for_tex(ts, tex_ago)
+        vix_hist =  map((24*i + 1.41^i)/24 for i in 1:20) do tex_ago
+            log(MarketHist.vix_for_tex(ts, tex_ago))
+            # MarketHist.vix_for_tex(ts, tex_ago)
         end
         atm = ChainUtil.calc_atm(chain)
         temporal = makeTemporal(tim)

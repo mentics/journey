@@ -112,9 +112,9 @@ mmlt(lt, a, b, ia, ib) = lt(a, b) ? (a, b, ia, ib) : (b, a, ib, ia)
 
 (sortuple(t::NTuple{4,T}, by)::NTuple{4,T}) where T = sortuple(t..., by)
 (sortuple(by::Function, t::NTuple{4,T})::NTuple{4,T}) where T = sortuple(t..., by)
-(sortuple(by::Function, t::T...)::NTuple{4,T}) where T = sortuple(t..., by)
+(sortuple(by::Function, x1::T, x2::T, x3::T, x4::T)::NTuple{4,T}) where T = sortuple(x1, x2, x3, x4, by)
 function sortuple(x1::T, x2::T, x3::T, x4::T, by)::NTuple{4,T} where T
-    a, b, c, d = decorate(x1, x2, x3, x4, by)
+    a, b, c, d = decorate(by, x1, x2, x3, x4)
     a, b = minmax2(a, b)
     c, d = minmax2(c, d)
     a, c = minmax2(a, c)
@@ -122,8 +122,17 @@ function sortuple(x1::T, x2::T, x3::T, x4::T, by)::NTuple{4,T} where T
     b, c = minmax2(b, c)
     return a[2], b[2], c[2], d[2]
 end
-function decorate(x1, x2, x3, x4, by)
+function sortuple(by, x1::T, x2::T)::NTuple{2,T} where T
+    a, b = decorate(by, x1, x2)
+    a, b = minmax2(a, b)
+    return a[2], b[2]
+end
+
+function decorate(by, x1, x2, x3, x4)
     return ((by(x1), x1), (by(x2), x2), (by(x3), x3), (by(x4), x4))
+end
+function decorate(by, x1, x2)
+    return ((by(x1), x1), (by(x2), x2))
 end
 minmax2(x1, x2) = x1[1] < x2[1] ? (x1, x2) : (x2, x1)
 

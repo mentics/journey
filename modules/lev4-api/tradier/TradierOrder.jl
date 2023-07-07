@@ -100,4 +100,21 @@ function closeLegMarket(tid::Int, leg, pre=true)
     return submitOrder(payload)
 end
 
+# class=oto&duration=day&type[0]=limit&price[0]=160.55&option_symbol[0]=SPY190621C00080000&side[0]=buy_to_open&quantity[0]=1&type[1]=market&option_symbol[1]=SPY190621C00085000&side[1]=sell_to_open&quantity[1]=1
+function EXP_payload_oto(lms, action=Action.open)
+    leg_str = map(enumerate(lms)) do (ind, lm)
+        q = getQuote(lm)
+        price =  round((q.bid + q.ask) / 2, RoundDown; digits=2)
+        EXP_oto_leg(action, ind - 1, lm, price)
+    end
+    payload = "preview=true&class=oto&duration=day&" * join(leg_str, '&')
+    return payload
+end
+
+# type[0]=limit&price[0]=160.55&option_symbol[0]=SPY190621C00080000&side[0]=buy_to_open&quantity[0]=1&type[1]=market&option_symbol[1]=SPY190621C00085000&side[1]=sell_to_open&quantity[1]=1
+function EXP_oto_leg(action, ind, lm, price)
+    tier_action = tier.toTierSide(action, getSide(lm))
+    return "type[$ind]=limit&price[$ind]=$(abs(price))&option_symbol[$ind]=$(tier.optToOcc(getOption(lm)))&side[$ind]=$(tier_action)&quantity[$ind]=$(getQuantity(lm))"
+end
+
 end

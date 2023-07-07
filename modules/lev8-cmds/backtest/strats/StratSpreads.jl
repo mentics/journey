@@ -1,4 +1,4 @@
-module StratButter
+module StratSpreads
 using Dates
 using SH, BaseTypes, SmallTypes, BackTypes, LegMetaTypes
 using LogUtil, OutputUtil, BacktestUtil, CollUtil, DateUtil, ThreadUtil
@@ -30,7 +30,7 @@ struct Cand{N}
     scoring::ScoreData
 end
 
-Base.@kwdef struct Params3
+Base.@kwdef struct Params
     balInit::PT
     MaxMarginPerTradeRat::Float64
     MaxQtyPerTrade::Float64
@@ -48,9 +48,10 @@ Base.@kwdef struct Params3
     MinMoveRat::Float64
     MaxQtyPerMove::Float64
     PriceAdjust::Float64
+    VixThreshold::Float64
 end
 
-const NUM_LEGS = 4
+const NUM_LEGS4 = 4
 
 #     Params(
 #         balInit = C(1000),
@@ -98,53 +99,56 @@ const NUM_LEGS = 4
 #   trade rate median: 1.04132
 
 function makeStrat()
-    s = TStrat3(
-        (NUM_LEGS, ScoreData),
-        Params3(
+    s = TStrat2(
+        (NUM_LEGS4, ScoreData),
+        Params(
             balInit = C(1000),
-            MaxMarginPerTradeRat = 0.08,
+            MaxMarginPerTradeRat = 0.02,
             MaxQtyPerTrade = 100,
-            InitTakeRate = 0.6, # 0.8
-            FinalTakeRate = -0.4,
-            MaxWidthRat = 0.02,
-            ProbMin = 0.99, # 0.87,
+            InitTakeRate = 0.4, # 0.8
+            FinalTakeRate = -0.2,
+            MaxWidthRat = 0.04,
+            ProbMin = 0.95, # 0.87,
             MinProfit = 0.1,
             MinRate = 0.4,
-            MinKel = 0.75,
+            MinKel = 0.2,
             MoneyValueAPR = 0.05,
             ExpDurRatioAvg = 0.5,
             MinXpirBdays = 1,
-            MaxXpirBdays = 48,
-            MinMoveRat = 0.0025,
+            MaxXpirBdays = 8,
+            MinMoveRat = 0.0025, # 0.00125
             MaxQtyPerMove = 100,
             PriceAdjust = -0.01,
+            VixThreshold = 30,
         ),
         makeCtx(),
     )
-    resetStrat(s)
+    reseTStrat2(s)
     return s
 end
 
-struct Context{N}
+struct Context2{N}
     bufCandLong::Vector{Cand{N}}
     bufCandShort::Vector{Cand{N}}
     curpPrev::Ref{Currency}
+    vixPrev::Ref{Float64}
+    vixDelta::Ref{Float64}
     qtyPerMove::Ref{Float64}
 end
 
-struct TStrat3 <: Strat
+struct TStrat2 <: Strat
     acctTypes::Tuple{Int,DataType}
-    params::Params3
-    ctx::Context
+    params::Params
+    ctx::Context2
 end
 
-BackTypes.hasMultExpirs(::TStrat3) = false
+BackTypes.hasMultExpirs(::TStrat2) = false
 
-makeCtx() = Context(Vector{Cand{NUM_LEGS}}(), Vector{Cand{NUM_LEGS}}(), Ref(CZ), Ref(0.0))
+makeCtx() = Context2(Vector{Cand{NUM_LEGS4}}(), Vector{Cand{NUM_LEGS4}}(), Ref(CZ), Ref(0.0), Ref(0.0), Ref(0.0))
 #endregion
 
 #region InterfaceImpl
-function resetStrat(s::TStrat3)
+function reseTStrat2(s::TStrat2)
     s.ctx.curpPrev[] = CZ
     s.ctx.qtyPerMove[] = 0.0
 end
@@ -155,7 +159,7 @@ function filterXpirs(xpirs, fromDate, params)
     return xpirs[starti:endi]
 end
 
-function (s::TStrat3)(ops, tim, chain, otoq, vix)::Nothing
+function (s::TStrat2)(ops, tim, chain, otoq, vix)::Nothing
     # println("Running StratButter for ", tim.ts)
     params = s.params
     curp = ch.getCurp(chain)
@@ -172,8 +176,13 @@ function (s::TStrat3)(ops, tim, chain, otoq, vix)::Nothing
 
     # min(ops.marginAvail()) > 0 || return
 
-    keep = s.ctx.bufCandLong
-    empty!(keep)
+    keeps = ( put=s.ctx.bufCandLong, call=s.ctx.bufCandShort )
+    empty!(keeps.put)
+    empty!(keeps.call)
+    if vix != s.ctx.vixPrev[]
+        s.ctx.vixDelta[] = vix - s.ctx.vixPrev[]
+        s.ctx.vixPrev[] = vix
+    end
 
     xpirs = filterXpirs(ch.getXpirs(chain), tim.date, params)
     for xpir in xpirs
@@ -183,13 +192,40 @@ function (s::TStrat3)(ops, tim, chain, otoq, vix)::Nothing
         # TODO: multithreaded precalc all the probs and put in a lookup, and store in module cache
         prob = ProbKde.probToClose(F(fromPrice), vix, tim.ts, xpir)
         # TODO: try both and keep best score. tried once and didnt' look that good.
-        if vix > 21.0 # TODO: params.VixThreshold
-            findEntryHigh!(keep, params, prob, searchLeft, searchRight, ops.canOpenPos, curp, tmult)
+        if vix > params.VixThreshold || s.ctx.vixDelta[] > 0
+            # println("Vix: $vix > thresh: $(params.VixThreshold) OR delta: $(s.ctx.vixDelta[]) > 0 ; ", (;vix, threshold=params.VixThreshold, vixPrev=x.ctx.vixPrev[], delta=s.ctx.vixDelta))
+            println((;vix, threshold=params.VixThreshold, vixPrev=s.ctx.vixPrev[], delta=s.ctx.vixDelta[]))
+            findEntryHigh!(keeps.put, params, prob, searchLeft, searchRight, ops.canOpenPos, curp, tmult)
         else
-            findEntryLow!(keep, params, prob, searchLeft, searchRight, ops.canOpenPos, curp, tmult)
+            # findEntryLow!(keeps, params, prob, searchLeft, searchRight, ops.canOpenPos, curp, tmult)
         end
     end
 
+    handleKeep!(s, params, ops, tim, otoq, curp, curpPrev, keeps.put)
+    handleKeep!(s, params, ops, tim, otoq, curp, curpPrev, keeps.call)
+    # if !isempty(keep)
+    #     # println("Found $(length(keep)) candidates for expirs: ", join(map(x->getExpir(x.lms), keep), ','))
+    #     # TODO: identify if new opportunity is better than currently open one
+    #     if (closeEarlyForMargin(params, tim.ts, ops, otoq))
+    #         x = keep[1]
+    #         multiple = max(1, qtyForMargin(params, ops.bal(), ops.marginAvail(), x.margin, x.scoring.kel))
+    #         if multiple > 0
+    #             @assert getExpir(x.lms[1]) <= getExpir(x.lms[2])
+    #             ops.openTrade(tim.ts, x.lms, toPT(x.neto, RoundDown), toPT(x.margin), multiple, "best score $(rd5(x.score))", x.scoring)
+    #             curpPrev[] = curp
+    #             s.ctx.qtyPerMove[] += multiple
+    #         else
+    #             println("0 multiple found, odd.")
+    #         end
+    #     end
+    # else
+    #     # println("No entry");
+    # end
+    # # global kkeeps = keeps
+    return
+end
+
+function handleKeep!(s, params, ops, tim, otoq, curp, curpPrev, keep)
     if !isempty(keep)
         # println("Found $(length(keep)) candidates for expirs: ", join(map(x->getExpir(x.lms), keep), ','))
         # TODO: identify if new opportunity is better than currently open one
@@ -208,19 +244,17 @@ function (s::TStrat3)(ops, tim, chain, otoq, vix)::Nothing
     else
         # println("No entry");
     end
-    global kkeep = keep
-    return
 end
 # BaseTypes.toPT(sides::Sides{Float64})::Sides{PT} = Sides(toPT(sides.long, RoundDown), round(toPT(sides.short, RoundDown)))
 
-BackTypes.pricingOpen(::TStrat3, lmso::NTuple{N,LegMetaOpen}) where N = toPT(price_open(lmso))
-BackTypes.pricingClose(::TStrat3, lmsc::NTuple{N,LegMetaClose}) where N = toPT(price_close(lmsc))
+BackTypes.pricingOpen(::TStrat2, lmso::NTuple{N,LegMetaOpen}) where N = toPT(price_open(lmso))
+BackTypes.pricingClose(::TStrat2, lmsc::NTuple{N,LegMetaClose}) where N = toPT(price_close(lmsc))
 price_open(lms) = Pricing.price(lms, false)
 price_close(lms) = Pricing.price(lms, true)
 # calcPrice(lms)::PT = toPT(Pricing.price(lms)) # toPT(bap(lms, 0.0)) + P(0.02)
 # calcPriceFast(lms)::Float64 = Pricing.price(lms) # Pricing.bapFast(lms, 0.0) + 0.02
 
-function BackTypes.checkExit(params::Params3, tradeOpen, tim, lmsc, curp)::Union{Nothing,String}
+function BackTypes.checkExit(params::Params, tradeOpen, tim, lmsc, curp)::Union{Nothing,String}
     dateOpen = getDateOpen(tradeOpen)
     dateOpen < tim.date || return # No closing on the same day
     netc = price_close(lmsc)
@@ -272,50 +306,7 @@ firstNinf(x) = first(x)
 
 #region Find
 function scoreHigh(lms, params, prob, curp, tmult)
-    # TODO: clean up without exception?
-    segs = nothing
-    try
-        segs = LL.toSegments(lms)
-    catch e
-        # ignore for now, but we can't use this lms
-        ( @deb "can't quote" ; return nothing )
-    end
-    global keepLms = lms
-    global keepSegs = segs
-
-    # neto = calcPriceFast(lms)
-    neto = F(price_open(lms)) # TODO: fast version?
-    # profit = Pricing.calcMaxProfit(segs) # first(segs).left.y
-    profit = min(segs.points[1].y, segs.points[end].y)
-    profit > params.MinProfit || ( @deb "min profit not met" profit neto; return nothing )
-    # first(segs).left.y > params.MinProfit && collect(segs)[end].right.y > params.MinProfit
-
-    margin = Pricing.calcMarg(curp, segs)
-    @assert margin.long >= 0.0
-    @assert margin.short >= 0.0
-    risk = max(margin)
-    # global keepRiskErr = (; risk, margin, lms, segs, curp)
-    # error("stop")
-    if risk < 0.009
-        # global keepRiskErr = (; risk, margin, lms, segs, curp)
-        # println("Risk $(risk) was < 0.01")
-        # blog("Risk $(risk) was < 0.01")
-        return nothing
-        # error("stop")
-    end
-    # @assert risk > 0.01 "risk $(risk) was <= 0 "
-
-    rate = calcRate(tmult, profit, risk)
-    rate >= params.MinRate || ( @deb "no score rate" rate params.MinRate ; return nothing )
-
-    segsWithZeros = LL.toSegmentsWithZeros(segs)
-    kel = calcKel(prob, risk, segsWithZeros)
-    # TODO: maybe change targets depending on low/high
-    kel >= 1.0 || ( @deb "no score kel" tmult neto rate profit risk kel ; return nothing )
-
-    score = kel # rate * kel
-    # println("Scored ", score)
-    return ((;score, neto, margin), ScoreData(profit, risk, rate, kel))
+    return Scoring.score_condor_short(prob, curp, tmult, lms; params)
 end
 
 function scoreLow(lms, params, prob, curp, tmult)
@@ -339,7 +330,7 @@ function findEntryHigh!(keep, params, prob, searchLeft, searchRight, canOpenPos,
     oqsRight = ch.oqsBetween(searchRight, strikeMin, strikeMax)
     global keepProb = prob
     if length(oqsLeft) < 2 || length(oqsRight) < 2
-        blog("WARN: High oqs < $(NUM_LEGS)")
+        blog("WARN: High oqs < $(NUM_LEGS4)")
         return nothing
     end
     maxWidth = params.MaxWidthRat * prob.center
@@ -380,66 +371,6 @@ function findEntryHigh!(keep, params, prob, searchLeft, searchRight, canOpenPos,
                     end
                     r = scoreHigh(lms, params, prob, args...)
                     count += 1
-                    if !isnothing(r) && (isempty(keep) || r[1].score > keep[end].score)
-                        # TODO: not optimized
-                        info, about = r
-                        push!(keep, Cand(lms, info..., about))
-                        sort!(keep; rev=true, by=x->x.score)
-                        length(keep) <= 10 || pop!(keep)
-                    end
-                end
-            end
-        end
-    end
-    @blog "High scored $count candidates"
-    return
-end
-
-function findEntryLow!(keep, params, prob, searchLeft, searchRight, canOpenPos, args...)
-    mid = prob.center
-    # TODO: should we use a different prob for low/high?
-    strikeLow, _ = ProbUtil.probFromRight(prob, params.ProbMin)
-    strikeHigh, _ = ProbUtil.probFromLeft(prob, params.ProbMin)
-    oqsLeft = ch.oqsBetween(searchLeft, 0, strikeLow)
-    oqsRight = ch.oqsBetween(searchRight, strikeHigh, 1e9)
-    if length(oqsLeft) < 2 || length(oqsRight) < 2
-        blog("WARN: Low oqs < $(NUM_LEGS): $mid: $strikeLow - $strikeHigh")
-        # global keepSearchLeft = searchLeft
-        # global keepSearchRight = searchLeft
-        # error("stop")
-        return nothing
-    end
-    maxWidth = params.MaxWidthRat * prob.center / 2
-
-    count = 0
-    lastiLeft = lastindex(oqsLeft)
-    lastiRight = lastindex(oqsRight)
-    # for i1 in eachindex(oqs)[1:end-2]
-    for i1 in 1:(lastiLeft-1)
-        oq1 = oqsLeft[i1]
-        # TODO: optimize this check: can maintain a lookup or all that would conflict and check with hashmap
-        canOpenPos(getOption(oq1), Side.long) || continue
-        str1 = getStrike(oq1)
-        # for i2 in i1+1:lasti
-        for i2 in (i1+1):lastiLeft
-            oq2 = oqsLeft[i2]
-            str2 = getStrike(oq2)
-            str2 - str1 <= maxWidth || break
-            canOpenPos(getOption(oq2), Side.short) || continue
-            # for i3 in i2+1:lasti
-            for i3 in 1:(lastiRight-1)
-                oq3 = oqsRight[i3]
-                str3 = getStrike(oq3)
-                canOpenPos(getOption(oq3), Side.short) || continue
-                for i4 in (i3+1):lastiRight
-                    oq4 = oqsRight[i4]
-                    str4 = getStrike(oq4)
-                    str4 - str3 <= maxWidth || break
-                    canOpenPos(getOption(oq4), Side.long) || continue
-
-                    lms = CollUtil.sortuple(x -> getStrike(x) + (isCall(x) ? eps(Currency) : 0.0), LegMetaOpen(oq1, Side.long), LegMetaOpen(oq2, Side.short), LegMetaOpen(oq3, Side.short), LegMetaOpen(oq4, Side.long))
-                    r = scoreLow(lms, params, prob, args...)
-                    count += 1
                     if !isnothing(r) && (isempty(keep) || r.score > keep[end].score)
                         # TODO: not optimized
                         score, neto, margin, data = r
@@ -451,7 +382,90 @@ function findEntryLow!(keep, params, prob, searchLeft, searchRight, canOpenPos, 
             end
         end
     end
-    @blog "Low scored $count candidates"
+    @blog "High scored $count candidates"
+    return
+end
+
+function findEntryLow!(keeps, params, prob, searchLeft, searchRight, canOpenPos, args...)
+    findSpreadPut!(keeps.put, params, prob, searchLeft, canOpenPos, args...)
+    findSpreadCall!(keeps.call, params, prob, searchRight, canOpenPos, args...)
+    return
+end
+
+function findSpreadPut!(keep, params, prob, searchLeft, canOpenPos, args...)
+    mid = prob.center
+    strikeLow, _ = ProbUtil.probFromRight(prob, params.ProbMin)
+    oqsLeft = ch.oqsBetween(searchLeft, 0, strikeLow)
+    if length(oqsLeft) < 2
+        blog("WARN: findSpreadPut! insufficient oqs < $(NUM_LEGS4): $mid: $strikeLow")
+        return nothing
+    end
+    maxWidth = params.MaxWidthRat * prob.center / 2
+
+    count = 0
+    lastiLeft = lastindex(oqsLeft)
+    for i1 in 1:(lastiLeft-1)
+        oq1 = oqsLeft[i1]
+        # TODO: optimize this check: can maintain a lookup or all that would conflict and check with hashmap
+        canOpenPos(getOption(oq1), Side.long) || continue
+        str1 = getStrike(oq1)
+        for i2 in (i1+1):lastiLeft
+            oq2 = oqsLeft[i2]
+            str2 = getStrike(oq2)
+            str2 - str1 <= maxWidth || break
+            canOpenPos(getOption(oq2), Side.short) || continue
+
+            lms = CollUtil.sortuple(x -> getStrike(x) + (isCall(x) ? eps(Currency) : 0.0), LegMetaOpen(oq1, Side.long), LegMetaOpen(oq2, Side.short))
+            r = scoreLow(lms, params, prob, args...)
+            count += 1
+            if !isnothing(r) && (isempty(keep) || r.score > keep[end].score)
+                # TODO: not optimized
+                score, neto, margin, data = r
+                push!(keep, Cand(lms, score, neto, margin, data))
+                sort!(keep; rev=true, by=x->x.score)
+                length(keep) <= 10 || pop!(keep)
+            end
+        end
+    end
+    # @blog "findSpreadPut! scored $count candidates"
+    return
+end
+
+function findSpreadCall!(keep, params, prob, searchRight, canOpenPos, args...)
+    mid = prob.center
+    strikeHigh, _ = ProbUtil.probFromLeft(prob, params.ProbMin)
+    oqsRight = ch.oqsBetween(searchRight, strikeHigh, 1e9)
+    if length(oqsRight) < 2
+        blog("WARN: findSpreadCall! insufficient oqs < $(NUM_LEGS4): $mid: $strikeHigh")
+        return nothing
+    end
+    maxWidth = params.MaxWidthRat * prob.center / 2
+
+    count = 0
+    lastiRight = lastindex(oqsRight)
+    for i3 in 1:(lastiRight-1)
+        oq3 = oqsRight[i3]
+        str3 = getStrike(oq3)
+        canOpenPos(getOption(oq3), Side.short) || continue
+        for i4 in (i3+1):lastiRight
+            oq4 = oqsRight[i4]
+            str4 = getStrike(oq4)
+            str4 - str3 <= maxWidth || break
+            canOpenPos(getOption(oq4), Side.long) || continue
+
+            lms = CollUtil.sortuple(x -> getStrike(x) + (isCall(x) ? eps(Currency) : 0.0), LegMetaOpen(oq3, Side.short), LegMetaOpen(oq4, Side.long))
+            r = scoreLow(lms, params, prob, args...)
+            count += 1
+            if !isnothing(r) && (isempty(keep) || r.score > keep[end].score)
+                # TODO: not optimized
+                score, neto, margin, data = r
+                push!(keep, Cand(lms, score, neto, margin, data))
+                sort!(keep; rev=true, by=x->x.score)
+                length(keep) <= 10 || pop!(keep)
+            end
+        end
+    end
+    # @blog "findSpreadCall! scored $count candidates"
     return
 end
 #endregion

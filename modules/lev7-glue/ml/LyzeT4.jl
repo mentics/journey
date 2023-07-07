@@ -34,15 +34,19 @@ function model_loss(model, x, y)
 end
 
 function make_model(len)
-    h1 = 8 * len
-    h2 = 4 * len
-    h3 = 2 * len
+    mult = 4
+    h1 = mult * len
+    h2 = 2 * mult * len
+    h3 = 2 * mult * len
+    h4 = mult * len
     out = 2 # output is one-hot yes/no
     d1 = Dense(len => h1; bias=false)
-    d2 = Dense(h1 => h2; bias=false)
-    # d3 = Dense(h2 => h3; bias=false)
-    d4 = Dense(h2 => out; bias=false)
-    mcpu = Chain(d1, d2, d4)
+    d2 = Dense(h1 => h2, tanh; bias=false)
+    dr1 = Dropout(0.05)
+    d3 = Dense(h2 => h3, tanh; bias=false)
+    d4 = Dense(h3 => h4, relu; bias=false)
+    d5 = Dense(h4 => out; bias=false)
+    mcpu = Chain(d1, d2, dr1, d3, d4, d5)
     println("Created model with param count: ", sum(length, Flux.params(mcpu)))
     return mcpu |> gpu
 end
@@ -70,6 +74,11 @@ function run(make_new=false; iters=10)
 
     train(model, opt_state, data_train; iters)
     test(model, data_test)
+end
+
+function set_lr(lr)
+    kopt.os[1].eta = lr
+    global kopt_state = Flux.setup(kopt, kmodel);
 end
 
 function train(model, opt_state, data; iters)

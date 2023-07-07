@@ -59,6 +59,7 @@ function run()
 end
 
 function checkExits(strat, tim, otoq, curp)
+    # println("Warning: skipping check exits for now until clear out the small trades")
     for tradeOpen in StoreTrade.tradesLive()
         lmsc = tosn(LegMetaClose, Tuple(getLegs(tradeOpen)), otoq)
         !isnothing(lmsc) || ( println("couldn't quote") ; return true ) # skip if can't quote
