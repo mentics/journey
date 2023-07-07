@@ -166,7 +166,7 @@ function updateDaily(sym)::DailyType
                 end
             end
         end
-    catch
+    catch e
         if e isa InterruptException
             rethrow(e)
         else
