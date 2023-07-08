@@ -101,6 +101,7 @@ function train(batcher, model, opt_state; iters=10)
     lossbase = calclossbase(batcher(1))
     println("lossbase: ", lossbase)
     # losses = Float32[]
+    last_save = now(UTC)
     for epoch in 1:iters
         loss_sum = 0.0
         i = 1
@@ -124,7 +125,10 @@ function train(batcher, model, opt_state; iters=10)
         end
         loss = loss_sum / i
         println("Train loss epoch #$(epoch): $(loss)")
-        checkpoint_save()
+        if (now(UTC) - last_save) >= Minute(30)
+            last_save = now(UTC)
+            checkpoint_save()
+        end
         # push!(losses, loss)
     end
 end
