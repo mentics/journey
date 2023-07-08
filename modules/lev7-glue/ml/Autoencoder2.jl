@@ -61,7 +61,7 @@ function info(data)
     )
 end
 
-function run(data)
+function run(data; iters=10)
     (;seqlen, encodedwidth, numlayers, activation) = hypers()
     # global khyper = (seqlen, encodedwidth, numlayers, activation)
     modelcpu = make_model(hypers())
@@ -73,7 +73,7 @@ function run(data)
     global kopt = opt
     global kopt_state = opt_state
 
-    train(make_batcher(data, seqlen), model, opt_state)
+    train(make_batcher(data, seqlen), model, opt_state; iters)
 end
 
 function make_batcher(data, seqlen)
