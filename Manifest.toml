@@ -2,7 +2,7 @@
 
 julia_version = "1.9.0"
 manifest_format = "2.0"
-project_hash = "120b7402b3c5afc25b7be6c63a0d46c344688e22"
+project_hash = "f2e7e11a7c41c2eac4b9058a55e9ec6d4cec71f7"
 
 [[deps.AbstractFFTs]]
 deps = ["LinearAlgebra"]
@@ -1949,12 +1949,6 @@ git-tree-sha1 = "c60ec5c62180f27efea3ba2908480f8055e17cee"
 uuid = "a2af1166-a08f-5f64-846c-94a0d3cef48c"
 version = "1.1.1"
 
-[[deps.Spark]]
-deps = ["Dates", "IteratorInterfaceExtensions", "JavaCall", "Reexport", "Serialization", "Sockets", "Statistics", "TableTraits", "Umlaut"]
-git-tree-sha1 = "e25881d26eba89fc85465e368ec1f4178e8b6c85"
-uuid = "e3819d11-95af-5eea-9727-70c091663a01"
-version = "0.6.1"
-
 [[deps.SparseArrays]]
 deps = ["Libdl", "LinearAlgebra", "Random", "Serialization", "SuiteSparse_jll"]
 uuid = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
@@ -2253,12 +2247,6 @@ version = "1.6.1"
 [[deps.UUIDs]]
 deps = ["Random", "SHA"]
 uuid = "cf7118a7-6976-5b1a-9a39-7adc72f591a4"
-
-[[deps.Umlaut]]
-deps = ["LinearAlgebra", "Statistics", "Test"]
-git-tree-sha1 = "6e57644d9e1c43be16a9fdac31ff41a03314746d"
-uuid = "92992a2b-8ce5-4a9c-bb9d-58be9a7dc841"
-version = "0.2.5"
 
 [[deps.Unicode]]
 uuid = "4ec0a83e-493e-50e2-b9ac-8f72acf5a8f5"

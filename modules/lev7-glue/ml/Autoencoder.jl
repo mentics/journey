@@ -130,19 +130,34 @@ function train(batcher, model, opt_state; iters=10)
 end
 
 #region Persist
-BASE_PATH = "D:/data/ml/journey/models"
+const CONFIG = Ref(Dict{Symbol,String}())
+const CONFIG_WIN = Ref(Dict(
+  :PATH_CHECKPOINTS = "D:/data/ml/journey/models",
+  :PATH_DATA = "W:\\home\\jshellman\\ray\\alone"
+))
+const CONFIG_LINUX = Ref(Dict(
+  :PATH_CHECKPOINTS = "~/data/ml/journey/checkpoints"
+  :PATH_DATA = "~/data/ml/input",
+))
+if Sys.iswindows()
+  CONFIG[] = CONFIG_WIN
+else
+  CONFIG[] = CONFIG_LINUX
+end
+
+path_checkpoint() = CONFIG[:PATH_CHECKPOINTS]
 
 using JLD2
 function checkpoint_save()
     kh = join(string.(values(Autoencoder.hypers())), "-")
     # kh = join(string.(khyper), "-")
-    path = joinpath(BASE_PATH, "under-auto-$(kh)-$(round(Int, datetime2unix(now(UTC)))).jld2")
+    path = joinpath(path_checkpoint(), "under-auto-$(kh)-$(round(Int, datetime2unix(now(UTC)))).jld2")
     println("Saving checkpoint to $(path)")
     jldsave(path, model_state=Flux.state(cpu(kmodelgpu)), opt_state=cpu(kopt_state))
 end
 
 function checkpoint_load(fname)
-    path = joinpath(BASE_PATH, fname)
+    path = joinpath(path_checkpoint(), fname)
     println("Loading checkpoint from $(path)")
     model = make_model(hypers())
     d = JLD2.load(path)
@@ -208,14 +223,14 @@ function xforindex(ind, data, seqlen)
 end
 
 function make_data()
-    fileinterp = "W:\\home\\jshellman\\ray\\alone\\underinterp.parquet"
+    fileinterp = joinpath(path_data(), "underinterp.parquet")
     if isfile(fileinterp)
         println("Loading interp parquet")
         pq = Parquet2.Dataset(fileinterp)
         df = DataFrame(pq; copycols=false)
     else
         println("Loading under parquet and interpolating")
-        pq = Parquet2.Dataset("W:\\home\\jshellman\\ray\\alone\\under.parquet")
+        pq = Parquet2.Dataset(joinpath(path_data(), "under.parquet")
         df = DataFrame(pq; copycols=false)
         # disallowmissing!(df, [:quote_ts, :under])
         df = interpolate(df)
