@@ -1,4 +1,4 @@
-module Autoencoder
+module Autoencoder2
 using Dates, IterTools
 using Parquet2, DataFrames, Impute
 using Flux, NNlib, MLUtils, CUDA
@@ -92,7 +92,7 @@ end
 
 function calclossbase(batchexample)
     # 0.5 is the mean (approx because last 2 are different)
-    ls = Flux.Losses.mse(batchexample, fill(0.5, size(batchexample)))
+    ls = Flux.Losses.mse(batchexample, fill(0.0f0, size(batchexample)))
     return ls / size(batchexample)[end]
 end
 
@@ -182,9 +182,8 @@ function test1(data, ind)
     xgpu = x |> gpu
     yhatgpu = kmodelgpu(xgpu)
     yhat = yhatgpu |> cpu
-    # @show x yhat
-    println((;loss=calcloss(kmodelgpu, xgpu), loss2=Flux.Losses.mse(x, yhat), loss5=Flux.Losses.mse(x, fill(0.5f0, length(x)))))
-    @show x[end] yhat[end] x[end-1] yhat[end-1]
+    lossbase = calclossbase(x)
+    println((;lossbase, loss=calcloss(kmodelgpu, xgpu), loss2=Flux.Losses.mse(x, yhat), loss5=Flux.Losses.mse(x, fill(0.5f0, length(x)))))
     draw(:lines, x)
     draw!(:lines, yhat)
 end
@@ -201,28 +200,13 @@ end
 
 function xforindex(ind, data, seqlen)
     res = Array{Float32}(undef, seqlen)
-    seqlen -= 2
     ind = ind + seqlen
     h0 = data[ind]
-    # inds = (ind-1):-1:(ind-seqlen)
     seq = @view data[(ind-seqlen):(ind-1)]
-    # mn, mx = extrema(data[i] for i in inds)
-    mn, mx = extrema(seq)
-    mn /= h0
-    mx /= h0
-    scale = mx - mn
     for i in 1:seqlen
-        res[i] = ((seq[i] / h0) - mn) / scale
+        res[i] = 100f0 * ((seq[i] / h0) - 1.0)
     end
-    res[end-1] = mn
-    res[end] = scale
     return res
-    # # v = Float32(h0) ./ data[(i-1):-1:(i-seqlen)]
-    # mn, mx = extrema(v)
-    # scale = mx - mn
-    # v .= (v .- mn) ./ scale
-    # # TODO: maybe transform mn and scale in some way
-    # return vcat(mn, scale, v)
 end
 
 function make_data()
