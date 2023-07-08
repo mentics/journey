@@ -53,7 +53,7 @@ end
 
 function info(data)
     (;seqlen) = hypers()
-    batchlen = 2048
+    batchlen = 8192
     numsamples = length(data) - seqlen
     numbatches = round(Int, numsamples / batchlen, RoundUp)
     return (;
@@ -131,21 +131,22 @@ end
 
 #region Persist
 const CONFIG = Ref(Dict{Symbol,String}())
-const CONFIG_WIN = Ref(Dict(
-  :PATH_CHECKPOINTS = "D:/data/ml/journey/models",
-  :PATH_DATA = "W:\\home\\jshellman\\ray\\alone"
-))
-const CONFIG_LINUX = Ref(Dict(
-  :PATH_CHECKPOINTS = "~/data/ml/journey/checkpoints"
-  :PATH_DATA = "~/data/ml/input",
-))
+CONFIG_WIN = Dict(
+  :PATH_CHECKPOINTS => "D:/data/ml/journey/models",
+  :PATH_DATA => "W:\\home\\jshellman\\ray\\alone",
+)
+CONFIG_LINUX = Dict(
+  :PATH_CHECKPOINTS => "/home/jshellman/data/ml/journey/checkpoints",
+  :PATH_DATA => "/home/jshellman/data/ml/input",
+)
 if Sys.iswindows()
   CONFIG[] = CONFIG_WIN
 else
   CONFIG[] = CONFIG_LINUX
 end
 
-path_checkpoint() = CONFIG[:PATH_CHECKPOINTS]
+path_checkpoint() = CONFIG[][:PATH_CHECKPOINTS]
+path_data() = CONFIG[][:PATH_DATA]
 
 using JLD2
 function checkpoint_save()
@@ -230,7 +231,7 @@ function make_data()
         df = DataFrame(pq; copycols=false)
     else
         println("Loading under parquet and interpolating")
-        pq = Parquet2.Dataset(joinpath(path_data(), "under.parquet")
+        pq = Parquet2.Dataset(joinpath(path_data(), "under.parquet"))
         df = DataFrame(pq; copycols=false)
         # disallowmissing!(df, [:quote_ts, :under])
         df = interpolate(df)
