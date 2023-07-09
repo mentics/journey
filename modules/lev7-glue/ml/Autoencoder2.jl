@@ -99,10 +99,11 @@ function calclossbase(batchexample)
 end
 
 function train(batcher, model, opt_state; iters=10)
+    variation = 0
+    (;batchlen) = info([0f0]) # TODO: ugly hack to get batchlen
     (;seqlen) = hypers()
-    lossbase = calclossbase(batcher(1, 0))
+    lossbase = calclossbase(batcher(1, variation))
     println("lossbase: ", lossbase)
-    # losses = Float32[]
     last_save = now(UTC)
     for epoch in 1:iters
         loss_sum = 0.0
@@ -131,7 +132,8 @@ function train(batcher, model, opt_state; iters=10)
             last_save = now(UTC)
             checkpoint_save()
         end
-        # push!(losses, loss)
+        variation += 1
+        variation %= batchlen
     end
 end
 
