@@ -4,6 +4,8 @@ using Parquet2, DataFrames, Impute
 using Flux, NNlib, MLUtils, CUDA
 using CudaUtil
 
+# TODO: maybe include bias terms now that we're not restricting 0 to 1
+
 function model_encoder(inputwidth, encodedwidth, numlayers, activation)
     step = (encodedwidth - inputwidth) ÷ numlayers
     layerwidths = collect(inputwidth:step:encodedwidth)
@@ -78,9 +80,9 @@ end
 
 function make_batcher(data, seqlen)
     (;batchlen, numbatches) = info(data)
-    return function(batchi)
+    return function(batchi, variation)
         batchi <= floor(numbatches * 0.8) || return nothing
-        return makebatch(data, seqlen, batchlen, batchi)
+        return makebatch(data, seqlen, batchlen, batchi; variation)
     end
 end
 
@@ -92,20 +94,20 @@ end
 
 function calclossbase(batchexample)
     # 0.5 is the mean (approx because last 2 are different)
-    ls = Flux.Losses.mse(batchexample, fill(0.0f0, size(batchexample)))
+    ls = Flux.Losses.mse(batchexample, fill(0f0, size(batchexample)))
     return ls / size(batchexample)[end]
 end
 
 function train(batcher, model, opt_state; iters=10)
     (;seqlen) = hypers()
-    lossbase = calclossbase(batcher(1))
+    lossbase = calclossbase(batcher(1, 0))
     println("lossbase: ", lossbase)
     # losses = Float32[]
     last_save = now(UTC)
     for epoch in 1:iters
         loss_sum = 0.0
         i = 1
-        x = batcher(i) |> gpu
+        x = batcher(i, epoch-1) |> gpu
         while !isnothing(x)
             ls, grads = Flux.withgradient(calcloss, model, x)
             ls /= size(x)[end] * lossbase
@@ -121,7 +123,7 @@ function train(batcher, model, opt_state; iters=10)
                     return
                 end
             end
-            x = batcher(i) |> gpu
+            x = batcher(i, epoch-1) |> gpu
         end
         loss = loss_sum / i
         println("Train loss epoch #$(epoch): $(loss)")
@@ -182,8 +184,8 @@ function test1(data, ind)
     xgpu = x |> gpu
     yhatgpu = kmodelgpu(xgpu)
     yhat = yhatgpu |> cpu
-    lossbase = calclossbase(x)
-    println((;lossbase, loss=calcloss(kmodelgpu, xgpu), loss2=Flux.Losses.mse(x, yhat), loss5=Flux.Losses.mse(x, fill(0.5f0, length(x)))))
+    lossbase = calclossbase(stack((x,)))
+    println((;lossbase, loss=calcloss(kmodelgpu, xgpu), loss2=Flux.Losses.mse(x, yhat), loss0=Flux.Losses.mse(x, fill(0f0, length(x)))))
     draw(:lines, x)
     draw!(:lines, yhat)
 end
@@ -191,11 +193,11 @@ end
 
 #region Data
 import MLBatches
-function makebatch(data, seqlen, batchlen, ind)
+function makebatch(data, seqlen, batchlen, ind; variation)
     datalen = length(data) - seqlen
     indstart = 1 + (ind - 1) * batchlen
     println("Making batch for indstart $(indstart)")
-    MLBatches.make_batch(xforindex, datalen, batchlen, indstart, data, seqlen)
+    MLBatches.make_batch(xforindex, datalen, batchlen, indstart, data, seqlen; variation)
 end
 
 function xforindex(ind, data, seqlen)

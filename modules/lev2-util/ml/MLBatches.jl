@@ -4,10 +4,12 @@ import MaxLFSR
 # const CacheSeq = Ref{AbstractArray}(nothing)
 # const Cache = Ref{AbstractArray}(nothing)
 
-function make_batch(f, datalen, batch_len, ind, args...)
+function make_batch(f, datalen, batch_len, ind, args...; variation=0)
     lfsr = MaxLFSR.LFSR(datalen)
-    ind, _ = lfsrfori(lfsr, ind)
-    return stack(f(i, args...) for i in ind:min(ind+batch_len-1, datalen))
+    ind += variation
+    # ind = lfsrfori(lfsr, ind)
+    # return stack(f(i, args...) for i in ind:min(ind+batch_len-1, datalen))
+    return stack(f(lfsrfori(lfsr, i)[1], args...) for i in ind:min(ind+batch_len-1, datalen))
 end
 
 @inline function lfsrfori(A, x)
@@ -16,7 +18,7 @@ end
         x = MaxLFSR.step(A, x)
 
         # Otherwise, perform a length check and exit.
-        (x <= length(A)) && return (x, x)
+        (x <= length(A)) && return x
     end
 end
 
