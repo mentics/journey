@@ -1,7 +1,7 @@
 module Autoencoder2
 using Dates, IterTools
 using Parquet2, DataFrames, Impute
-using Flux, Optimisers, NNlib, MLUtils, CUDA
+using Flux, NNlib, MLUtils, CUDA
 using CudaUtil
 
 # TODO: maybe include bias terms now that we're not restricting 0 to 1
@@ -136,18 +136,22 @@ function train(batcher, model, opt_state, derinfo; iters=10)
             checkpoint_save()
         end
         toplosses = sortperm(losses; rev=true)
-        Optimisers.adjust!(opt_state, learningrate / 2)
+        Flux.Optimisers.adjust!(opt_state, learningrate / 2)
         for batchi in toplosses[1:3]
             ls = 0.0
-            for variations in around(variation, batchlen)
-                x = batcher(batchi, variations) |> gpu
-                ls, grads = Flux.withgradient(calcloss, model, x)
-                ls /= size(x)[end] * lossbase
-                Flux.update!(opt_state, model, grads[1])
+            for _ in 1:10
+                for variations in around(variation, batchlen)
+                    x = batcher(batchi, variations) |> gpu
+                    ls, grads = Flux.withgradient(calcloss, model, x)
+                    ls /= size(x)[end] * lossbase
+                    Flux.update!(opt_state, model, grads[1])
+                end
+                improvement = (1 - ls / losses[batchi])
+                improvement < 0.01 || break
             end
-            println("Top loss batch #$(batchi): (%$(100 * (1 - ls / losses[batchi])) improvement) $(losses[batchi]) -> $(ls)")
+            println("Top loss batch #$(batchi): (%$(100 * improvement) improvement) $(losses[batchi]) -> $(ls)")
         end
-        Optimisers.adjust!(opt_state, learningrate)
+        Flux.Optimisers.adjust!(opt_state, learningrate)
         variation += 1
         variation %= batchlen
     end
