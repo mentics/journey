@@ -137,30 +137,42 @@ function train(batcher, model, opt_state, derinfo; iters=10)
             last_save = now(UTC)
             checkpoint_save()
         end
-        toplosses = sortperm(losses; rev=true)
-        for i in toplosses[1:3]
-            Flux.Optimisers.adjust!(opt_state, learningrate)
-            batchi = trainbatchis[i]
-            ls = 0.0
-            improvement = 0.0
-            for _ in 1:20
-                Flux.Optimisers.adjust!(opt_state, rand(.05:0.001:1.0) * learningrate)
-                for variations in around(variation, batchlen)
-                    x = batcher(batchi, variations) |> gpu
-                    ls, grads = Flux.withgradient(calcloss, model, x)
-                    ls /= size(x)[end] * lossbase
-                    Flux.update!(opt_state, model, grads[1])
-                    improvement = (1 - ls / losses[i])
-                    improvement < 0.01 || @goto breakout
-                end
-            end
-            @label breakout
-            println("Top loss batch #$(i): (%$(100 * improvement) improvement) $(losses[i]) -> $(ls)")
-            losses[i] = min(losses[i], ls)
+        toplossis = sortperm(losses; rev=true)
+        numtop = 3
+        xtops = map(1:numtop) do i
+            batcher(trainbatchis[toplossis[i]], variations) |> gpu
         end
+        lss = zeros(Int, numtop)
+        improvements = zeros(numtop)
+        topi = 1
+        for _ in 1:20
+            printl("Improving batchi $(toplossis(topi))")
+            # batchi = trainbatchis[toplosses[i]]
+            x = xtops[topi] # batcher(batchi, variations) |> gpu
+            for _ in 1:10
+                Flux.Optimisers.adjust!(opt_state, rand(.05:0.001:1.0) * learningrate)
+                ls, grads = Flux.withgradient(calcloss, model, x)
+                ls /= size(x)[end] * lossbase
+                lss[topi] = ls
+                Flux.update!(opt_state, model, grads[1])
+                improvements[topi] = (1 - ls / losses[toplossis[topi]])
+                improvements[topi] >= 0.01 && break
+            end
+            for othertopi in (1:numtop)[1:end .!= topi]
+                ls = calcloss(model, xtops[othertopi])
+                lss[otheropi] = ls
+                improvements[othertopi] = (1 - ls / losses[toplossis[othertopi]])
+            end
+            topi = findfirst(k -> k < 0.01, improvements)
+            isnothing(topi) && @goto breakout
+        end
+        @label breakout
+        println("Top loss batches #$(toplossis[1:numtop]):")
+        println([join("  (%$(100 * improvements[topi]) improvement) $(losses[toplossis[topi]]) -> $(lss[topi])", '\n') for i in 1:numtop])
+        losses[i] = min(losses[i], ls)
         Flux.Optimisers.adjust!(opt_state, learningrate)
-        variation += 1
-        variation %= batchlen
+
+        variation = (variation + 1) % batchlen
     end
 end
 
