@@ -58,9 +58,12 @@ function info(data)
     learningrate = 1e-4
     batchlen = 8192
     numsamples = length(data) - seqlen
-    numbatches = round(Int, (0.8 * numsamples) / batchlen, RoundUp)
+    numbatches = round(Int, numsamples / batchlen, RoundUp)
+    spliti = round(Int, 0.8 * numbatches, RoundDown)
+    trainbatchis = 1:spliti
+    testbatchis = (split+1):numbatches
     return (;
-        learningrate, batchlen, numsamples, numbatches
+        learningrate, batchlen, numsamples, trainbatchis, testbatchis
     )
 end
 
@@ -80,9 +83,8 @@ function run(data; iters=10)
 end
 
 function make_batcher(data, seqlen)
-    (;batchlen, trainmaxi) = info(data)
+    (;batchlen) = info(data)
     return function(batchi, variation)
-        batchi <= floor(numbatches * 0.8) || return nothing
         return makebatch(data, seqlen, batchlen, batchi; variation)
     end
 end
@@ -101,18 +103,19 @@ end
 
 function train(batcher, model, opt_state, derinfo; iters=10)
     variation = 0
-    (;learningrate, batchlen, numbatches) = derinfo
+    (;learningrate, batchlen, trainbatchis) = derinfo
     # (;seqlen) = hypers()
     lossbase = calclossbase(batcher(1, variation))
     println("lossbase: ", lossbase)
     last_save = now(UTC)
+    numbatches = length(trainbatchis)
     losses = Vector{Float64}(Inf, numbatches)
     global klosses = losses
     for epoch in 1:iters
         loss_sum = 0.0
-        i = 1
-        x = batcher(i, variation) |> gpu
-        while !isnothing(x)
+        for i in eachindex(trainbatchis)
+            batchi = trainbatchis[i]
+            x = batcher(batchi, variation) |> gpu
             ls, grads = Flux.withgradient(calcloss, model, x)
             ls /= size(x)[end] * lossbase
             losses[i] = min(losses[i], ls)
@@ -120,7 +123,6 @@ function train(batcher, model, opt_state, derinfo; iters=10)
             Flux.update!(opt_state, model, grads[1])
             println("Train loss batch #$(i): $(ls)")
             yield()
-            i += 1
             # if (i % 10) == 0
             #     yhat = model(x)
             #     if sum(abs, yhat) < 0.1 * (seqlen - 2)
@@ -128,9 +130,8 @@ function train(batcher, model, opt_state, derinfo; iters=10)
             #         return
             #     end
             # end
-            x = batcher(i, variation) |> gpu
         end
-        loss = loss_sum / i
+        loss = loss_sum / numbatches
         println("Train loss epoch #$(epoch): $(loss)")
         if (now(UTC) - last_save) >= Minute(30)
             last_save = now(UTC)
@@ -138,7 +139,8 @@ function train(batcher, model, opt_state, derinfo; iters=10)
         end
         toplosses = sortperm(losses; rev=true)
         Flux.Optimisers.adjust!(opt_state, learningrate / 2)
-        for batchi in toplosses[1:3]
+        for i in toplosses[1:3]
+            batchi = trainbatchis[i]
             ls = 0.0
             improvement = 0.0
             for _ in 1:10
@@ -147,13 +149,13 @@ function train(batcher, model, opt_state, derinfo; iters=10)
                     ls, grads = Flux.withgradient(calcloss, model, x)
                     ls /= size(x)[end] * lossbase
                     Flux.update!(opt_state, model, grads[1])
-                    losses[batchi] = min(losses[batchi], ls)
-                    improvement = (1 - ls / losses[batchi])
+                    losses[i] = min(losses[i], ls)
+                    improvement = (1 - ls / losses[i])
                     improvement < 0.01 || @goto breakout
                 end
             end
             @label breakout
-            println("Top loss batch #$(batchi): (%$(100 * improvement) improvement) $(losses[batchi]) -> $(ls)")
+            println("Top loss batch #$(i): (%$(100 * improvement) improvement) $(losses[i]) -> $(ls)")
         end
         Flux.Optimisers.adjust!(opt_state, learningrate)
         variation += 1
