@@ -10,8 +10,9 @@ function model_encoder(inputwidth, encodedwidth, numlayers, activation)
     step = (encodedwidth - inputwidth) ÷ numlayers
     layerwidths = collect(inputwidth:step:encodedwidth)
     return Chain([Dense(layerwidths[i-1] => layerwidths[i],
-                    i == (numlayers + 1) ? identity : activation;
-                    bias=false
+                    # i == (numlayers + 1) ? identity : activation;
+                    i == 1 ? identity : activation;
+                    bias = i == 1
                 ) for i in 2:(numlayers+1)])
 end
 
@@ -20,7 +21,7 @@ function model_decoder(inputwidth, encodedwidth, numlayers, activation)
     layerwidths = collect(encodedwidth:step:inputwidth)
     return Chain([Dense(layerwidths[i-1] => layerwidths[i],
                     i == (numlayers + 1) ? identity : activation;
-                    bias=false
+                    bias = i == (numlayers + 1)
                 ) for i in 2:(numlayers+1)])
 end
 
@@ -36,11 +37,13 @@ sumyhat(yhat) = sum(abs, yhat)
 
 function calcloss(model, x)
     yhat = model(x)
-    penalty = 1.0 / (0.0001 + sumyhat(yhat))
-    # # Mean of yhat elements except the last 2 should be 0.5... wait.. not quite, but we should be able to make an error term for it to avoid things going to 0
+    return Flux.Losses.mse(x, yhat)
+    # penalty = 1.0 / (0.0001 + sumyhat(yhat))
+
     # # maybe square denom
     # penalty = 1.0 / (0.01 + sumparams(model))
-    return Flux.Losses.mse(x, yhat) + penalty
+
+    # return Flux.Losses.mse(x, yhat) + penalty
 end
 
 function hypers()
@@ -97,7 +100,7 @@ end
 
 function calclossbase(batchexample)
     # 0.5 is the mean (approx because last 2 are different)
-    ls = Flux.Losses.mse(batchexample, fill(0f0, size(batchexample)))
+    ls = Flux.Losses.mse(batchexample, zeros(Float32, size(batchexample))) # fill(0f0, size(batchexample)))
     return ls / size(batchexample)[end]
 end
 
@@ -222,13 +225,15 @@ using JLD2
 function checkpoint_save()
     kh = join(string.(values(hypers())), "-")
     # kh = join(string.(khyper), "-")
-    path = joinpath(path_checkpoint(), "under-auto-$(kh)-$(round(Int, datetime2unix(now(UTC)))).jld2")
+    path = joinpath(path_checkpoint(), "under-auto2-$(kh)-$(round(Int, datetime2unix(now(UTC)))).jld2")
     println("Saving checkpoint to $(path)")
     jldsave(path, model_state=Flux.state(cpu(kmodelgpu)), opt_state=cpu(kopt_state))
 end
 
-function checkpoint_load(fname)
-    path = joinpath(path_checkpoint(), fname)
+most_recent_file(path) = CollUtil.findMaxDom(mtime, readdir(path))
+
+function checkpoint_load(fname = nothing)
+    path = isnothing(fname) ? most_recent_file(path_checkpoint()) : joinpath(path_checkpoint(), fname)
     println("Loading checkpoint from $(path)")
     model = make_model(hypers())
     d = JLD2.load(path)
