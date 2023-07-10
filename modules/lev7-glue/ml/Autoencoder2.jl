@@ -55,27 +55,28 @@ end
 
 function info(data)
     (;seqlen) = hypers()
+    learningrate = 1e-4
     batchlen = 8192
     numsamples = length(data) - seqlen
     numbatches = round(Int, numsamples / batchlen, RoundUp)
     return (;
-        batchlen, numsamples, numbatches
+        learningrate, batchlen, numsamples, numbatches
     )
 end
 
 function run(data; iters=10)
     (;seqlen, encodedwidth, numlayers, activation) = hypers()
-    # global khyper = (seqlen, encodedwidth, numlayers, activation)
+    (;learningrate) = info(data)
     modelcpu = make_model(hypers())
     global kmodelcpu = modelcpu
     model = modelcpu |> gpu
     global kmodelgpu = model
-    opt = AdamW(1e-4)
+    opt = AdamW(learningrate)
     opt_state = gpu(Flux.setup(opt, model))
     global kopt = opt
     global kopt_state = opt_state
 
-    train(make_batcher(data, seqlen), model, opt_state; iters)
+    train(make_batcher(data, seqlen), model, opt_state, info(data); iters)
 end
 
 function make_batcher(data, seqlen)
@@ -89,7 +90,7 @@ end
 function train_continue(data, model=kmodelgpu, opt_state=kopt_state; iters=10)
     global kmodelgpu = gpu(model)
     global kopt_state = gpu(opt_state)
-    train(make_batcher(data, hypers().seqlen), kmodelgpu, kopt_state; iters)
+    train(make_batcher(data, hypers().seqlen), kmodelgpu, kopt_state, info(data); iters)
 end
 
 function calclossbase(batchexample)
@@ -98,33 +99,35 @@ function calclossbase(batchexample)
     return ls / size(batchexample)[end]
 end
 
-function train(batcher, model, opt_state; iters=10)
+function train(batcher, model, opt_state, derinfo; iters=10)
     variation = 0
-    (;batchlen) = info([0f0]) # TODO: ugly hack to get batchlen
-    (;seqlen) = hypers()
+    (;learningrate, batchlen, numbatches) = derinfo
+    # (;seqlen) = hypers()
     lossbase = calclossbase(batcher(1, variation))
     println("lossbase: ", lossbase)
     last_save = now(UTC)
+    losses = Vector{Float64}(undef, numbatches)
     for epoch in 1:iters
         loss_sum = 0.0
         i = 1
-        x = batcher(i, epoch-1) |> gpu
+        x = batcher(i, variation) |> gpu
         while !isnothing(x)
             ls, grads = Flux.withgradient(calcloss, model, x)
             ls /= size(x)[end] * lossbase
+            losses[i] = ls
             loss_sum += ls
             Flux.update!(opt_state, model, grads[1])
             println("Train loss batch #$(i): $(ls)")
             yield()
             i += 1
-            if (i % 10) == 0
-                yhat = model(x)
-                if sum(abs, yhat) < 0.1 * (seqlen - 2)
-                    println("ERROR: yhat reached too low: ", sumparams(model))
-                    return
-                end
-            end
-            x = batcher(i, epoch-1) |> gpu
+            # if (i % 10) == 0
+            #     yhat = model(x)
+            #     if sum(abs, yhat) < 0.1 * (seqlen - 2)
+            #         println("ERROR: yhat reached too low: ", sumparams(model))
+            #         return
+            #     end
+            # end
+            x = batcher(i, variation) |> gpu
         end
         loss = loss_sum / i
         println("Train loss epoch #$(epoch): $(loss)")
@@ -132,10 +135,25 @@ function train(batcher, model, opt_state; iters=10)
             last_save = now(UTC)
             checkpoint_save()
         end
+        toplosses = sortperm(losses; rev=true)
+        adjust!(opt_state, learningrate / 2)
+        for batchi in toplosses[1:3]
+            ls = 0.0
+            for variations in around(variation, batchlen)
+                x = batcher(batchi, variations) |> gpu
+                ls, grads = Flux.withgradient(calcloss, model, x)
+                ls /= size(x)[end] * lossbase
+                Flux.update!(opt_state, model, grads[1])
+            end
+            println("Top loss batch #$(batchi): (%$(100 * ls / toplosses[i]) improvement) $(losses[batchi]) -> $(ls)")
+        end
+        adjust!(opt_state, learningrate)
         variation += 1
         variation %= batchlen
     end
 end
+
+around(i, mx) = ( i = clamp(i, 1, mx-1) ; return (i-1):(i+1) )
 
 #region Persist
 const CONFIG = Ref(Dict{Symbol,String}())
