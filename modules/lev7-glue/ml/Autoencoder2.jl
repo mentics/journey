@@ -142,37 +142,56 @@ function train(batcher, model, opt_state, derinfo; iters=10)
         xtops = map(1:numtop) do i
             batcher(trainbatchis[toplossis[i]], variation) |> gpu
         end
-        lss = zeros(numtop)
-        improvements = zeros(numtop)
-        topi = 1
+
+        ####
+        topbatch = reduce(hcat, xtops) |> gpu
+        toplen = size(topbatch)[end]
+        toplsorig = calcloss(model, topbatch) / (toplen * lossbase)
+        topls = 0.0
+        improvement = 0.0
         for _ in 1:100
-            println("Improving batchi $(toplossis[topi])")
-            # batchi = trainbatchis[toplosses[i]]
-            x = xtops[topi] # batcher(batchi, variation) |> gpu
-            for _ in 1:100
-                Flux.Optimisers.adjust!(opt_state, rand(.05:0.001:1.2) * learningrate)
-                ls, grads = Flux.withgradient(calcloss, model, x)
-                ls /= size(x)[end] * lossbase
-                lss[topi] = ls
-                Flux.update!(opt_state, model, grads[1])
-                improvements[topi] = (1 - ls / losses[toplossis[topi]])
-                improvements[topi] >= 0.0001 && break
-            end
-            for othertopi in (1:numtop)[1:end .!= topi]
-                ls = calcloss(model, xtops[othertopi])
-                lss[othertopi] = ls
-                improvements[othertopi] = (1 - ls / losses[toplossis[othertopi]])
-            end
-            topi = findfirst(k -> k < 0.0001, improvements)
-            isnothing(topi) && @goto breakout
+            Flux.Optimisers.adjust!(opt_state, rand(.05:0.001:1.2) * learningrate)
+            topls, grads = Flux.withgradient(calcloss, model, topbatch)
+            topls /= toplen * lossbase
+            Flux.update!(opt_state, model, grads[1])
+            improvement = (1 - topls / toplsorig)
+            improvement >= 0.0001 && break
         end
-        @label breakout
-        println("Top loss batches #$(toplossis[1:numtop]):")
-        println(join(["  #$(toplossis[topi]): (%$(100 * improvements[topi]) improvement) $(losses[toplossis[topi]]) -> $(lss[topi])" for topi in 1:numtop], '\n'))
-        for topi in 1:numtop
-            losses[toplossis[topi]] = min(losses[toplossis[topi]], lss[topi])
-        end
-        Flux.Optimisers.adjust!(opt_state, learningrate)
+        println("Top loss combined batch #$(toplossis[1:numtop]): (%$(100 * improvement) improvement) $(toplsorig) -> $(topls)")
+        ####
+
+
+        # lss = zeros(numtop)
+        # improvements = zeros(numtop)
+        # topi = 1
+        # for _ in 1:100
+        #     println("Improving batchi $(toplossis[topi])")
+        #     # batchi = trainbatchis[toplosses[i]]
+        #     x = xtops[topi] # batcher(batchi, variation) |> gpu
+        #     for _ in 1:100
+        #         Flux.Optimisers.adjust!(opt_state, rand(.05:0.001:1.2) * learningrate)
+        #         ls, grads = Flux.withgradient(calcloss, model, x)
+        #         ls /= size(x)[end] * lossbase
+        #         lss[topi] = ls
+        #         Flux.update!(opt_state, model, grads[1])
+        #         improvements[topi] = (1 - ls / losses[toplossis[topi]])
+        #         improvements[topi] >= 0.0001 && break
+        #     end
+        #     for othertopi in (1:numtop)[1:end .!= topi]
+        #         ls = calcloss(model, xtops[othertopi])
+        #         lss[othertopi] = ls
+        #         improvements[othertopi] = (1 - ls / losses[toplossis[othertopi]])
+        #     end
+        #     topi = findfirst(k -> k < 0.0001, improvements)
+        #     isnothing(topi) && @goto breakout
+        # end
+        # @label breakout
+        # println("Top loss batches #$(toplossis[1:numtop]):")
+        # println(join(["  #$(toplossis[topi]): (%$(100 * improvements[topi]) improvement) $(losses[toplossis[topi]]) -> $(lss[topi])" for topi in 1:numtop], '\n'))
+        # for topi in 1:numtop
+        #     losses[toplossis[topi]] = min(losses[toplossis[topi]], lss[topi])
+        # end
+        # Flux.Optimisers.adjust!(opt_state, learningrate)
 
         variation = (variation + 1) % batchlen
     end
