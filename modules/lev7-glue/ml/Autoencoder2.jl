@@ -1,7 +1,7 @@
 module Autoencoder2
 using Dates, IterTools
 using Parquet2, DataFrames, Impute
-using Flux, NNlib, MLUtils, CUDA
+using Flux, Optimisers, NNlib, MLUtils, CUDA
 using CudaUtil
 
 # TODO: maybe include bias terms now that we're not restricting 0 to 1
@@ -136,7 +136,7 @@ function train(batcher, model, opt_state, derinfo; iters=10)
             checkpoint_save()
         end
         toplosses = sortperm(losses; rev=true)
-        adjust!(opt_state, learningrate / 2)
+        Optimisers.adjust!(opt_state, learningrate / 2)
         for batchi in toplosses[1:3]
             ls = 0.0
             for variations in around(variation, batchlen)
@@ -145,9 +145,9 @@ function train(batcher, model, opt_state, derinfo; iters=10)
                 ls /= size(x)[end] * lossbase
                 Flux.update!(opt_state, model, grads[1])
             end
-            println("Top loss batch #$(batchi): (%$(100 * ls / toplosses[i]) improvement) $(losses[batchi]) -> $(ls)")
+            println("Top loss batch #$(batchi): (%$(100 * (1 - ls / losses[batchi])) improvement) $(losses[batchi]) -> $(ls)")
         end
-        adjust!(opt_state, learningrate)
+        Optimisers.adjust!(opt_state, learningrate)
         variation += 1
         variation %= batchlen
     end
