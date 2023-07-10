@@ -58,7 +58,7 @@ function info(data)
     learningrate = 1e-4
     batchlen = 8192
     numsamples = length(data) - seqlen
-    numbatches = round(Int, numsamples / batchlen, RoundUp)
+    numbatches = round(Int, (0.8 * numsamples) / batchlen, RoundUp)
     return (;
         learningrate, batchlen, numsamples, numbatches
     )
@@ -80,7 +80,7 @@ function run(data; iters=10)
 end
 
 function make_batcher(data, seqlen)
-    (;batchlen, numbatches) = info(data)
+    (;batchlen, trainmaxi) = info(data)
     return function(batchi, variation)
         batchi <= floor(numbatches * 0.8) || return nothing
         return makebatch(data, seqlen, batchlen, batchi; variation)
@@ -106,7 +106,8 @@ function train(batcher, model, opt_state, derinfo; iters=10)
     lossbase = calclossbase(batcher(1, variation))
     println("lossbase: ", lossbase)
     last_save = now(UTC)
-    losses = Vector{Float64}(undef, numbatches)
+    losses = Vector{Float64}(Inf, numbatches)
+    global klosses = losses
     for epoch in 1:iters
         loss_sum = 0.0
         i = 1
@@ -114,7 +115,7 @@ function train(batcher, model, opt_state, derinfo; iters=10)
         while !isnothing(x)
             ls, grads = Flux.withgradient(calcloss, model, x)
             ls /= size(x)[end] * lossbase
-            losses[i] = ls
+            losses[i] = min(losses[i], ls)
             loss_sum += ls
             Flux.update!(opt_state, model, grads[1])
             println("Train loss batch #$(i): $(ls)")
@@ -139,16 +140,19 @@ function train(batcher, model, opt_state, derinfo; iters=10)
         Flux.Optimisers.adjust!(opt_state, learningrate / 2)
         for batchi in toplosses[1:3]
             ls = 0.0
+            improvement = 0.0
             for _ in 1:10
                 for variations in around(variation, batchlen)
                     x = batcher(batchi, variations) |> gpu
                     ls, grads = Flux.withgradient(calcloss, model, x)
                     ls /= size(x)[end] * lossbase
                     Flux.update!(opt_state, model, grads[1])
+                    losses[batchi] = min(losses[batchi], ls)
+                    improvement = (1 - ls / losses[batchi])
+                    improvement < 0.01 || @goto breakout
                 end
-                improvement = (1 - ls / losses[batchi])
-                improvement < 0.01 || break
             end
+            @label breakout
             println("Top loss batch #$(batchi): (%$(100 * improvement) improvement) $(losses[batchi]) -> $(ls)")
         end
         Flux.Optimisers.adjust!(opt_state, learningrate)
@@ -220,7 +224,7 @@ import MLBatches
 function makebatch(data, seqlen, batchlen, ind; variation)
     datalen = length(data) - seqlen
     indstart = 1 + (ind - 1) * batchlen
-    println("Making batch for indstart $(indstart)")
+    println("Making batch for indstart $(indstart) + $(variation)")
     MLBatches.make_batch(xforindex, datalen, batchlen, indstart, data, seqlen; variation)
 end
 
