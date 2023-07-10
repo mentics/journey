@@ -155,8 +155,8 @@ function train(batcher, model, opt_state, derinfo; iters=10)
                 end
             end
             @label breakout
-            losses[i] = min(losses[i], ls)
             println("Top loss batch #$(i): (%$(100 * improvement) improvement) $(losses[i]) -> $(ls)")
+            losses[i] = min(losses[i], ls)
         end
         Flux.Optimisers.adjust!(opt_state, learningrate)
         variation += 1
