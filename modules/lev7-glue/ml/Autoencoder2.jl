@@ -172,7 +172,7 @@ function train(batcher, model, opt_state, derinfo; iters=10)
         topls = 0.0
         improvement = 0.0
         for _ in 1:100
-            Flux.Optimisers.adjust!(opt_state, rand(.05:0.001:1.2) * learningrate)
+            Flux.Optimisers.adjust!(opt_state, rand(.05:0.001:0.84) * learningrate)
             topls, grads = Flux.withgradient(calcloss, model, topbatch)
             topls /= toplen * lossbase
             Flux.update!(opt_state, model, grads[1])
