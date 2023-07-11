@@ -35,9 +35,28 @@ calcsum(modelpart) = sum(abs, modelpart)
 sumparams(model) = sum(calcsum, Flux.params(model))
 sumyhat(yhat) = sum(abs, yhat)
 
+const MASK = Ref(zeros(Float32, hypers().encodedwidth))
+const MASKGPU = Ref{CuArray{Float32, 1, CUDA.Mem.DeviceBuffer}}()
+
+function setmask(num)
+    for i in 1:num
+        MASK[][i] = 1f0
+    end
+    for i in (num + 1):length(MASK[])
+        MASK[][i] = 0f0
+    end
+    MASKGPU[] = MASK[] |> gpu
+    return MASK[]
+end
+
 function calcloss(model, x)
-    yhat = model(x)
+    enced = model.layers[1](x)
+    masked = enced .* MASKGPU[]
+    yhat = model.layers[2](masked)
+
+    # yhat = model(x)
     return Flux.Losses.mse(x, yhat)
+
     # penalty = 1.0 / (0.0001 + sumyhat(yhat))
 
     # # maybe square denom
@@ -58,8 +77,8 @@ end
 
 function info(data)
     (;seqlen) = hypers()
-    learningrate = 1e-4
-    batchlen = 8192
+    learningrate = 1e-3
+    batchlen = 1024
     numsamples = length(data) - seqlen
     numbatches = round(Int, numsamples / batchlen, RoundUp)
     spliti = round(Int, 0.8 * numbatches, RoundDown)
