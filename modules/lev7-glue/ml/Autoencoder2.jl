@@ -5,6 +5,11 @@ using Flux, NNlib, MLUtils, CUDA
 using CudaUtil
 
 # TODO: maybe include bias terms now that we're not restricting 0 to 1
+function start()
+    df = make_data()
+    data = df.under
+    return data
+end
 
 function model_encoder(inputwidth, encodedwidth, numlayers, activation)
     step = (encodedwidth - inputwidth) ÷ numlayers
@@ -139,7 +144,7 @@ function train(batcher, model, opt_state, derinfo; iters=10)
     for epoch in 1:iters
         if (variation % 10) == 0
             print("Updating lossbases...")
-            for i in eachindex(trainbatchis)
+            Threads.@threads for i in eachindex(trainbatchis)
                 lossbases[i] = calclossbase(batcher(trainbatchis[i], variation))
             end
             println(" done.")
