@@ -35,7 +35,7 @@ calcsum(modelpart) = sum(abs, modelpart)
 sumparams(model) = sum(calcsum, Flux.params(model))
 sumyhat(yhat) = sum(abs, yhat)
 
-const MASK = Ref(zeros(Float32, hypers().encodedwidth))
+const MASK = Ref{Float32}()
 const MASKGPU = Ref{CuArray{Float32, 1, CUDA.Mem.DeviceBuffer}}()
 
 function setmask(num)
@@ -67,10 +67,10 @@ end
 
 function hypers()
     encodedwidth = 64
-    numlayers = 4
+    numlayers = 8
     return (;
         encodedwidth, numlayers,
-        seqlen = numlayers^6 + encodedwidth,
+        seqlen = numlayers^4 + encodedwidth,
         activation = NNlib.gelu
     )
 end
@@ -101,10 +101,10 @@ function run(data; iters=10)
     global kopt = opt
     global kopt_state = opt_state
 
-    for i in 1:encodedwidth
-        setmask(i)
-        train(make_batcher(data, seqlen), model, opt_state, info(data); iters=2)
-    end
+    #for i in 1:encodedwidth
+        #setmask(i)
+        train(make_batcher(data, seqlen), model, opt_state, info(data); iters)
+    #end
 end
 
 function make_batcher(data, seqlen)
@@ -172,7 +172,7 @@ function train(batcher, model, opt_state, derinfo; iters=10)
         toplossis = sortperm(lossesmin; rev=true)
         numtop = 3
         xtops = map(1:numtop) do i
-            batcher(trainbatchis[toplossis[i]], variation) |> gpu
+            batcher(trainbatchis[toplossis[i]], variation)
         end
 
         ####
