@@ -130,20 +130,27 @@ function train(batcher, model, opt_state, derinfo; iters=10)
     variation = 0
     (;learningrate, batchlen, trainbatchis) = derinfo
     # (;seqlen) = hypers()
-    lossbase = calclossbase(batcher(1, variation))
-    println("lossbase: ", lossbase)
+    # println("lossbase: ", lossbase)
     last_save = now(UTC)
     numbatches = length(trainbatchis)
-    losses = fill(Inf, numbatches)
-    global klosses = losses
+    lossesmin = fill(Inf, numbatches)
+    global klosses = lossesmin
+    lossbases = Vector{Float32}(undef, numbatches)
     for epoch in 1:iters
+        if (variation % 10) == 0
+            print("Updating lossbases...")
+            for i in eachindex(trainbatchis)
+                lossbases[i] = calclossbase(batcher(trainbatchis[i], variation))
+            end
+            println(" done.")
+        end
         loss_sum = 0.0
         for i in eachindex(trainbatchis)
             batchi = trainbatchis[i]
             x = batcher(batchi, variation) |> gpu
             ls, grads = Flux.withgradient(calcloss, model, x)
-            ls /= size(x)[end] * lossbase
-            losses[i] = min(losses[i], ls)
+            ls /= size(x)[end] * lossbases[i]
+            lossesmin[i] = min(lossesmin[i], ls)
             loss_sum += ls
             Flux.update!(opt_state, model, grads[1])
             println("Train loss batch #$(i): $(ls)")
@@ -162,22 +169,24 @@ function train(batcher, model, opt_state, derinfo; iters=10)
             last_save = now(UTC)
             checkpoint_save()
         end
-        toplossis = sortperm(losses; rev=true)
+        toplossis = sortperm(lossesmin; rev=true)
         numtop = 3
         xtops = map(1:numtop) do i
             batcher(trainbatchis[toplossis[i]], variation) |> gpu
         end
 
         ####
-        topbatch = reduce(hcat, xtops) |> gpu
+        topbatchcpu = reduce(hcat, xtops)
+        toplossbase = calclossbase(topbatchcpu)
+        topbatch = topbatchcpu |> gpu
         toplen = size(topbatch)[end]
-        toplsorig = calcloss(model, topbatch) / (toplen * lossbase)
+        toplsorig = calcloss(model, topbatch) / (toplen * toplossbase)
         topls = 0.0
         improvement = 0.0
         for _ in 1:100
             Flux.Optimisers.adjust!(opt_state, rand(.05:0.001:0.84) * learningrate)
             topls, grads = Flux.withgradient(calcloss, model, topbatch)
-            topls /= toplen * lossbase
+            topls /= toplen * toplossbase
             Flux.update!(opt_state, model, grads[1])
             improvement = (1 - topls / toplsorig)
             improvement >= 0.0001 && break
@@ -341,6 +350,29 @@ function interpolate(df)
         end
     end
     return dfint
+end
+#endregion
+
+#region Explore
+allbatchlosses() = [Autoencoder2.calcloss(Autoencoder2.kmodelgpu, batcher(i, 0) |> gpu) for i in 1:43]
+function maxforbatch(batch)
+    maxloss = -Inf
+    maxx = nothing
+    maxi = 0
+    i = 1
+    for x in eachslice(batch; dims=ndims(batch))
+        xm = collect(reshape(x, (size(x)..., 1)))
+        xgpu = xm |> gpu
+        ls = calcloss(kmodelgpu, xgpu)
+        @show ls
+        if ls > maxloss
+            maxloss = ls
+            maxx = xm
+            maxi = i
+        end
+        i += 1
+    end
+    return (maxi, maxloss, maxx)
 end
 #endregion
 
