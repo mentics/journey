@@ -50,11 +50,11 @@ function setmask(num)
 end
 
 function calcloss(model, x)
-    enced = model.layers[1](x)
-    masked = enced .* MASKGPU[]
-    yhat = model.layers[2](masked)
+    #enced = model.layers[1](x)
+    #masked = enced .* MASKGPU[]
+    #yhat = model.layers[2](masked)
 
-    # yhat = model(x)
+    yhat = model(x)
     return Flux.Losses.mse(x, yhat)
 
     # penalty = 1.0 / (0.0001 + sumyhat(yhat))
@@ -77,8 +77,8 @@ end
 
 function info(data)
     (;seqlen) = hypers()
-    learningrate = 1e-3
-    batchlen = 1024
+    learningrate = 1e-4
+    batchlen = 4096
     numsamples = length(data) - seqlen
     numbatches = round(Int, numsamples / batchlen, RoundUp)
     spliti = round(Int, 0.8 * numbatches, RoundDown)
@@ -101,7 +101,10 @@ function run(data; iters=10)
     global kopt = opt
     global kopt_state = opt_state
 
-    train(make_batcher(data, seqlen), model, opt_state, info(data); iters)
+    for i in 1:encodedwidth
+        setmask(i)
+        train(make_batcher(data, seqlen), model, opt_state, info(data); iters=2)
+    end
 end
 
 function make_batcher(data, seqlen)
@@ -294,7 +297,7 @@ function xforindex(ind, data, seqlen)
     h0 = data[ind]
     seq = @view data[(ind-seqlen):(ind-1)]
     for i in 1:seqlen
-        res[i] = 100f0 * ((seq[i] / h0) - 1.0)
+        res[i] = 100f0 * log(seq[i] / h0)
     end
     return res
 end
