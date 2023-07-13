@@ -72,11 +72,11 @@ end
 
 function hypers()
     encodedwidth = 64
-    numlayers = 8
+    numlayers = 4
     return (;
         encodedwidth, numlayers,
-        seqlen = numlayers^4 + encodedwidth,
-        activation = NNlib.gelu
+        seqlen = numlayers^6 + encodedwidth,
+        activation = NNlib.swish
     )
 end
 
@@ -261,7 +261,7 @@ using JLD2
 function checkpoint_save()
     kh = join(string.(values(hypers())), "-")
     # kh = join(string.(khyper), "-")
-    path = joinpath(path_checkpoint(), "under-auto2-$(kh)-$(round(Int, datetime2unix(now(UTC)))).jld2")
+    path = joinpath(path_checkpoint(), "under-auto3-$(kh)-$(round(Int, datetime2unix(now(UTC)))).jld2")
     println("Saving checkpoint to $(path)")
     jldsave(path, model_state=Flux.state(cpu(kmodelgpu)), opt_state=cpu(kopt_state))
 end
