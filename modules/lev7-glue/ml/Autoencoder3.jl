@@ -130,7 +130,7 @@ function train_continue(data, model=kmodelgpu, opt_state=kopt_state; iters=10)
     global kmodelgpu = gpu(model)
     global kopt_state = gpu(opt_state)
     derinfo = info(data)
-    train(make_batcher(data, hypers().seqlen, derinfo.batchlen), kmodelgpu, kopt_state, derinfo; iters)
+    train(make_batcher(data, hypers(), derinfo), kmodelgpu, kopt_state, derinfo; iters)
 end
 
 function train(batcher, model, opt_state, derinfo; iters=10)
@@ -185,7 +185,7 @@ function train(batcher, model, opt_state, derinfo; iters=10)
 
         ####
         topbatchcpu = reduce(hcat, xtops)
-        toplossbase = calclossbase(lossfunc, topbatchcpu)
+        toplossbase = DataUtil.calclossbase(lossfunc, topbatchcpu)
         topbatch = topbatchcpu |> gpu
         toplen = size(topbatch)[end]
         toplsorig = calcloss(model, topbatch) / (toplen * toplossbase)

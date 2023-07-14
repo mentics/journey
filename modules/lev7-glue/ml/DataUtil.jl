@@ -1,6 +1,7 @@
 module DataUtil
 using Dates
 using Parquet2, DataFrames, Impute
+using Flux
 using HistData
 
 const CONFIG = Ref(Dict{Symbol,String}())
