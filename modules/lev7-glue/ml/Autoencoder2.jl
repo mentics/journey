@@ -1,6 +1,6 @@
 module Autoencoder2
 using Dates, IterTools
-using Parquet2, DataFrames, Impute
+using Parquet2, DataFrames
 using Flux, NNlib, MLUtils, CUDA
 using CudaUtil
 
@@ -40,18 +40,18 @@ calcsum(modelpart) = sum(abs, modelpart)
 sumparams(model) = sum(calcsum, Flux.params(model))
 sumyhat(yhat) = sum(abs, yhat)
 
-const MASK = Ref{Float32}()
-const MASKGPU = Ref{CuArray{Float32, 1, CUDA.Mem.DeviceBuffer}}()
+const MASK2 = Ref{Float32}()
+const MASKGPU2 = Ref{CuArray{Float32, 1, CUDA.Mem.DeviceBuffer}}()
 
 function setmask(num)
     for i in 1:num
-        MASK[][i] = 1f0
+        MASK2[][i] = 1f0
     end
-    for i in (num + 1):length(MASK[])
-        MASK[][i] = 0f0
+    for i in (num + 1):length(MASK2[])
+        MASK2[][i] = 0f0
     end
-    MASKGPU[] = MASK[] |> gpu
-    return MASK[]
+    MASKGPU2[] = MASK2[] |> gpu
+    return MASK2[]
 end
 
 function calcloss(model, x)
@@ -83,7 +83,7 @@ end
 function info(data)
     (;seqlen) = hypers()
     learningrate = 1e-4
-    batchlen = 4096
+    batchlen = 512
     numsamples = length(data) - seqlen
     numbatches = round(Int, numsamples / batchlen, RoundUp)
     spliti = round(Int, 0.8 * numbatches, RoundDown)
@@ -134,6 +134,7 @@ end
 function train(batcher, model, opt_state, derinfo; iters=10)
     variation = 0
     (;learningrate, batchlen, trainbatchis) = derinfo
+    trainbatchis = trainbatchis[1:10]
     # (;seqlen) = hypers()
     # println("lossbase: ", lossbase)
     last_save = now(UTC)
@@ -283,16 +284,21 @@ end
 
 #region Testing
 using DrawUtil
-function test1(data, ind)
-    (;seqlen) = hypers()
-    x = xforindex(ind, data, seqlen)
+test1(data, ind) = testx(xforindex(ind, data, hypers().seqlen))
+
+function testx(x)
+    if ndims(x) > 1
+        x = dropdims(x; dims=ndims(x))
+    end
     xgpu = x |> gpu
     yhatgpu = kmodelgpu(xgpu)
     yhat = yhatgpu |> cpu
-    lossbase = calclossbase(stack((x,)))
-    println((;lossbase, loss=calcloss(kmodelgpu, xgpu), loss2=Flux.Losses.mse(x, yhat), loss0=Flux.Losses.mse(x, fill(0f0, length(x)))))
-    draw(:lines, x)
-    draw!(:lines, yhat)
+    lossbase = calclossbase(reshape(x, (size(x)..., 1)))
+    loss = calcloss(kmodelgpu, xgpu)
+    ls = loss / lossbase
+    @show lossbase loss ls
+    draw(:scatter, x)
+    draw!(:scatter, yhat)
 end
 #endregion
 
@@ -327,39 +333,45 @@ function make_data()
         pq = Parquet2.Dataset(joinpath(path_data(), "under.parquet"))
         df = DataFrame(pq; copycols=false)
         # disallowmissing!(df, [:quote_ts, :under])
-        df = interpolate(df)
+
+        # Convert to float so interpolate won't complain about can't round
+        df[!,:under] = Float32.(df[!,:under])
+        df = DataUtil.interpolate(df, DateTime(2010,01,01):Minute(30):DateTime(2022,10,1), :quote_ts)
+
+        dfint[!,:under] = round.(Int, dfint[!,:under])
+        for (row1, row2) in partition(eachrow(dfint), 2, 1)
+            if (row2.quote_ts - row1.quote_ts) != Minute(30)
+                @show row1
+                @show row2
+                error("data missing")
+            end
+            if abs(row2.under - row1.under) > 12000
+                @show row1
+                @show row2
+                error("found thing")
+            end
+        end
+        return dfint
+
         Parquet2.writefile(fileinterp, df)
     end
     return df
 end
-
-function interpolate(df)
-    # Convert to float so interpolate won't complain about can't round
-    df[!,:under] = Float32.(df[!,:under])
-    dftimes = DataFrame(; quote_ts=DateTime(2010,01,01):Minute(30):DateTime(2022,10,1))
-    joined = leftjoin(dftimes, df; on=:quote_ts)
-    sort!(joined, [:quote_ts])
-    dfint = Impute.interp(joined)
-    dropmissing!(dfint)
-    dfint[!,:under] = round.(Int, dfint[!,:under])
-    for (row1, row2) in partition(eachrow(dfint), 2, 1)
-        if (row2.quote_ts - row1.quote_ts) != Minute(30)
-            @show row1
-            @show row2
-            error("data missing")
-        end
-        if abs(row2.under - row1.under) > 12000
-            @show row1
-            @show row2
-            error("found thing")
-        end
-    end
-    return dfint
-end
 #endregion
 
 #region Explore
-allbatchlosses() = [Autoencoder2.calcloss(Autoencoder2.kmodelgpu, batcher(i, 0) |> gpu) for i in 1:43]
+function findmaxxi(data)
+    batcher = make_batcher(data, hypers().seqlen)
+    lss = allbatchlosses(data, batcher)
+    _, batchi = findmax(lss)
+    b = batcher(batchi, 0)
+    mx = maxforbatch(b)
+    global kmx = mx
+    return mx
+end
+function allbatchlosses(data, batcher)
+    return [Autoencoder2.calcloss(Autoencoder2.kmodelgpu, batcher(i, 0) |> gpu) for i in 1:43]
+end
 function maxforbatch(batch)
     maxloss = -Inf
     maxx = nothing
