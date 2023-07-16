@@ -1,4 +1,5 @@
 [deps]
+Arrow = "69666777-d1a9-59fb-9406-91d4454c9d45"
 BSON = "fbb218c0-5317-5bc6-957e-2ee96dd4b1f0"
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
 BusinessDays = "4f18b42c-503e-5345-9536-bb0f25fc7038"
