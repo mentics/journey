@@ -113,6 +113,7 @@ function impute(df, xs, colname; imputer=Impute.locf)
     sort!(joined, [colname])
     dfint = imputer(joined)
     dropmissing!(dfint) # Should just remove from beginning, maybe ending
+    sort!(dfint, [colname]; rev=true)
     return dfint
 end
 

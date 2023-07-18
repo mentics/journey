@@ -26,7 +26,7 @@ end
 function info(data)
     hyps = hypers()
     learningrate = 1e-4
-    batchlen = 4096
+    batchlen = 512
     # underobs = size(hyps.under, 1) - hyps.inputwidthunder
     # not sure if I need to check that vix len back will work, but it seemed to on first hyps
     # data.vixlup[hyps.inputwidthunder]
@@ -142,13 +142,13 @@ function train(batcher, model, opt_state, derinfo; iters=10)
             #     lossbases[i] = DataUtil.calclossbase(lossfunc, batcher(trainbatchis[i], variation))
             # end
             # reusing a batch buffer, so can't parallize this
-            for i in eachindex(trainbatchis)
+            for i in eachindex(trainbatchis)[1:10]
                 lossbases[i] = DataUtil.calclossbase(lossfunc, batcher(trainbatchis[i], variation))
             end
             println(" done.")
         end
         loss_sum = 0.0
-        for i in eachindex(trainbatchis)
+        for i in eachindex(trainbatchis)[1:4]
             batchi = trainbatchis[i]
             x = batcher(batchi, variation) |> gpu
             ls, grads = Flux.withgradient(calcloss, model, x)
@@ -186,7 +186,7 @@ function train(batcher, model, opt_state, derinfo; iters=10)
         toplsorig = calcloss(model, topbatch) / (toplen * toplossbase)
         topls = 0.0
         improvement = 0.0
-        for _ in 1:100
+        for _ in 1:0 # 1:100
             Flux.Optimisers.adjust!(opt_state, rand(.05:0.001:0.84) * learningrate)
             topls, grads = Flux.withgradient(calcloss, model, topbatch)
             topls /= toplen * toplossbase
@@ -252,24 +252,23 @@ function xforindex((buf, lastdimi), ind, data, hyps)
 
     ts0 = data.under.ts[ind]
     date0 = Date(ts0)
-    h0 = data.under.x[1]
+    h0 = data.under.x[ind]
     # res = Array{Float32}(undef, hyps.inputwidth)
     res = @view buf[:,lastdimi]
     dfestimated = @view data.under[(ind+1):(ind + hyps.inputwidthunder ÷ 2),:] # right is an estimate, TODO: could tighten it up?
     dfmoves = dfestimated[DataUtil.moves(dfestimated.x, hyps.movemin),:]
-    global kdfunder = data.under
-    global kdfestimated = dfestimated
-    global kdfmoves = dfmoves
     dfinterp = DataUtil.impute(dfmoves, Minute(30), "ts")
+    # global kdfunder = data.under
+    # global kdfestimated = dfestimated
+    # global kdfmoves = dfmoves
+    # global kdfinterp = dfinterp
     # TODO: maybe faster if copy then calc in place?
-    i = 1
-    for underi in 1:hyps.inputwidthunder
-        res[i] = 100f0 * log(dfinterp.x[underi] / h0)
-        i += 1
+    for i in 1:hyps.inputwidthunder
+        res[i] = 100f0 * log(dfinterp.x[i] / h0)
     end
     # TODO: optimize?
     vixi0 = searchsortedfirst(data.vixinterp.ts, date0; rev=true)
-    copyto!(res, i, data.vixinterp.x, vixi0, hyps.inputwidthvix)
+    copyto!(res, hyps.inputwidthunder+1, data.vixinterp.x, vixi0, hyps.inputwidthvix)
     # data.vixinterp.x[vixi0:(vixi0+hyps.inputwidthvix)]
     # for vixi in (vixlasti - hyps.inputwidthvix + 1):vixlasti
     #     res[i] = data.vix.x[vixi]
