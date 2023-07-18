@@ -26,7 +26,7 @@ end
 function info(data)
     hyps = hypers()
     learningrate = 1e-4
-    batchlen = 512
+    batchlen = 4096
     # underobs = size(hyps.under, 1) - hyps.inputwidthunder
     # not sure if I need to check that vix len back will work, but it seemed to on first hyps
     # data.vixlup[hyps.inputwidthunder]
@@ -143,7 +143,7 @@ function train(batcher, model, opt_state, derinfo; iters=10)
             #     lossbases[i] = DataUtil.calclossbase(lossfunc, batcher(trainbatchis[i], variation))
             # end
             # reusing a batch buffer, so can't parallize this
-            for i in eachindex(trainbatchis)[1:10]
+            for i in eachindex(trainbatchis)
                 lossbases[i] = DataUtil.calclossbase(lossfunc, batcher(trainbatchis[i], variation); baseyhat=derinfo.baseyhat)
             end
             println(" done.")
@@ -187,7 +187,7 @@ function train(batcher, model, opt_state, derinfo; iters=10)
         toplsorig = calcloss(model, topbatch) / (toplen * toplossbase)
         topls = 0.0
         improvement = 0.0
-        for _ in 1:0 # 1:100
+        for _ in 1:100
             Flux.Optimisers.adjust!(opt_state, rand(.05:0.001:0.84) * learningrate)
             topls, grads = Flux.withgradient(calcloss, model, topbatch)
             topls /= toplen * toplossbase
