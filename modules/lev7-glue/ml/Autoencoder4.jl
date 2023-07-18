@@ -36,8 +36,9 @@ function info(data)
     spliti = round(Int, 0.8 * numbatches, RoundDown)
     trainbatchis = 1:spliti
     testbatchis = (spliti+1):numbatches
+    baseyhat = zeros(Float32, (hyps.inputwidth, batchlen))
     return (;
-        learningrate, batchlen, numobs, trainbatchis, testbatchis
+        learningrate, batchlen, numobs, trainbatchis, testbatchis, baseyhat
     )
 end
 
@@ -143,7 +144,7 @@ function train(batcher, model, opt_state, derinfo; iters=10)
             # end
             # reusing a batch buffer, so can't parallize this
             for i in eachindex(trainbatchis)[1:10]
-                lossbases[i] = DataUtil.calclossbase(lossfunc, batcher(trainbatchis[i], variation))
+                lossbases[i] = DataUtil.calclossbase(lossfunc, batcher(trainbatchis[i], variation); baseyhat=derinfo.baseyhat)
             end
             println(" done.")
         end

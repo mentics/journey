@@ -112,8 +112,9 @@ function impute(df, xs, colname; imputer=Impute.locf)
     joined = leftjoin(dftimes, df; on=colname)
     sort!(joined, [colname])
     dfint = imputer(joined)
-    dropmissing!(dfint) # Should just remove from beginning, maybe ending
-    sort!(dfint, [colname]; rev=true)
+    # dropmissing!(dfint) # Should just remove from beginning, maybe ending
+    reverse!(dfint)
+    # sort!(dfint, [colname]; rev=true)
     return dfint
 end
 
