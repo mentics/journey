@@ -4,7 +4,22 @@ import MaxLFSR
 # const CacheSeq = Ref{AbstractArray}(nothing)
 # const Cache = Ref{AbstractArray}(nothing)
 
-function make_batch(f, datalen, batch_len, ind, args...; variation=0)
+function make_batch(f, buf, datalen, batch_len, ind, args...; variation=0)
+    lfsr = MaxLFSR.LFSR(datalen)
+    ind += variation
+    # ind = lfsrfori(lfsr, ind)
+    # return stack(f(i, args...) for i in ind:min(ind+batch_len-1, datalen))
+
+    # TODO: for last batch, won't completely fill buffer, but left over from last batch might be ok?
+    Threads.@threads for i in ind:min(ind+batch_len-1, datalen)
+        f((buf, i - ind + 1), lfsrfori(lfsr, i)[1], args...)
+    end
+    return nothing
+
+    # return stack(f(lfsrfori(lfsr, i)[1], args...) for i in ind:min(ind+batch_len-1, datalen))
+end
+
+function make_batch_par(f, datalen, batch_len, ind, args...; variation=0)
     lfsr = MaxLFSR.LFSR(datalen)
     ind += variation
     # ind = lfsrfori(lfsr, ind)

@@ -283,6 +283,25 @@ function vtToTv(vt)
     return vs
 end
 
+function findextrema(v, from=firstindex(v), to=lastindex(v))
+    mni = 1
+    mxi = 1
+    mn = Inf
+    mx = -Inf
+    for i in from:to
+        x = v[i]
+        if x < mn
+            mn = x
+            mni = i
+        end
+        if x > mx
+            mx = x
+            mxi = i
+        end
+    end
+    return ((mni, mn), (mxi, mx))
+end
+
 # function accumul!(op, B, A; dims::Union{Integer, Nothing} = nothing, kw...)
 #     if isnothing(init)
 #         Base._accumulate!(op, B, A, dims, nothing)

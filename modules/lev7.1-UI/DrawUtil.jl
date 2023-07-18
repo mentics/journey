@@ -1,8 +1,9 @@
 module DrawUtil
 using Dates, NamedTupleTools
 import PlotUtils
-import Makie:Makie, Figure, Axis, DataInspector, axislegend, Axis, AxisPlot, current_figure, current_axis, barplot!, barplot
-import GLMakie
+# import Makie:Makie, Figure, Axis, DataInspector, axislegend, Axis, AxisPlot, current_figure, current_axis, barplot!, barplot
+using Makie, GLMakie
+# import GLMakie
 # import GLFW
 using SH, Bins, BaseTypes
 using BaseUtil, DateUtil
@@ -97,7 +98,7 @@ end
 #     return fig
 # end
 function drawDates(dates, values; func=lines!, kws...)
-    dateticks = optimize_ticks(dates[1], dates[end])[1]
+    dateticks = PlotUtils.optimize_ticks(dates[1], dates[end])[1]
     fig = current_figure() # Figure()
     ax1 = Axis(fig[1,1])
     plt = func(ax1, datetime2rata.(dates), values; kws...)

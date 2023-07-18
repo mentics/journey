@@ -1,4 +1,4 @@
-module Autoencoder3
+module Autoencoder4
 using Dates, IterTools
 using Flux, NNlib, MLUtils, CUDA
 using CudaUtil
@@ -11,9 +11,10 @@ function hypers()
     inputwidth = round(Int, lentarget / numlayers, RoundUp) * numlayers + encodedwidth # numlayers ^ round(Int, log(numlayers, lentarget), RoundUp)
     inputwidthvix = round(Int, inputwidth / 49, RoundUp)
     inputwidthunder = inputwidth - inputwidthvix
+    movemin = 1000f0
     activation = NNlib.swish
     return (;
-        encodedwidth, numlayers, inputwidthunder, inputwidthvix, inputwidth, activation
+        encodedwidth, numlayers, inputwidthunder, inputwidthvix, inputwidth, movemin, activation
     )
 end
 
@@ -41,21 +42,24 @@ function info(data)
 end
 
 function make_data()
-    under = DataUtil.make_data_under()
-    vix = DataUtil.make_data_vix()
+    under = DataUtil.get_data_under()
+    vix = DataUtil.get_data_vix()
     numunders = size(under, 1)
     vixlup = Vector{Int}(undef, numunders)
     vixi = 1
     for i in 1:numunders
+        # println((; underts=under.ts[i], vixts=vix.ts[vixi]))
         if Date(under.ts[i]) == vix.ts[vixi]
             vixlup[i] = vixi
         else
             vixi += 1
-            @assert Date(under.ts[i]) == vix.ts[vixi]
+            @assert Date(under.ts[i]) == vix.ts[vixi] string(Date(under.ts[i]), " == ", vix.ts[vixi], " $(i) $(vixi)")
             vixlup[i] = vixi
         end
     end
-    return (;under=under.x, vix=vix.x, vixlup)
+    vixinterp = DataUtil.impute(vix, Day(1), "ts")
+    sort!(vixinterp, :ts; rev=true)
+    return (;under, vix, vixinterp ,vixlup)
 end
 
 function model_encoder(inputwidth, encodedwidth, numlayers, activation)
@@ -80,20 +84,6 @@ end
 function make_model(hypers)
     (;inputwidth, encodedwidth, numlayers, activation) = hypers
     return Chain(model_encoder(inputwidth, encodedwidth, numlayers, activation), model_decoder(inputwidth, encodedwidth, numlayers, activation))
-end
-
-const MASK2 = Ref{Float32}()
-const MASKGPU2 = Ref{CuArray{Float32, 1, CUDA.Mem.DeviceBuffer}}()
-
-function setmask(num)
-    for i in 1:num
-        MASK2[][i] = 1f0
-    end
-    for i in (num + 1):length(MASK2[])
-        MASK2[][i] = 0f0
-    end
-    MASKGPU2[] = MASK2[] |> gpu
-    return MASK2[]
 end
 
 function calcloss(model, x)
@@ -121,8 +111,9 @@ function run(data; iters=10)
 end
 
 function make_batcher(data, hyps, derinfo)
+    buf = Array{Float32}(undef, (hyps.inputwidth, derinfo.batchlen))
     return function(batchi, variation)
-        return makebatch(data, hyps, derinfo, batchi; variation)
+        return makebatch(buf, data, hyps, derinfo, batchi; variation)
     end
 end
 
@@ -147,7 +138,11 @@ function train(batcher, model, opt_state, derinfo; iters=10)
     for epoch in 1:iters
         if (variation % 10) == 0
             print("Updating lossbases...")
-            Threads.@threads for i in eachindex(trainbatchis)
+            # Threads.@threads for i in eachindex(trainbatchis)
+            #     lossbases[i] = DataUtil.calclossbase(lossfunc, batcher(trainbatchis[i], variation))
+            # end
+            # reusing a batch buffer, so can't parallize this
+            for i in eachindex(trainbatchis)
                 lossbases[i] = DataUtil.calclossbase(lossfunc, batcher(trainbatchis[i], variation))
             end
             println(" done.")
@@ -239,28 +234,48 @@ end
 
 #region Data
 import MLBatches
-function makebatch(data, hyps, derinfo, ind; variation)
+function makebatch(buf, data, hyps, derinfo, ind; variation)
     indstart = 1 + (ind - 1) * derinfo.batchlen
     println("Making batch for indstart $(indstart) + $(variation)")
-    MLBatches.make_batch(xforindex, derinfo.numobs, derinfo.batchlen, indstart, data, hyps; variation)
+    MLBatches.make_batch(xforindex, buf, derinfo.numobs, derinfo.batchlen, indstart, data, hyps; variation)
+    return buf
 end
 
 function xforindex(ind, data, hyps)
-    res = Array{Float32}(undef, hyps.inputwidth)
-    underfirsti = ind
-    underlasti = ind + hyps.inputwidthunder - 1
-    h0 = data.under[underlasti + 1]
+    buf = Array{Float32}(undef, (hyps.inputwidth, 1))
+    xforindex((buf, 1), ind, data, hyps)
+    return buf
+end
+function xforindex((buf, lastdimi), ind, data, hyps)
+    # TODO: anything we need to fix because descending time and need buffer on backend instead of frontend?
+    # TODO: filter out end of day and first of day as potential starting inds?
+
+    ts0 = data.under.ts[ind]
+    date0 = Date(ts0)
+    h0 = data.under.x[1]
+    # res = Array{Float32}(undef, hyps.inputwidth)
+    res = @view buf[:,lastdimi]
+    dfestimated = @view data.under[(ind+1):(ind + hyps.inputwidthunder ÷ 2),:] # right is an estimate, TODO: could tighten it up?
+    dfmoves = dfestimated[DataUtil.moves(dfestimated.x, hyps.movemin),:]
+    global kdfunder = data.under
+    global kdfestimated = dfestimated
+    global kdfmoves = dfmoves
+    dfinterp = DataUtil.impute(dfmoves, Minute(30), "ts")
+    # TODO: maybe faster if copy then calc in place?
     i = 1
-    for underi in underfirsti:underlasti
-        res[i] = 100f0 * log(data.under[underi] / h0)
+    for underi in 1:hyps.inputwidthunder
+        res[i] = 100f0 * log(dfinterp.x[underi] / h0)
         i += 1
     end
-    vixlasti = data.vixlup[underlasti]
-    for vixi in (vixlasti - hyps.inputwidthvix + 1):vixlasti
-        res[i] = data.vix[vixi]
-        i += 1
-    end
-    # return (;i, underrange=underfirsti:underlasti, vixrange=(vixlasti - hyps.inputwidthvix + 1):vixlasti)
+    # TODO: optimize?
+    vixi0 = searchsortedfirst(data.vixinterp.ts, date0; rev=true)
+    @show i vixi0 ts0 date0
+    copyto!(res, i, data.vixinterp.x, vixi0, hyps.inputwidthvix)
+    # data.vixinterp.x[vixi0:(vixi0+hyps.inputwidthvix)]
+    # for vixi in (vixlasti - hyps.inputwidthvix + 1):vixlasti
+    #     res[i] = data.vix.x[vixi]
+    #     i += 1
+    # end
     return res
 end
 #endregion
