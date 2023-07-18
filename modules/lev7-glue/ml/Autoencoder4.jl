@@ -269,7 +269,6 @@ function xforindex((buf, lastdimi), ind, data, hyps)
     end
     # TODO: optimize?
     vixi0 = searchsortedfirst(data.vixinterp.ts, date0; rev=true)
-    @show i vixi0 ts0 date0
     copyto!(res, i, data.vixinterp.x, vixi0, hyps.inputwidthvix)
     # data.vixinterp.x[vixi0:(vixi0+hyps.inputwidthvix)]
     # for vixi in (vixlasti - hyps.inputwidthvix + 1):vixlasti
