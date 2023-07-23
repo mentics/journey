@@ -149,7 +149,7 @@ function train(batcher, model, opt_state, derinfo; iters=10)
             println(" done.")
         end
         loss_sum = 0.0
-        for i in eachindex(trainbatchis)[1:4]
+        for i in eachindex(trainbatchis)
             batchi = trainbatchis[i]
             x = batcher(batchi, variation) |> gpu
             ls, grads = Flux.withgradient(calcloss, model, x)

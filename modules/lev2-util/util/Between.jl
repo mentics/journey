@@ -23,7 +23,27 @@ import LinesLeg:LinesLeg as LL,Segments
 LL.toSegmentsWithZeros(lms::NTuple{N,LegMeta}) where N = LL.toSegmentsWithZeros(lms, map(P ∘ Pricing.price, lms))
 LL.toSections(lms::NTuple{N,LegMeta}) where N = LL.toSections(lms, map(P ∘ Pricing.price, lms))
 SH.toDraw(lms::NTuple{N,LegMeta}) where N = collect(LL.toLineTuples(LL.toSegments(lms))) # collect because Makie can't handle tuples of coords
+# SH.toDraw(lms::NTuple{N,LegMeta}) where N = collect(LL.toLineTuples(LL.toSegmentsWithZeros(lms))) # collect because Makie can't handle tuples of coords
+# SH.toDraw(lms::NTuple{N,LegMeta}) where N = collect(LL.toLineTuples(LL.toSegmentsWithZeros(lms))) # collect because Makie can't handle tuples of coords
 #end
+
+#region Prob
+import DateUtil, ProbKde, HistData
+makeprob(ts::DateTime, hasexpir, curp)::Prob = makeprob(ts, getExpir(hasexpir), curp)
+makeprob(ts::DateTime, xpir::Date, curp)::Prob = ProbKde.probToClose(F(curp), F(HistData.vixOpen(DateUtil.lastTradingDay(ts))), ts, xpir)
+#endregion
+
+#region Kelly
+using ProbTypes
+import Kelly
+Kelly.calcKel(ts::DateTime, curp::Real, lms) = Kelly.calcKel(makeprob(ts, lms, curp), lms)
+function Kelly.calcKel(prob::Prob, lms)
+    segs = LL.toSegments(lms)
+    risk = max(Pricing.calcMarg(prob.center, segs))
+    segsz = LL.toSegmentsWithZeros(segs)
+    return Kelly.calcKel(prob, risk, segsz)
+end
+#endregion
 
 #region ToLegMeta
 SH.to(::Type{LegMetaOpen}, leg::Leg, lup) = LegMetaOpen(lup(getOption(leg)), getSide(leg), getQuantity(leg))

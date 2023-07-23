@@ -5,6 +5,13 @@ using Flux
 using CollUtil
 using HistData
 
+#=
+download latest checkpoint:
+$ dir="~"
+$ server="user@server.com"
+$ scp $server:$dir/$(ssh $server 'ls -t $dir | head -1') .
+=#
+
 const CONFIG = Ref(Dict{Symbol,String}())
 CONFIG_WIN = Dict(
   :PATH_CHECKPOINTS => "D:/data/ml/journey/models",

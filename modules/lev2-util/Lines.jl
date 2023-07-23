@@ -18,12 +18,23 @@ end
 Base.convert(::Type{Tuple{Float64,Float64}}, p::Point) = (p.x, p.y)
 
 function toLineTuples(s::Segments{N})::NTuple{N+2,Tuple{Float64,Float64}} where N
-    w = s.points[end].x - s.points[1].x
+    w = max(0.01 * s.points[end].x, s.points[end].x - s.points[1].x)
     x0 = s.points[1].x - w
     y0 = at(s, x0)
     xend = s.points[end].x + w
     yend = at(s, xend)
     return ((x0, y0), s.points..., (xend, yend))
+end
+
+function toLineTuples(ss::Vector{Segment})
+    res = Vector{NTuple{2,Float64}}() # (undef, length(ss)+1)
+    sizehint!(res, length(ss) + 1)
+    for s in ss
+        push!(res, (s.left.x, s.left.y))
+    end
+    s = ss[end]
+    push!(res, (s.right.x, s.right.y))
+    return res
 end
 
 # function toLineTuples(s::Segments{3})::NTuple{5,Tuple{Float64,Float64}}
@@ -35,10 +46,20 @@ end
 #     return ((x0, y0), s.points..., (x4, y4))
 # end
 
+combine(ls::Tuple{Left}) = combine(ls...)
+function combine(l::Left)::Segments{1}
+    return Segments{1}((l.slope, 0.0), (Point(l.point.x, l.point.y),))
+end
+
+combine(ls::Tuple{Right}) = combine(ls...)
+function combine(r::Right)::Segments{1}
+    return Segments{1}((0.0, r.slope), (Point(r.point.x, r.point.y),))
+end
+
 function combine(l::Left, r::Right)::Segments{2}
     @assert l.x < r.x
     y = l.point.y + r.point.y
-    return Segments((l.slope, 0.0, r.slope), (Point(l.point.x, y), Point(r.point.x, y)))
+    return Segments{2}((l.slope, 0.0, r.slope), (Point(l.point.x, y), Point(r.point.x, y)))
 end
 
 function combine(l1::Right, l2::Left)::Segments{2}
@@ -124,7 +145,6 @@ end
 
 combine(ls::Tuple{Left,Left,Right,Right}) = combine(ls...)
 function combine(l1::Left, l2::Left, l3::Right, l4::Right)::Segments{4}
-    # println("llrr")
     @assert l1.point.x <= l2.point.x <= l3.point.x <= l4.point.x
     y2 = l1.point.y + l2.point.y + l3.point.y + l4.point.y
     y3 = y2
@@ -139,8 +159,6 @@ end
 
 combine(ls::Tuple{Left,Left,Left,Left}) = combine(ls...)
 function combine(l1::Left, l2::Left, l3::Left, l4::Left)::Segments{4}
-    # println("llll")
-
     @assert l1.point.x <= l2.point.x <= l3.point.x <= l4.point.x
     slope34 = l3.slope + l4.slope
     slope234 = l2.slope + slope34
@@ -160,7 +178,6 @@ function combine(l1::Right, l2::Right, l3::Left, l4::Left)::Segments{4}
     @assert l1.point.x <= l2.point.x <= l3.point.x <= l4.point.x @str l1 l2 l3 l4
     y12 = l1.point.y + l2.point.y
     y34 = l3.point.y + l4.point.y
-# println("rrll")
     y2 = y12 + y34
     y1 = y2 - l2.slope * (l2.point.x - l1.point.x)
     y3 = y2
@@ -299,26 +316,45 @@ function Base.iterate(z::SegmentsWithZeros)::Union{Nothing,SegWZIterType3}
     s = z.s
     slope0 = s.slopes[1]
     pt1 = s.points[1]
-    width = s.points[end].x - pt1.x
-    # segx1 = pt1.x - width
-    segx1 = 0
+    width = max(100.0, s.points[end].x - pt1.x)
 
-    if s.slopes[1] * s.points[1].y < 0 # signbit(s.slopes[1]) == signbit(s.points[1].y)
+    if s.slopes[1] * s.points[1].y > 0 # signbit(s.slopes[1]) == signbit(s.points[1].y)
         # s.points[1].y - s.slopes[1] * (s.points[1].x - x) = 0
         segx2 = (slope0 * pt1.x - pt1.y) / slope0
         segpt2 = Point(segx2, 0.0)
+        segx1 = segx2 - width
 
-        segy1 = pt1.y - slope0 * (segpt2.x - pt1.x)
+        segy1 = 0.0 - slope0 * (segx2 - segx1)
         segpt1 = Point(segx1, segy1)
 
+        # println("1b1: ", (;segx1, segy1, segx2, pt1.y, slope0, segpt2.x))
         return (Segment(segpt1, segpt2, slope0), (0, segpt2))
     else
+        segx1 = pt1.x - width
         segy1 = pt1.y - slope0 * width
         segpt1 = Point(segx1, segy1)
 
+        # println("1b2: ", (;segx1, segy1, segx2))
         return (Segment(segpt1, pt1, slope0), (1, nothing))
     end
 end
+
+# if s.slopes[1] * s.points[1].y > 0 # signbit(s.slopes[1]) == signbit(s.points[1].y)
+#     # s.points[1].y - s.slopes[1] * (s.points[1].x - x) = 0
+#     segx2 = (slope0 * pt1.x - pt1.y) / slope0
+#     segpt2 = Point(segx2, 0.0)
+
+#     segy1 = pt1.y - slope0 * segpt2.x
+#     segpt1 = Point(segx1, segy1)
+#     @show pt1.y slope0 segpt2.x pt1.x
+#     # @show segx1 segy1 segx2 0.0
+#     return (Segment(segpt1, segpt2, slope0), (0, segpt2))
+# else
+#     segy1 = pt1.y - slope0 * width
+#     segpt1 = Point(segx1, segy1)
+
+#     return (Segment(segpt1, pt1, slope0), (1, nothing))
+# end
 
 function Base.iterate(z::SegmentsWithZeros, (i, pt1)::Tuple{Int,Point})::Union{Nothing,SegWZIterType3}
     s = z.s
@@ -326,8 +362,9 @@ function Base.iterate(z::SegmentsWithZeros, (i, pt1)::Tuple{Int,Point})::Union{N
         pt2 = s.points[i+1]
         return (Segment(pt1, pt2, s.slopes[i+1]), (i+1, nothing))
     else
+        # Final segment
         slopeEnd = s.slopes[end]
-        width = s.points[end].x - pt1.x
+        width = max(100.0, s.points[end].x - pt1.x)
         pt2 = Point(pt1.x + width, s.points[end].y + slopeEnd * width)
         return (Segment(pt1, pt2, slopeEnd), (i+1, nothing))
     end
@@ -344,12 +381,12 @@ function Base.iterate(z::SegmentsWithZeros, (i, _)::Tuple{Int, Nothing})::Union{
         slopeEnd = s.slopes[end]
         if slopeEnd * ptlast.y < 0 # slopeend != 0 && signbit(slopeend) != signbit(ptlast.y)
             # s.points[end].y + s.slopes[end] * (x - s.points[end].x) = 0
-            segx2 = (ptlast.y - slopeEnd * ptlast.x) / slopeEnd
+            segx2 = ptlast.x - ptlast.y / slopeEnd
             segpt2 = Point(segx2, 0.0)
             return (Segment(ptlast, segpt2, slopeEnd), (i, segpt2))
         else
-            # This is the final segment
-            width = 1000.0 * (s.points[end].x - s.points[1].x)
+            # Final segment
+            width = max(100.0, s.points[end].x - s.points[1].x)
             segpt2 = Point(ptlast.x + width, ptlast.y + slopeEnd * width)
             return (Segment(ptlast, segpt2, slopeEnd), (i+1, nothing))
         end

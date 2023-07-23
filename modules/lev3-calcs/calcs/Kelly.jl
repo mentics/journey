@@ -1,6 +1,6 @@
 module Kelly
 using Roots
-using BaseTypes
+using BaseTypes, ProbTypes
 import ProbUtil
 
 #=
@@ -14,29 +14,37 @@ Can be integrated: https://bit.ly/3mud4SA
 # https://math.stackexchange.com/a/662210/235608
 const PROB_INTEGRAL_WIDTH2 = 1.0
 # TODO: is this commit or risk?
-function calcKel(prob, commit, segs)
+function calcKel(prob::Prob, commit::Real, segsWithZeros; dpx=PROB_INTEGRAL_WIDTH2)
+    # println("calcKel: ", (;commit, dpx))
     cdfLeft = 0.0
-    pbs = NTuple{3,Float64}[]
-    for seg in segs
+    # pbs = NTuple{3,Float64}[]
+    pbs = Tuple{Float64,Float64,Any}[]
+    for seg in segsWithZeros
+        # println("Checking: ", seg)
         x_right = seg.right.x
         cdfRight = ProbUtil.cdfFromLeft(prob, x_right)
         # @show cdfLeft cdfRight x_right
         if seg.slope == 0.0
+            # println("slope 0")
             # @assert seg.left.y == seg.right.y
             p = cdfRight - cdfLeft
             outcome = seg.left.y / commit
-            push!(pbs, (p * outcome, outcome, p))
+            # println((;seg, cdfLeft, cdfRight, p, outcome))
+            # push!(pbs, (p * outcome, outcome, p))
+            push!(pbs, (p * outcome, outcome, (;seg, cdfLeft, cdfRight, p)))
         else
+            # println("slope $(seg.slope)")
             # chop it into more pieces
             # integral[ outcome ] = (outcome.left + outcome.right) / 2 # trapezoid area, I think width can be 1 because discrete and a type of "width" is in prob term
             # integral[ prob * outcome ] =
             span = x_right - seg.left.x
-            num = ceil(span / PROB_INTEGRAL_WIDTH2)
+            num = ceil(span / dpx)
             width = span / num
             outcomeStep = (span / num) * seg.slope
 
             left = seg.left.x
             outcomeLeft = seg.left.y
+            # println((;span, num, width, outcomeStep, left, outcomeLeft))
             for i in 0:num-1
                 right = left + width
                 # outcomeRight = outcomeLeft + outcomeStep
@@ -44,7 +52,9 @@ function calcKel(prob, commit, segs)
                 outcome = (outcomeLeft + outcomeStep / 2) / commit
                 cdfR2 = ProbUtil.cdfFromLeft(prob, right)
                 p = cdfR2 - cdfLeft
-                push!(pbs, (p * outcome, outcome, p))
+                # println((;seg, cdfLeft, cdfR2, p, outcome, outcomeLeft, outcomeStep, commit))
+                # push!(pbs, (p * outcome, outcome, p))
+                push!(pbs, (p * outcome, outcome, (;seg, cdfLeft, cdfRight, p)))
                 left = right;
                 outcomeLeft += outcomeStep
                 cdfLeft = cdfR2
@@ -52,12 +62,13 @@ function calcKel(prob, commit, segs)
         end
         cdfLeft = cdfRight;
     end
-    # global keepPbs = pbs
-    # sumpbs = sum(x -> x[3], pbs)
-    # if !(sumpbs ≈ 1.0)
-    #     println("sumpbs not 1: $sumpbs")
-    #     blog("sumpbs not 1: $sumpbs")
-    # end
+    global kpbs = pbs
+    sumpbs = sum(x -> x[3].p, pbs)
+    if !(sumpbs ≈ 1.0)
+        println("WARN: sumpbs not 1: $sumpbs")
+        # blog("sumpbs not 1: $sumpbs")
+    end
+    # println(pbs)
     Kelly.findZero() do x
         s = sum(pbs) do (pb, b, _)
             pb / (1 + b*x)
