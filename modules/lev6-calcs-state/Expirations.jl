@@ -1,6 +1,6 @@
 module Expirations
 using Dates, OffsetArrays
-using LogUtil
+using LogUtil, DateUtil, CollUtil
 using Caches, TradierData, Markets
 using DataHelper
 
@@ -15,6 +15,14 @@ function expirs(sym="SPY"; age=Hour(12))::OffsetArray{Date}
         newVal(sym)
     end
     return _expirs
+end
+
+xpirsinrange(bdaysmin::Integer, bdaysmax::Integer) = xpirsinrange(today(), bdaysmin, bdaysmax, expirs())
+xpirsinrange(from::Date, bdaysmin::Integer, bdaysmax::Integer) = xpirsinrange(from, bdaysmin, bdaysmax, xpirs())
+function xpirsinrange(from::Date, bdaysmin::Integer, bdaysmax::Integer, xpirs)
+    starti = CollUtil.gtee(xpirs, bdaysAfter(from, bdaysmin))
+    endi = CollUtil.gtee(xpirs, bdaysAfter(from, bdaysmax))
+    return xpirs[starti:endi]
 end
 
 whichExpir(d::Date)::Int = searchsortedfirst(expirs(), d)

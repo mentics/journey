@@ -141,24 +141,33 @@ function iterSpreads(f::Function, oqs::Sides{Vector{ChainTypes.OptionQuote}}, ma
 end
 
 function paraSpreads(f::Function, oqs::Sides{Vector{ChainTypes.OptionQuote}}, maxSpreadWidth::Real, isLegAllowed, args...)::Bool
+    !isempty(oqs.long) || return true
     finish = false
-    @qbthreads for oq1 in oqs.long
+    @qthreads for oq1 in oqs.long
+        thid = Threads.threadid()
         for oq2 in oqs.short
             strikeWidth(oq1, oq2) <= maxSpreadWidth || continue
             # (getStrike(oq1) >= strikeMin && getStrike(oq2) >= strikeMin && oq1 != oq2) || continue
             oq1 != oq2 || continue
             (isLegAllowed(oq1, Side.long) && isLegAllowed(oq2, Side.short)) || continue
-            legLong = to(LegMeta, oq1, Side.long)
-            legShort = to(LegMeta, oq2, Side.short)
-            _, mx = OptionUtil.spreadExtrema(legLong, legShort)
+            legLong = to(LegMetaOpen, oq1, Side.long)
+            legShort = to(LegMetaOpen, oq2, Side.short)
+            # _, mx = OptionUtil.spreadExtrema(legLong, legShort)
+            _, mx = oextrema(legLong, legShort)
             mx >= MinSpreadMx || continue
             spr = getStrike(legLong) < getStrike(legShort) ? (legLong, legShort) : (legShort, legLong)
             # f(spr, args...) || ( finish = stop ; break )
-            f(spr, args...) || return false
+            f(thid, spr, args...) || return false
         end
         finish || break
     end
     return finish
+end
+
+function oextrema(os...)
+    extrema(os) do o
+        getStrike(o)
+    end
 end
 
 # function iterSpreads(f::Function, oqs::Sides{Vector{ChainTypes.OptionQuote}}, args...)::Bool

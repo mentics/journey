@@ -1,6 +1,6 @@
 module StratButter
 using Dates
-using SH, BaseTypes, SmallTypes, BackTypes, LegMetaTypes
+using SH, BaseTypes, SmallTypes, BackTypes, LegMetaTypes, ProbTypes
 using LogUtil, OutputUtil, BacktestUtil, CollUtil, DateUtil, ThreadUtil
 import DateUtil:timult,calcRate
 import ChainUtil as ch
@@ -149,6 +149,7 @@ function resetStrat(s::TStrat3)
     s.ctx.qtyPerMove[] = 0.0
 end
 
+# TODO: replace with Expirations.xpirsinrange
 function filterXpirs(xpirs, fromDate, params)
     starti = CollUtil.gtee(xpirs, bdaysAfter(fromDate, params.MinXpirBdays))
     endi = CollUtil.gtee(xpirs, bdaysAfter(fromDate, params.MaxXpirBdays))
@@ -181,7 +182,7 @@ function (s::TStrat3)(ops, tim, chain, otoq, vix)::Nothing
         searchLeft = ch.toSearch(curp, chain.xsoqs[xpir].put)
         searchRight = ch.toSearch(curp, chain.xsoqs[xpir].call)
         # TODO: multithreaded precalc all the probs and put in a lookup, and store in module cache
-        prob = ProbKde.probToClose(F(fromPrice), vix, tim.ts, xpir)
+        prob = ProbTypes.toProbWithMin(ProbKde.probToClose(F(fromPrice), vix, tim.ts, xpir))
         # TODO: try both and keep best score. tried once and didnt' look that good.
         if vix > 21.0 # TODO: params.VixThreshold
             findEntryHigh!(keep, params, prob, searchLeft, searchRight, ops.canOpenPos, curp, tmult)
@@ -398,8 +399,10 @@ end
 function findEntryLow!(keep, params, prob, searchLeft, searchRight, canOpenPos, args...)
     mid = prob.center
     # TODO: should we use a different prob for low/high?
-    strikeLow, _ = ProbUtil.probFromRight(prob, params.ProbMin)
-    strikeHigh, _ = ProbUtil.probFromLeft(prob, params.ProbMin)
+    # strikeLow, _ = ProbUtil.probFromRight(prob, params.ProbMin)
+    # strikeHigh, _ = ProbUtil.probFromLeft(prob, params.ProbMin)
+    strikeLow = ProbUtil.xforp(prob, 1.0 - params.ProbMin)
+    strikeHigh = ProbUtil.xforp(prob, params.ProbMin)
     oqsLeft = ch.oqsBetween(searchLeft, 0, strikeLow)
     oqsRight = ch.oqsBetween(searchRight, strikeHigh, 1e9)
     if length(oqsLeft) < 2 || length(oqsRight) < 2

@@ -40,7 +40,7 @@ function score_condor_long(prob, curp, tmult, lms; params=(;MinProfit=0.1, MinRa
     rate >= params.MinRate || return nothing
 
     segsWithZeros = LL.toSegmentsWithZeros(segs)
-    kel = Kelly.calcKel(prob, risk, segsWithZeros)
+    kel, _ = Kelly.calckel(prob, risk, segsWithZeros)
     kel >= params.MinKel || return nothing
 
     return (;score=kel, neto, margin, data=ScoreData(profit, risk, rate, kel))

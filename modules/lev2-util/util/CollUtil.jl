@@ -122,6 +122,18 @@ function sortuple(x1::T, x2::T, x3::T, x4::T, by)::NTuple{4,T} where T
     b, c = minmax2(b, c)
     return a[2], b[2], c[2], d[2]
 end
+
+(sortuple(t::NTuple{3,T}, by)::NTuple{3,T}) where T = sortuple(t..., by)
+(sortuple(by::Function, t::NTuple{3,T})::NTuple{3,T}) where T = sortuple(t..., by)
+(sortuple(by::Function, x1::T, x2::T, x3::T)::NTuple{3,T}) where T = sortuple(x1, x2, x3, by)
+function sortuple(x1::T, x2::T, x3::T, by)::NTuple{3,T} where T
+    a, b, c = decorate(by, x1, x2, x3)
+    a, b = minmax2(a, b)
+    a, c = minmax2(a, c)
+    b, c = minmax2(b, c)
+    return a[2], b[2], c[2]
+end
+
 function sortuple(by, x1::T, x2::T)::NTuple{2,T} where T
     a, b = decorate(by, x1, x2)
     a, b = minmax2(a, b)
@@ -130,6 +142,9 @@ end
 
 function decorate(by, x1, x2, x3, x4)
     return ((by(x1), x1), (by(x2), x2), (by(x3), x3), (by(x4), x4))
+end
+function decorate(by, x1, x2, x3)
+    return ((by(x1), x1), (by(x2), x2), (by(x3), x3))
 end
 function decorate(by, x1, x2)
     return ((by(x1), x1), (by(x2), x2))

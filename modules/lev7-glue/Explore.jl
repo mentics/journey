@@ -1,31 +1,212 @@
 module Explore
 using Dates
-import SH
+using ThreadPools
+using BaseTypes, LegTypes
+import SH, DateUtil
+import CollUtil.sortuple
+
+const CONFIG2 = Ref((;
+    adjustprices = -0.005,
+    lossprobadjust = 1.25
+))
+
+#region Troubleshooting
+function pbstoxys(pbs)
+    xs = map( pb -> (pb[3].left + pb[3].right) / 2, pbs)
+    probabilities = map( pb -> pb[3].p, pbs)
+    outcomes = map( pb -> pb[2], pbs)
+    products = map( pb -> pb[1], pbs)
+    return (;xs, probabilities, outcomes, products)
+end
+import GLMakie
+function drawkellycalc(sym; replace=false)
+    xys = pbstoxys(Kelly.kpbs)
+    if replace
+        GLMakie.barplot(xys.xs, xys[sym]; width=1)
+    else
+        GLMakie.barplot!(xys.xs, xys[sym]; width=1)
+    end
+end
+#endregion
+
+#region TestMonteCarlo
+import LinesLeg as LL
+function testmc(r)
+    lms = r.lms
+    xpir = SH.getExpir(lms)
+    prob = kprobs[xpir]
+    # neto = Pricing.price(lms)
+    segs = LL.toSegments(lms, CONFIG2[].adjustprices)
+    # bal = 100.0
+    numcontracts = 1 # bal * r.kel / r.risk
+    neto = Pricing.price(lms) - CONFIG2[].adjustprices
+    retsum = 0.0
+    iters = 1000
+    res = []
+    for _ in 1:iters
+        underatxpir = ProbUtil.probrand(prob) # TODO: make sure uniform distri
+        net = LL.at(segs, underatxpir)
+        push!(res, net)
+        ret = numcontracts * net
+        retsum += ret
+    end
+    ev = retsum / iters
+    @show numcontracts ev neto r.risk
+    res
+end
+#endregion
 
 #region LookForBestKelly
 using SmallTypes, LegMetaTypes
 using Markets, Expirations, Chains
-import Kelly, ChainUtil, Between
+import Kelly, ChainUtil, Between, ProbUtil
 
-function findkel1()
-    xpir = expir(2)
+function findkel(inc)
+    ts = now(UTC)
+    date = Date(ts)
     curp = market().curp
-    println("For curp: $(curp)")
-    oqss = ChainUtil.oqssAll(chain(xpir).chain)
-    puts = oqss.put.long
-    prob = Between.makeprob(now(UTC), xpir, curp)
-    i = 1
-    res = map(puts) do put
-        lms = (LegMetaOpen(put, Side.long),)
-        kel = Kelly.calcKel(prob, lms)
-        println("$(i): Long on strike $(SH.getStrike(lms[1])) -> $(kel)")
-        i += 1
-        return (;put, lms, kel)
+    println("Finding kel for curp: $(curp)")
+    xpirs = Expirations.xpirsinrange(1, 68)
+    ress = [[] for _ in 1:Threads.nthreads()]
+    global kprobs = Dict{Any, Any}()
+    for xpir in xpirs
+        prob = Between.makeprob(xpir, curp)
+        riskrat = calcriskrat(date, xpir)
+        ctx = (;curp, prob, riskrat, xpir)
+        kprobs[xpir] = prob
+        oqss = ChainUtil.oqssEntry(chain(xpir).chain, curp)
+        1 in inc && findkel1!(ress, ctx, oqss)
+        2 in inc && findkel2!(ress, ctx, oqss)
+        3 in inc && findkel3!(ress, ctx, oqss)
     end
+    res = vcat(ress...)
+    sort!(res; rev=true, by=r->r.evrate)
     return res
+end
+
+# function sortres!(date, res)
+#     sort!(res; by=r -> calcret(r, date))
+# end
+
+calcevrate(evret, xpir, date) = evret * DateUtil.timult(date, xpir)
+
+# calcrate(r, date=today()) = DateUtil.calcRate(date, r.xpir, r.kel * r.ev, r.risk)
+# calcret(r, date=today()) = r.kel * calcrate(r, date)
+
+function findkel1!(res, ctx, oqss)
+    Threads.@threads for call in oqss.call.long
+        check!(res, ctx, (LegMetaOpen(call, Side.long),))
+    end
+    Threads.@threads for put in oqss.put.long
+        check!(res, ctx, (LegMetaOpen(put, Side.long),))
+    end
+end
+
+import GenCands
+function findkel2!(res, ctx, oqss)
+    GenCands.paraSpreads(oqss.call, 2, (_...) -> true) do thid, lms
+        check!(res, ctx, lms)
+    end
+    GenCands.paraSpreads(oqss.put, 2, (_...) -> true) do thid, lms
+        check!(res, ctx, lms)
+    end
+end
+
+function findkel3!(res, ctx, oqss)
+    GenCands.paraSpreads(oqss.call, 2, (_...) -> true) do thid, lms
+        for oq in oqss.call.long
+            lms2 = sortuple(SH.getStrike, lms..., LegMetaOpen(oq, Side.long))
+            check!(res, ctx, lms2)
+        end
+        for oq in oqss.put.long
+            lms2 = sortuple(SH.getStrike, lms..., LegMetaOpen(oq, Side.long))
+            check!(res, ctx, lms2)
+        end
+        return true
+    end
+    GenCands.paraSpreads(oqss.put, 2, (_...) -> true) do thid, lms
+        for oq in oqss.call.long
+            lms2 = sortuple(SH.getStrike, lms..., LegMetaOpen(oq, Side.long))
+            check!(res, ctx, lms2)
+        end
+        for oq in oqss.put.long
+            lms2 = sortuple(SH.getStrike, lms..., LegMetaOpen(oq, Side.long))
+            check!(res, ctx, lms2)
+        end
+        return true
+    end
 end
 #endregion
 
+#region Common
+function check!(res, ctx, lms)
+    ss = tosegsz(ctx.curp, lms)
+    !isnothing(ss) || return true
+    try
+        kel, evret, ev, risk = calckel(ctx.prob, ctx.riskrat, ss)
+        if isfinite(kel) && kel > 0
+            # println("$(i): Long on strike $(SH.getStrike(lms[1])) -> $(kel)")
+            xpir = ctx.xpir
+            evrate = calcevrate(evret, xpir, today())
+            if evrate > 0.5
+                pp = Between.calcprobprofit(ctx.prob, ss.segsz)
+                if pp > 0.5
+                    push!(res[Threads.threadid()], (;ev, kel, evret, evrate, risk, xpir, lms))
+                end
+            end
+        end
+    catch e
+        global kcheck = (;ctx, lms, ss)
+        rethrow(e)
+    end
+    return true
+end
+
+# function fix(lm1, lm2, lm3)
+#     s1 = getStrike(lm1)
+#     if s1 == getStrike(lm2)
+#         if getSide(lm1) == getSide(lm2)
+#         else
+#         end
+#     else s1 == getStrike(lm3)
+#     else
+#         return sortuple(getStrike, lm1, lm2, lm3)
+#     end
+# end
+#endregion
+
+#region Kelly
+riskfreerate() = 0.04
+calcriskrat(from, to) = 1 + riskfreerate() * DateUtil.riskyears(from, to)
+
+using ProbTypes
+import Kelly, Pricing, LinesLeg as LL
+# function calcKel1(ts::DateTime, curp::Real, lms)
+#     xpir = getExpir(lms)
+#     Kelly.calcKel(makeprob(ts, xpir, curp), calcriskrat(Date(ts), xpir), lms)
+# end
+
+function tosegsz(curp, lms::Coll{<:LegLike})
+    adjustprices = CONFIG2[].adjustprices
+    segs = LL.toSegments(lms, adjustprices)
+    LL.canprofit(segs) || return nothing
+    segsz = LL.toSegmentsWithZeros(segs; extent=(0.5*curp, 1.5*curp))
+    return (;segs, segsz)
+end
+
+calckel(prob::Prob, riskrat::Real, lms::Coll{<:LegLike}) = calckel(prob, riskrat, tosegsz(prob.center, lms))
+
+function calckel(prob::Prob, riskrat::Real, (;segs, segsz))
+    lossprobadjust = CONFIG2[].lossprobadjust
+    risk = riskrat * max(Pricing.calcMarg(prob.center, segs))
+    try
+        return (Kelly.calckel(prob, risk, segsz; lossprobadjust)..., risk)
+    catch e
+        global kcalckel = (;prob, risk, segsz, lossprobadjust)
+        rethrow(e)
+    end
+end
+#endregion
 
 #region CalcOptPrices
 # using Random, Statistics

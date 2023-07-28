@@ -68,7 +68,8 @@ function prob!(ax, prob, colorIndex, scale)
     # display(p)
     return p
 end
-function prob!(center, vals; kws...)
+drawprob!(prob; kws...) = drawdist!(prob.center, prob.vals; kws...)
+function drawdist!(center, vals; kws...)
     ax = getAxis(;newFig=false)
     # colors = (GLMakie.RGBA(0.5, 0.5, 1.0, 0.5), GLMakie.RGBA(0.0, 0.5, 0.5, 0.5), GLMakie.RGBA(0.5, 0.5, 0.5, 0.5))
     v1 = center .* Bins.xs();
@@ -78,10 +79,12 @@ function prob!(center, vals; kws...)
     return p
 end
 
-function prob(center, vals; kws...) #, colorIndex=1)
-    # fig = getAxis()
+drawprob(prob; kws...) = drawdist(prob.center, prob.vals; kws...)
+function drawdist(center, vals; kws...) #, colorIndex=1)
+    ax = getAxis(;newFig=true)
     # colors = (GLMakie.RGBA(0.5, 0.5, 1.0, 0.5), GLMakie.RGBA(0.0, 0.5, 0.5, 0.5), GLMakie.RGBA(0.5, 0.5, 0.5, 0.5))
-    p = GLMakie.barplot(F(center) .* Bins.xs(), .01 * vals ./ Bins.width(); gap=0.0, width=center * Bins.width(), inspectable=false, kws...) # , color=colors[colorIndex])
+    # p = GLMakie.barplot(F(center) .* Bins.xs(), .01 * vals ./ Bins.width(); gap=0.0, width=center * Bins.width(), inspectable=false, kws...) # , color=colors[colorIndex])
+    p = GLMakie.barplot!(ax, F(center) .* Bins.xs(), vals; gap=0.0, width=center * Bins.width(), kws...) # , color=colors[colorIndex])
     GLMakie.vlines!(center)
     return p
 end

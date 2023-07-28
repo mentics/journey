@@ -13,27 +13,31 @@ Can be integrated: https://bit.ly/3mud4SA
 
 # https://math.stackexchange.com/a/662210/235608
 const PROB_INTEGRAL_WIDTH2 = 1.0
-# TODO: is this commit or risk?
-function calcKel(prob::Prob, commit::Real, segsWithZeros; dpx=PROB_INTEGRAL_WIDTH2)
-    # println("calcKel: ", (;commit, dpx))
+# Commit, not risk, because in the formula, it's balance/commit to get number of contracts
+function calckel(prob::Prob, commit::Real, segsWithZeros; dpx=PROB_INTEGRAL_WIDTH2, lossprobadjust=1.0)
     cdfLeft = 0.0
-    # pbs = NTuple{3,Float64}[]
-    pbs = Tuple{Float64,Float64,Any}[]
+    pbs = NTuple{3,Float64}[]
+    # pbs = Tuple{Float64,Float64,Any}[]
+    ptotal = 0.0
+    ev = 0.0
+    # pts = []
     for seg in segsWithZeros
-        # println("Checking: ", seg)
+        # push!(pts, (seg.left.x, seg.right.x))
         x_right = seg.right.x
-        cdfRight = ProbUtil.cdfFromLeft(prob, x_right)
-        # @show cdfLeft cdfRight x_right
+        cdfRight = ProbUtil.cdf(prob, x_right)
         if seg.slope == 0.0
-            # println("slope 0")
             # @assert seg.left.y == seg.right.y
-            p = cdfRight - cdfLeft
             outcome = seg.left.y / commit
-            # println((;seg, cdfLeft, cdfRight, p, outcome))
-            # push!(pbs, (p * outcome, outcome, p))
-            push!(pbs, (p * outcome, outcome, (;seg, cdfLeft, cdfRight, p)))
+            p = cdfRight - cdfLeft
+            if outcome < 0
+                p *= lossprobadjust
+            end
+            po = p * outcome
+            ev += po
+            ptotal += p
+            # push!(pbs, (p * outcome, outcome, (;seg, left=seg.left.x, right=x_right, cdfLeft, cdfRight, p)))
+            push!(pbs, (po, outcome, p))
         else
-            # println("slope $(seg.slope)")
             # chop it into more pieces
             # integral[ outcome ] = (outcome.left + outcome.right) / 2 # trapezoid area, I think width can be 1 because discrete and a type of "width" is in prob term
             # integral[ prob * outcome ] =
@@ -44,17 +48,19 @@ function calcKel(prob::Prob, commit::Real, segsWithZeros; dpx=PROB_INTEGRAL_WIDT
 
             left = seg.left.x
             outcomeLeft = seg.left.y
-            # println((;span, num, width, outcomeStep, left, outcomeLeft))
             for i in 0:num-1
                 right = left + width
-                # outcomeRight = outcomeLeft + outcomeStep
-                # outcome = ((outcomeLeft + outcomeRight) / 2) / commit
                 outcome = (outcomeLeft + outcomeStep / 2) / commit
-                cdfR2 = ProbUtil.cdfFromLeft(prob, right)
+                cdfR2 = ProbUtil.cdf(prob, right)
                 p = cdfR2 - cdfLeft
-                # println((;seg, cdfLeft, cdfR2, p, outcome, outcomeLeft, outcomeStep, commit))
-                # push!(pbs, (p * outcome, outcome, p))
-                push!(pbs, (p * outcome, outcome, (;seg, cdfLeft, cdfRight, p)))
+                if outcome < 0
+                    p *= lossprobadjust
+                end
+                po = p * outcome
+                ev += po
+                    ptotal += p
+                # push!(pbs, (p * outcome, outcome, (;seg, left, right, cdfLeft, cdfRight=cdfR2, p)))
+                push!(pbs, (po, outcome, p))
                 left = right;
                 outcomeLeft += outcomeStep
                 cdfLeft = cdfR2
@@ -62,20 +68,63 @@ function calcKel(prob::Prob, commit::Real, segsWithZeros; dpx=PROB_INTEGRAL_WIDT
         end
         cdfLeft = cdfRight;
     end
-    global kpbs = pbs
-    sumpbs = sum(x -> x[3].p, pbs)
-    if !(sumpbs ≈ 1.0)
-        println("WARN: sumpbs not 1: $sumpbs")
-        # blog("sumpbs not 1: $sumpbs")
+
+    for i in eachindex(pbs)
+        pb = pbs[i]
+        pbs[i] = (pb[1] / ptotal, pb[2], pb[3] / ptotal)
     end
-    # println(pbs)
-    Kelly.findZero() do x
+    ev /= ptotal
+
+    # global kpbs = pbs
+    # sump = sum(x -> x[3], pbs)
+    # # @assert ptotal == sump
+    # if sump > 1.000001 || sump < 0.999
+    #     println("WARN: sumpbs not 1: $sump")
+    # end
+
+    kel = Kelly.findZero() do x
         s = sum(pbs) do (pb, b, _)
             pb / (1 + b*x)
         end
         return s
     end
+    # ev = evlogret(kel, pbs)
+    evret = calcevret(kel, pbs)
+    return evret > 0.0 ? (;kel, evret, ev) : (;kel=NaN, evret, ev)
 end
+
+#=
+Expected value of sum of log of the resulting balance
+expected value = sum ( prob * outcome ) where sum(prob) == 1
+x is the percentage of balance to invest
+sum(prob_i *
+    log(
+        M + # Amount you did not risk
+        (x*M / commit) * outcome_i # outcome_i * numcontracts ; numcontracts = x*M / commit ; (x*M / commit) * outcome_i
+    )
+)
+M can be 1 = 100% of balance
+sum(pi * log(1 + x * oi / commit))
+to maximize that, derivative with respect to x
+d/dx = sum( p_i * (o_i / commit) / (1 + x * o_i / commit) )
+=#
+
+probouts() = [(;prob=pb[3].p, outcome=pb[2]) for pb in Kelly.kpbs]
+devlogret(x) = devlogret(x, probouts())
+function devlogret(x, probouts)
+    sum(po -> po.prob * po.outcome / (1 + x * po.outcome), probouts)
+end
+
+evlogretpo(x) = evlogretpo(x, probouts())
+function evlogretpo(x, probouts)
+    sum(po -> po.prob * log(max(0.00001, 1.0 + x * po.outcome)), probouts)
+end
+evlogret(x, pbs) = sum(pb -> pb[3].p * log(max(0.00001, 1.0 + x * pb[2])), pbs)
+# evret adjusted for duration is what we want to maximize
+# pb[2] (outcome) is already divided by commit so it's a percentage return
+# kel is multiplied in there already
+calcevret(kel, pbs) = sum(pb -> pb[3] * (kel * pb[2]), pbs)
+
 
 # calc(pvals, vals) = ded(pvals, vals)
 calc!(pvals, vals) = ded(buf, pvals, vals)

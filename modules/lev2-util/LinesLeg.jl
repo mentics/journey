@@ -28,6 +28,7 @@ segCall(strike::Currency, side::Side.T, qty::Float64, neto::PT)::Right = Right(P
 segPut(strike::Currency, side::Side.T, qty::Float64, neto::PT)::Left = Left(side == Side.long ? -qty : qty, Point(strike, F(neto)))
 # TODO: clean up after moving style/side into types
 function toSeg(leg::LegLike, neto::PT)::SegSide
+    # println("toSeg ", (;leg, neto))
     strike = getStrike(leg)
     side = getSide(leg)
     qty = getQuantity(leg)
@@ -38,9 +39,16 @@ function toSegments(legs::NTuple{N,LegLike}, netos::NTuple{N,PT})::Segments{N} w
     segs = toSeg.(legs, netos)
     return combine(segs)
 end
+(slopeprofit(s::Segments{N}) where N) = s.slopes[1] < 0 || s.slopes[end] > 0
+canprofit(s::Segments{1}) = slopeprofit(s) || s.points[1].y > 0
+canprofit(s::Segments{2}) = slopeprofit(s) || s.points[1].y > 0 || s.points[2].y > 0
+canprofit(s::Segments{3}) = slopeprofit(s) || s.points[1].y > 0 || s.points[2].y > 0 || s.points[3].y > 0
+canprofit(s::Segments{4}) = slopeprofit(s) || s.points[1].y > 0 || s.points[2].y > 0 || s.points[3].y > 0 || s.points[4].y > 0
+# function extrema(s::Segments{N}) where N
+# end
 
 toSegmentsWithZeros(legs::NTuple{N,LegLike}, netos::NTuple{N,PT}) where N = toSegmentsWithZeros(toSegments(legs, netos))
-toSegmentsWithZeros(segs::Segments) = segmentsWithZeros(segs)
+toSegmentsWithZeros(segs::Segments; extent=(100.0, 600.0)) = segmentsWithZeros(segs; extent)
 
 toSections(legs::NTuple{N,LegLike}, netos::NTuple{N,PT}) where N = toSections(toSegments(legs, netos))
 function toSections(segs::Segments{N}) where N

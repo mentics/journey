@@ -1,12 +1,31 @@
 module ProbTypes
 using SH, BaseTypes, VectorCalcUtil
+import Bins
 
-export pt, Prob
-const pt = @__MODULE__
+export pt, Prob, ProbSimple, ProbWithMin, toProbWithMin
 
-struct Prob
-    center::Float64 # Generally unused except making sure we don't mix things with different centers
+const CONFIG3 = Ref((;
+    binmin = 1e-3 * Bins.WIDTH,
+    density_left = 1e-3,
+    density_right = 1e-4,
+    p0 = 1e-5,
+    p2 = 1e-5
+))
+
+abstract type Prob end
+
+struct ProbSimple <: Prob
+    center::Float64
     vals::Vector{Float64}
+end
+struct ProbWithMin <: Prob
+    center::Float64
+    vals::Vector{Float64}
+    p0::Float64
+    p2::Float64
+    binmin::Float64
+    densityleft::Float64
+    densityright::Float64
 end
 SH.getCenter(p::Prob) = p.center
 SH.getVals(p::Prob) = p.vals
@@ -15,7 +34,22 @@ valRight(p::Prob) = p.vals[end]
 
 Base.:(+)(p1::Prob, p2::Prob) = ( @assert p1.center === p2.center ; Prob(p1.center, normalize!(p1.vals + p2.vals)) )
 
-import Bins
+function toProbWithMin(prob::ProbSimple)::ProbWithMin # , binmin::Float64, leftdensity::Float64, rightdensity::Float64)::ProbWithMin
+    (;binmin, density_left, density_right, p0, p2) = CONFIG3[]
+    fromvals = prob.vals
+    vals = Bins.empty()
+    vals[1] = fromvals[1] + density_left * Bins.XLEFT
+    vals[end] = fromvals[end] + density_right * (2 - Bins.XRIGHT)
+    total = p0 + p2
+    for i in eachindex(vals)
+        p = max(binmin, fromvals[i])
+        vals[i] = p
+        total += p
+    end
+    vals ./= total
+    return ProbWithMin(prob.center, vals, p0, p2, binmin, density_left, density_right)
+end
+
 # function combineProbs2(p1::Prob, p2::Prob, w1::Number=0.5, w2::Number=1.0-w1)
 #     @assert w1 + w2 ≈ 1.0
 #     @assert p1.center > 0.0

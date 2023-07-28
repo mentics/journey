@@ -108,19 +108,19 @@ function oqssAll(oqs)::Oqss
     return oqss
 end
 
-function oqssEntry(oqs, curp::Currency, legsCheck=LEGS_EMPTY)::Oqss
+function oqssEntry(oqs, curp::Currency, legsCheck=LegTypes.LEGS_EMPTY)::Oqss
     lc = Vector{OptionQuote}()
     sc = Vector{OptionQuote}()
     lp = Vector{OptionQuote}()
     sp = Vector{OptionQuote}()
     oqss = Styles(Sides(lc, sc), Sides(lp, sp))
-    fConL = !isConflict(legsCheck, Side.long)
-    fConS = !isConflict(legsCheck, Side.short)
+    fConL = !LegTypes.isConflict(legsCheck, Side.long)
+    fConS = !LegTypes.isConflict(legsCheck, Side.short)
     fCanS = canShort(Globals.get(:Strats), curp)
     # oqs = Iterators.filter(isValid(curp), oqs)
     for oq in oqs
-        canL = fConL(oq)
-        canS = fCanS(oq) && fConS(oq)
+        canL = fConL(oq) && getAsk(oq) > 0.0
+        canS = fCanS(oq) && fConS(oq) && getBid(oq) > 0.0
         if SmallTypes.isCall(oq)
             canL && push!(lc, oq)
             canS && push!(sc, oq)

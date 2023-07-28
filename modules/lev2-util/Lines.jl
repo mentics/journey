@@ -1,7 +1,11 @@
 module Lines
 using BaseTypes, LineTypes
+import OutputUtil:r5
 
 export Segments, SegSide, Left, Right, Point
+
+Base.show(io::IO, x::Segment) = print(io, "Seg{$(x.left) -> $(x.right)}")
+Base.show(io::IO, x::Point) = print(io, "Pt($(r5(x.x)),$(r5(x.y)))")
 
 abstract type SegSide end
 
@@ -17,11 +21,11 @@ end
 
 Base.convert(::Type{Tuple{Float64,Float64}}, p::Point) = (p.x, p.y)
 
-function toLineTuples(s::Segments{N})::NTuple{N+2,Tuple{Float64,Float64}} where N
-    w = max(0.01 * s.points[end].x, s.points[end].x - s.points[1].x)
-    x0 = s.points[1].x - w
+function toLineTuples(s::Segments{N}; mn=100.0, mx=600.0)::NTuple{N+2,Tuple{Float64,Float64}} where N
+    w = s.points[end].x - s.points[1].x
+    x0 = max(0.0, min(mn, s.points[1].x - w))
     y0 = at(s, x0)
-    xend = s.points[end].x + w
+    xend = max(mx, s.points[end].x + w)
     yend = at(s, xend)
     return ((x0, y0), s.points..., (xend, yend))
 end
@@ -100,32 +104,76 @@ function combine(l1::Right, l2::Right)::Segments{2}
     return segs
 end
 
-combine(ls::Tuple{Left,Left,Left}) = combine(ls...)
-function combine(l1::Left, l2::Left, l3::Left)::Segments{3}
-    @assert l1.point.x < l2.point.x < l3.point.x
-    y3 = l1.point.y + l2.point.y + l3.point.y
-    y2 = y3 - l3.slope * (l3.point.x - l2.point.x)
-    y1 = y2 - (l2.slope + l3.slope) * (l2.point.x - l1.point.x)
-    slope23 = l2.slope + l3.slope
-    segs = Segments{3}(
-        (l1.slope + slope23, slope23, l3.slope, 0.0),
-        (Point(l1.point.x, y1), Point(l2.point.x, y2), Point(l3.point.x, y3))
-    )
-    return segs
-end
+# combine(ls::Tuple{Left,Left,Left}) = combine(ls...)
+# function combine(l1::Left, l2::Left, l3::Left)::Segments{3}
+#     @assert l1.point.x < l2.point.x < l3.point.x
+#     y3 = l1.point.y + l2.point.y + l3.point.y
+#     y2 = y3 - l3.slope * (l3.point.x - l2.point.x)
+#     y1 = y2 - (l2.slope + l3.slope) * (l2.point.x - l1.point.x)
+#     slope23 = l2.slope + l3.slope
+#     segs = Segments{3}(
+#         (l1.slope + slope23, slope23, l3.slope, 0.0),
+#         (Point(l1.point.x, y1), Point(l2.point.x, y2), Point(l3.point.x, y3))
+#     )
+#     return segs
+# end
 
-combine(ls::Tuple{Right,Right,Right}) = combine(ls...)
-function combine(l1::Right, l2::Right, l3::Right)::Segments{3}
-    @assert l1.point.x < l2.point.x < l3.point.x
-    y1 = l1.point.y + l2.point.y + l3.point.y
-    y2 = y1 + l1.slope * (l2.point.x - l1.point.x)
-    y3 = y2 + (l1.slope + l2.slope) * (l3.point.x - l2.point.x)
-    slope12 = l1.slope + l2.slope
-    segs = Segments{3}(
-        (0.0, l1.slope, slope12, slope12 + l3.slope),
-        (Point(l1.point.x, y1), Point(l2.point.x, y2), Point(l3.point.x, y3))
-    )
-    return segs
+# combine(ls::Tuple{Right,Right,Right}) = combine(ls...)
+# function combine(l1::Right, l2::Right, l3::Right)::Segments{3}
+#     @assert l1.point.x <= l2.point.x <= l3.point.x string("$(l1.point.x) < $(l2.point.x) < $(l3.point.x)")
+#     y1 = l1.point.y + l2.point.y + l3.point.y
+#     y2 = y1 + l1.slope * (l2.point.x - l1.point.x)
+#     y3 = y2 + (l1.slope + l2.slope) * (l3.point.x - l2.point.x)
+#     slope12 = l1.slope + l2.slope
+#     segs = Segments{3}(
+#         (0.0, l1.slope, slope12, slope12 + l3.slope),
+#         (Point(l1.point.x, y1), Point(l2.point.x, y2), Point(l3.point.x, y3))
+#     )
+#     return segs
+# end
+
+# combine(ls::Tuple{Left,Right,Right}) = combine(ls...)
+# function combine(l1::Left, l2::Right, l3::Right)::Segments{3}
+#     @assert l1.point.x <= l2.point.x <= l3.point.x string("$(l1.point.x) < $(l2.point.x) < $(l3.point.x)")
+#     y1 = l1.point.y + l2.point.y + l3.point.y
+#     y2 = y1
+#     y3 = y2 + l2.slope * (l3.point.x - l2.point.x)
+#     slope23 = l2.slope + l3.slope
+#     segs = Segments{3}(
+#         (l1.slope, 0.0, l2.slope, slope23),
+#         (Point(l1.point.x, y1), Point(l2.point.x, y2), Point(l3.point.x, y3))
+#     )
+#     return segs
+# end
+
+
+#region New
+# combine(ls::Tuple{Right,Left,Right}) = combine(ls...)
+# function combine(l1::Right, l2::Left, l3::Right)::Segments{3}
+#     @assert l1.point.x <= l2.point.x <= l3.point.x string("$(l1.point.x) < $(l2.point.x) < $(l3.point.x)")
+#     y1, y2, y3 = atall(l1, l2, l3)
+#     segs = Segments{3}(
+#         (l2.slope, l1.slope + l2.slope, l1.slope, l1.slope + l3.slope),
+#         (Point(l1.point.x, y1), Point(l2.point.x, y2), Point(l3.point.x, y3))
+#     )
+#     return segs
+# end
+
+# combine(ls::Tuple{Right,Right,Left}) = combine(ls...)
+# function combine(l1::Right, l2::Right, l3::Left)::Segments{3}
+#     @assert l1.point.x <= l2.point.x <= l3.point.x string("$(l1.point.x) < $(l2.point.x) < $(l3.point.x)")
+#     y1, y2, y3 = atall(l1, l2, l3)
+#     segs = Segments{3}(
+#         (l2.slope, l1.slope + l2.slope, l1.slope, l1.slope + l3.slope),
+#         (Point(l1.point.x, y1), Point(l2.point.x, y2), Point(l3.point.x, y3))
+#     )
+#     return segs
+# end
+#endregion
+
+combine(tup) = combine(tup...)
+function combine(l1::SegSide, l2::SegSide, l3::SegSide)::Segments{3}
+    return Segments{3}(slopes(l1, l2, l3), points(l1, l2, l3))
 end
 
 combine(ls::Tuple{Left,Right,Right,Right}) = combine(ls...)
@@ -191,7 +239,7 @@ end
 
 combine(ls::Tuple{Left,Right,Left,Right}) = combine(ls...)
 function combine(l1::Left, l2::Right, l3::Left, l4::Right)::Segments{4}
-    error("Disallowed option strategy because not finite risk")
+    error("TODO")
 end
 # TODO: test above
 
@@ -223,21 +271,36 @@ function at(s::Segments, x::Float64)::Float64
     end
 end
 
-function at(s::Left, x::Float64)::Float64
-    if x < s.point.x
-        return s.point.y - s.slope * (s.point.x - x)
-    else
-        return s.point.y
-    end
-end
+# atall(l1, l2, l3) = (
+#     at(l1.point.x, l1, l2, l3),
+#     at(l2.point.x, l1, l2, l3),
+#     at(l3.point.x, l1, l2, l3)
+# )
 
-function at(s::Right, x::Float64)::Float64
-    if x < s.point.x
-        return s.point.y
-    else
-        return s.point.y + s.slope * (x - s.point.x)
-    end
-end
+at(s::Left, x::Float64)::Float64 = x >= s.point.x ? s.point.y : s.point.y - s.slope * (s.point.x - x)
+at(s::Right, x::Float64)::Float64 = x <= s.point.x ? s.point.y : s.point.y + s.slope * (x - s.point.x)
+point(s::SegSide, x::Float64) = Point(s.point.x, at(s, x))
+point(pt::Point, l1, l2, l3) = Point(pt.x, at(l1, pt.x) + at(l2, pt.x) + at(l3, pt.x))
+points(l1, l2, l3) = (
+    point(l1.point, l1, l2, l3),
+    point(l2.point, l1, l2, l3),
+    point(l3.point, l1, l2, l3)
+)
+
+slopeleft(s::Right, x::Float64)::Float64 = x <= s.point.x ? 0.0 : s.slope
+sloperight(s::Right, x::Float64)::Float64 = x < s.point.x ? 0.0 : s.slope
+slopeleft(s::Left, x::Float64)::Float64 = x <= s.point.x ? s.slope : 0.0
+sloperight(s::Left, x::Float64)::Float64 = x < s.point.x ? s.slope : 0.0
+
+slopeleft(x::Float64, l1, l2, l3)::Float64 = slopeleft(l1, x) + slopeleft(l2, x) + slopeleft(l3, x)
+sloperight(x::Float64, l1, l2, l3)::Float64 = sloperight(l1, x) + sloperight(l2, x) + sloperight(l3, x)
+
+slopes(l1, l2, l3) = (
+    slopeleft(l1.point.x, l1, l2, l3),
+    sloperight(l1.point.x, l1, l2, l3),
+    sloperight(l2.point.x, l1, l2, l3),
+    sloperight(l3.point.x, l1, l2, l3)
+)
 
 function test()
     p1 = Point(10.0, 1.0)
@@ -305,7 +368,7 @@ function Base.iterate(z::SegmentsZeros, i::Int)::Union{Nothing,Tuple{Float64,Int
     return nothing
 end
 
-segmentsWithZeros(s::Segments{N}) where N = SegmentsWithZeros{N}(s)
+segmentsWithZeros(s::Segments{N}; extent) where N = SegmentsWithZeros{N}(s, extent)
 Base.IteratorSize(::Type{SegmentsWithZeros{N}}) where N = Base.SizeUnknown()
 Base.IteratorSize(::Type{SegmentsWithZeros{N,M}}) where {N,M} = Base.SizeUnknown()
 Base.eltype(::Type{SegmentsWithZeros{N,M}}) where {N,M} = Segment
@@ -316,13 +379,11 @@ function Base.iterate(z::SegmentsWithZeros)::Union{Nothing,SegWZIterType3}
     s = z.s
     slope0 = s.slopes[1]
     pt1 = s.points[1]
-    width = max(100.0, s.points[end].x - pt1.x)
 
-    if s.slopes[1] * s.points[1].y > 0 # signbit(s.slopes[1]) == signbit(s.points[1].y)
-        # s.points[1].y - s.slopes[1] * (s.points[1].x - x) = 0
+    if s.slopes[1] * s.points[1].y > 1e-8 # signbit(s.slopes[1]) == signbit(s.points[1].y)
         segx2 = (slope0 * pt1.x - pt1.y) / slope0
         segpt2 = Point(segx2, 0.0)
-        segx1 = segx2 - width
+        segx1 = min(z.extent[1], 0.9*segx2)
 
         segy1 = 0.0 - slope0 * (segx2 - segx1)
         segpt1 = Point(segx1, segy1)
@@ -330,11 +391,11 @@ function Base.iterate(z::SegmentsWithZeros)::Union{Nothing,SegWZIterType3}
         # println("1b1: ", (;segx1, segy1, segx2, pt1.y, slope0, segpt2.x))
         return (Segment(segpt1, segpt2, slope0), (0, segpt2))
     else
-        segx1 = pt1.x - width
-        segy1 = pt1.y - slope0 * width
+        segx1 = min(z.extent[1], 0.9*pt1.x)
+        segy1 = pt1.y - slope0 * (pt1.x - segx1)
         segpt1 = Point(segx1, segy1)
 
-        # println("1b2: ", (;segx1, segy1, segx2))
+        # println("1b2: ", (;segpt1, pt1, slope0))
         return (Segment(segpt1, pt1, slope0), (1, nothing))
     end
 end
@@ -360,12 +421,15 @@ function Base.iterate(z::SegmentsWithZeros, (i, pt1)::Tuple{Int,Point})::Union{N
     s = z.s
     if i < lastindex(s.points)
         pt2 = s.points[i+1]
+        # println("2b1: ", (;pt1, pt2, ss=s.slopes[i+1]))
         return (Segment(pt1, pt2, s.slopes[i+1]), (i+1, nothing))
     else
         # Final segment
         slopeEnd = s.slopes[end]
-        width = max(100.0, s.points[end].x - pt1.x)
-        pt2 = Point(pt1.x + width, s.points[end].y + slopeEnd * width)
+        x2 = max(z.extent[2], 1.1*pt1.x)
+        y2 = s.points[end].y + slopeEnd * (x2 - pt1.x)
+        pt2 = Point(x2, y2)
+        # println("2b2: ", (;pt1, x2, y2, slopeEnd))
         return (Segment(pt1, pt2, slopeEnd), (i+1, nothing))
     end
 end
@@ -383,23 +447,28 @@ function Base.iterate(z::SegmentsWithZeros, (i, _)::Tuple{Int, Nothing})::Union{
             # s.points[end].y + s.slopes[end] * (x - s.points[end].x) = 0
             segx2 = ptlast.x - ptlast.y / slopeEnd
             segpt2 = Point(segx2, 0.0)
+            # println("3b1b1: ", (;ptlast, segpt2, slopeEnd))
             return (Segment(ptlast, segpt2, slopeEnd), (i, segpt2))
         else
             # Final segment
-            width = max(100.0, s.points[end].x - s.points[1].x)
-            segpt2 = Point(ptlast.x + width, ptlast.y + slopeEnd * width)
+            x2 = max(z.extent[2], 1.1*ptlast.x)
+            y2 = ptlast.y + slopeEnd * (x2 - ptlast.x)
+            segpt2 = Point(x2, y2)
+            # println("3b1b2: ", (;ptlast, segpt2, slopeEnd))
             return (Segment(ptlast, segpt2, slopeEnd), (i+1, nothing))
         end
     else
         pt1 = s.points[i]
         pt2 = s.points[i+1]
         slope = s.slopes[i+1]
-        if pt1.y * pt2.y < 0 # signbit(pt1.y) != signbit(pt2.y)
+        if pt1.y * pt2.y < -1e-8 # signbit(pt1.y) != signbit(pt2.y)
             # s.points[i].y + s.slopes[i+1] * (x - s.points[i].x) = 0
             segx2 = (slope * pt1.x - pt1.y) / slope
             segpt2 = Point(segx2, 0.0)
+            # println("3b2b1: ", (;pt1, pt2, segpt2, slope))
             return (Segment(pt1, segpt2, slope), (i, segpt2))
         else
+            # println("3b2b2: ", (;pt1, pt2, slope))
             return (Segment(pt1, pt2, slope), (i+1, nothing))
         end
     end

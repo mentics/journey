@@ -147,7 +147,7 @@ addScores(s1, s2) = typeof(s1)(values(s1) .+ values(s2))
 #     end
 # end
 
-function probKde(center::Float64, var::Float64, tex::Float64; up=false)::Prob
+function probKde(center::Float64, var::Float64, tex::Float64; up=false)::ProbSimple
     # Calendars.calcTex(now(UTC), today() + Day(MaxDays)) with some margin down
     # TODO: what is the max tex we can work with?
     if tex > 7000 # tex > 3500
@@ -159,13 +159,13 @@ function probKde(center::Float64, var::Float64, tex::Float64; up=false)::Prob
     @assert isfinite(var) && var > 0.0
     @assert isfinite(tex) && tex > 0.0
     (up || Updated[] < now(UTC) - Hour(8)) && update()
-    return Prob(Float64(center), makePdv(tex, var))
+    return ProbSimple(Float64(center), makePdv(tex, var))
 end
-probKde(center::Float64, var::Float64, from::DateTime, to::DateTime; up=false)::Prob = probKde(center, var, calcTex(from, to); up)
-probOpenToOpen(center::Float64, var::Float64, from::Date, to::Date; up=false)::Prob = probKde(center, var, getMarketOpen(from), getMarketOpen(to); up)
-probOpenToClose(center::Float64, var::Float64, from::Date, to::Date; up=false)::Prob = probKde(center, var, getMarketOpen(from), getMarketClose(to); up)
-probToClose(center::Float64, var::Float64, from::DateTime, to::Date; up=false)::Prob = probKde(center, var, from, getMarketClose(to); up)
-probFromOpen(center::Float64, var::Float64, from::Date, to::DateTime; up=false)::Prob = probKde(center, var, getMarketOpen(from), to; up)
+probKde(center::Float64, var::Float64, from::DateTime, to::DateTime; up=false)::ProbSimple = probKde(center, var, calcTex(from, to); up)
+probOpenToOpen(center::Float64, var::Float64, from::Date, to::Date; up=false)::ProbSimple = probKde(center, var, getMarketOpen(from), getMarketOpen(to); up)
+probOpenToClose(center::Float64, var::Float64, from::Date, to::Date; up=false)::ProbSimple = probKde(center, var, getMarketOpen(from), getMarketClose(to); up)
+probToClose(center::Float64, var::Float64, from::DateTime, to::Date; up=false)::ProbSimple = probKde(center, var, from, getMarketClose(to); up)
+probFromOpen(center::Float64, var::Float64, from::Date, to::DateTime; up=false)::ProbSimple = probKde(center, var, getMarketOpen(from), to; up)
 
 # kdeOpenToClose(center::Float64, var::Float64, from::Date, target::Date, bdaysBack=20; kws...) = probKdeComp(center, var, getMarketOpen(from), getMarketClose(target), bdaysBack; kws...)
 # kdeToClose(center::Float64, var::Float64, from::DateTime, target::Date, bdaysBack=20; kws...) = probKdeComp(center, var, from, getMarketClose(target), bdaysBack; kws...)

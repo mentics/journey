@@ -27,6 +27,7 @@ end
 # Segments plus extra ones around zeros
 @computed struct SegmentsWithZeros{N}
     s::fulltype(Segments{N})
+    extent::Tuple{Float64,Float64}
 end
 
 end

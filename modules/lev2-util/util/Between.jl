@@ -8,6 +8,7 @@ using Rets, LegTypes, TradeTypes, LegTradeTypes, Pricing
 import LinesLeg:LinesLeg as LL,Segments
 # (LL.toSegments(lms::NTuple{N,LegMeta})::Segments{N}) where N = LL.toSegments(lms, map(P ∘ Pricing.price, lms))
 (LL.toSegments(legs::NTuple{N,LegLike})::Segments{N}) where N = LL.toSegments(legs, map(P ∘ Pricing.price, legs))
+(LL.toSegments(legs::NTuple{N,LegLike}, adjustprices::Real)::Segments{N}) where N = LL.toSegments(legs, map(leg -> P(Pricing.price(leg) + adjustprices), legs)) # P ∘ Pricing.price
 # function LL.toSegments(legs::NTuple{N,LegLike}, netos)::Segments{N} where N
 #     # netos = map(P ∘ Pricing.price, lms)
 #     # # TODO: remove validation after checking
@@ -22,30 +23,50 @@ import LinesLeg:LinesLeg as LL,Segments
 
 LL.toSegmentsWithZeros(lms::NTuple{N,LegMeta}) where N = LL.toSegmentsWithZeros(lms, map(P ∘ Pricing.price, lms))
 LL.toSections(lms::NTuple{N,LegMeta}) where N = LL.toSections(lms, map(P ∘ Pricing.price, lms))
-SH.toDraw(lms::NTuple{N,LegMeta}) where N = collect(LL.toLineTuples(LL.toSegments(lms))) # collect because Makie can't handle tuples of coords
+SH.toDraw(lms::NTuple{N,LegMeta}; mn=100.0, mx=600.0) where N = collect(LL.toLineTuples(LL.toSegments(lms); mn, mx)) # collect because Makie can't handle tuples of coords
 # SH.toDraw(lms::NTuple{N,LegMeta}) where N = collect(LL.toLineTuples(LL.toSegmentsWithZeros(lms))) # collect because Makie can't handle tuples of coords
 # SH.toDraw(lms::NTuple{N,LegMeta}) where N = collect(LL.toLineTuples(LL.toSegmentsWithZeros(lms))) # collect because Makie can't handle tuples of coords
 #end
 
 #region Prob
-import DateUtil, ProbKde, HistData
-makeprob(ts::DateTime, hasexpir, curp)::Prob = makeprob(ts, getExpir(hasexpir), curp)
-makeprob(ts::DateTime, xpir::Date, curp)::Prob = ProbKde.probToClose(F(curp), F(HistData.vixOpen(DateUtil.lastTradingDay(ts))), ts, xpir)
-#endregion
-
-#region Kelly
+import DateUtil, Markets, ProbKde, HistData
 using ProbTypes
-import Kelly
-Kelly.calcKel(ts::DateTime, curp::Real, lms) = Kelly.calcKel(makeprob(ts, lms, curp), lms)
-function Kelly.calcKel(prob::Prob, lms)
-    segs = LL.toSegments(lms)
-    risk = max(Pricing.calcMarg(prob.center, segs))
-    segsz = LL.toSegmentsWithZeros(segs)
-    return Kelly.calcKel(prob, risk, segsz)
+import LineTypes:SegmentsWithZeros
+import ProbUtil
+makeprob(hasexpir, curp::Real)::ProbWithMin = makeprob(getExpir(hasexpir), curp)
+makeprob(xpir::Date, curp::Real)::ProbWithMin = toProbWithMin(ProbKde.probToClose(F(curp), F(Markets.market().vix), now(UTC), xpir))
+makeprob(ts::DateTime, hasexpir, curp::Real)::ProbWithMin = makeprob(ts, getExpir(hasexpir), curp)
+makeprob(ts::DateTime, xpir::Date, curp::Real)::ProbWithMin = toProbWithMin(ProbKde.probToClose(F(curp), F(HistData.vixOpen(DateUtil.lastTradingDay(ts))), ts, xpir))
+calcprobprofit(prob, lms) = calcprobprofit(prob, LL.toSegmentsWithZeros(lms))
+function calcprobprofit(prob, segsz::SegmentsWithZeros)
+    p = 0.0
+    s1 = first(segsz)
+    if s1.left.y > 0 || s1.slope < 0
+        p += ProbUtil.cdf(prob, s1.left.x)
+        # println("added1 ", (; s1, p))
+    end
+
+    lasts = s1
+    for s in segsz
+        if s.left.y > 0 || s.right.y > 0
+            p += ProbUtil.cdf(prob, s.right.x) - ProbUtil.cdf(prob, s.left.x)
+            # println("added2 ", (; s, p))
+        end
+        lasts = s
+    end
+
+    s = lasts
+    if s.right.y > 0 || s.slope > 0
+        p += 1 - ProbUtil.cdf(prob, s.right.x)
+        # println("added3 ", (; s, p))
+    end
+
+    return p
 end
 #endregion
 
 #region ToLegMeta
+SH.to(::Type{LegMetaOpen}, oq, side) = LegMetaOpen(oq, side)
 SH.to(::Type{LegMetaOpen}, leg::Leg, lup) = LegMetaOpen(lup(getOption(leg)), getSide(leg), getQuantity(leg))
 SH.to(::Type{LegMetaOpen}, lm::LegMetaOpen, otoq) = ( leg = getLeg(lm) ; LegMetaOpen(leg, ChainUtil.oToOq(otoq, getOption(leg))) )
 SH.to(::Type{LegMetaOpen}, lm::LegMetaOpen, fotoq::Function) = ( leg = getLeg(lm) ; LegMetaOpen(leg, fotoq(getOption(leg))) )
