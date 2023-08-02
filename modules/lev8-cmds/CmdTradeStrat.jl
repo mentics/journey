@@ -62,7 +62,7 @@ function checkExits(strat, tim, otoq, curp)
     # println("Warning: skipping check exits for now until clear out the small trades")
     for tradeOpen in StoreTrade.tradesLive()
         lmsc = tosn(LegMetaClose, Tuple(getLegs(tradeOpen)), otoq)
-        !isnothing(lmsc) || ( println("couldn't quote") ; return true ) # skip if can't quote
+        !isnothing(lmsc) || ( println("couldn't quote: ", tradeOpen) ; return true ) # skip if can't quote
         label = BackTypes.checkExit(strat.params, tradeOpen, tim, lmsc, curp)
         if !isnothing(label)
             closeTrade(tradeOpen, tim.ts, lmsc, BackTypes.pricingClose(strat, lmsc), label)

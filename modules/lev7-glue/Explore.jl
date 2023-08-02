@@ -5,9 +5,9 @@ using BaseTypes, LegTypes
 import SH, DateUtil
 import CollUtil.sortuple
 
-const CONFIG2 = Ref((;
+const CONFIG3 = Ref((;
     adjustprices = -0.005,
-    lossprobadjust = 1.25
+    kelprobadjust = 0.25
 ))
 
 #region Troubleshooting
@@ -31,28 +31,52 @@ end
 
 #region TestMonteCarlo
 import LinesLeg as LL
-function testmc(r)
+function testmc(r; numiter=1000, curp=market().curp, prob=Between.makeprob2(r.lms, curp).prob)
     lms = r.lms
-    xpir = SH.getExpir(lms)
-    prob = kprobs[xpir]
-    # neto = Pricing.price(lms)
-    segs = LL.toSegments(lms, CONFIG2[].adjustprices)
-    # bal = 100.0
-    numcontracts = 1 # bal * r.kel / r.risk
-    neto = Pricing.price(lms) - CONFIG2[].adjustprices
-    retsum = 0.0
-    iters = 1000
-    res = []
-    for _ in 1:iters
-        underatxpir = ProbUtil.probrand(prob) # TODO: make sure uniform distri
-        net = LL.at(segs, underatxpir)
-        push!(res, net)
+    risk = 100 * r.risk
+    segs = LL.toSegments(lms, CONFIG3[].adjustprices)
+    bal = 10000.0
+    netsum = 0.0
+    pnlratesum = 0.0
+    ncsum = 0.0
+    unders = randistrets(prob, numiter)
+    nets = Float64[]
+    rets = Float64[]
+    bals = Float64[]
+    maxdrawdown = 1.0
+    high = 0.0
+    for under in unders
+        numcontracts = floor(Int, r.kel * bal / risk)
+        # @show r.kel, bal, risk, bal / risk, numcontracts * risk / bal
+        underret = under / curp
+        net = 100 * LL.at(segs, under)
         ret = numcontracts * net
-        retsum += ret
+        @show underret, net, numcontracts, ret, bal+ret, ret/bal
+        bal += ret
+        high = max(high, bal)
+        drawdown = bal / high
+        maxdrawdown = min(maxdrawdown, drawdown)
+
+        push!(nets, net)
+        push!(rets, net)
+        push!(bals, bal)
+
+        ncsum += numcontracts
+        netsum += net
+        pnlratesum += ret / bal
     end
-    ev = retsum / iters
-    @show numcontracts ev neto r.risk
-    res
+    netmean = netsum / numiter
+    ncmean = ncsum / numiter
+    pnlratemean = pnlratesum / numiter
+    @show bal netmean ncmean pnlratemean maxdrawdown
+    return (;nets, rets, bals)
+end
+
+import Random
+function randistrets(prob, n)
+    rets = [ProbUtil.xforp(prob, p) for p in 1e-6:(1.0/n):(1.0-1e-6)]
+    Random.shuffle!(rets)
+    return rets
 end
 #endregion
 
@@ -66,7 +90,7 @@ function findkel(inc)
     date = Date(ts)
     curp = market().curp
     println("Finding kel for curp: $(curp)")
-    xpirs = Expirations.xpirsinrange(1, 68)
+    xpirs = Expirations.xpirsinrange(1, 3) # 68)
     ress = [[] for _ in 1:Threads.nthreads()]
     global kprobs = Dict{Any, Any}()
     for xpir in xpirs
@@ -82,6 +106,13 @@ function findkel(inc)
     res = vcat(ress...)
     sort!(res; rev=true, by=r->r.evrate)
     return res
+end
+
+function filt(res)
+    filter(res) do r
+        # r.probprofit > 0.55 && r.risk <= 5.0 &&
+        DateUtil.bdays(today(), SH.getExpir(r.lms)) >= 3
+    end
 end
 
 # function sortres!(date, res)
@@ -141,7 +172,7 @@ end
 #region Common
 function check!(res, ctx, lms)
     ss = tosegsz(ctx.curp, lms)
-    !isnothing(ss) || return true
+    !isnothing(ss) || ( println("ss was nothing") ; return true )
     try
         kel, evret, ev, risk = calckel(ctx.prob, ctx.riskrat, ss)
         if isfinite(kel) && kel > 0
@@ -149,9 +180,9 @@ function check!(res, ctx, lms)
             xpir = ctx.xpir
             evrate = calcevrate(evret, xpir, today())
             if evrate > 0.5
-                pp = Between.calcprobprofit(ctx.prob, ss.segsz)
-                if pp > 0.5
-                    push!(res[Threads.threadid()], (;ev, kel, evret, evrate, risk, xpir, lms))
+                probprofit = Between.calcprobprofit(ctx.prob, ss.segsz)
+                if probprofit > 0.5
+                    push!(res[Threads.threadid()], (;ev, kel, evret, evrate, risk, xpir, lms, probprofit))
                 end
             end
         end
@@ -187,7 +218,7 @@ import Kelly, Pricing, LinesLeg as LL
 # end
 
 function tosegsz(curp, lms::Coll{<:LegLike})
-    adjustprices = CONFIG2[].adjustprices
+    adjustprices = CONFIG3[].adjustprices
     segs = LL.toSegments(lms, adjustprices)
     LL.canprofit(segs) || return nothing
     segsz = LL.toSegmentsWithZeros(segs; extent=(0.5*curp, 1.5*curp))
@@ -197,12 +228,12 @@ end
 calckel(prob::Prob, riskrat::Real, lms::Coll{<:LegLike}) = calckel(prob, riskrat, tosegsz(prob.center, lms))
 
 function calckel(prob::Prob, riskrat::Real, (;segs, segsz))
-    lossprobadjust = CONFIG2[].lossprobadjust
+    probadjust = CONFIG3[].kelprobadjust
     risk = riskrat * max(Pricing.calcMarg(prob.center, segs))
     try
-        return (Kelly.calckel(prob, risk, segsz; lossprobadjust)..., risk)
+        return (Kelly.calckel(prob, risk, segsz; probadjust)..., risk)
     catch e
-        global kcalckel = (;prob, risk, segsz, lossprobadjust)
+        global kcalckel = (;prob, risk, segsz, probadjust)
         rethrow(e)
     end
 end
@@ -303,4 +334,26 @@ end
 # end
 #endregion
 
+
+#region kde
+import Distributions, KernelDensityEstimate, DrawUtil
+function testkde()
+    nspy = Distributions.Normal(1.0, 0.1)
+    numsamples = 10000
+    maxdur = 10
+    basevix = 10
+    vixspread = 2
+    bws = [0.1, 0.1, 1.01]
+    data = stack([(dur = 1 + i % maxdur ; spy = log(rand(nspy)) ; [spy*dur, basevix + vixspread*spy + rand() - 0.5, dur]) for i in 0:numsamples])
+    kdem1 = KernelDensityEstimate.kde!(data, bws)
+    range1 = -0.49:0.01:0.49
+    vals = map(x -> x[1], [kdem1(reshape([x, basevix, maxdur / 2], 3, 1)) for x in range1])
+    display(DrawUtil.draw(:scatter, range1, vals))
+    for k in 0.5:0.1:1.5
+        sleep(0.5)
+        vals = map(x -> x[1], [kdem1(reshape([x, basevix, k * maxdur / 2], 3, 1)) for x in range1])
+        DrawUtil.draw!(:scatter, range1, vals)
+    end
+end
+#endregion
 end

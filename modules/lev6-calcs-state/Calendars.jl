@@ -160,7 +160,7 @@ end
 function updateState()
     ts = now(UTC)
     try
-        isOpen, nextChange = today() != Date(2022,6,20) ? tradierClock() : (false, DateTime("2022-06-20T20:00:00")) # hard coded because the API missed this eStateay
+        isOpen, nextChange = today() != Date(2022,6,20) ? tradierClock() : (false, DateTime("2022-06-20T20:00:00")) # hard coded because the API missed this new holiday
         @atomic MktState.isOpen = isOpen
         @atomic MktState.nextChange = nextChange
     catch

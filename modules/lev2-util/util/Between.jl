@@ -23,7 +23,7 @@ import LinesLeg:LinesLeg as LL,Segments
 
 LL.toSegmentsWithZeros(lms::NTuple{N,LegMeta}) where N = LL.toSegmentsWithZeros(lms, map(P ∘ Pricing.price, lms))
 LL.toSections(lms::NTuple{N,LegMeta}) where N = LL.toSections(lms, map(P ∘ Pricing.price, lms))
-SH.toDraw(lms::NTuple{N,LegMeta}; mn=100.0, mx=600.0) where N = collect(LL.toLineTuples(LL.toSegments(lms); mn, mx)) # collect because Makie can't handle tuples of coords
+SH.toDraw(lms::NTuple{N,LegLike}; mn=100.0, mx=600.0) where N = collect(LL.toLineTuples(LL.toSegments(lms); mn, mx)) # collect because Makie can't handle tuples of coords
 # SH.toDraw(lms::NTuple{N,LegMeta}) where N = collect(LL.toLineTuples(LL.toSegmentsWithZeros(lms))) # collect because Makie can't handle tuples of coords
 # SH.toDraw(lms::NTuple{N,LegMeta}) where N = collect(LL.toLineTuples(LL.toSegmentsWithZeros(lms))) # collect because Makie can't handle tuples of coords
 #end
@@ -33,10 +33,18 @@ import DateUtil, Markets, ProbKde, HistData
 using ProbTypes
 import LineTypes:SegmentsWithZeros
 import ProbUtil
+makeprob(hasexpir)::ProbWithMin = makeprob(getExpir(hasexpir), Markets.market().curp)
 makeprob(hasexpir, curp::Real)::ProbWithMin = makeprob(getExpir(hasexpir), curp)
 makeprob(xpir::Date, curp::Real)::ProbWithMin = toProbWithMin(ProbKde.probToClose(F(curp), F(Markets.market().vix), now(UTC), xpir))
 makeprob(ts::DateTime, hasexpir, curp::Real)::ProbWithMin = makeprob(ts, getExpir(hasexpir), curp)
 makeprob(ts::DateTime, xpir::Date, curp::Real)::ProbWithMin = toProbWithMin(ProbKde.probToClose(F(curp), F(HistData.vixOpen(DateUtil.lastTradingDay(ts))), ts, xpir))
+
+makeprob2(hasexpir) = makeprob2(hasexpir, Markets.market().curp)
+makeprob2(hasexpir, curp::Real) = makeprob2(getExpir(hasexpir), curp)
+makeprob2(xpir::Date, curp::Real) = ( prob = ProbKde.probToClose(F(curp), F(Markets.market().vix), now(UTC), xpir) ; (;prob, probwithmin=toProbWithMin(prob)) )
+# makeprob2(ts::DateTime, hasexpir, curp::Real) = makeprob(ts, getExpir(hasexpir), curp)
+# makeprob2(ts::DateTime, xpir::Date, curp::Real) = toProbWithMin(ProbKde.probToClose(F(curp), F(HistData.vixOpen(DateUtil.lastTradingDay(ts))), ts, xpir))
+
 calcprobprofit(prob, lms) = calcprobprofit(prob, LL.toSegmentsWithZeros(lms))
 function calcprobprofit(prob, segsz::SegmentsWithZeros)
     p = 0.0
@@ -66,6 +74,12 @@ end
 #endregion
 
 #region ToLegMeta
+import Chains
+function requote(lms)
+    lmsnew = tos(LegMetaOpen, lms, Chains.chainLookup)
+    println("Price: $(Pricing.price(lms)) -> $(Pricing.price(lmsnew))")
+    return lmsnew
+end
 SH.to(::Type{LegMetaOpen}, oq, side) = LegMetaOpen(oq, side)
 SH.to(::Type{LegMetaOpen}, leg::Leg, lup) = LegMetaOpen(lup(getOption(leg)), getSide(leg), getQuantity(leg))
 SH.to(::Type{LegMetaOpen}, lm::LegMetaOpen, otoq) = ( leg = getLeg(lm) ; LegMetaOpen(leg, ChainUtil.oToOq(otoq, getOption(leg))) )

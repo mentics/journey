@@ -7,8 +7,8 @@ export LegOrder
 export OrderType, OrderClass
 
 # from: https://documentation.tradier.com/brokerage-api/reference/response/orders
-@enumx OrderType market=1 debit credit even limit stop stop_limit
-@enumx OrderClass equity=1 option combo multileg
+@enumx OrderType market=1 debit credit even limit stop stop_limit other
+@enumx OrderClass equity=1 option combo multileg oto
 
 struct LegOrder
     id::Int

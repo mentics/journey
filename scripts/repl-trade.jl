@@ -2,7 +2,7 @@ include("repl-simple.jl")
 
 using DrawUtil
 using Calendars, Markets, Chains, Expirations
-using Store, StoreTrade, ProcOrder
+using Store, StoreTrade, ProcOrder, TradeInfo
 using CmdTrading, CmdPos
 
 import Combos as c, SeekingAlpha as sa
@@ -10,15 +10,15 @@ import Combos as c, SeekingAlpha as sa
 
 dbChecks()
 procOrders()
-display(todo())
+# display(todo())
 # toc()
 # todup()
 # x3(1)
 # xdr(5)
 tradesOpen()
 
-c.findRoll("F", 14, .12, Style.put)
-c.findRoll("F", 14.5, 0, Style.call)
+# c.findRoll("F", 14, .12, Style.put)
+# c.findRoll("F", 14.5, 0, Style.call)
 
 import CmdTradeStrat as darts
 darts.run()

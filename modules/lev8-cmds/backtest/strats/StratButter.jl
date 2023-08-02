@@ -216,8 +216,8 @@ end
 
 BackTypes.pricingOpen(::TStrat3, lmso::NTuple{N,LegMetaOpen}) where N = toPT(price_open(lmso))
 BackTypes.pricingClose(::TStrat3, lmsc::NTuple{N,LegMetaClose}) where N = toPT(price_close(lmsc))
-price_open(lms) = Pricing.price(lms, false)
-price_close(lms) = Pricing.price(lms, true)
+price_open(lms) = Pricing.price(Action.open, lms)
+price_close(lms) = Pricing.price(Action.close, lms)
 # calcPrice(lms)::PT = toPT(Pricing.price(lms)) # toPT(bap(lms, 0.0)) + P(0.02)
 # calcPriceFast(lms)::Float64 = Pricing.price(lms) # Pricing.bapFast(lms, 0.0) + 0.02
 

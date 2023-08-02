@@ -4,12 +4,12 @@ import Bins
 
 export pt, Prob, ProbSimple, ProbWithMin, toProbWithMin
 
-const CONFIG3 = Ref((;
-    binmin = 1e-3 * Bins.WIDTH,
-    density_left = 1e-3,
-    density_right = 1e-4,
-    p0 = 1e-5,
-    p2 = 1e-5
+const CONFIG7 = Ref((;
+    binmin = 0.0, # 1e-1 * Bins.WIDTH,
+    density_left = 0.0, # 1e-3,
+    density_right = 0.0, # 1e-4,
+    p0 = 0.0, # 1e-7,
+    p2 = 0.0, # 1e-7
 ))
 
 abstract type Prob end
@@ -35,7 +35,7 @@ valRight(p::Prob) = p.vals[end]
 Base.:(+)(p1::Prob, p2::Prob) = ( @assert p1.center === p2.center ; Prob(p1.center, normalize!(p1.vals + p2.vals)) )
 
 function toProbWithMin(prob::ProbSimple)::ProbWithMin # , binmin::Float64, leftdensity::Float64, rightdensity::Float64)::ProbWithMin
-    (;binmin, density_left, density_right, p0, p2) = CONFIG3[]
+    (;binmin, density_left, density_right, p0, p2) = CONFIG7[]
     fromvals = prob.vals
     vals = Bins.empty()
     vals[1] = fromvals[1] + density_left * Bins.XLEFT

@@ -5,20 +5,42 @@ using BaseUtil, TradierUtil
 # primitDir = ordType != "market" ? tord["price"] * tierTypeSign(tord["type"]) : 0.0
 
 function SH.to(::Type{Order}, tord::Dict{String,Any})::Order
-    legs = haskey(tord, "leg") ? tord["leg"] : [tord]
-    class = toEnum(OrderClass, tord["class"])
-    typ = toEnum(OrderType, tord["type"])
+    try
+        legs = haskey(tord, "leg") ? tord["leg"] : [tord]
+        class = toEnum(OrderClass, tord["class"])
+        typ = toEnum(OrderType, get(tord, "type", "other"))
 
-    primitDir = haskey(tord, "price") ? abs(tord["price"]) : nothing
-    prillDir = haskey(tord, "avg_fill_price") ? abs(tord["avg_fill_price"]) : nothing
-    # @info "" class typ tord["side"] (tord["side"] in ("buy_to_open", "buy_to_close"))
-    if (class == OrderClass.multileg && typ == OrderType.debit) ||
-            (class != OrderClass.multileg && tord["side"] in ("buy_to_open", "buy_to_close"))
-        !isnothing(primitDir) && (primitDir *= -1)
-        !isnothing(prillDir) && (prillDir *= -1)
+        legs = tosnn(LegOrder, legs)
+
+        primitDir = get(tord, "price", nothing) # haskey(tord, "price") ? abs(tord["price"]) : nothing
+        if typ == OrderType.other
+            primitDir = sum(tleg ->  ((tleg["side"] in ("buy_to_open", "buy_to_close")) ? -1 : 1) * tleg["price"], tord["leg"])
+        end
+
+        prillDir = get(tord, "avg_fill_price", nothing) # haskey(tord, "avg_fill_price") ? abs(tord["avg_fill_price"]) : nothing
+        if typ == OrderType.other
+            prillDir = sum(getPrillDir, legs)
+        end
+
+        # @info "" class typ tord["side"] (tord["side"] in ("buy_to_open", "buy_to_close"))
+        if typ != OrderType.other && (
+                    (class == OrderClass.multileg && typ == OrderType.debit) ||
+                    (class != OrderClass.multileg && tord["side"] in ("buy_to_open", "buy_to_close"))
+                )
+            !isnothing(primitDir) && (primitDir *= -1)
+            !isnothing(prillDir) && (prillDir *= -1)
+        end
+
+        ord = Order{toStatus(tord["status"])}(tord["id"],
+            get(tord, "symbol", tord["leg"][1]["symbol"]),
+            class, typ, primitDir, prillDir, legs, tier.parseTs(tord["create_date"]), tier.parseTs(tord["transaction_date"]))
+        # global kord = ord
+        # error("stop")
+        return ord
+    catch e
+        global ktord = tord
+        rethrow(e)
     end
-
-    return Order{toStatus(tord["status"])}(tord["id"], tord["symbol"], class, typ, primitDir, prillDir, tosnn(LegOrder, legs), tier.parseTs(tord["create_date"]), tier.parseTs(tord["transaction_date"]))
 end
 
 function SH.to(::Type{Union{Nothing,LegOrder}}, tleg::Dict{String,Any})::Union{Nothing,LegOrder}

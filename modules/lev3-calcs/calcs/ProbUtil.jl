@@ -18,13 +18,13 @@ function cdfr(prob::ProbWithMin, xr::Float64)
 
     ind = Bins.leftOf(xr)
     p += sum(vals[2:ind])
-    diff = xr - Bins.x(ind)
+    diff = round(xr - Bins.x(ind); digits=10)
     @assert diff >= 0
     if diff < Bins.WIDTH_HALF
         p -= vals[ind] * diff / Bins.WIDTH
     else
-        w = diff - Bins.WIDTH_HALF
-        @assert 0 <= w < Bins.WIDTH_HALF
+        w = round(diff - Bins.WIDTH_HALF; digits=10)
+        @assert 0 <= w <= Bins.WIDTH_HALF (;w, diff, ind, p)
         p += vals[ind+1] * (w / Bins.WIDTH)
     end
 
@@ -43,13 +43,14 @@ function cdfr(prob::ProbWithMin, xr::Float64)
     return p
 end
 
-xforp(prob::ProbWithMin, p::Float64)::Float64 = xrforp(prob, p) * prob.center
-function xrforp(prob::ProbWithMin, p0::Float64)::Float64
-    @assert 0 <= p0 <= 1
+xforp(prob::ProbWithMin, p::Float64)::Float64 = xrforp(prob, prob.p0, prob.p2, p) * prob.center
+xforp(prob::ProbSimple, p::Float64)::Float64 = xrforp(prob, 0.0, 0.0, p) * prob.center
+function xrforp(prob::Prob, p0::Float64, p2::Float64, pquery::Float64)::Float64
+    @assert 0 <= pquery <= 1
     vals = prob.vals
-    leftval = prob.p0 + vals[1]
-    p0 > leftval || return xforp_left(prob, p0) # (p / leftval) * Bins.XLEFT
-    p = p0 - leftval
+    leftval = p0 + vals[1]
+    pquery > leftval || return xforp_left(prob, p0, pquery) # (p / leftval) * Bins.XLEFT
+    p = pquery - leftval
 
     for (i, x) in Bins.MIDSI
         v = vals[i]
@@ -62,8 +63,8 @@ function xrforp(prob::ProbWithMin, p0::Float64)::Float64
     end
     # println((;p0, p))
 
-    res = xforp_right(prob, p0)
-    @assert 0 <= res <= 2 (;res, p0)
+    res = xforp_right(prob, p2, pquery)
+    @assert 0 <= res <= 2 (;res, pquery)
     return res
     # widthright = 2 - Bins.XRIGHT
     # rightdensity = rightdensity + vals[end] / widthright
@@ -94,7 +95,7 @@ function cdf_right(prob::ProbWithMin, x::Float64)::Float64
     return min(1.0, 1.0 - area) # to deal with float inaccuracies, return must be <= 1.0
 end
 
-function xforp_left(prob::ProbWithMin, p::Float64)::Float64
+function xforp_left(prob::Prob, p0::Float64, p::Float64)::Float64
     @assert p >= 0
     # A triangle with bottom side = Bins.XLEFT with area = prob.vals[1], A = W * H / 2
     # h(w) = (w / W) * H
@@ -102,15 +103,15 @@ function xforp_left(prob::ProbWithMin, p::Float64)::Float64
     # a = w * (w / W) * H / 2
     # a = w^2 * H / W / 2
     # w = sqrt(2 * W * a / H)
-    p > prob.p0 || return 0.0
-    a = p - prob.p0
+    p > p0 || return 0.0
+    a = p - p0
     w0 = Bins.XLEFT
     h0 = 2 * prob.vals[1] / w0
     w = sqrt(2 * w0 * a / h0)
     return w
 end
 
-function xforp_right(prob::ProbWithMin, p::Float64)::Float64
+function xforp_right(prob::Prob, p2::Float64, p::Float64)::Float64
     @assert p >= 0
     # A triangle with bottom `side = 2 - Bins.XRIGHT` with `area = prob.vals[end]`, A = W * H / 2
     # h(w) = (w / W) * H
@@ -118,7 +119,7 @@ function xforp_right(prob::ProbWithMin, p::Float64)::Float64
     # a = w * (w / W) * H / 2
     # a = w^2 * H / W / 2
     # w = sqrt(2 * W * a / H)
-    p1 = (1 - prob.p2)
+    p1 = (1 - p2)
     p < p1 || return 2.0
     a = p1 - p
     w0 = 2 - Bins.XRIGHT

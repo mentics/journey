@@ -14,7 +14,7 @@ Can be integrated: https://bit.ly/3mud4SA
 # https://math.stackexchange.com/a/662210/235608
 const PROB_INTEGRAL_WIDTH2 = 1.0
 # Commit, not risk, because in the formula, it's balance/commit to get number of contracts
-function calckel(prob::Prob, commit::Real, segsWithZeros; dpx=PROB_INTEGRAL_WIDTH2, lossprobadjust=1.0)
+function calckel(prob::Prob, commit::Real, segsWithZeros; dpx=PROB_INTEGRAL_WIDTH2, probadjust=1.0)
     cdfLeft = 0.0
     pbs = NTuple{3,Float64}[]
     # pbs = Tuple{Float64,Float64,Any}[]
@@ -29,9 +29,7 @@ function calckel(prob::Prob, commit::Real, segsWithZeros; dpx=PROB_INTEGRAL_WIDT
             # @assert seg.left.y == seg.right.y
             outcome = seg.left.y / commit
             p = cdfRight - cdfLeft
-            if outcome < 0
-                p *= lossprobadjust
-            end
+            p *= outcome > 0 ? 1.0 - probadjust : 1.0 + probadjust
             po = p * outcome
             ev += po
             ptotal += p
@@ -53,12 +51,10 @@ function calckel(prob::Prob, commit::Real, segsWithZeros; dpx=PROB_INTEGRAL_WIDT
                 outcome = (outcomeLeft + outcomeStep / 2) / commit
                 cdfR2 = ProbUtil.cdf(prob, right)
                 p = cdfR2 - cdfLeft
-                if outcome < 0
-                    p *= lossprobadjust
-                end
+                p *= outcome > 0 ? 1.0 - probadjust : 1.0 + probadjust
                 po = p * outcome
                 ev += po
-                    ptotal += p
+                ptotal += p
                 # push!(pbs, (p * outcome, outcome, (;seg, left, right, cdfLeft, cdfRight=cdfR2, p)))
                 push!(pbs, (po, outcome, p))
                 left = right;

@@ -10,17 +10,20 @@ import OptionUtil
 # priceOpp(hass::Coll)::Currency = sum(priceOpp, hass)
 # priceOpp(qt::Quote)::Currency = price(-getAsk(qt), -getBid(qt))
 
-function price(legs::Coll{<:LegLike}, closing = false) # ::Union{Nothing,Currency}
+price(x) = price(Action.open, x)
+
+function price(action::Action.T, legs::Coll{<:LegLike})
     psum = CZ
     for leg in legs
-        p = price(leg, closing)
+        p = price(action, leg)
         # !isnothing(p) || return nothing
         psum += p
     end
     return psum
 end
 
-function price(leg::LegLike, closing = false)
+function price(action::Action.T, leg::LegLike)
+    closing = action == Action.close
     if (getSide(leg) == Side.long) ⊻ closing
         return price_long(leg, closing)
     else
@@ -80,24 +83,21 @@ function price_raw(bid::Currency, ask::Currency)::Currency
         # println("WARN: Tried to price when bid > ask ", (;bid, ask))
         return min(bid, ask)
     end
-    if ask <= 0
-        return bid
-    end
-    spread = ask - bid
-    # if spread < 0.4
-    #     mult = round(Int, spread / 0.02, RoundDown)
-    #     return b + mult * 0.01
-    # else
-    #     return b + 0.1
+    # if ask <= 0
+    #     println("WARN: using bid price when ask $(ask) <= 0")
+    #     return bid
     # end
 
-    if spread <= 0.03
+    spread = ask - bid
+    if spread <= 0.02
         return bid
-    elseif spread <= 0.4
-        mult = round(Int, spread / 0.04, RoundDown)
-        return bid + mult * 0.01
+    # elseif spread <= 0.4
+    #     mult = round(Int, spread / 0.04, RoundUp)
+    #     return bid + mult * 0.01
+    elseif spread <= 0.5
+        return bid + ceil(spread / 2 * 100)/100 - 0.01
     else
-        return bid + 0.1
+        return bid + 0.25
     end
     return max(p, C(0.01))
 end

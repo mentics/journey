@@ -100,21 +100,35 @@ function closeLegMarket(tid::Int, leg, pre=true)
     return submitOrder(payload)
 end
 
-# class=oto&duration=day&type[0]=limit&price[0]=160.55&option_symbol[0]=SPY190621C00080000&side[0]=buy_to_open&quantity[0]=1&type[1]=market&option_symbol[1]=SPY190621C00085000&side[1]=sell_to_open&quantity[1]=1
-function EXP_payload_oto(lms, action=Action.open)
-    leg_str = map(enumerate(lms)) do (ind, lm)
-        q = getQuote(lm)
-        price =  round((q.bid + q.ask) / 2, RoundDown; digits=2)
-        EXP_oto_leg(action, ind - 1, lm, price)
+maketag(tid::Int, action::Action.T) = "$(action == Action.open ? "op" : "cl")$(tid)"
+
+# tag=op111&class=oto&duration=day&type[0]=limit&price[0]=160.55&option_symbol[0]=SPY190621C00080000&side[0]=buy_to_open&quantity[0]=1&type[1]=market&option_symbol[1]=SPY190621C00085000&side[1]=sell_to_open&quantity[1]=1
+function make_payload_oto(action::Action.T, tid::Int, leg1, pd1::PT, leg2, pd2::PT; pre=true)
+    pay1 = make_payload_leg(action, leg1, pd1, 0)
+    pay2 = make_payload_leg(action, leg2, pd2, 1)
+    payload = "preview=$(pre)&tag=$(maketag(tid, action))&class=oto&duration=day&$(pay1)&$(pay2)"
+    return payload
+end
+
+function make_payload(action::Action.T, tid::Int, leg, pd::PT; pre=true)
+    if action == Action.close && iszero(pd)
+        tier_side = tier.toTierSide(action, getSide(leg))
+        payload = "preview=$(pre)&type=market&tag=cl$(tid)&class=option&symbol=$(getDefaultSymbol())&option_symbol=$(tier.optToOcc(getOption(leg)))&side=$(tier_side)&quantity=$(getQuantity(leg))&duration=day"
+    else
+        payleg = make_payload_leg(action, leg, pd)
+        payload = "preview=$(pre)&tag=$(maketag(tid, action))&class=option&duration=day&$(payleg)"
     end
-    payload = "preview=true&class=oto&duration=day&" * join(leg_str, '&')
     return payload
 end
 
 # type[0]=limit&price[0]=160.55&option_symbol[0]=SPY190621C00080000&side[0]=buy_to_open&quantity[0]=1&type[1]=market&option_symbol[1]=SPY190621C00085000&side[1]=sell_to_open&quantity[1]=1
-function EXP_oto_leg(action, ind, lm, price)
-    tier_action = tier.toTierSide(action, getSide(lm))
-    return "type[$ind]=limit&price[$ind]=$(abs(price))&option_symbol[$ind]=$(tier.optToOcc(getOption(lm)))&side[$ind]=$(tier_action)&quantity[$ind]=$(getQuantity(lm))"
+function make_payload_leg(action, leg, price, ind)
+    tier_action = tier.toTierSide(action, getSide(leg))
+    return "type[$ind]=limit&price[$ind]=$(abs(price))&option_symbol[$ind]=$(tier.optToOcc(getOption(leg)))&side[$ind]=$(tier_action)&quantity[$ind]=$(getQuantity(leg))"
+end
+function make_payload_leg(action, leg, price)
+    tier_side = tier.toTierSide(action, getSide(leg))
+    return "type=limit&price=$(abs(price))&option_symbol=$(tier.optToOcc(getOption(leg)))&side=$(tier_side)&quantity=$(getQuantity(leg))"
 end
 
 end

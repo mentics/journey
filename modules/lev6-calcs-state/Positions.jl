@@ -8,11 +8,11 @@ export positions, verifyPoss, verifyPos
 positions(; age=Hour(1))::Vector{Position} = cache!(getPoss, POSITIONS_TYPE, POSITIONS, age)
 
 using CollUtil, LegTradeTypes
-function verifyPoss(legs::AVec{LegTrade})::Vector{Bool}
+function verifyPoss(legs)::Vector{Bool}
     poss = positions(; age=Minute(10))
     return [verifyPos(legs[i], poss) for i in eachindex(legs)]
 end
-verifyPos(leg::LegTrade, poss::Vector{Position}=positions(;age=Minute(10)))::Bool = !isnothing(find(p -> matches(p, leg), poss))
+verifyPos(leg, poss::Vector{Position}=positions(;age=Minute(10)))::Bool = !isnothing(find(p -> matches(p, leg), poss))
 
 #region Local
 const POSITIONS = :positions
@@ -31,7 +31,7 @@ end
 toLeg(tierPos::Dict{String,Any}, qty::Float64)::Leg = Leg(tier.occToOpt(tierPos["symbol"]), abs(qty), signbit(qty) ? Side.short : Side.long)
 toBasis(tierPos::Dict{String,Any}, qty::Float64) = C(abs(tierPos["cost_basis"] / 100.0) / qty)
 
-matches(p::Position, leg::LegTrade) = getOption(p) == getOption(leg) && getSide(p) == getSide(leg) && getQuantity(p) >= getQuantity(leg)
+matches(p::Position, leg) = getOption(p) == getOption(leg) && getSide(p) == getSide(leg) && getQuantity(p) >= getQuantity(leg)
 #endregion
 
 end
