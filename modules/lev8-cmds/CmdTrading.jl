@@ -38,21 +38,21 @@ end
 
 #region CloseTrades
 ct(tid::Int; kws...) = ct(ST.getTradeOpen(tid); kws...)
-ct(trad::Trade{<:Closeable}; kws...) = _ct(trad; kws..., pre=true)
+ct(trad::Trade; kws...) = _ct(trad; kws..., pre=true)
 
 ctr(tid::Int; kws...) = ctr(ST.getTradeOpen(tid); kws...)
-ctr(trad::Trade{<:Closeable}; kws...) = _ct(trad; kws..., pre=false)
+ctr(trad::Trade; kws...) = _ct(trad; kws..., pre=false)
 
-function _ct(trad::Trade{<:Closeable}; pre=true, skip_confirm=false, leginds=nothing, kws...)
+function _ct(trad::Trade; pre=true, skip_confirm=false, leginds=nothing, kws...)
     tid = getId(trad)
     canTrade(pre)
-    if !intest()
-        if ( openDate = toDateMarket(tsFilled(trad)) ; openDate == market().startDay || openDate == today() )
-            @info "dupe in test" intest()
-            msg = string("Attempted to close trade that was opened the same day ", tid, ' ', openDate)
-            pre ? (@error msg) : error(msg)
-        end
-    end
+    # if !intest()
+    #     if ( openDate = toDateMarket(tsFilled(trad)) ; openDate == market().startDay || openDate == today() )
+    #         @info "dupe in test" intest()
+    #         msg = string("Attempted to close trade that was opened the same day ", tid, ' ', openDate)
+    #         pre ? (@error msg) : error(msg)
+    #     end
+    # end
     Globals.set(:ctRunLast, now(UTC))
 
     # TODO: put in Between?

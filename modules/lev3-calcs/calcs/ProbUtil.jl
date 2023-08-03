@@ -17,7 +17,8 @@ function cdfr(prob::ProbWithMin, xr::Float64)
     p = prob.p0 + vals[1]
 
     ind = Bins.leftOf(xr)
-    p += sum(vals[2:ind])
+    # p += sum(vals[2:ind])
+    p += sum(vals[i] for i in 2:ind; init=0.0)
     diff = round(xr - Bins.x(ind); digits=10)
     @assert diff >= 0
     if diff < Bins.WIDTH_HALF

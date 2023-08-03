@@ -143,7 +143,7 @@ end
 function paraSpreads(f::Function, oqs::Sides{Vector{ChainTypes.OptionQuote}}, maxSpreadWidth::Real, isLegAllowed, args...)::Bool
     !isempty(oqs.long) || return true
     finish = false
-    @qthreads for oq1 in oqs.long
+    Threads.@threads for oq1 in oqs.long
         thid = Threads.threadid()
         for oq2 in oqs.short
             strikeWidth(oq1, oq2) <= maxSpreadWidth || continue

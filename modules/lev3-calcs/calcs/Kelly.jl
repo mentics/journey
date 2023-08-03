@@ -17,6 +17,7 @@ const PROB_INTEGRAL_WIDTH2 = 1.0
 function calckel(prob::Prob, commit::Real, segsWithZeros; dpx=PROB_INTEGRAL_WIDTH2, probadjust=1.0)
     cdfLeft = 0.0
     pbs = NTuple{3,Float64}[]
+    sizehint!(pbs, 200)
     # pbs = Tuple{Float64,Float64,Any}[]
     ptotal = 0.0
     ev = 0.0

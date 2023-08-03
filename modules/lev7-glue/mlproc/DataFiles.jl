@@ -8,18 +8,49 @@ callstable(y, m) = Arrow.Table(pathcalls(y, m))
 putstable(y, m) = Arrow.Table(pathcalls(y, m))
 tsstable() = Arrow.Table(pathtss())
 
-function updatetss()
-    tss = Vector{DateTime}()
-    for path in readdir(pathchains(); join=true)
-        append!(tss, unique(Arrow.Table(path).ts))
-        unique!(tss)
+function pushsortedunique!(v, a)
+    last = first(a)
+    push!(v, last)
+    for x in a
+        if x !== last
+            push!(v, x)
+            last = x
+        end
     end
+    return nothing
+end
+
+function nonunique2(x::AbstractArray{T}) where T
+    xs = sort(x)
+    duplicatedvector = T[]
+    for i=2:length(xs)
+        if (isequal(xs[i],xs[i-1]) && (length(duplicatedvector)==0 || !isequal(duplicatedvector[end], xs[i])))
+            push!(duplicatedvector,xs[i])
+        end
+    end
+    duplicatedvector
+end
+
+function updatetss()
+    thtss = [Vector{DateTime}() for _ in 1:Threads.nthreads()]
+    Threads.@threads for path in readdir(pathchains(); join=true)
+        pushsortedunique!(thtss[Threads.threadid()], Arrow.Table(path).ts)
+    end
+    tss = reduce(vcat, thtss)
     sort!(tss)
-    Arrow.write(pathtss(), tss)
+    unique!(tss) # puts and calls are separate files so will duplicate
+    Arrow.write(pathtss(), (;ts=tss))
     return tss
 end
 
+function proc(yms)
+    Threads.@threads for (y, m) in yms
+        procincoming(y, m)
+    end
+end
+
 function procincoming(y, m)
+    mkpath(pathchains())
     df = dfincoming(y, m)
     transformraw(df)
     dfcalls = extractdf(df, "c_")
@@ -33,8 +64,14 @@ const DF_FILE = DateFormat("yyyymm")
 
 datestr(y, m) = Dates.format(Date(y, m, 1), DF_FILE)
 basepath() = joinpath("C:\\", "data", "db")
-baseincoming() = joinpath(basepath(), "incoming")
-pathincoming(y, m) = joinpath(baseincoming(), string(y), "spy_30x_$(datestr(y, m)).txt")
+baseincoming() = joinpath(basepath(), "incoming", "optionsdx")
+function pathincoming(y, m)
+    if y >= 2016
+        joinpath(baseincoming(), "spy_15x_$(y)", "spy_15x_$(datestr(y, m)).txt")
+    else
+        joinpath(baseincoming(), "spy_30x_$(y)", "spy_30x_$(datestr(y, m)).txt")
+    end
+end
 
 # patharrowtest() = joinpath(basepath(), "arrow")
 pathtss() = joinpath(basepath(), "market", "spy", "tss.arrow")

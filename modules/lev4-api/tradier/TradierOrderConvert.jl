@@ -31,8 +31,9 @@ function SH.to(::Type{Order}, tord::Dict{String,Any})::Order
             !isnothing(prillDir) && (prillDir *= -1)
         end
 
+        sym = haskey(tord, "symbol") ? tord["symbol"] : tord["leg"][1]["symbol"]
         ord = Order{toStatus(tord["status"])}(tord["id"],
-            get(tord, "symbol", tord["leg"][1]["symbol"]),
+            sym,
             class, typ, primitDir, prillDir, legs, tier.parseTs(tord["create_date"]), tier.parseTs(tord["transaction_date"]))
         # global kord = ord
         # error("stop")

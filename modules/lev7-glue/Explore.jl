@@ -90,19 +90,23 @@ function findkel(inc)
     date = Date(ts)
     curp = market().curp
     println("Finding kel for curp: $(curp)")
-    xpirs = Expirations.xpirsinrange(1, 3) # 68)
+    xpirs = Expirations.xpirsinrange(1, 2)
     ress = [[] for _ in 1:Threads.nthreads()]
     global kprobs = Dict{Any, Any}()
     for xpir in xpirs
+        println("Searching xpir: $(xpir)")
         prob = Between.makeprob(xpir, curp)
         riskrat = calcriskrat(date, xpir)
         ctx = (;curp, prob, riskrat, xpir)
         kprobs[xpir] = prob
         oqss = ChainUtil.oqssEntry(chain(xpir).chain, curp)
+        println("num calls $(length(oqss.call.long))")
+        println("num puts $(length(oqss.put.long))")
         1 in inc && findkel1!(ress, ctx, oqss)
         2 in inc && findkel2!(ress, ctx, oqss)
         3 in inc && findkel3!(ress, ctx, oqss)
     end
+    println("Finished searching")
     res = vcat(ress...)
     sort!(res; rev=true, by=r->r.evrate)
     return res
@@ -135,42 +139,51 @@ end
 
 import GenCands
 function findkel2!(res, ctx, oqss)
-    GenCands.paraSpreads(oqss.call, 2, (_...) -> true) do thid, lms
+    GenCands.paraSpreads(oqss.call, 10, (_...) -> true) do thid, lms
         check!(res, ctx, lms)
     end
-    GenCands.paraSpreads(oqss.put, 2, (_...) -> true) do thid, lms
+    GenCands.paraSpreads(oqss.put, 10, (_...) -> true) do thid, lms
         check!(res, ctx, lms)
     end
 end
 
 function findkel3!(res, ctx, oqss)
-    GenCands.paraSpreads(oqss.call, 2, (_...) -> true) do thid, lms
+    println("Searching calls")
+    GenCands.paraSpreads(oqss.call, 4, (_...) -> true) do thid, lms
+        # println("findkel3 checking spread $(SH.getStrike(lms[1])) $(SH.getStrike(lms[2]))")
+        # Threads.@threads
         for oq in oqss.call.long
             lms2 = sortuple(SH.getStrike, lms..., LegMetaOpen(oq, Side.long))
             check!(res, ctx, lms2)
         end
+        # Threads.@threads
         for oq in oqss.put.long
             lms2 = sortuple(SH.getStrike, lms..., LegMetaOpen(oq, Side.long))
             check!(res, ctx, lms2)
         end
         return true
     end
-    GenCands.paraSpreads(oqss.put, 2, (_...) -> true) do thid, lms
+    println("Searching puts")
+    GenCands.paraSpreads(oqss.put, 4, (_...) -> true) do thid, lms
+        # Threads.@threads
         for oq in oqss.call.long
             lms2 = sortuple(SH.getStrike, lms..., LegMetaOpen(oq, Side.long))
             check!(res, ctx, lms2)
         end
+        # Threads.@threads
         for oq in oqss.put.long
             lms2 = sortuple(SH.getStrike, lms..., LegMetaOpen(oq, Side.long))
             check!(res, ctx, lms2)
         end
         return true
     end
+    println("Searching done.")
 end
 #endregion
 
 #region Common
 function check!(res, ctx, lms)
+    yield()
     ss = tosegsz(ctx.curp, lms)
     !isnothing(ss) || ( println("ss was nothing") ; return true )
     try
@@ -337,14 +350,17 @@ end
 
 #region kde
 import Distributions, KernelDensityEstimate, DrawUtil
-function testkde()
+function kdedata()
     nspy = Distributions.Normal(1.0, 0.1)
     numsamples = 10000
     maxdur = 10
     basevix = 10
     vixspread = 2
+    return [(dur = 1 + i % maxdur ; spy = log(rand(nspy)) ; [spy*dur, basevix + vixspread*spy + rand() - 0.5, dur]) for i in 0:numsamples]
+end
+function testkde()
     bws = [0.1, 0.1, 1.01]
-    data = stack([(dur = 1 + i % maxdur ; spy = log(rand(nspy)) ; [spy*dur, basevix + vixspread*spy + rand() - 0.5, dur]) for i in 0:numsamples])
+    data = stack(kdedata())
     kdem1 = KernelDensityEstimate.kde!(data, bws)
     range1 = -0.49:0.01:0.49
     vals = map(x -> x[1], [kdem1(reshape([x, basevix, maxdur / 2], 3, 1)) for x in range1])
@@ -353,6 +369,47 @@ function testkde()
         sleep(0.5)
         vals = map(x -> x[1], [kdem1(reshape([x, basevix, k * maxdur / 2], 3, 1)) for x in range1])
         DrawUtil.draw!(:scatter, range1, vals)
+    end
+end
+
+using MultiKDE, Distributions, Random
+function multikde()
+    data = kdedata()
+    dims = [ContinuousDim(), ContinuousDim(), ContinuousDim()]
+    bws = [0.1, 0.1, 1.01]
+    kde = KDEMulti(dims, bws, data)
+
+    xs = -0.49:0.01:0.49
+    display(DrawUtil.draw(:scatter, [0.0], [0.0]))
+    for dur in 1.0:1.0:10.0
+        vals = [MultiKDE.pdf(kde, [x, 10.0, dur]) for x in xs]
+        DrawUtil.draw!(:scatter, xs, vals)
+        println("done: $(dur)")
+        yield()
+    end
+end
+
+using MultiKDE, Distributions, Random
+function multikde2()
+    data = kdedata()
+    dims = [ContinuousDim(), ContinuousDim(), ContinuousDim()]
+    bws = [0.1, 0.1, 1.01]
+    kde = KDEMulti(dims, bws, data)
+
+    xs = -0.49:0.01:0.49
+    display(DrawUtil.draw(:scatter, [0.0], [0.0]))
+    vals = Vector{Float64}(undef, length(xs))
+    coord = [0.0, 10.0, 0.0]
+    for dur in 1.0:1.0:10.0
+        coord[3] = dur
+        # vals = [( coord[1] = x ; MultiKDE.pdf(kde, coord) ) for x in xs]
+        for i in eachindex(xs)
+            coord[1] = xs[i]
+            vals[i] = MultiKDE.pdf(kde, coord)
+        end
+        DrawUtil.draw!(:scatter, xs, vals)
+        # println("done: $(dur)")
+        # yield()
     end
 end
 #endregion
