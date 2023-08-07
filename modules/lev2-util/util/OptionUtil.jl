@@ -20,7 +20,7 @@ using SH, BaseTypes, SmallTypes, OptionQuoteTypes
 # # end
 
 # function calcExtrin(oq::OptionQuote, curp::Real)::Tuple{Currency,Currency,Currency}
-function calcExtrin(oq::OptionQuote, curp::Real)::Tuple{Currency,Currency}
+function calc_extrin(oq::OptionQuote, curp::Real)::Tuple{Currency,Currency}
     bid = getBid(oq)
     ask = getAsk(oq)
     s = getStrike(oq)
@@ -34,6 +34,25 @@ function calcExtrin(oq::OptionQuote, curp::Real)::Tuple{Currency,Currency}
     # else
     #     return s < curp ? (bid, ask, max(0., (bid + ask)/2)) : (bid - dist, ask - dist, max(0., (bid - dist + ask - dist))/2)
     # end
+end
+
+function calc_extrin(style::Style.T, curp::Real, strike, bid, ask)::Tuple{Currency,Currency}
+    dist = abs(curp - strike)
+    return xor(Style.call == style, strike >= curp) ?
+                (bid - dist, ask - dist) : (bid, ask)
+end
+
+function extrin_call2(curp, strike, bid, ask)
+    dist = (strike .<= curp) .* abs.(curp .- strike)
+    return (bid .- dist, ask .- dist)
+end
+
+function extrin_call(curp, strike, bid, ask)
+    return ((bid .+ ask) ./ 2) .- ((strike .<= curp) .* abs.(curp .- strike))
+end
+
+function extrin_put(curp, strike, bid, ask)
+    return ((bid .+ ask) ./ 2) .- ((strike .>= curp) .* abs.(curp .- strike))
 end
 
 # function calcExtrins(oq::OptionQuote, curp::Real)::Tuple{Currency,Currency,Currency}

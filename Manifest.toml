@@ -2,7 +2,7 @@
 
 julia_version = "1.9.0"
 manifest_format = "2.0"
-project_hash = "be97f1ec60f083aafaac4744169ee5276065bc0f"
+project_hash = "d5e5b55908b42ea39cae4af2a75225339b8afcfd"
 
 [[deps.AbstractFFTs]]
 deps = ["LinearAlgebra"]
@@ -910,6 +910,18 @@ deps = ["Dates", "Downloads", "JSON3", "LibGit2", "OhMyArtifacts", "Pkg", "SHA"]
 git-tree-sha1 = "bcf9b0ee12839d9bbee389ec13cd926845a2d39f"
 uuid = "3cc741c3-0c9d-4fbe-84fa-cdec264173de"
 version = "0.1.0"
+
+[[deps.Hwloc]]
+deps = ["Hwloc_jll", "Statistics"]
+git-tree-sha1 = "8338d1bec813d12c4c0d443e3bdf5af564fb37ad"
+uuid = "0e44f5e4-bd66-52a0-8798-143a42290a1d"
+version = "2.2.0"
+
+[[deps.Hwloc_jll]]
+deps = ["Artifacts", "JLLWrappers", "Libdl"]
+git-tree-sha1 = "70379ec206165d3ca0c259d38289a6366f5398a1"
+uuid = "e33a78d0-f292-5ffc-b300-72abe9b543c8"
+version = "2.9.2+0"
 
 [[deps.HypergeometricFunctions]]
 deps = ["DualNumbers", "LinearAlgebra", "OpenLibm_jll", "SpecialFunctions"]

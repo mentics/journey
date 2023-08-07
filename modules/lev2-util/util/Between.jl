@@ -75,9 +75,9 @@ end
 
 #region ToLegMeta
 import Chains
-function requote(lms)
-    lmsnew = tos(LegMetaOpen, lms, Chains.chainLookup)
-    println("Price: $(Pricing.price(lms)) -> $(Pricing.price(lmsnew))")
+function requote(lms; lup=Chains.chainLookup)
+    lmsnew = tos(LegMetaOpen, lms, lup)
+    println("Requote price: $(Pricing.price(lms)) -> $(Pricing.price(lmsnew))")
     return lmsnew
 end
 SH.to(::Type{LegMetaOpen}, oq, side) = LegMetaOpen(oq, side)

@@ -25,6 +25,140 @@ TODO: To handle > 4 legs, we'll need to find the optimal combination of 2 or 4 l
 #     return 0
 # end
 
+using OutputUtil
+import Chains, Between, Pricing
+function open_trade3(mkt, lms0, mineto::PT; pre=true, kws...)
+    TradierAccount.ensure_listening()
+
+    xpir = getExpir(lms0)
+    oqs = Chains.loadChain("SPY", xpir).chain
+    lms1 = Between.requote(lms0; lup=o -> Chains.chainLookup(oqs, o))
+    bid = P(sum(getBid.(lms1)))
+    ask = P(sum(getAsk.(lms1)))
+
+    rat = (mineto - bid) / (ask - bid)
+    if rat > 0.4
+        println("TODO SHOULD HAVE Aborted: neto:$(mineto) has rat:$(rd3(rat)) too high with bid:$(bid) and ask:$(ask)")
+        # return
+    end
+    # println("Target neto:$(mineto) is $(rd3(100 * rat))% between bid:$(bid) and ask:$(ask)")
+
+    dist = P(Pricing.price(lms1) - mineto)
+    if dist <= 0.0
+        println("TODO SHOULD HAVEAborted: no leeway in meeting target neto, dist:$(dist)")
+        # return
+    end
+    if abs(dist) > 0.2
+        println("TODO SHOULD HAVEAborted: too far away from current price, check price, dist:$(dist)")
+        # return
+    end
+
+    # println("Current price:$(Pricing.price(lms1)) is $(dist) away from target neto:$(neto)")
+    println("Dist: $(dist) (price:$(Pricing.price(lms1)) - mineto:$(mineto))")
+
+    lmshortind = findfirst(isShort, lms1)
+    lmshort = lms1[lmshortind]
+
+    _, lmcheapind = findmax(lm -> isLong(lm) ? Pricing.price(Action.open, lm) : -Inf, lms1)
+    lmcheap = lms1[lmcheapind]
+    lmsrest = lms1[1:3 .!= lmcheapind]
+    p1 = P(Pricing.price(Action.open, lmcheap))
+    dist1 = P(dist / 3)
+
+    tid = pre ? 0 : newTrade(P(Pricing.price(lms1)), lms1, getBid(mkt.curQuot), getAsk(mkt.curQuot))
+    println("Created trade:$(tid)")
+
+    # at current price:$(p1) buying the cheapest:$(lmcheapind) $(getOption(lms1[lmcheapind]))")
+    println("Step 1: buy cheapest")
+    # bid2 = sum(getBid.(lmsrest))
+    # ask2 = sum(getAsk.(lmsrest))
+    # rat2 = (neto2 - bid2) / (ask2 - bid2)
+    p1_tgt = p1
+    p1_min = p1 - dist1
+    mineto23 = mineto - p1_min
+    p23 = Pricing.price(lmsrest)
+    dist23d = dist - dist1
+    dist23pm = p23 - mineto23
+    # println("If we get it at worst:$(p1_worst) that would leave $(neto2) to open remaining 2 with current price2:$(p2) at rat2:$(rat2)")
+    println("Dist1: $(dist1) leaving min Dist23: $(dist23d), $(dist23pm)")
+    if open_pos(tid, lmcheap, p1_tgt, p1_min; pre, kws...)
+        # first position filled, TODO: do the rest
+    end
+end
+
+# Will wait up to timeout seconds for a fill, after which it will return
+# returns order object if fill received, otherwise nothing
+function open_pos(tid, leg, price_tgt, price_min; pre=true, timeout=2.0)
+    println("Opening $(getSide(leg)) $(getOption(leg)) between $(price_tgt) and $(price_min)")
+    resp = open_pos_try(tid, leg, price_tgt, pre, timeout)
+    while isnothing(resp) && price > price_min
+        price -= 0.01
+        resp = open_pos_modify(tid, leg, price, pre, timeout)
+    end
+    status = get(resp, "status", nothing)
+    if isnothing(status)
+        # waiting timed out on all tries down to price_min, so cancel and abort
+        TradierOrder.cancelOrder(oid)
+        # TODO: if cancel failed because it went through after all
+        println("Aborted: order not filled within timeout:$(timeout)")
+        return false
+    elseif status in STATUS_ERROR
+        error("Order execution failed: $(resp)")
+    elseif status == "filled"
+        return true
+    else
+        error("Unknown status:$(status) in resp:$(resp)")
+    end
+end
+
+function open_pos_try(tid, leg, price, pre, timeout)
+    cond = Base.Event()
+    listener = watch_for(cond, "op$(tid)", timeout)
+    TradierAccount.register_listener(listener)
+
+    payload = TradierOrder.make_payload(Action.open, tid, leg, price; pre)
+    @info "open pos 1 of 3" payload
+    resp = submitOrder(payload)
+    @show resp
+    # TODO: handle errors? and no id when preview
+    oid = resp["id"]
+    @info "open pos 1 of 3" tid resp
+
+    resp = wait(cond)
+    println("resp from wait: $(resp)")
+    TradierAccount.unregister_listener(listener)
+    return resp
+end
+
+const STATUS_TERMINAL = ["filled", "expired", "canceled", "rejected", "error"]
+const STATUS_ERROR = ["expired", "canceled", "rejected", "error"]
+
+function watch_for(cond, tag, timeout=2.0)
+    return function(resp)
+        println("on_account received: $(resp)")
+        tg = get(resp, "tag", nothing)
+        if tg == tag
+            status = get(resp, "status", nothing)
+            if status in TERMINAL
+                stop_watching(cond, resp)
+            else
+                Threads.@spawn Timer(timeout) do t
+                    stop_watching(cond, nothing)
+                end
+            end
+        end
+    end
+end
+
+function stop_watching(cond, resp)
+    lock(cond)
+    try
+        notify(cond, resp)
+    finally
+        unlock(cond)
+    end
+end
+
 function open_trade(mkt, legs; pre=true, kws...)
     # TODO: filter so don't enter opposite side same options on same day
     # checkTradeLegs(inLegs)

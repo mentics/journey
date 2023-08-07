@@ -166,7 +166,13 @@ nearOqs(curp::Currency, oqs, dist::Int=20)::Vector{OptionQuote} = filter(x -> ab
 chainLookup(hasOpt) = chainLookup(getOption(hasOpt))
 chainLookup(opt::Option) = chainLookup(getExpir(opt), getStyle(opt), getStrike(opt))
 function chainLookup(exp::Date, style::Style.T, strike::Currency)::Union{Nothing,OptionQuote}
-    res = find(chain(exp).chain) do x; getStyle(x) === style && getStrike(x) === strike end
+    return chainLookup(chain(exp).chain, style, strike)
+end
+chainLookup(oqs, opt::Option) = chainLookup(oqs, getStyle(opt), getStrike(opt))
+function chainLookup(oqs, style::Style.T, strike::Currency)::Union{Nothing,OptionQuote}
+    res = find(oqs) do x
+        getStyle(x) === style && getStrike(x) === strike
+    end
     !isnothing(res) || println("WARN: Could not quote $(exp), $(style), $(strike)")
     return res
 end
@@ -183,6 +189,7 @@ end
 
 function loadChain(sym::String, xpr::Date)::OptionChain
     try
+        println("Loading chain $(sym) $(xpr)")
         t1 = @timed tradChain = tradierOptionChain(xpr, sym)
         t2 = @timed res = procChain(xpr, tradChain)
         @log info "Loaded chain" sym xpr Threads.threadid() t1.time t2.time

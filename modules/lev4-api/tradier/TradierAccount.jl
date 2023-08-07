@@ -74,4 +74,78 @@ end
 #     end
 # end
 
+import HTTP:WebSockets
+import Sockets
+
+const listeners = Vector{Function}()
+const websocket = Ref{Union{Nothing,WebSockets.WebSocket}}(nothing)
+
+function ensure_listening()
+    if isnothing(websocket[])
+        start_listening()
+    else
+        check_websocket()
+    end
+end
+
+function register_listener(listener)
+    push!(listeners, listener)
+end
+
+function unregister_listener(listener)
+    ind = findfirst(x -> x === listener, listeners[])
+    isnothing(ind) || deleteat!(listeners, ind)
+end
+
+function start_listening()
+    sid, url = start_session()
+    WebSockets.open(url) do ws
+        Sockets.send(ws, """{ "events": ["order"], "sessionid": "$(sid)", "excludeAccounts": [] }""")
+        websocket[] = ws
+        Threads.@spawn listening(receive_msg)
+    end
+    return
+end
+
+function listening(callback)
+    for msg in ws
+        typ = get(msg, "event", nothing)
+        println("TradierAccount.listening msg receieved: $(msg)")
+        if typ == "order"
+            callback(msg)
+        end
+    end
+    println("TradierAccount.listening() returning")
+    websocket[] = nothing
+end
+
+function receive_msg(msg)
+    for x in listeners
+        x(msg)
+    end
+end
+
+function stop_listening()
+    if !isnothing(websocket[])
+        close(websocket[])
+    end
+    websocket[] = nothing
+end
+
+function start_session()
+    resp = tradierPost("/accounts/events/session", "", Call(nameof(var"#self#")))
+    stream = get(resp, "stream") do
+        println("result = ", result)
+        # error("No orders key in response for tradierOrders.")
+        println("WARN: No orders key in response for tradierOrders.")
+    end
+    sid = stream["sessionid"]
+    url = stream["url"]
+    return (;sid, url)
+end
+
+function check_websocket()
+    # TODO: ensure websocket is healthy
+end
+
 end

@@ -9,7 +9,7 @@ using DateUtil
 export confirm
 export pretty, pretyble, spretyble, niceShow, sho
 export PRI, SEC
-export r2, r3, r4, r5, rd2, rd3, rd5, pp
+export r2, r3, r4, r5, rd2, rd3, rd4, rd5, pp
 
 r2(x) = round(x; sigdigits=2)
 r3(x) = round(x; sigdigits=3)
@@ -17,6 +17,7 @@ r4(x) = round(x; sigdigits=4)
 r5(x) = round(x; sigdigits=5)
 rd2(x) = round(x; digits=2)
 rd3(x) = round(x; digits=3)
+rd4(x) = round(x; digits=4)
 rd5(x) = round(x; digits=5)
 
 function confirm()

@@ -32,6 +32,7 @@ function tradierPost(pathQuery::AbstractString, payload::AbstractString, info::C
     call(pathQuery, info) do url
         try
             kws = retries == 0 ? (;) : (;retry=true, retries, retry_non_idempotent=true)
+            println("posting to $(url)")
             resp = HTTP.post(url, TradierConfig.HEADERS_POST[], payload; kws...)
             @log tradier "tradierPost:" url payload resp
             return resp
