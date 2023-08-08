@@ -31,16 +31,17 @@ function cancelOrder(orderId::Int)
     # return result
 end
 
-# function modifyOrder(config::TradierConfig, accountId::AbstractString, orderId::Int, newPrice::Currency)
-#     config.orderListener[] = OrderEvent(Events.modify, orderId)
-#     payload = "price=$(s(newPrice))"
-#     @info "Modify payload: $(payload)"
-#     result = tradierPut(config, "/accounts/$(accountId)/orders/$(orderId)", payload)
-#     if haskey(result, "errors")
-#         config.orderListener[] = OrderEvent(Events.modifyFailure, orderId)
-#     end
-#     return result
-# end
+function modifyOrder(orderId::Int, newPrice::PT)
+    payload = "price=$(newPrice)"
+    res = tradierPut("/accounts/$(getAccountId())/orders/$(orderId)", payload, Call(nameof(var"#self#")))
+    # result = tradierPut(config, "/accounts/$(accountId)/orders/$(orderId)", payload)
+    if !haskey(res, "order")
+        error("No order key in submitOrder response ", res)
+    else
+        return res["order"]
+    end
+    return result
+end
 
 # legToPayload(symUnder::AbstractString, i::Int, act, leg) = legToPayload(i, occSymbol(getOption(leg), symUnder), act, getSide(leg), getQuantity(leg))
 function legToPayload(i::Int, sym, act, sid, qty)

@@ -22,7 +22,10 @@ function tradierOrders()::TradierRespVec
 end
 
 function tradierOrder(oid::Int)::TradierResp
-    return tradierGet("/accounts/$(getAccountId())/orders/$(oid)?includeTags=true", Call(nameof(var"#self#")))["order"]
+    resp = tradierGet("/accounts/$(getAccountId())/orders/$(oid)?includeTags=true", Call(nameof(var"#self#")))
+    return get(resp, "order") do
+        error("No order key in tradierOrder response ", res)
+    end
 end
 
 function tradierPositions()::TradierRespVec
@@ -80,49 +83,31 @@ import Sockets
 const listeners = Vector{Function}()
 const websocket = Ref{Union{Nothing,WebSockets.WebSocket}}(nothing)
 
+#region AccountStreamingPublic
 function ensure_listening()
     if isnothing(websocket[])
         start_listening()
     else
         check_websocket()
     end
-end
-
-function register_listener(listener)
-    push!(listeners, listener)
-end
-
-function unregister_listener(listener)
-    ind = findfirst(x -> x === listener, listeners[])
-    isnothing(ind) || deleteat!(listeners, ind)
+    return
 end
 
 function start_listening()
     sid, url = start_session()
-    WebSockets.open(url) do ws
+    Threads.@spawn WebSockets.open(url) do ws
         Sockets.send(ws, """{ "events": ["order"], "sessionid": "$(sid)", "excludeAccounts": [] }""")
         websocket[] = ws
-        Threads.@spawn listening(receive_msg)
+        listening(receive_msg, ws)
+    end
+    yield()
+    i = 0
+    while isnothing(websocket[]) || WebSockets.isclosed(websocket[])
+        sleep(0.1)
+        i += 1
+        i < 20 || error("Timed out waiting for websocket setup")
     end
     return
-end
-
-function listening(callback)
-    for msg in ws
-        typ = get(msg, "event", nothing)
-        println("TradierAccount.listening msg receieved: $(msg)")
-        if typ == "order"
-            callback(msg)
-        end
-    end
-    println("TradierAccount.listening() returning")
-    websocket[] = nothing
-end
-
-function receive_msg(msg)
-    for x in listeners
-        x(msg)
-    end
 end
 
 function stop_listening()
@@ -130,6 +115,52 @@ function stop_listening()
         close(websocket[])
     end
     websocket[] = nothing
+    empty!(listeners)
+    return
+end
+
+function register_listener(listener)
+    push!(listeners, listener)
+end
+
+function unregister_listener(listener)
+    ind = findfirst(x -> x === listener, listeners)
+    isnothing(ind) || deleteat!(listeners, ind)
+end
+#endregion
+
+#region AccountStreamLocal
+import JSON3
+function listening(callback, ws)
+    try
+        for msg in ws
+            try
+                println("TradierAccount.listening msg receieved: $(msg)")
+                d = JSON3.read(msg)
+                typ = get(d, "event", nothing)
+                if typ == "order"
+                    callback(d)
+                end
+            catch e
+                showerror(stderr, e)
+            end
+        end
+    catch e
+        if e isa EOFError
+            # ignore
+        else
+            showerror(stderr, e)
+        end
+    end
+    println("TradierAccount.listening() returning")
+    websocket[] = nothing
+    return
+end
+
+function receive_msg(dict)
+    for x in listeners
+        x(dict)
+    end
 end
 
 function start_session()
@@ -145,7 +176,11 @@ function start_session()
 end
 
 function check_websocket()
-    # TODO: ensure websocket is healthy
+    if WebSockets.isclosed(websocket[])
+        websocket[] = nothing
+        start_listening()
+    end
 end
+#endregion
 
 end

@@ -83,18 +83,27 @@ function __init__()
         println("Loading TradierConfig")
         # only set default config if not already set
         haskey(cfg, :defaultSymbol) || setDefaultConfig()
-        HEADERS_GET[] = ["Authorization" => "Bearer $(cfg[:apiKey])", "Accept" => "application/json"]
-        HEADERS_POST[] = vcat(HEADERS_GET[], "Content-Type" => "application/x-www-form-urlencoded")
-        HEADERS_DELETE[] = HEADERS_GET[] # vcat(HEADERS_GET[], "Content-Type" => "application/x-www-form-urlencoded")
+        useprod()
     end
 end
 function setDefaultConfig()
-    tenv(:prod)
     push!(cfg,
         :defaultSymbol => "SPY",
         :override => Vector{Tuple{Symbol,TradierResps}}(),
         :recording => nothing, # Union{Nothing,AStr}
     )
+end
+function useprod()
+    tenv(:prod)
+    HEADERS_GET[] = ["Authorization" => "Bearer $(cfg[:apiKey])", "Accept" => "application/json"]
+    HEADERS_POST[] = vcat(HEADERS_GET[], "Content-Type" => "application/x-www-form-urlencoded")
+    HEADERS_DELETE[] = HEADERS_GET[] # vcat(HEADERS_GET[], "Content-Type" => "application/x-www-form-urlencoded")
+end
+function usepaper()
+    # tenv(:paper)
+    HEADERS_GET[] = ["Authorization" => "Bearer $(cfg[:apiKey])", "Accept" => "application/json"]
+    HEADERS_POST[] = vcat(HEADERS_GET[], "Content-Type" => "application/x-www-form-urlencoded")
+    HEADERS_DELETE[] = HEADERS_GET[] # vcat(HEADERS_GET[], "Content-Type" => "application/x-www-form-urlencoded")
 end
 
 const ENV_PROD = (;

@@ -27,7 +27,7 @@ TODO: To handle > 4 legs, we'll need to find the optimal combination of 2 or 4 l
 
 using OutputUtil
 import Chains, Between, Pricing
-function open_trade3(mkt, lms0, mineto::PT; pre=true, kws...)
+function open_trade3(mkt, lms0, mineto::PT; pre=true, minextra::PT=P(0.02), kws...)
     TradierAccount.ensure_listening()
 
     xpir = getExpir(lms0)
@@ -54,78 +54,159 @@ function open_trade3(mkt, lms0, mineto::PT; pre=true, kws...)
     end
 
     # println("Current price:$(Pricing.price(lms1)) is $(dist) away from target neto:$(neto)")
-    println("Dist: $(dist) (price:$(Pricing.price(lms1)) - mineto:$(mineto))")
 
-    lmshortind = findfirst(isShort, lms1)
-    lmshort = lms1[lmshortind]
+    # println("Dist: $(dist) (price:$(Pricing.price(lms1)) - mineto:$(mineto))")
 
-    _, lmcheapind = findmax(lm -> isLong(lm) ? Pricing.price(Action.open, lm) : -Inf, lms1)
-    lmcheap = lms1[lmcheapind]
-    lmsrest = lms1[1:3 .!= lmcheapind]
-    p1 = P(Pricing.price(Action.open, lmcheap))
-    dist1 = P(dist / 3)
+    # lmshortind = findfirst(isShort, lms1)
+    # lmshort = lms1[lmshortind]
+
+    # _, lmcheapind = findmax(lm -> isLong(lm) ? Pricing.price(Action.open, lm) : -Inf, lms1)
+    # lmcheap = lms1[lmcheapind]
+    # lmsrest = lms1[1:3 .!= lmcheapind]
+    # p1 = P(Pricing.price(Action.open, lmcheap))
+    # dist1 = P(dist / 3)
+
+    # # at current price:$(p1) buying the cheapest:$(lmcheapind) $(getOption(lms1[lmcheapind]))")
+    # println("#### Step 1: buy cheapest")
+    # # bid2 = sum(getBid.(lmsrest))
+    # # ask2 = sum(getAsk.(lmsrest))
+    # # rat2 = (neto2 - bid2) / (ask2 - bid2)
+    # p1_tgt = p1
+    # p1_min = p1 - dist1
+    # mineto23 = mineto - p1_min
+    # p23 = Pricing.price(lmsrest)
+    # dist23d = dist - dist1
+    # dist23pm = p23 - mineto23
+
+    # println("If we get it at worst:$(p1_worst) that would leave $(neto2) to open remaining 2 with current price2:$(p2) at rat2:$(rat2)")
+
+    legs = sortoto(Action.open, mkt.curp, lms1)
+
+    for leg in legs[1:end]
+        extra = (Pricing.price(Action.open, leg) - getBid(leg))
+        if extra < minextra
+            println("Aborting: Insufficient extra:$(extra) on leg:$(getLeg(leg))")
+            return
+        end
+    end
+
+    price_tgt = P(Pricing.price(legs))
+    extra = price_tgt - mineto
+    extra >= 0 || ( println("Aborting: no extra: $(extra)") ; return )
 
     tid = pre ? 0 : newTrade(P(Pricing.price(lms1)), lms1, getBid(mkt.curQuot), getAsk(mkt.curQuot))
     println("Created trade:$(tid)")
 
-    # at current price:$(p1) buying the cheapest:$(lmcheapind) $(getOption(lms1[lmcheapind]))")
-    println("Step 1: buy cheapest")
-    # bid2 = sum(getBid.(lmsrest))
-    # ask2 = sum(getAsk.(lmsrest))
-    # rat2 = (neto2 - bid2) / (ask2 - bid2)
-    p1_tgt = p1
-    p1_min = p1 - dist1
-    mineto23 = mineto - p1_min
-    p23 = Pricing.price(lmsrest)
-    dist23d = dist - dist1
-    dist23pm = p23 - mineto23
-    # println("If we get it at worst:$(p1_worst) that would leave $(neto2) to open remaining 2 with current price2:$(p2) at rat2:$(rat2)")
-    println("Dist1: $(dist1) leaving min Dist23: $(dist23d), $(dist23pm)")
-    if open_pos(tid, lmcheap, p1_tgt, p1_min; pre, kws...)
-        # first position filled, TODO: do the rest
-    end
+    fills = open_list(tid, legs, mineto, extra; pre, kws...)
+    return fills
 end
 
-# Will wait up to timeout seconds for a fill, after which it will return
-# returns order object if fill received, otherwise nothing
-function open_pos(tid, leg, price_tgt, price_min; pre=true, timeout=2.0)
-    println("Opening $(getSide(leg)) $(getOption(leg)) between $(price_tgt) and $(price_min)")
-    resp = open_pos_try(tid, leg, price_tgt, pre, timeout)
-    while isnothing(resp) && price > price_min
-        price -= 0.01
-        resp = open_pos_modify(tid, leg, price, pre, timeout)
+function open_list(tid, legs, mineto::PT, extra::PT=PZ; pre=true, saveforeach::PT=P(0.01), kws...)
+    TradierAccount.ensure_listening()
+    fills = Vector{PT}()
+    try
+        tosavefor = length(legs)
+        for leg in legs
+            # price_tgt = Pricing.price(Action.open, leg)
+            # price_min = getBid(leg) + tosavefor * saveforeach
+            # println("Dist1: $(dist1) leaving min Dist23: $(dist23d), $(dist23pm)")
+            price_tgt = ceil(PT, Pricing.price(Action.open, leg))
+            println("Used for extra: $(extra / tosavefor)")
+            price_min = P(getBid(leg)) - floor(PT, extra / tosavefor)
+            res = open_pos(tid, leg, price_tgt, price_min; pre, kws...)
+            (;oid, status, fill, note) = res
+            if status == "filled"
+                push!(fills, fill)
+                mineto -= fill
+                extra = fill - price_min
+            else
+                println("Aborting: not filled leg:$(leg), $(res)")
+                break
+            end
+            tosavefor -= 1
+        end
+    finally
+        println("## Filled prices:$(fills), remaining mineto:$(mineto) ##")
     end
-    status = get(resp, "status", nothing)
+    return fills
+end
+
+function open_pos(tid, leg, price_tgt::PT, price_min::PT; pre=true, timeout=2.0, price_add::PT=P(1.0))
+    println("## Opening $(getSide(leg)) $(getOption(leg)) between $(price_tgt) and $(price_min) $(price_add != P(0) ? string(" + $(price_add)") : "")")
+    price = price_tgt + price_add
+    oid, resp = open_pos_try(tid, leg, price, pre, timeout)
+    while isnothing(resp) && price > (price_min + price_add)
+        price -= P(0.01)
+        resp = open_pos_modify(tid, oid, price, timeout)
+    end
+    status = isnothing(resp) ? nothing : get(resp, "status", nothing)
     if isnothing(status)
         # waiting timed out on all tries down to price_min, so cancel and abort
-        TradierOrder.cancelOrder(oid)
-        # TODO: if cancel failed because it went through after all
-        println("Aborted: order not filled within timeout:$(timeout)")
-        return false
+        resp = TradierOrder.cancelOrder(oid)
+        status = get(resp, "status", nothing)
+        if status != "ok"
+            # check status in case it filled after timeout
+            resp = TradierAccount.tradierOrder(oid)
+            status = get(resp, "status") do; error("No status in response to tradierOrder: ", resp) end
+            if (status == "filled")
+                price = parse(PT, get(resp, "avg_fill_price") do; error("No avg_fill_price for filled order $(oid): ", resp) end)
+                note = "Filled after timeout at $(price)"
+            else
+                status = "ERROR"
+                note = "Cancel failed but order not filled: " * resp
+            end
+        else
+            note = "Cancelled due to timeout"
+        end
     elseif status in STATUS_ERROR
-        error("Order execution failed: $(resp)")
+        status = "failed"
+        note = "Status in error: " * resp
     elseif status == "filled"
-        return true
+        price = P(get(resp, "avg_fill_price") do; error("No avg_fill_price for filled order $(oid): ", resp) end)
+        note = "Filled at $(price)"
     else
         error("Unknown status:$(status) in resp:$(resp)")
     end
+    fill = isLong(leg) ? toneg(price) : abs(price)
+    return (;oid, status, fill, note)
 end
 
-function open_pos_try(tid, leg, price, pre, timeout)
-    cond = Base.Event()
+toneg(x) = -abs(x)
+
+# returns (oid, tord) if filled within timeout, otherwise (oid, nothing)
+# there is a chance it could fill after the timeout.
+function open_pos_try(tid, leg, price::PT, pre, timeout)
+    cond = Threads.Condition()
     listener = watch_for(cond, "op$(tid)", timeout)
     TradierAccount.register_listener(listener)
 
     payload = TradierOrder.make_payload(Action.open, tid, leg, price; pre)
-    @info "open pos 1 of 3" payload
+    @info "## open pos" tid payload
     resp = submitOrder(payload)
-    @show resp
+    @info "## open pos response" resp
     # TODO: handle errors? and no id when preview
     oid = resp["id"]
-    @info "open pos 1 of 3" tid resp
 
-    resp = wait(cond)
-    println("resp from wait: $(resp)")
+    resp = get_wait(cond)
+    println("## open resp from get_wait: $(resp)")
+    TradierAccount.unregister_listener(listener)
+    return (oid, resp)
+end
+
+# returns tord if filled within timeout, otherwise nothing
+# there is a chance it could fill after the timeout.
+function open_pos_modify(tid, oid, price::PT, timeout)
+    cond = Threads.Condition()
+    listener = watch_for(cond, "op$(tid)", timeout)
+    TradierAccount.register_listener(listener)
+
+    @info "## modify pos" tid oid price
+    resp = TradierOrder.modifyOrder(oid, price)
+    # oid = resp["id"]
+    @info "## modify pos response" resp
+
+    resp = get_wait(cond)
+    println("## modify resp from get_wait: $(resp)")
     TradierAccount.unregister_listener(listener)
     return resp
 end
@@ -139,18 +220,32 @@ function watch_for(cond, tag, timeout=2.0)
         tg = get(resp, "tag", nothing)
         if tg == tag
             status = get(resp, "status", nothing)
-            if status in TERMINAL
-                stop_watching(cond, resp)
-            else
+            if status in STATUS_TERMINAL
+                println("Order terminal status received: $(status)")
+                send_notify(cond, resp)
+            elseif status == "open"
+                println("Order is open, waiting timeout:$(timeout) seconds for fill")
                 Threads.@spawn Timer(timeout) do t
-                    stop_watching(cond, nothing)
+                    println("Timed out waiting for fill")
+                    send_notify(cond, nothing)
                 end
             end
         end
     end
 end
 
-function stop_watching(cond, resp)
+# TODO: move to threadutil
+function get_wait(cond)
+    lock(cond)
+    try
+        resp = wait(cond)
+        return resp
+    finally
+        unlock(cond)
+    end
+end
+
+function send_notify(cond, resp)
     lock(cond)
     try
         notify(cond, resp)
@@ -345,7 +440,7 @@ function sortoto(action::Action.T, curp, legsin::Coll{L}) where L
     posside = 0
     while !isempty(legs)
         i = 0
-        @show i posside
+        # @show i posside
         if posside == 0
             j = findfirst(fside[1], legs)
             if isnothing(j)
@@ -369,7 +464,7 @@ function sortoto(action::Action.T, curp, legsin::Coll{L}) where L
                 posside -= getQuantity(legs[i])
             end
         end
-        @show legs[i]
+        # @show legs[i]
         push!(res, legs[i])
         # posside += Int(getSide(leg)) * getQuantity(leg)
         deleteat!(legs, i)

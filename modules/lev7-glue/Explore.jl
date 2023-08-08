@@ -194,7 +194,7 @@ function check!(res, ctx, lms)
             evrate = calcevrate(evret, xpir, today())
             if evrate > 0.5
                 probprofit = Between.calcprobprofit(ctx.prob, ss.segsz)
-                if probprofit > 0.5
+                if probprofit > 0.7
                     push!(res[Threads.threadid()], (;ev, kel, evret, evrate, risk, xpir, lms, probprofit))
                 end
             end

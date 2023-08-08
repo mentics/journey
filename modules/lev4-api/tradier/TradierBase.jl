@@ -4,7 +4,7 @@ using DictUtil, LogUtil
 using TradierConfig
 
 export TradierException, HttpException
-export tradierGet, tradierPost, tradierPostVector, tradierDelete
+export tradierGet, tradierPost, tradierPostVector, tradierPut, tradierDelete
 
 struct TradierException <: Exception
     url::String
@@ -59,6 +59,22 @@ end
 #     url = "$(config.baseUrl)$(pathQuery)"
 #     return handleResponse(url, HTTP.put(url, headers, payload))
 # end
+
+function tradierPut(pathQuery::AbstractString, payload::AbstractString, info::CallInfo{T}; retries=0)::T where T
+    call(pathQuery, info) do url
+        try
+            kws = retries == 0 ? (;) : (;retry=true, retries, retry_non_idempotent=true)
+            println("putting to $(url)")
+            resp = HTTP.put(url, TradierConfig.HEADERS_POST[], payload; kws...)
+            @log tradier "tradierPut:" url payload resp
+            return resp
+        catch e
+            @log error "HTTP error in tradierPut:" url payload
+            rethrow(e)
+        end
+    end
+end
+
 
 function tradierDelete(pathQuery::AbstractString, info::CallInfo{T}; retries=0)::T where T
     call(pathQuery, info) do url
