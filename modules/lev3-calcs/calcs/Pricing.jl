@@ -10,7 +10,7 @@ import OptionUtil
 # priceOpp(hass::Coll)::Currency = sum(priceOpp, hass)
 # priceOpp(qt::Quote)::Currency = price(-getAsk(qt), -getBid(qt))
 
-price(x) = price(Action.open, x)
+price_open(x) = price(Action.open, x)
 
 function price(action::Action.T, legs::Coll{<:LegLike})
     psum = CZ

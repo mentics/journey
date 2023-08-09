@@ -90,7 +90,7 @@ function findkel(inc)
     date = Date(ts)
     curp = market().curp
     println("Finding kel for curp: $(curp)")
-    xpirs = Expirations.xpirsinrange(1, 2)
+    xpirs = Expirations.xpirsinrange(1, 4)
     ress = [[] for _ in 1:Threads.nthreads()]
     global kprobs = Dict{Any, Any}()
     for xpir in xpirs
@@ -112,12 +112,12 @@ function findkel(inc)
     return res
 end
 
-function filt(res)
-    filter(res) do r
-        # r.probprofit > 0.55 && r.risk <= 5.0 &&
-        DateUtil.bdays(today(), SH.getExpir(r.lms)) >= 3
-    end
-end
+# function filt(res)
+#     filter(res) do r
+#         # r.probprofit > 0.55 && r.risk <= 5.0 &&
+#         DateUtil.bdays(today(), SH.getExpir(r.lms)) >= 3
+#     end
+# end
 
 # function sortres!(date, res)
 #     sort!(res; by=r -> calcret(r, date))
@@ -192,12 +192,12 @@ function check!(res, ctx, lms)
             # println("$(i): Long on strike $(SH.getStrike(lms[1])) -> $(kel)")
             xpir = ctx.xpir
             evrate = calcevrate(evret, xpir, today())
-            if evrate > 0.5
+            # if evrate > 0.5
                 probprofit = Between.calcprobprofit(ctx.prob, ss.segsz)
-                if probprofit > 0.7
+                if probprofit > 0.6
                     push!(res[Threads.threadid()], (;ev, kel, evret, evrate, risk, xpir, lms, probprofit))
                 end
-            end
+            # end
         end
     catch e
         global kcheck = (;ctx, lms, ss)

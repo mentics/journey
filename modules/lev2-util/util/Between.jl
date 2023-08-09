@@ -7,8 +7,8 @@ using Rets, LegTypes, TradeTypes, LegTradeTypes, Pricing
 #region Lines
 import LinesLeg:LinesLeg as LL,Segments
 # (LL.toSegments(lms::NTuple{N,LegMeta})::Segments{N}) where N = LL.toSegments(lms, map(P ∘ Pricing.price, lms))
-(LL.toSegments(legs::NTuple{N,LegLike})::Segments{N}) where N = LL.toSegments(legs, map(P ∘ Pricing.price, legs))
-(LL.toSegments(legs::NTuple{N,LegLike}, adjustprices::Real)::Segments{N}) where N = LL.toSegments(legs, map(leg -> P(Pricing.price(leg) + adjustprices), legs)) # P ∘ Pricing.price
+(LL.toSegments(legs::NTuple{N,LegLike})::Segments{N}) where N = LL.toSegments(legs, map(P ∘ Pricing.price_open, legs))
+(LL.toSegments(legs::NTuple{N,LegLike}, adjustprices::Real)::Segments{N}) where N = LL.toSegments(legs, map(leg -> P(Pricing.price(Action.open, leg) + adjustprices), legs)) # P ∘ Pricing.price
 # function LL.toSegments(legs::NTuple{N,LegLike}, netos)::Segments{N} where N
 #     # netos = map(P ∘ Pricing.price, lms)
 #     # # TODO: remove validation after checking
@@ -75,9 +75,10 @@ end
 
 #region ToLegMeta
 import Chains
-function requote(lms; lup=Chains.chainLookup)
-    lmsnew = tos(LegMetaOpen, lms, lup)
-    println("Requote price: $(Pricing.price(lms)) -> $(Pricing.price(lmsnew))")
+function requote(action::Action.T, legs; lup=Chains.chainLookup)
+    isop = action == Action.open
+    lmsnew = isop ? tos(LegMetaOpen, legs, lup) : tos(LegMetaClose, legs, lup)
+    println("Requote price: $(isop ? string(Pricing.price(action, legs)) : "closing") -> $(Pricing.price(action, lmsnew))")
     return lmsnew
 end
 SH.to(::Type{LegMetaOpen}, oq, side) = LegMetaOpen(oq, side)
