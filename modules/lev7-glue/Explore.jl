@@ -353,24 +353,24 @@ import Distributions, KernelDensityEstimate, DrawUtil
 function kdedata()
     nspy = Distributions.Normal(1.0, 0.1)
     numsamples = 10000
-    maxdur = 10
+    maxdur = 200
     basevix = 10
     vixspread = 2
     return [(dur = 1 + i % maxdur ; spy = log(rand(nspy)) ; [spy*dur, basevix + vixspread*spy + rand() - 0.5, dur]) for i in 0:numsamples]
 end
-function testkde()
-    bws = [0.1, 0.1, 1.01]
-    data = stack(kdedata())
-    kdem1 = KernelDensityEstimate.kde!(data, bws)
-    range1 = -0.49:0.01:0.49
-    vals = map(x -> x[1], [kdem1(reshape([x, basevix, maxdur / 2], 3, 1)) for x in range1])
-    display(DrawUtil.draw(:scatter, range1, vals))
-    for k in 0.5:0.1:1.5
-        sleep(0.5)
-        vals = map(x -> x[1], [kdem1(reshape([x, basevix, k * maxdur / 2], 3, 1)) for x in range1])
-        DrawUtil.draw!(:scatter, range1, vals)
-    end
-end
+# function testkde()
+#     bws = [0.1, 0.1, 1.01]
+#     data = stack(kdedata())
+#     kdem1 = KernelDensityEstimate.kde!(data, bws)
+#     range1 = -0.49:0.01:0.49
+#     vals = map(x -> x[1], [kdem1(reshape([x, basevix, maxdur / 2], 3, 1)) for x in range1])
+#     display(DrawUtil.draw(:scatter, range1, vals))
+#     for k in 0.5:0.1:1.5
+#         sleep(0.5)
+#         vals = map(x -> x[1], [kdem1(reshape([x, basevix, k * maxdur / 2], 3, 1)) for x in range1])
+#         DrawUtil.draw!(:scatter, range1, vals)
+#     end
+# end
 
 using MultiKDE, Distributions, Random
 function multikde()
@@ -381,7 +381,7 @@ function multikde()
 
     xs = -0.49:0.01:0.49
     display(DrawUtil.draw(:scatter, [0.0], [0.0]))
-    for dur in 1.0:1.0:10.0
+    for dur in 1.0:10.0:200.0
         vals = [MultiKDE.pdf(kde, [x, 10.0, dur]) for x in xs]
         DrawUtil.draw!(:scatter, xs, vals)
         println("done: $(dur)")
@@ -390,27 +390,41 @@ function multikde()
 end
 
 using MultiKDE, Distributions, Random
-function multikde2()
-    data = kdedata()
+import VectorCalcUtil
+function multikde2(data=kdedata(); coordinit=[0.0, 10.0, 0.0], durs=1.0:10.0:200.0, xs=-0.49:0.01:0.49)
     dims = [ContinuousDim(), ContinuousDim(), ContinuousDim()]
-    bws = [0.1, 0.1, 1.01]
+    bws = [0.001, 0.2, 20.0]
+    # kde = KDEMulti(dims, bws, data)
+    # bws = MultiKDE.default_bandwidth(data) ./ 4
     kde = KDEMulti(dims, bws, data)
 
-    xs = -0.49:0.01:0.49
     display(DrawUtil.draw(:scatter, [0.0], [0.0]))
     vals = Vector{Float64}(undef, length(xs))
-    coord = [0.0, 10.0, 0.0]
-    for dur in 1.0:1.0:10.0
+    coord = copy(coordinit)
+    for dur in durs
         coord[3] = dur
         # vals = [( coord[1] = x ; MultiKDE.pdf(kde, coord) ) for x in xs]
         for i in eachindex(xs)
             coord[1] = xs[i]
             vals[i] = MultiKDE.pdf(kde, coord)
         end
+        VectorCalcUtil.normalize!(vals)
         DrawUtil.draw!(:scatter, xs, vals)
         # println("done: $(dur)")
         # yield()
     end
+end
+
+import StatsBase
+function testkde(dff, len)
+    data = [dff.logret[1:len], dff.logvol[1:len], dff.tex[1:len]]
+    xmin, xmax = extrema(data[1])
+    xs = xmin:((xmax-xmin)/500):xmax
+    volmean = StatsBase.mean(data[2])
+    durmin, durmax = extrema(data[3])
+    durs = durmin:((durmax-durmin)/10):durmax
+    @show xs volmean durs
+    multikde2(data; xs, coordinit = [0.0, volmean, 0.0], durs)
 end
 #endregion
 end

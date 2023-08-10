@@ -1,5 +1,6 @@
 module DataFiles
 using Dates, Base.Threads
+import ThreadPools
 using DelimitedFiles, DataFrames
 using Arrow
 import StatsBase:mean
@@ -7,7 +8,7 @@ using DateUtil
 using BaseTypes, SmallTypes
 import OptionUtil
 import Calendars
-import ThreadPools
+using ThreadUtil
 
 #region Consts
 const XPIRS_RANGE = 1:11
@@ -71,6 +72,8 @@ end
 #endregion
 
 #region UpdateAll
+const negative_extrin_count = ThreadUtil.Atomic{Int}(0)
+
 function updateall()::Nothing
     lup = ts2under_lup()
 
@@ -78,8 +81,9 @@ function updateall()::Nothing
     thr_dfs_xpir = [Vector{DataFrame}() for _ in 1:nthreads()]
     thr_dfs_ntm = [Vector{DataFrame}() for _ in 1:nthreads()]
     paths = readdir(pathchains(); join=true)
-    ThreadPools.twith(ThreadPools.QueuePool(2, floor(Int, (Threads.nthreads() - 1)/2))) do pool
+    ThreadPools.twith(ThreadPools.QueuePool(2, 11)) do pool
         ThreadPools.@tthreads pool for path in paths
+            thid = threadid()
             df = DataFrame(Arrow.Table(path); copycols=false)
 
             style = occursin("calls", path) ? Style.call : Style.put
@@ -89,25 +93,19 @@ function updateall()::Nothing
             # println("ts done $(size(tsdf, 1))")
 
             xpirdf = unique(select(df, :expiration => :xpir), :xpir)
-            push!(thr_dfs_xpir[threadid()], xpirdf)
-            println("xpir done $(size(xpirdf, 1))")
+            push!(thr_dfs_xpir[thid], xpirdf)
+            # println("xpir done $(size(xpirdf, 1))")
 
             ntmdf = filter([:ts, :expiration] => filter_xpirs, df)
             ntmdf.strikedist = abs.(ntmdf.under .- ntmdf.strike)
             sort!(ntmdf, [:ts,:expiration,:strikedist])
-            println("ntmdf filter/sort done $(size(ntmdf, 1))")
+            # println("ntmdf filter/sort done $(size(ntmdf, 1))")
 
             f_extrin = style == Style.call ? OptionUtil.extrin_call : OptionUtil.extrin_put
             gdf = groupby(ntmdf, [:ts,:expiration])
             gdf = combine(gdf, sdf -> first(sdf, 4); ungroup=false)
             ntmdf = combine(gdf,
-                [:ts,:expiration,:under,:strike,:bid,:ask] => ( function(tss, xpirs, unders, strikes, bids, asks)
-                    tex = Calendars.calcTex(first(tss), first(xpirs))
-                    extrin = mean(f_extrin(unders, strikes, bids, asks))
-                    vol = extrin / tex
-                    logvol = log(vol)
-                    return [tex extrin vol logvol]
-                end) => [:tex,:extrin,:vol,:logvol],
+                [:ts,:expiration,:under,:strike,:bid,:ask] => make_ntm_data(f_extrin, path, style) => [:tex,:extrin,:vol,:logvol],
 
                 [:ts,:expiration,:under] => ( function(tss, xpirs, unders)
                     ret = get(lup, first(xpirs), missing) / first(unders)
@@ -122,8 +120,8 @@ function updateall()::Nothing
             ntmdf.style .= Int(style)
             println("xpirdf.expiration count: $(size(unique(xpirdf.xpir), 1))")
             println("ntmdf.expiration count: $(size(unique(ntmdf.expiration), 1))")
-            push!(thr_dfs_ntm[threadid()], ntmdf)
-            println("ntmdf done $(size(ntmdf, 1))")
+            push!(thr_dfs_ntm[thid], ntmdf)
+            println("Thread $(thid) completed $(path) - ntmdf size $(size(ntmdf, 1))")
             yield()
         end
     end
@@ -152,6 +150,40 @@ end
 
 # filter_xpirs(ts, xpir) = bdays(Date(ts), Date(xpir)) in XPIRS_RANGE
 filter_xpirs(ts, xpir) = Dates.value(Date(xpir) - Date(ts)) in XPIRS_RANGE
+
+# TODO: can remove path, style when resolve neg extrin
+function make_ntm_data(f_extrin, path, style)
+    return function(tss, xpirs, unders, strikes, bids, asks)
+        ts, xpir = first(tss), first(xpirs)
+        tex = Calendars.calcTex(ts, xpir)
+        extrins = f_extrin(unders, strikes, bids, asks)
+        total = CZ
+        mean_count = length(extrins)
+        neg_count = 0
+        for i in eachindex(extrins)
+            x = extrins[i]
+            if x < 0
+                extrins[i] = CZ
+                neg_count += 1
+                mean_count -= 1
+            else
+                total += x
+            end
+        end
+        if !iszero(neg_count)
+            @atomic negative_extrin_count.count += 1
+            if Second(ts) != 10 && ts != Calendars.getMarketClose(Date(ts))
+                # Only expect weird values at open or close
+                println("**** Found neg extrin not market open/close $(ts) ****")
+                global kerr = (;path, style, extrins, tex, tss, xpirs, unders, strikes, bids, asks)
+            end
+        end
+        extrin = iszero(mean_count) ? CZ : total / mean_count
+        vol = extrin / tex
+        logvol = log(vol)
+        return [tex extrin vol logvol]
+    end
+end
 
 # function combine_ntmdf(dfs_ntm)
 #     lup = ts2under_lup()
@@ -300,8 +332,8 @@ end
 function updatetss()
     thr_tss = [Vector{DateTime}() for _ in 1:nthreads()]
     thr_unders = [Vector{Int}() for _ in 1:nthreads()]
-    ThreadPools.twith(ThreadPools.QueuePool(2, floor(Int, (Threads.nthreads() - 1)/2); allow_primary=false)) do pool
-        ThreadPools.@tthreads pool for path in readdir(pathchains(); join=true)
+    ThreadPools.twith(ThreadPools.QueuePool(2, 11)) do pool
+        ThreadPools.@tthreads pool for path in readdir(pathchains(); join=true, sort=true)
             # df = unique(select(DataFrame(Arrow.Table(path); copycols=false), [:ts,:under]), [:ts])
             # push!(threaddfs[threadid()], df)
             thid = threadid()

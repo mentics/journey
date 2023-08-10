@@ -16,9 +16,9 @@ function isMarketOpen()
     return MktState.isOpen
 end
 # TODO: change name to mktChangeNext
-nextMarketChange() = ( check() ; MktState.nextChange )
-getMarketOpen(d::Date) = fromMarketTZ(d, first(getMarketTime(d).opens))
-getMarketClose(d::Date) = fromMarketTZ(d, last(getMarketTime(d).opens))
+nextMarketChange()::DateTime = ( check() ; MktState.nextChange )
+getMarketOpen(d::Date)::DateTime = fromMarketTZ(d, first(getMarketTime(d).opens))
+getMarketClose(d::Date)::DateTime = fromMarketTZ(d, last(getMarketTime(d).opens))
 # DateTime(astimezone(ZonedDateTime(DateTime("$(d)T$(cal[d]["open"]["end"])"), tz"America/New_York"), tz"UTC"))
 function getMarketTime(d::Date)::MarketTime
     ensureCal(d)
