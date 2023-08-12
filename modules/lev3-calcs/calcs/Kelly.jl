@@ -14,11 +14,16 @@ Can be integrated: https://bit.ly/3mud4SA
 # https://math.stackexchange.com/a/662210/235608
 const PROB_INTEGRAL_WIDTH2 = 1.0
 # Commit, not risk, because in the formula, it's balance/commit to get number of contracts
-function calckel(prob::Prob, commit::Real, segsWithZeros; dpx=PROB_INTEGRAL_WIDTH2, probadjust=1.0)
+# function calckel(pbs::Vector{NTuple{3,Float64}}, prob::Prob, commit::Real, segsWithZeros; dpx=PROB_INTEGRAL_WIDTH2, probadjust=1.0)
+function calckel(pbs::Matrix{Float64}, prob::Prob, commit::Real, segsWithZeros; dpx=PROB_INTEGRAL_WIDTH2, probadjust=1.0)
     cdfLeft = 0.0
-    pbs = NTuple{3,Float64}[]
-    sizehint!(pbs, 200)
+
+    # pbs = NTuple{3,Float64}[]
+    # sizehint!(pbs, 200)
+    pbi = 0
+
     # pbs = Tuple{Float64,Float64,Any}[]
+
     ptotal = 0.0
     ev = 0.0
     # pts = []
@@ -35,7 +40,13 @@ function calckel(prob::Prob, commit::Real, segsWithZeros; dpx=PROB_INTEGRAL_WIDT
             ev += po
             ptotal += p
             # push!(pbs, (p * outcome, outcome, (;seg, left=seg.left.x, right=x_right, cdfLeft, cdfRight, p)))
-            push!(pbs, (po, outcome, p))
+            # push!(pbs, (po, outcome, p))
+            pbi += 1
+            # pbs[pbi] = (po, outcome, p)
+            # pbs[:,pbi] .= (po, outcome, p)
+            pbs[1,pbi] = po
+            pbs[2,pbi] = outcome
+            pbs[3,pbi] = p
         else
             # chop it into more pieces
             # integral[ outcome ] = (outcome.left + outcome.right) / 2 # trapezoid area, I think width can be 1 because discrete and a type of "width" is in prob term
@@ -57,7 +68,14 @@ function calckel(prob::Prob, commit::Real, segsWithZeros; dpx=PROB_INTEGRAL_WIDT
                 ev += po
                 ptotal += p
                 # push!(pbs, (p * outcome, outcome, (;seg, left, right, cdfLeft, cdfRight=cdfR2, p)))
-                push!(pbs, (po, outcome, p))
+                # push!(pbs, (po, outcome, p))
+                pbi += 1
+                # pbs[pbi] = (po, outcome, p)
+                # pbs[:,pbi] .= (po, outcome, p)
+                pbs[1,pbi] = po
+                pbs[2,pbi] = outcome
+                pbs[3,pbi] = p
+
                 left = right;
                 outcomeLeft += outcomeStep
                 cdfLeft = cdfR2
@@ -66,9 +84,12 @@ function calckel(prob::Prob, commit::Real, segsWithZeros; dpx=PROB_INTEGRAL_WIDT
         cdfLeft = cdfRight;
     end
 
-    for i in eachindex(pbs)
-        pb = pbs[i]
-        pbs[i] = (pb[1] / ptotal, pb[2], pb[3] / ptotal)
+    # for i in eachindex(pbs)
+    for i in 1:pbi
+        # po, _, p = pbs[:,i]
+        # pbs[i] = (po / ptotal, o, p / ptotal)
+        pbs[1,i] /= ptotal
+        pbs[3,i] /= ptotal
     end
     ev /= ptotal
 
@@ -80,9 +101,15 @@ function calckel(prob::Prob, commit::Real, segsWithZeros; dpx=PROB_INTEGRAL_WIDT
     # end
 
     kel = Kelly.findZero() do x
-        s = sum(pbs) do (pb, b, _)
-            pb / (1 + b*x)
+        s = 0.0
+        for i in 1:pbi
+            pb, b, _ = pbs[i]
+            pb / (1 + b * x)
         end
+
+        # s = sum(pbs) do (pb, b, _)
+        #     pb / (1 + b*x)
+        # end
         return s
     end
     # ev = evlogret(kel, pbs)
@@ -120,7 +147,8 @@ evlogret(x, pbs) = sum(pb -> pb[3].p * log(max(0.00001, 1.0 + x * pb[2])), pbs)
 # evret adjusted for duration is what we want to maximize
 # pb[2] (outcome) is already divided by commit so it's a percentage return
 # kel is multiplied in there already
-calcevret(kel, pbs) = sum(pb -> pb[3] * (kel * pb[2]), pbs)
+# calcevret(kel, pbs) = sum(pb -> pb[3] * (kel * pb[2]), pbs)
+calcevret(kel, pbs) = sum(pb -> pb[3] * (kel * pb[2]), eachcol(pbs))
 
 
 # calc(pvals, vals) = ded(pvals, vals)

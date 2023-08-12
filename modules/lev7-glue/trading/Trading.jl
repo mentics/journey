@@ -258,7 +258,21 @@ end
 const NEED_SIDE_OPEN = [isLong, isShort]
 const NEED_SIDE_CLOSE = [isShort, isLong]
 
+import StatsBase, CollUtil
 function sortoto(action::Action.T, curp, legsin::Coll{L}) where L
+    style_counts = StatsBase.countmap(map(getStyle, legsin))
+    if length(style_counts) > 1
+        # It has both styles so process one of them first
+        style = CollUtil.maxkey(style_counts)
+        legs1 = _sortoto(action, curp, filter(leg -> style == getStyle(leg), legsin))
+        legs2 = _sortoto(action, curp, filter(leg -> style != getStyle(leg), legsin))
+        return vcat(legs1, legs2)
+    else
+        return _sortoto(action, curp, legsin)
+    end
+end
+
+function _sortoto(action::Action.T, curp, legsin::Coll{L}) where L
     fside = action == Action.open ? NEED_SIDE_OPEN : NEED_SIDE_CLOSE
     legs = sort!(collect(legsin); by=l -> -getQuantity(l) + abs(curp - getStrike(l)) / 1024)
     res = Vector{L}()

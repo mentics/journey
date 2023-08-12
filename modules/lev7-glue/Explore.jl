@@ -4,9 +4,10 @@ using ThreadPools
 using BaseTypes, LegTypes
 import SH, DateUtil
 import CollUtil.sortuple
+import Positions
 
 const CONFIG3 = Ref((;
-    adjustprices = -0.005,
+    adjustprices = -0.01,
     kelprobadjust = 0.25
 ))
 
@@ -90,16 +91,19 @@ function findkel(inc)
     date = Date(ts)
     curp = market().curp
     println("Finding kel for curp: $(curp)")
-    xpirs = Expirations.xpirsinrange(1, 4)
+    # xpirs = Expirations.xpirsinrange(1, 4)
+    xpirs = Expirations.expirs()[1:2]
     ress = [[] for _ in 1:Threads.nthreads()]
+    # kelly_buffer = [Vector{NTuple{3,Float64}}(undef, 500) for _ in 1:Threads.nthreads()]
+    kelly_buffer = [Matrix{Float64}(undef, 3, 500) for _ in 1:Threads.nthreads()]
     global kprobs = Dict{Any, Any}()
     for xpir in xpirs
         println("Searching xpir: $(xpir)")
         prob = Between.makeprob(xpir, curp)
         riskrat = calcriskrat(date, xpir)
-        ctx = (;curp, prob, riskrat, xpir)
+        ctx = (;curp, prob, riskrat, xpir, kelly_buffer)
         kprobs[xpir] = prob
-        oqss = ChainUtil.oqssEntry(chain(xpir).chain, curp)
+        oqss = ChainUtil.oqssEntry(chain(xpir).chain, curp, Positions.positions())
         println("num calls $(length(oqss.call.long))")
         println("num puts $(length(oqss.put.long))")
         1 in inc && findkel1!(ress, ctx, oqss)
@@ -148,21 +152,30 @@ function findkel2!(res, ctx, oqss)
 end
 
 function findkel3!(res, ctx, oqss)
+    count = zeros(Int, Threads.nthreads())
     println("Searching calls")
-    GenCands.paraSpreads(oqss.call, 4, (_...) -> true) do thid, lms
+    finish = GenCands.paraSpreads(oqss.call, 4, (_...) -> true) do thid, lms
         # println("findkel3 checking spread $(SH.getStrike(lms[1])) $(SH.getStrike(lms[2]))")
         # Threads.@threads
-        for oq in oqss.call.long
-            lms2 = sortuple(SH.getStrike, lms..., LegMetaOpen(oq, Side.long))
-            check!(res, ctx, lms2)
+        twith(ThreadPools.QueuePool(12, 11)) do pool
+            @tthreads pool for oq in oqss.call.long
+                lms2 = sortuple(SH.getStrike, lms..., LegMetaOpen(oq, Side.long))
+                # global kcheckargs = (res, ctx, lms2)
+                # error("stop")
+                check!(res, ctx, lms2)
+            end
         end
-        # Threads.@threads
-        for oq in oqss.put.long
-            lms2 = sortuple(SH.getStrike, lms..., LegMetaOpen(oq, Side.long))
-            check!(res, ctx, lms2)
+        count[thid] += length(oqss.call.long)
+        twith(ThreadPools.QueuePool(12, 11)) do pool
+            @tthreads pool for oq in oqss.put.long
+                lms2 = sortuple(SH.getStrike, lms..., LegMetaOpen(oq, Side.long))
+                check!(res, ctx, lms2)
+            end
         end
+        count[thid] += length(oqss.put.long)
         return true
     end
+    finish || return
     println("Searching puts")
     GenCands.paraSpreads(oqss.put, 4, (_...) -> true) do thid, lms
         # Threads.@threads
@@ -170,32 +183,51 @@ function findkel3!(res, ctx, oqss)
             lms2 = sortuple(SH.getStrike, lms..., LegMetaOpen(oq, Side.long))
             check!(res, ctx, lms2)
         end
+        count[thid] += length(oqss.call.long)
         # Threads.@threads
         for oq in oqss.put.long
             lms2 = sortuple(SH.getStrike, lms..., LegMetaOpen(oq, Side.long))
             check!(res, ctx, lms2)
         end
+        count[thid] += length(oqss.put.long)
         return true
     end
-    println("Searching done.")
+    println("Searched $(sum(count)) permutations")
 end
 #endregion
 
 #region Common
+function testcheck(res, ctx, lms2)
+    for i in 1:10000
+        Explore.check!(res, ctx, lms2)
+    end
+end
+
 function check!(res, ctx, lms)
-    yield()
     ss = tosegsz(ctx.curp, lms)
     !isnothing(ss) || ( println("ss was nothing") ; return true )
+    (;segs, segsz, netos) = ss
     try
-        kel, evret, ev, risk = calckel(ctx.prob, ctx.riskrat, ss)
+        thid = Threads.threadid()
+        # t = @timed calckel(ctx.prob, ctx.riskrat, ss)
+        # if t.time > 0.1
+        #     println("> 0.1 seconds running calckel: $(t.time)")
+        #     @show t
+        #     global kcalckelargs = (ctx.prob, ctx.riskrat, ss)
+        #     error("stop")
+        # end
+        # kel, evret, ev, risk = t.value
+        kel, evret, ev, risk = calckel(ctx.kelly_buffer[thid], ctx.prob, ctx.riskrat, segs, segsz)
+        # global kcalckelargs = (ctx.kelly_buffer[thid], ctx.prob, ctx.riskrat, segs, segsz)
+        # error("stop")
         if isfinite(kel) && kel > 0
             # println("$(i): Long on strike $(SH.getStrike(lms[1])) -> $(kel)")
             xpir = ctx.xpir
             evrate = calcevrate(evret, xpir, today())
             # if evrate > 0.5
-                probprofit = Between.calcprobprofit(ctx.prob, ss.segsz)
+                probprofit = Between.calcprobprofit(ctx.prob, segsz)
                 if probprofit > 0.6
-                    push!(res[Threads.threadid()], (;ev, kel, evret, evrate, risk, xpir, lms, probprofit))
+                    # push!(res[thid], (;ev, kel, evret, evrate, risk, xpir, lms, probprofit, netos, neto=sum(netos)))
                 end
             # end
         end
@@ -232,19 +264,19 @@ import Kelly, Pricing, LinesLeg as LL
 
 function tosegsz(curp, lms::Coll{<:LegLike})
     adjustprices = CONFIG3[].adjustprices
-    segs = LL.toSegments(lms, adjustprices)
+    segs, netos = LL.toSegments(lms, adjustprices)
     LL.canprofit(segs) || return nothing
     segsz = LL.toSegmentsWithZeros(segs; extent=(0.5*curp, 1.5*curp))
-    return (;segs, segsz)
+    return (;segs, segsz, netos)
 end
 
 calckel(prob::Prob, riskrat::Real, lms::Coll{<:LegLike}) = calckel(prob, riskrat, tosegsz(prob.center, lms))
 
-function calckel(prob::Prob, riskrat::Real, (;segs, segsz))
+function calckel(buf, prob::Prob, riskrat::Real, segs, segsz)
     probadjust = CONFIG3[].kelprobadjust
     risk = riskrat * max(Pricing.calcMarg(prob.center, segs))
     try
-        return (Kelly.calckel(prob, risk, segsz; probadjust)..., risk)
+        return (Kelly.calckel(buf, prob, risk, segsz; probadjust)..., risk)
     catch e
         global kcalckel = (;prob, risk, segsz, probadjust)
         rethrow(e)
@@ -346,7 +378,6 @@ end
 #     @show EuPrice = pricer(Model, rfCurve, mcConfig, opt);
 # end
 #endregion
-
 
 #region kde
 import Distributions, KernelDensityEstimate, DrawUtil

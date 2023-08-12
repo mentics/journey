@@ -8,7 +8,11 @@ using Rets, LegTypes, TradeTypes, LegTradeTypes, Pricing
 import LinesLeg:LinesLeg as LL,Segments
 # (LL.toSegments(lms::NTuple{N,LegMeta})::Segments{N}) where N = LL.toSegments(lms, map(P ∘ Pricing.price, lms))
 (LL.toSegments(legs::NTuple{N,LegLike})::Segments{N}) where N = LL.toSegments(legs, map(P ∘ Pricing.price_open, legs))
-(LL.toSegments(legs::NTuple{N,LegLike}, adjustprices::Real)::Segments{N}) where N = LL.toSegments(legs, map(leg -> P(Pricing.price(Action.open, leg) + adjustprices), legs)) # P ∘ Pricing.price
+function LL.toSegments(legs::NTuple{N,LegLike}, adjustprices::Real) where N
+    netos = map(leg -> P(Pricing.price(Action.open, leg) + adjustprices), legs)
+    segs = LL.toSegments(legs, netos)
+    return (;segs, netos)
+end
 # function LL.toSegments(legs::NTuple{N,LegLike}, netos)::Segments{N} where N
 #     # netos = map(P ∘ Pricing.price, lms)
 #     # # TODO: remove validation after checking

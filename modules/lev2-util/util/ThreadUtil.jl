@@ -19,6 +19,10 @@ function runSync(f, lk, args...)
     end
 end
 
+export sync_output
+const lock_output = ReentrantLock()
+sync_output(f) = runSync(f, lock_output)
+
 function wrapErr(f)
     function(args...)
         try

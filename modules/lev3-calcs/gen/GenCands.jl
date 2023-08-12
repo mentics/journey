@@ -142,26 +142,34 @@ end
 
 function paraSpreads(f::Function, oqs::Sides{Vector{ChainTypes.OptionQuote}}, maxSpreadWidth::Real, isLegAllowed, args...)::Bool
     !isempty(oqs.long) || return true
-    finish = false
-    Threads.@threads for oq1 in oqs.long
-        thid = Threads.threadid()
-        for oq2 in oqs.short
-            strikeWidth(oq1, oq2) <= maxSpreadWidth || continue
-            # (getStrike(oq1) >= strikeMin && getStrike(oq2) >= strikeMin && oq1 != oq2) || continue
-            oq1 != oq2 || continue
-            (isLegAllowed(oq1, Side.long) && isLegAllowed(oq2, Side.short)) || continue
-            legLong = to(LegMetaOpen, oq1, Side.long)
-            legShort = to(LegMetaOpen, oq2, Side.short)
-            # _, mx = OptionUtil.spreadExtrema(legLong, legShort)
-            _, mx = oextrema(legLong, legShort)
-            mx >= MinSpreadMx || continue
-            spr = getStrike(legLong) < getStrike(legShort) ? (legLong, legShort) : (legShort, legLong)
-            # f(spr, args...) || ( finish = stop ; break )
-            f(thid, spr, args...) || return false
+    stop = false
+    twith(ThreadPools.QueuePool(2, 11)) do pool
+        @tthreads pool for oq1 in oqs.long
+            if !stop
+                try
+                    thid = Threads.threadid()
+                    # println("running thid:$(thid)")
+                    for oq2 in oqs.short
+                        strikeWidth(oq1, oq2) <= maxSpreadWidth || continue
+                        # (getStrike(oq1) >= strikeMin && getStrike(oq2) >= strikeMin && oq1 != oq2) || continue
+                        oq1 != oq2 || continue
+                        (isLegAllowed(oq1, Side.long) && isLegAllowed(oq2, Side.short)) || continue
+                        legLong = to(LegMetaOpen, oq1, Side.long)
+                        legShort = to(LegMetaOpen, oq2, Side.short)
+                        _, mx = oextrema(legLong, legShort)
+                        mx >= MinSpreadMx || continue
+                        spr = getStrike(legLong) < getStrike(legShort) ? (legLong, legShort) : (legShort, legLong)
+                        f(thid, spr, args...) || ( stop = true ; return false )
+                        yield()
+                    end
+                catch e
+                    stop = true
+                    sync_output(() -> ( showerror(stderr, e, catch_backtrace()) ; println(stderr) ))
+                end
+            end
         end
-        finish || break
     end
-    return finish
+    return !stop
 end
 
 function oextrema(os...)

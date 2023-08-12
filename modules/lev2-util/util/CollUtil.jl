@@ -317,6 +317,28 @@ function findextrema(v, from=firstindex(v), to=lastindex(v))
     return ((mni, mn), (mxi, mx))
 end
 
+function minkey(d)
+    (minkey, minvalue), rest = Iterators.peel(d)
+    for (key, value) in rest
+        if value < minvalue
+            minkey = key
+            minvalue = value
+        end
+    end
+    minkey
+end
+
+function maxkey(d)
+    (minkey, minvalue), rest = Iterators.peel(d)
+    for (key, value) in rest
+        if value > minvalue
+            minkey = key
+            minvalue = value
+        end
+    end
+    minkey
+end
+
 # function accumul!(op, B, A; dims::Union{Integer, Nothing} = nothing, kw...)
 #     if isnothing(init)
 #         Base._accumulate!(op, B, A, dims, nothing)
