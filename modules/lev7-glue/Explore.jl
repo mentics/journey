@@ -7,19 +7,22 @@ import SH, DateUtil
 import CollUtil:sortuple
 import Positions
 using OutputUtil
+import Makie
 
 function testCalcKel()
     curp = market().curp
     oqs = filter!(isCall, Chains.chain(expir(1)).chain)
     sort!(oqs; by=oq -> abs(curp - SH.getStrike(oq)))
     lms = sortuple(SH.getStrike, LegMetaOpen(oqs[1], Side.short), LegMetaOpen(oqs[2], Side.long))
-    lms = discount.(lms)
+    # lms = discount.(lms, 0.1)
+    DrawUtil.drawprob(kprobs[SH.getExpir(lms)]; color=Makie.RGBA(.1, .1, .5, 0.5))
+    display(DrawUtil.draw!(:lines, SH.toDraw(lms)))
     return calckel(lms)
 end
 
 using LegMetaTypes, QuoteTypes
 discount(lm::LegMetaOpen, r=0.75) = LegMetaOpen(SH.getLeg(lm), discount(SH.getQuote(lm), r), SH.getMeta(lm))
-discount(q::Quote, r=0.75) = Quote(P(q.bid * r), P(q.ask * r))
+discount(q::Quote, r=0.75) = Quote(P(q.bid + r), P(q.ask + r))
 
 const CONFIG4 = Ref((;
     adjustprices = 0.0,
@@ -283,8 +286,7 @@ function calckel(buf, prob::Prob, riskrat::Real, segs, segsz)
     probadjust = CONFIG4[].kelprobadjust
     risk = riskrat * max(Pricing.calcMarg(prob.center, segs))
     try
-        global kcalckel = (;prob, risk, segsz, probadjust)
-        return (Kelly.calckel(buf, prob, risk, segsz; probadjust)..., risk)
+        return (;Kelly.calckel(buf, prob, risk, segsz; probadjust)..., risk)
     catch e
         global kcalckel = (;prob, risk, segsz, probadjust)
         rethrow(e)

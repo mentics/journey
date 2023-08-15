@@ -88,7 +88,7 @@ function drawdist!(ax, center, vals; at1=false, kws...)
     v1 = center .* Bins.xs();
     v2 = .01 * vals ./ Bins.width()
     p = GLMakie.barplot!(ax, v1, v2; gap=0.0, width=center * Bins.width(), inspectable=false, kws...) #, color=colors[colorIndex])
-    GLMakie.vlines!(center)
+    GLMakie.vlines!(center; color=Makie.RGBA(0.1, 1.0, 0.2, 0.5))
     return p
 end
 

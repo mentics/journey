@@ -24,50 +24,39 @@ Can be integrated: https://bit.ly/3mud4SA
 (x (2 b m p + b m q x - 2 q))/(2 b^2 m) - ((b m p - b o q - q) log(b m x + b o + 1))/(b^3 m^2) + constant
 =#
 
+using OutputUtil
+issame(x1, x2) = ((x1 / x2) ≈ 1.0) || (abs(x1) < 1e-12 && abs(x2) < 1e-12)
+
 # https://math.stackexchange.com/a/662210/235608
 const PROB_INTEGRAL_WIDTH2 = 1.0
 # Commit, not risk, because in the formula, it's balance/commit to get number of contracts
-# function calckel(pbs::Vector{NTuple{3,Float64}}, prob::Prob, commit::Real, segsWithZeros; dpx=PROB_INTEGRAL_WIDTH2, probadjust=1.0)
-# function calckel(pbs::Matrix{Float64}, prob::Prob, commit::Real, segsWithZeros; dpx=PROB_INTEGRAL_WIDTH2, probadjust=1.0)
 function calckel(pbs::Buf, prob::Prob, commit::Real, segsWithZeros; dpx=PROB_INTEGRAL_WIDTH2, probadjust=0.0)
+    if commit <= 0.0
+        println("Invalid commit:$(commit) in calckel")
+        return (;kel=NaN, evret=NaN, ev=100.0)
+    end
     cdfLeft = 0.0
-
-    # pbs = NTuple{3,Float64}[]
-    # sizehint!(pbs, 200)
     pbi = 0
-
-    # pbs = Tuple{Float64,Float64,Any}[]
-
     ptotal = 0.0
     ev = 0.0
-    # pts = []
     for seg in segsWithZeros
-        # push!(pts, (seg.left.x, seg.right.x))
         x_right = seg.right.x
         cdfRight = ProbUtil.cdf(prob, x_right)
         if seg.slope == 0.0
-            # @assert seg.left.y == seg.right.y
+            @assert issame(seg.left.y, seg.right.y) "seg.y's not the same: left:$(seg.left) right:$(seg.right)"
             outcome = seg.left.y / commit
+            outcome >= -1.0 || error("Kelly: outcome:$(outcome) < -1.0")
             p = cdfRight - cdfLeft
             p *= outcome > 0 ? 1.0 - probadjust : 1.0 + probadjust
             po = p * outcome
             ev += po
             ptotal += p
-            # push!(pbs, (p * outcome, outcome, (;seg, left=seg.left.x, right=x_right, cdfLeft, cdfRight, p)))
-            # push!(pbs, (po, outcome, p))
             pbi += 1
-            # pbs[pbi] = (po, outcome, p)
-            # pbs[:,pbi] .= (po, outcome, p)
-            # pbs[1,pbi] = po
-            # pbs[2,pbi] = outcome
-            # pbs[3,pbi] = p
             pbs.po[pbi] = po
             pbs.outcome[pbi] = outcome
             pbs.p[pbi] = p
         else
-            # chop it into more pieces
-            # integral[ outcome ] = (outcome.left + outcome.right) / 2 # trapezoid area, I think width can be 1 because discrete and a type of "width" is in prob term
-            # integral[ prob * outcome ] =
+            # chop it into pieces across sloped region
             span = x_right - seg.left.x
             num = ceil(span / dpx)
             width = span / num
@@ -77,21 +66,16 @@ function calckel(pbs::Buf, prob::Prob, commit::Real, segsWithZeros; dpx=PROB_INT
             outcomeLeft = seg.left.y
             for i in 0:num-1
                 right = left + width
+                @assert r8(right) <= r8(x_right) string((;right=r5(right), x_right=r5(x_right)))
                 outcome = (outcomeLeft + outcomeStep / 2) / commit
+                outcome >= -1.0 || error("Kelly: outcome:$(outcome) < -1.0")
                 cdfR2 = ProbUtil.cdf(prob, right)
                 p = cdfR2 - cdfLeft
                 p *= outcome > 0 ? 1.0 - probadjust : 1.0 + probadjust
                 po = p * outcome
                 ev += po
                 ptotal += p
-                # push!(pbs, (p * outcome, outcome, (;seg, left, right, cdfLeft, cdfRight=cdfR2, p)))
-                # push!(pbs, (po, outcome, p))
                 pbi += 1
-                # pbs[pbi] = (po, outcome, p)
-                # pbs[:,pbi] .= (po, outcome, p)
-                # pbs[1,pbi] = po
-                # pbs[2,pbi] = outcome
-                # pbs[3,pbi] = p
                 pbs.po[pbi] = po
                 pbs.outcome[pbi] = outcome
                 pbs.p[pbi] = p
@@ -104,44 +88,31 @@ function calckel(pbs::Buf, prob::Prob, commit::Real, segsWithZeros; dpx=PROB_INT
         cdfLeft = cdfRight;
     end
 
-    # for i in eachindex(pbs)
     @turbo for i in 1:pbi
-        # po, _, p = pbs[:,i]
-        # pbs[i] = (po / ptotal, o, p / ptotal)
-        # pbs[1,i] /= ptotal
-        # pbs[3,i] /= ptotal
         pbs.po[i] /= ptotal
         pbs.p[i] /= ptotal
     end
     ev /= ptotal
+    global kpbs = (;po=pbs.po[1:pbi], o=pbs.outcome[1:pbi], p=pbs.p[1:pbi])
 
-    # global kpbs = pbs
-    # sump = sum(x -> x[3], pbs)
-    # # @assert ptotal == sump
-    # if sump > 1.000001 || sump < 0.999
-    #     println("WARN: sumpbs not 1: $sump")
-    # end
-
-    kel = Kelly.findZero() do x
+    kel = findZero() do x
         s = 0.0
-        # for i in 1:pbi
-        #     pb, b, _ = pbs[i]
-        #     s += pb / (1 + b * x)
-        # end
-
         @turbo for i in 1:pbi
-            s += pb.po[i] / (1 + pb.o[i] * x)
+            s += pbs.po[i] / (1 + pbs.outcome[i] * x)
         end
-
-        # s = sum(pbs) do (pb, b, _)
-        #     pb / (1 + b*x)
-        # end
         return s
     end
-    # ev = evlogret(kel, pbs)
+    kel > 0.0 || return (;kel=NaN, evret=NaN, ev)
     evret = calcevret(kel, pbs)
-    return evret > 0.0 ? (;kel, evret, ev) : (;kel=NaN, evret, ev)
+    return (;kel, evret, ev)
 end
+
+# NOTE: use this for debugging. Run DrawUtil.draw(:lines, retcurve()) to see the curve it's trying to maximize.
+function retcurve(pbs=kpbs)
+    xs = collect(0.0:0.02:1.0)
+    return [calcevlog(pbs.p, pbs.o, x) for x in xs]
+end
+calcevlog(probs, outcomes, ratio) = sum(probs .* log.(1.0 .+ ratio .* outcomes))
 
 #=
 Expected value of sum of log of the resulting balance
@@ -159,7 +130,7 @@ to maximize that, derivative with respect to x
 d/dx = sum( p_i * (o_i / commit) / (1 + x * o_i / commit) )
 =#
 
-probouts() = [(;prob=pb[3].p, outcome=pb[2]) for pb in Kelly.kpbs]
+probouts() = [(;prob=pb[3].p, outcome=pb[2]) for pb in kpbs]
 devlogret(x) = devlogret(x, probouts())
 function devlogret(x, probouts)
     sum(po -> po.prob * po.outcome / (1 + x * po.outcome), probouts)
@@ -170,6 +141,7 @@ function evlogretpo(x, probouts)
     sum(po -> po.prob * log(max(0.00001, 1.0 + x * po.outcome)), probouts)
 end
 evlogret(x, pbs) = sum(pb -> pb[3].p * log(max(0.00001, 1.0 + x * pb[2])), pbs)
+
 # evret adjusted for duration is what we want to maximize
 # pb[2] (outcome) is already divided by commit so it's a percentage return
 # kel is multiplied in there already
@@ -344,15 +316,18 @@ function kellySimple(probs::AbstractVector{Float64}, rets::AbstractVector{Float6
 end
 
 function findZero(f, mn=0.001, mx=.999)
-    # f1 = f(mn)
-    # f2 = f(mx)
+    # left = f(mn)
+    # right = f(mx)
+    # if left >= 0.0 && right >= 0.0
     # if f(mn) * f(mx) < 0.0
         # TODO: this code might be doing 1 allocation. but have to check at higher level
         # try
         try
-            return solve(ZeroProblem(f, (mn, mx)))
+            res = solve(ZeroProblem(f, (mn, mx)))
+            return isfinite(res) ? res : (f(mx) > 0.0 ? 1.0 : NaN)
         catch e
             # ignore
+            # showerror(stderr, e)
             return NaN
         end
         # catch e
