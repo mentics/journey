@@ -266,8 +266,8 @@ f1(a, x) = (a[2], a[2]+x);
 v1 = rand(100);
 buf1 = Vector{NTuple{2,Float64}}(undef, length(v1));
 init = (0.0, 0.0);
-r1 = @btime CollUtil.maps!($f1, $buf1, $v1, $init);
-r2 = @btime accumulate!($f1, $buf1, $v1; init=$init);
+r1 = @benchmark CollUtil.maps!($f1, $buf1, $v1, $init);
+r2 = @benchmark accumulate!($f1, $buf1, $v1; init=$init);
 @assert r1 == r2
 =#
 # function maps!(f, buf, v, init)
@@ -372,6 +372,31 @@ end
 #         #     throw(ArgumentError("acccumulate! does not support the keyword arguments $(setdiff(keys(kw), (:init,)))"))
 #         # end
 #     end
+# end
+
+# # Test if it's faster to for loop vs. broadcast across full array when there's extra
+# using BenchmarkTools
+# using LoopVectorization
+# function testPerfExtra(full=500, len=200)
+#     v = Vector{Float64}(undef, full)
+#     v[1] = 10000.0
+#     v[2] = .5
+#     v[3] = 3466453456.234234234
+#     println(v[1])
+#     k = 1.01
+#     display(@benchmark forloop($k, $v, $len))
+#     display(@benchmark broad($k, $v))
+#     println(v[1])
+# end
+
+# @inline function forloop(k, v, len)
+#     @turbo for i in 1:len
+#         v[i] /= k
+#     end
+# end
+
+# @inline function broad(k, v)
+#     @turbo v ./= k
 # end
 
 end

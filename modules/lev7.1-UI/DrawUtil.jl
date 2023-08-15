@@ -68,23 +68,26 @@ function prob!(ax, prob, colorIndex, scale)
     # display(p)
     return p
 end
+
+# function drawdist(center, vals; kws...) #, colorIndex=1)
+#     ax = getAxis(;newFig=true)
+#     # colors = (GLMakie.RGBA(0.5, 0.5, 1.0, 0.5), GLMakie.RGBA(0.0, 0.5, 0.5, 0.5), GLMakie.RGBA(0.5, 0.5, 0.5, 0.5))
+#     # p = GLMakie.barplot(F(center) .* Bins.xs(), .01 * vals ./ Bins.width(); gap=0.0, width=center * Bins.width(), inspectable=false, kws...) # , color=colors[colorIndex])
+#     p = GLMakie.barplot!(ax, F(center) .* Bins.xs(), vals; gap=0.0, width=center * Bins.width(), kws...) # , color=colors[colorIndex])
+#     GLMakie.vlines!(center)
+#     return p
+# end
+
+drawprob(prob; kws...) = drawdist(prob.center, prob.vals; kws...)
+drawdist(center, vals; kws...) = drawdist!(getAxis(;newFig=true), center, vals; kws...)
 drawprob!(prob; kws...) = drawdist!(prob.center, prob.vals; kws...)
-function drawdist!(center, vals; kws...)
-    ax = getAxis(;newFig=false)
+drawdist!(center, vals; kws...) = drawdist!(getAxis(;newFig=false), center, vals; kws...)
+function drawdist!(ax, center, vals; at1=false, kws...)
+    center = at1 ? 1.0 : center
     # colors = (GLMakie.RGBA(0.5, 0.5, 1.0, 0.5), GLMakie.RGBA(0.0, 0.5, 0.5, 0.5), GLMakie.RGBA(0.5, 0.5, 0.5, 0.5))
     v1 = center .* Bins.xs();
     v2 = .01 * vals ./ Bins.width()
     p = GLMakie.barplot!(ax, v1, v2; gap=0.0, width=center * Bins.width(), inspectable=false, kws...) #, color=colors[colorIndex])
-    GLMakie.vlines!(center)
-    return p
-end
-
-drawprob(prob; kws...) = drawdist(prob.center, prob.vals; kws...)
-function drawdist(center, vals; kws...) #, colorIndex=1)
-    ax = getAxis(;newFig=true)
-    # colors = (GLMakie.RGBA(0.5, 0.5, 1.0, 0.5), GLMakie.RGBA(0.0, 0.5, 0.5, 0.5), GLMakie.RGBA(0.5, 0.5, 0.5, 0.5))
-    # p = GLMakie.barplot(F(center) .* Bins.xs(), .01 * vals ./ Bins.width(); gap=0.0, width=center * Bins.width(), inspectable=false, kws...) # , color=colors[colorIndex])
-    p = GLMakie.barplot!(ax, F(center) .* Bins.xs(), vals; gap=0.0, width=center * Bins.width(), kws...) # , color=colors[colorIndex])
     GLMakie.vlines!(center)
     return p
 end
@@ -180,8 +183,8 @@ function getFig(; newFig=true, newWin=false, kws...)::Figure
     return fig
 end
 
-function afterDraw(; showLegend=false, kws...)
-    if showLegend
+function afterDraw(; showlegend=false, kws...)
+    if showlegend
         axislegend(current_axis())
     end
 end
@@ -206,7 +209,7 @@ rndDown(x, m) = rnd(x, m, RoundDown)
 #     return fig, ax
 # end
 
-# function newFig(f, (xticks, yticks), showLegend=true, newWin=false)
+# function newFig(f, (xticks, yticks), showlegend=true, newWin=false)
 #     fig = newFig()
 #     ax = Axis(fig[1,1])
 #     ax.xticks = xticks
@@ -216,7 +219,7 @@ rndDown(x, m) = rnd(x, m, RoundDown)
 #     f(fig, ax)
 
 #     # Main.save[:ax] = ax
-#     showLegend && axislegend(ax)
+#     showlegend && axislegend(ax)
 #     DataInspector(fig; textcolor=:blue)
 #     disp = nothing
 #     if newWin
@@ -255,17 +258,17 @@ function ticksCentered(sp, (xMin, xMax), (yMin, yMax))
     return (xticks, yticks)
 end
 
-# function updateLegend()
-#     foreach(filter(x -> x isa Legend, current_figure().content)) do x
-#         try
-#             delete!(x)
-#         catch
-#             #ignore
-#         end
-#     end
+function updateLegend()
+    foreach(filter(x -> x isa Legend, current_figure().content)) do x
+        try
+            delete!(x)
+        catch
+            #ignore
+        end
+    end
 
-#     axislegend()
-# end
+    axislegend()
+end
 #endregion
 
 end

@@ -1,7 +1,20 @@
 module Kelly
-using Roots
+using Roots, LoopVectorization
 using BaseTypes, ProbTypes
 import ProbUtil
+
+struct Buf
+    po::Vector{Float64}
+    outcome::Vector{Float64}
+    p::Vector{Float64}
+    Buf() = new(
+        Vector{Float64}(undef, 500),
+        Vector{Float64}(undef, 500),
+        Vector{Float64}(undef, 500)
+    )
+end
+
+make_buf() = Buf()
 
 #=
 integral(s)[ ( pdf(s) * out(s) ds ) / ( 1 + out(s) x ) ]
@@ -15,7 +28,8 @@ Can be integrated: https://bit.ly/3mud4SA
 const PROB_INTEGRAL_WIDTH2 = 1.0
 # Commit, not risk, because in the formula, it's balance/commit to get number of contracts
 # function calckel(pbs::Vector{NTuple{3,Float64}}, prob::Prob, commit::Real, segsWithZeros; dpx=PROB_INTEGRAL_WIDTH2, probadjust=1.0)
-function calckel(pbs::Matrix{Float64}, prob::Prob, commit::Real, segsWithZeros; dpx=PROB_INTEGRAL_WIDTH2, probadjust=1.0)
+# function calckel(pbs::Matrix{Float64}, prob::Prob, commit::Real, segsWithZeros; dpx=PROB_INTEGRAL_WIDTH2, probadjust=1.0)
+function calckel(pbs::Buf, prob::Prob, commit::Real, segsWithZeros; dpx=PROB_INTEGRAL_WIDTH2, probadjust=0.0)
     cdfLeft = 0.0
 
     # pbs = NTuple{3,Float64}[]
@@ -44,9 +58,12 @@ function calckel(pbs::Matrix{Float64}, prob::Prob, commit::Real, segsWithZeros; 
             pbi += 1
             # pbs[pbi] = (po, outcome, p)
             # pbs[:,pbi] .= (po, outcome, p)
-            pbs[1,pbi] = po
-            pbs[2,pbi] = outcome
-            pbs[3,pbi] = p
+            # pbs[1,pbi] = po
+            # pbs[2,pbi] = outcome
+            # pbs[3,pbi] = p
+            pbs.po[pbi] = po
+            pbs.outcome[pbi] = outcome
+            pbs.p[pbi] = p
         else
             # chop it into more pieces
             # integral[ outcome ] = (outcome.left + outcome.right) / 2 # trapezoid area, I think width can be 1 because discrete and a type of "width" is in prob term
@@ -72,9 +89,12 @@ function calckel(pbs::Matrix{Float64}, prob::Prob, commit::Real, segsWithZeros; 
                 pbi += 1
                 # pbs[pbi] = (po, outcome, p)
                 # pbs[:,pbi] .= (po, outcome, p)
-                pbs[1,pbi] = po
-                pbs[2,pbi] = outcome
-                pbs[3,pbi] = p
+                # pbs[1,pbi] = po
+                # pbs[2,pbi] = outcome
+                # pbs[3,pbi] = p
+                pbs.po[pbi] = po
+                pbs.outcome[pbi] = outcome
+                pbs.p[pbi] = p
 
                 left = right;
                 outcomeLeft += outcomeStep
@@ -85,11 +105,13 @@ function calckel(pbs::Matrix{Float64}, prob::Prob, commit::Real, segsWithZeros; 
     end
 
     # for i in eachindex(pbs)
-    for i in 1:pbi
+    @turbo for i in 1:pbi
         # po, _, p = pbs[:,i]
         # pbs[i] = (po / ptotal, o, p / ptotal)
-        pbs[1,i] /= ptotal
-        pbs[3,i] /= ptotal
+        # pbs[1,i] /= ptotal
+        # pbs[3,i] /= ptotal
+        pbs.po[i] /= ptotal
+        pbs.p[i] /= ptotal
     end
     ev /= ptotal
 
@@ -102,9 +124,13 @@ function calckel(pbs::Matrix{Float64}, prob::Prob, commit::Real, segsWithZeros; 
 
     kel = Kelly.findZero() do x
         s = 0.0
-        for i in 1:pbi
-            pb, b, _ = pbs[i]
-            pb / (1 + b * x)
+        # for i in 1:pbi
+        #     pb, b, _ = pbs[i]
+        #     s += pb / (1 + b * x)
+        # end
+
+        @turbo for i in 1:pbi
+            s += pb.po[i] / (1 + pb.o[i] * x)
         end
 
         # s = sum(pbs) do (pb, b, _)
@@ -148,8 +174,16 @@ evlogret(x, pbs) = sum(pb -> pb[3].p * log(max(0.00001, 1.0 + x * pb[2])), pbs)
 # pb[2] (outcome) is already divided by commit so it's a percentage return
 # kel is multiplied in there already
 # calcevret(kel, pbs) = sum(pb -> pb[3] * (kel * pb[2]), pbs)
-calcevret(kel, pbs) = sum(pb -> pb[3] * (kel * pb[2]), eachcol(pbs))
-
+# calcevret(kel, pbs) = sum(pb -> pb[3] * (kel * pb[2]), eachcol(pbs))
+function calcevret(kel, pbs)
+    s = 0
+    len = length(pbs.po)
+    @turbo for i in 1:len
+        # TODO: Isn't this multiplying by probability twice? po is p * b, then p again?
+        s += pbs.p[i] * (kel * pbs.po[i])
+    end
+    return s
+end
 
 # calc(pvals, vals) = ded(pvals, vals)
 calc!(pvals, vals) = ded(buf, pvals, vals)

@@ -2,13 +2,28 @@ module Explore
 using Dates
 using ThreadPools
 using BaseTypes, LegTypes
+import Keepers:Keeper
 import SH, DateUtil
-import CollUtil.sortuple
+import CollUtil:sortuple
 import Positions
+using OutputUtil
 
-const CONFIG3 = Ref((;
-    adjustprices = -0.01,
-    kelprobadjust = 0.25
+function testCalcKel()
+    curp = market().curp
+    oqs = filter!(isCall, Chains.chain(expir(1)).chain)
+    sort!(oqs; by=oq -> abs(curp - SH.getStrike(oq)))
+    lms = sortuple(SH.getStrike, LegMetaOpen(oqs[1], Side.short), LegMetaOpen(oqs[2], Side.long))
+    lms = discount.(lms)
+    return calckel(lms)
+end
+
+using LegMetaTypes, QuoteTypes
+discount(lm::LegMetaOpen, r=0.75) = LegMetaOpen(SH.getLeg(lm), discount(SH.getQuote(lm), r), SH.getMeta(lm))
+discount(q::Quote, r=0.75) = Quote(P(q.bid * r), P(q.ask * r))
+
+const CONFIG4 = Ref((;
+    adjustprices = 0.0,
+    kelprobadjust = 0.0
 ))
 
 #region Troubleshooting
@@ -35,7 +50,7 @@ import LinesLeg as LL
 function testmc(r; numiter=1000, curp=market().curp, prob=Between.makeprob2(r.lms, curp).prob)
     lms = r.lms
     risk = 100 * r.risk
-    segs = LL.toSegments(lms, CONFIG3[].adjustprices)
+    segs = LL.toSegments(lms, CONFIG4[].adjustprices)
     bal = 10000.0
     netsum = 0.0
     pnlratesum = 0.0
@@ -86,16 +101,25 @@ using SmallTypes, LegMetaTypes
 using Markets, Expirations, Chains
 import Kelly, ChainUtil, Between, ProbUtil
 
-function findkel(inc)
+struct Result{T}
+    r::T
+end
+
+Base.isless(a::Result{T}, b::Result{T}) where T = a.r.evrate < b.r.evrate
+
+Base.vec(keeper::Keeper{Result}) = map(x -> x.r, keeper.store)
+
+function findkel(inc; keep=100)
     ts = now(UTC)
     date = Date(ts)
     curp = market().curp
     println("Finding kel for curp: $(curp)")
     # xpirs = Expirations.xpirsinrange(1, 4)
     xpirs = Expirations.expirs()[1:2]
-    ress = [[] for _ in 1:Threads.nthreads()]
+    ress = [Keeper{Result}(keep) for _ in 1:Threads.nthreads()]
     # kelly_buffer = [Vector{NTuple{3,Float64}}(undef, 500) for _ in 1:Threads.nthreads()]
-    kelly_buffer = [Matrix{Float64}(undef, 3, 500) for _ in 1:Threads.nthreads()]
+    # kelly_buffer = [Matrix{Float64}(undef, 3, 500) for _ in 1:Threads.nthreads()]
+    kelly_buffer = [Kelly.make_buf() for _ in 1:Threads.nthreads()]
     global kprobs = Dict{Any, Any}()
     for xpir in xpirs
         println("Searching xpir: $(xpir)")
@@ -111,9 +135,11 @@ function findkel(inc)
         3 in inc && findkel3!(ress, ctx, oqss)
     end
     println("Finished searching")
-    res = vcat(ress...)
-    sort!(res; rev=true, by=r->r.evrate)
-    return res
+    # res = vcat(ress...)
+    # return ress
+    res = merge(ress, keep)
+    # sort!(res; rev=true, by=r->r.evrate)
+    return vec(res)
 end
 
 # function filt(res)
@@ -132,26 +158,26 @@ calcevrate(evret, xpir, date) = evret * DateUtil.timult(date, xpir)
 # calcrate(r, date=today()) = DateUtil.calcRate(date, r.xpir, r.kel * r.ev, r.risk)
 # calcret(r, date=today()) = r.kel * calcrate(r, date)
 
-function findkel1!(res, ctx, oqss)
+function findkel1!(ress, ctx, oqss)
     Threads.@threads for call in oqss.call.long
-        check!(res, ctx, (LegMetaOpen(call, Side.long),))
+        check!(ress, ctx, (LegMetaOpen(call, Side.long),))
     end
     Threads.@threads for put in oqss.put.long
-        check!(res, ctx, (LegMetaOpen(put, Side.long),))
+        check!(ress, ctx, (LegMetaOpen(put, Side.long),))
     end
 end
 
 import GenCands
-function findkel2!(res, ctx, oqss)
+function findkel2!(ress, ctx, oqss)
     GenCands.paraSpreads(oqss.call, 10, (_...) -> true) do thid, lms
-        check!(res, ctx, lms)
+        check!(ress, ctx, lms)
     end
     GenCands.paraSpreads(oqss.put, 10, (_...) -> true) do thid, lms
-        check!(res, ctx, lms)
+        check!(ress, ctx, lms)
     end
 end
 
-function findkel3!(res, ctx, oqss)
+function findkel3!(ress, ctx, oqss)
     count = zeros(Int, Threads.nthreads())
     println("Searching calls")
     finish = GenCands.paraSpreads(oqss.call, 4, (_...) -> true) do thid, lms
@@ -162,14 +188,14 @@ function findkel3!(res, ctx, oqss)
                 lms2 = sortuple(SH.getStrike, lms..., LegMetaOpen(oq, Side.long))
                 # global kcheckargs = (res, ctx, lms2)
                 # error("stop")
-                check!(res, ctx, lms2)
+                check!(ress, ctx, lms2)
             end
         end
         count[thid] += length(oqss.call.long)
         twith(ThreadPools.QueuePool(12, 11)) do pool
             @tthreads pool for oq in oqss.put.long
                 lms2 = sortuple(SH.getStrike, lms..., LegMetaOpen(oq, Side.long))
-                check!(res, ctx, lms2)
+                check!(ress, ctx, lms2)
             end
         end
         count[thid] += length(oqss.put.long)
@@ -181,74 +207,50 @@ function findkel3!(res, ctx, oqss)
         # Threads.@threads
         for oq in oqss.call.long
             lms2 = sortuple(SH.getStrike, lms..., LegMetaOpen(oq, Side.long))
-            check!(res, ctx, lms2)
+            check!(ress, ctx, lms2)
         end
         count[thid] += length(oqss.call.long)
         # Threads.@threads
         for oq in oqss.put.long
             lms2 = sortuple(SH.getStrike, lms..., LegMetaOpen(oq, Side.long))
-            check!(res, ctx, lms2)
+            check!(ress, ctx, lms2)
         end
         count[thid] += length(oqss.put.long)
         return true
     end
     println("Searched $(sum(count)) permutations")
 end
-#endregion
 
-#region Common
-function testcheck(res, ctx, lms2)
-    for i in 1:10000
-        Explore.check!(res, ctx, lms2)
-    end
-end
+# function testcheck(res, ctx, lms2)
+#     for i in 1:10000
+#         Explore.check!(res, ctx, lms2)
+#     end
+# end
 
-function check!(res, ctx, lms)
+function check!(ress, ctx, lms)
     ss = tosegsz(ctx.curp, lms)
     !isnothing(ss) || ( println("ss was nothing") ; return true )
     (;segs, segsz, netos) = ss
     try
         thid = Threads.threadid()
-        # t = @timed calckel(ctx.prob, ctx.riskrat, ss)
-        # if t.time > 0.1
-        #     println("> 0.1 seconds running calckel: $(t.time)")
-        #     @show t
-        #     global kcalckelargs = (ctx.prob, ctx.riskrat, ss)
-        #     error("stop")
-        # end
-        # kel, evret, ev, risk = t.value
         kel, evret, ev, risk = calckel(ctx.kelly_buffer[thid], ctx.prob, ctx.riskrat, segs, segsz)
         # global kcalckelargs = (ctx.kelly_buffer[thid], ctx.prob, ctx.riskrat, segs, segsz)
         # error("stop")
-        if isfinite(kel) && kel > 0
+        # if isfinite(kel) && kel > 0
             # println("$(i): Long on strike $(SH.getStrike(lms[1])) -> $(kel)")
             xpir = ctx.xpir
             evrate = calcevrate(evret, xpir, today())
-            # if evrate > 0.5
-                probprofit = Between.calcprobprofit(ctx.prob, segsz)
-                if probprofit > 0.6
-                    # push!(res[thid], (;ev, kel, evret, evrate, risk, xpir, lms, probprofit, netos, neto=sum(netos)))
-                end
+            probprofit = Between.calcprobprofit(ctx.prob, segsz)
+            # if probprofit > 0.6
+                push!(ress[thid], Result((;ev, kel, evret, evrate, risk, xpir, lms, probprofit, netos, neto=sum(netos))))
             # end
-        end
+        # end
     catch e
         global kcheck = (;ctx, lms, ss)
         rethrow(e)
     end
     return true
 end
-
-# function fix(lm1, lm2, lm3)
-#     s1 = getStrike(lm1)
-#     if s1 == getStrike(lm2)
-#         if getSide(lm1) == getSide(lm2)
-#         else
-#         end
-#     else s1 == getStrike(lm3)
-#     else
-#         return sortuple(getStrike, lm1, lm2, lm3)
-#     end
-# end
 #endregion
 
 #region Kelly
@@ -263,19 +265,25 @@ import Kelly, Pricing, LinesLeg as LL
 # end
 
 function tosegsz(curp, lms::Coll{<:LegLike})
-    adjustprices = CONFIG3[].adjustprices
+    adjustprices = CONFIG4[].adjustprices
     segs, netos = LL.toSegments(lms, adjustprices)
     LL.canprofit(segs) || return nothing
     segsz = LL.toSegmentsWithZeros(segs; extent=(0.5*curp, 1.5*curp))
     return (;segs, segsz, netos)
 end
 
-calckel(prob::Prob, riskrat::Real, lms::Coll{<:LegLike}) = calckel(prob, riskrat, tosegsz(prob.center, lms))
+calckel(lms) = calckel(kprobs[SH.getExpir(lms)], lms)
+calckel(prob, lms) = calckel(prob, calcriskrat(today(), SH.getExpir(lms)), lms)
+function calckel(prob::Prob, riskrat::Real, lms::Coll{<:LegLike})
+    (;segs, segsz) = tosegsz(market().curp, lms)
+    calckel(Kelly.make_buf(), prob, riskrat, segs, segsz)
+end
 
 function calckel(buf, prob::Prob, riskrat::Real, segs, segsz)
-    probadjust = CONFIG3[].kelprobadjust
+    probadjust = CONFIG4[].kelprobadjust
     risk = riskrat * max(Pricing.calcMarg(prob.center, segs))
     try
+        global kcalckel = (;prob, risk, segsz, probadjust)
         return (Kelly.calckel(buf, prob, risk, segsz; probadjust)..., risk)
     catch e
         global kcalckel = (;prob, risk, segsz, probadjust)
@@ -422,40 +430,74 @@ end
 
 using MultiKDE, Distributions, Random
 import VectorCalcUtil
-function multikde2(data=kdedata(); coordinit=[0.0, 10.0, 0.0], durs=1.0:10.0:200.0, xs=-0.49:0.01:0.49)
+function multikde2(data::Vector{Vector{Float64}}=kdedata()
+            ; coordinit::Vector{Float64}, xs, durs, vols)
     dims = [ContinuousDim(), ContinuousDim(), ContinuousDim()]
-    bws = [0.001, 0.2, 20.0]
+    bws = [0.005, 0.1, 20.0]
+    # bws = nothing
+
     # kde = KDEMulti(dims, bws, data)
     # bws = MultiKDE.default_bandwidth(data) ./ 4
     kde = KDEMulti(dims, bws, data)
 
-    display(DrawUtil.draw(:scatter, [0.0], [0.0]))
+    # function KDEMulti(dims::Vector, bws::Union{Vector, Nothing}, mat_observations::Matrix, candidates::Union{Dict{Int, Vector}, Nothing})
+    # kde = KDEMulti(dims, bws, data, nothing)
+    global kkde = kde
+
+    display(DrawUtil.draw(:scatter, [0.0], [0.0]; label="Zero", showlegend=true))
     vals = Vector{Float64}(undef, length(xs))
     coord = copy(coordinit)
     for dur in durs
-        coord[3] = dur
-        # vals = [( coord[1] = x ; MultiKDE.pdf(kde, coord) ) for x in xs]
-        for i in eachindex(xs)
-            coord[1] = xs[i]
-            vals[i] = MultiKDE.pdf(kde, coord)
+        for vol in vols
+            coord[2] = vol
+            coord[3] = dur
+            # vals = [( coord[1] = x ; MultiKDE.pdf(kde, coord) ) for x in xs]
+            for i in eachindex(xs)
+                coord[1] = xs[i]
+                vals[i] = MultiKDE.pdf(kde, coord)
+            end
+            VectorCalcUtil.normalize!(vals)
+            DrawUtil.draw!(:scatter, xs, vals; label="$(r2(vol))-$(r2(dur))")
+            # println("done: $(dur)")
+            # yield()
         end
-        VectorCalcUtil.normalize!(vals)
-        DrawUtil.draw!(:scatter, xs, vals)
-        # println("done: $(dur)")
-        # yield()
     end
+    DrawUtil.updateLegend()
 end
 
-import StatsBase
+import StatsBase, DataFiles
+using DataFrames
+function setuptestkde(len)
+    df = DataFrame(DataFiles.tstoxpirtable(); copycols=false)
+    dff = dropmissing(df, [:ret, :logret])
+    testkde(dff, len)
+    return df, dff
+end
 function testkde(dff, len)
-    data = [dff.logret[1:len], dff.logvol[1:len], dff.tex[1:len]]
-    xmin, xmax = extrema(data[1])
+    len_tot = length(dff.logret)
+    inds = len > 0 ? (1:len) : ((len_tot+len):len_tot)
+    # data = [dff.logret[1:len], dff.logvol[1:len], dff.tex[1:len]]
+    # data = collect(hcat(dff.logret[1:len], dff.logvol[1:len], dff.tex[1:len])')
+    data = [[dff.logret[i], dff.logvol[i], dff.tex[i]] for i in inds]
+    xmin, xmax = extrema(dff.logret[inds])
     xs = xmin:((xmax-xmin)/500):xmax
-    volmean = StatsBase.mean(data[2])
-    durmin, durmax = extrema(data[3])
+    volmin, volmax = extrema(dff.logvol[inds])
+    volmean = StatsBase.mean(dff.logvol[inds])
+    durmin, durmax = extrema(dff.tex[inds])
     durs = durmin:((durmax-durmin)/10):durmax
-    @show xs volmean durs
-    multikde2(data; xs, coordinit = [0.0, volmean, 0.0], durs)
+    @show volmin volmax
+    vols = volmin:((volmax-volmin)/10):volmax
+    @show xs vols durs
+    multikde2(data; xs, coordinit=[0.0, volmean, 0.0], durs=[20], vols)
+end
+
+function makekdeargs()
+    curp = market().curp
+    oqs = filter!(isCall, Chains.chain(expir(1)).chain)
+    sort!(oqs; by=oq -> abs(curp - SH.getStrike(oq)))
+    lms = sortuple(SH.getStrike, LegMetaOpen(oqs[1], Side.short), LegMetaOpen(oqs[2], Side.long))
+    # sort by strikedist, [1:4]
+    # TODO: could use that heap thing to do this more efficiently nextrem ?
 end
 #endregion
 end

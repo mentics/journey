@@ -61,7 +61,7 @@ function combine(r::Right)::Segments{1}
 end
 
 function combine(l::Left, r::Right)::Segments{2}
-    @assert l.x < r.x
+    @assert l.point.x < r.point.x
     y = l.point.y + r.point.y
     return Segments{2}((l.slope, 0.0, r.slope), (Point(l.point.x, y), Point(r.point.x, y)))
 end

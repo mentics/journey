@@ -146,7 +146,7 @@ pathDaily(sym::AStr)::String = joinpath(dirData("hist", "daily"), "$(sym)-daily.
 function updateDaily(sym)::DailyType
     path = pathDaily(lowercase(sym))
     try
-        lastExpected = min(lastTradingDay(Dates.today()), today() - Day(1))
+        lastExpected = lastTradingDay(Dates.today() - Day(1)) # min(lastTradingDay(Dates.today()), today() - Day(1))
         if !isfile(path)
             @log warn "Can't find file for $(sym): $(path)"
             daily = getDataDaily(Date(2000,1,1), lastExpected, sym)
