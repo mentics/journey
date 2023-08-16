@@ -27,9 +27,9 @@ struct LegMeta{S} <: LegLike
 end
 const LegMetaOpen = LegMeta{Open}
 const LegMetaClose = LegMeta{Close}
-function LegMeta{Open}(oq::OptionQuote, side::Side.T, qty::Float64=1.0)
+function LegMeta{Open}(oq::OptionQuote, side::Side.T, qty::Float64=1.0; adjustprices::Currency=CZ)
     dir = DirSQ(side, qty)
-    return LegMetaOpen(Leg(getOption(oq), dir), newQuote(getQuote(oq), DirSQA(dir, Action.open)), newOptionMeta(getOptionMeta(oq), dir))
+    return LegMetaOpen(Leg(getOption(oq), dir), newQuote(getQuote(oq), DirSQA(dir, Action.open); adjustprices), newOptionMeta(getOptionMeta(oq), dir))
 end
 function LegMeta{Close}(oq::OptionQuote, side::Side.T, qty::Float64)
     dir = DirSQA(side, qty, Action.close)

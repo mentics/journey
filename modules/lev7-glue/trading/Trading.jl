@@ -93,7 +93,7 @@ end
 #endregion
 
 #region LocalPosDo
-function validate_legs(action::Action.T, legs, minet, minextra)
+function validate_legs(action::Action.T, legs, minet, minextra, minextraleg=CZ)
     global kminextra = minextra
     bid = P(sum(getBid.(legs)))
     ask = P(sum(getAsk.(legs)))
@@ -117,15 +117,15 @@ function validate_legs(action::Action.T, legs, minet, minextra)
 
     for leg in legs[1:end]
         extra = (Pricing.price(action, leg) - getBid(leg))
-        if extra < minextra
-            println("Aborting: Insufficient extra:$(extra) < minextra:$(minextra) on leg:$(getLeg(leg))")
+        if extra < minextraleg
+            println("Aborting: Insufficient extra:$(extra) < minextra:$(minextraleg) on leg:$(getLeg(leg))")
             return
         end
     end
 
     price_tgt = P(Pricing.price(action, legs))
     extra = price_tgt - minet
-    extra >= 0 || ( println("Aborting: no extra:$(extra) from $(price_tgt) - $(minet)") ; return )
+    extra >= minextra || ( println("Aborting: no extra:$(extra) from $(price_tgt) - $(minet)") ; return )
 
     return extra
 end

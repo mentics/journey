@@ -149,7 +149,8 @@ evlogret(x, pbs) = sum(pb -> pb[3].p * log(max(0.00001, 1.0 + x * pb[2])), pbs)
 # calcevret(kel, pbs) = sum(pb -> pb[3] * (kel * pb[2]), eachcol(pbs))
 function calcevret(kel, pbs, len)
     s = 0
-    @turbo for i in 1:len
+    # @turbo
+    for i in 1:len
         # TODO: Isn't this multiplying by probability twice? po is p * b, then p again?
         s += pbs.p[i] * (kel * pbs.po[i])
         # if !isfinite(s)

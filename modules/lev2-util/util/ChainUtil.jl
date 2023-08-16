@@ -108,7 +108,7 @@ function oqssAll(oqs)::Oqss
     return oqss
 end
 
-function oqssEntry(oqs, curp::Currency, legsCheck=LegTypes.LEGS_EMPTY)::Oqss
+function oqssEntry(oqs, curp::Currency; legsCheck=LegTypes.LEGS_EMPTY, shortbidgt::Currency=0.0)::Oqss
     lc = Vector{OptionQuote}()
     sc = Vector{OptionQuote}()
     lp = Vector{OptionQuote}()
@@ -120,7 +120,7 @@ function oqssEntry(oqs, curp::Currency, legsCheck=LegTypes.LEGS_EMPTY)::Oqss
     # oqs = Iterators.filter(isValid(curp), oqs)
     for oq in oqs
         canL = fConL(oq) && getAsk(oq) > 0.0
-        canS = fCanS(oq) && fConS(oq) && getBid(oq) > 0.0
+        canS = fCanS(oq) && fConS(oq) && getBid(oq) > shortbidgt
         if SmallTypes.isCall(oq)
             canL && push!(lc, oq)
             canS && push!(sc, oq)

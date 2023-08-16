@@ -9,17 +9,19 @@ struct Quote
 end
 Quote(;bid=C(1.17), ask=C(1.19)) = Quote(bid, ask)
 Quote(v::Currency) = Quote(v, v)
-function newQuote(q::Quote, dir::DirSQA)::Quote # side::Side.T, qty::Integer, action::Action.T)::Quote
+function newQuote(q::Quote, dir::DirSQA; adjustprices::Currency=CZ)::Quote # side::Side.T, qty::Integer, action::Action.T)::Quote
     bid = q.bid
     ask = q.ask
     # @assert getBid(q) >= 0 && getAsk(q) >= 0
     m = dirMult(dir)
-    nq = m > 0 ? Quote(m * bid, m * ask) : Quote(m * ask, m * bid)
+    mb = m * bid + adjustprices
+    ma = m * ask + adjustprices
+    nq = m > 0 ? Quote(mb, ma) : Quote(ma, mb)
     # @assert getBid(nq) <= getAsk(nq) "Quote assert: bid was > ask $(q) -> $(nq), $(m)"
     if bid > ask
-        nq = Quote(nq.ask, nq.bid)
+        nq = Quote(nq.ask + adjustprices, nq.bid + adjustprices)
         # TODO: do something about this?
-        # println("WARN: QuoteTypes.newQuote: bid was > ask, swapping them: $(q) -> $(nq), $(m)")
+        println("WARN: QuoteTypes.newQuote: bid was > ask, swapping them: $(q) -> $(nq), $(m)")
         @assert nq.bid < nq.ask
     end
     return nq

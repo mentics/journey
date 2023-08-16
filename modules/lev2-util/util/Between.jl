@@ -6,13 +6,18 @@ using Rets, LegTypes, TradeTypes, LegTradeTypes, Pricing
 
 #region Lines
 import LinesLeg:LinesLeg as LL,Segments
-# (LL.toSegments(lms::NTuple{N,LegMeta})::Segments{N}) where N = LL.toSegments(lms, map(P ∘ Pricing.price, lms))
-(LL.toSegments(legs::NTuple{N,LegLike})::Segments{N}) where N = LL.toSegments(legs, map(P ∘ Pricing.price_open, legs))
-function LL.toSegments(legs::NTuple{N,LegLike}, adjustprices::Real) where N
-    netos = map(leg -> P(Pricing.price(Action.open, leg) + adjustprices), legs)
+(LL.toSegments(legs::NTuple{N,LegMeta})::Segments{N}) where N = LL.toSegments(legs, map(P ∘ Pricing.price_open, legs))
+function toSegmentsN(legs::NTuple{N,LegLike}) where N
+    netos = map(P ∘ Pricing.price_open, legs) # map(leg -> P(Pricing.price(Action.open, leg)), legs)
     segs = LL.toSegments(legs, netos)
     return (;segs, netos)
 end
+# function LL.toSegments(legs::NTuple{N,LegLike}, adjustprices::Real) where N
+#     netos = map(leg -> P(Pricing.price(Action.open, leg) + adjustprices), legs)
+#     segs = LL.toSegments(legs, netos)
+#     return (;segs, netos)
+# end
+
 # function LL.toSegments(legs::NTuple{N,LegLike}, netos)::Segments{N} where N
 #     # netos = map(P ∘ Pricing.price, lms)
 #     # # TODO: remove validation after checking
@@ -27,6 +32,7 @@ end
 
 LL.toSegmentsWithZeros(lms::NTuple{N,LegMeta}) where N = LL.toSegmentsWithZeros(lms, map(P ∘ Pricing.price, lms))
 LL.toSections(lms::NTuple{N,LegMeta}) where N = LL.toSections(lms, map(P ∘ Pricing.price, lms))
+# SH.toDraw(lms::NTuple{N,LegLike}; mn=100.0, mx=600.0) where N = collect(LL.toLineTuples(LL.toSegments(lms); mn, mx)) # collect because Makie can't handle tuples of coords
 SH.toDraw(lms::NTuple{N,LegLike}; mn=100.0, mx=600.0) where N = collect(LL.toLineTuples(LL.toSegments(lms); mn, mx)) # collect because Makie can't handle tuples of coords
 # SH.toDraw(lms::NTuple{N,LegMeta}) where N = collect(LL.toLineTuples(LL.toSegmentsWithZeros(lms))) # collect because Makie can't handle tuples of coords
 # SH.toDraw(lms::NTuple{N,LegMeta}) where N = collect(LL.toLineTuples(LL.toSegmentsWithZeros(lms))) # collect because Makie can't handle tuples of coords

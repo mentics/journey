@@ -9,6 +9,28 @@ import Positions
 using OutputUtil
 import Makie
 
+function test1(x, extra=nothing)
+    a = 2*x
+    b = if isnothing(extra)
+        a
+    else
+        a + extra
+    end
+    c = sqrt(b)
+    return c
+end
+
+function test2(x; extra=nothing)
+    a = 2*x
+    b = if isnothing(extra)
+        a
+    else
+        a + extra
+    end
+    c = sqrt(b)
+    return c
+end
+
 function testCalcKel()
     curp = market().curp
     oqs = filter!(isCall, Chains.chain(expir(1)).chain)
@@ -24,8 +46,8 @@ using LegMetaTypes, QuoteTypes
 discount(lm::LegMetaOpen, r=0.75) = LegMetaOpen(SH.getLeg(lm), discount(SH.getQuote(lm), r), SH.getMeta(lm))
 discount(q::Quote, r=0.75) = Quote(P(q.bid + r), P(q.ask + r))
 
-const CONFIG5 = Ref((;
-    adjustprices = -0.01,
+const CONFIG6 = Ref((;
+    adjustprices = C(-0.01),
     kelprobadjust = 0.1
 ))
 
@@ -53,7 +75,7 @@ import LinesLeg as LL
 function testmc(r; numiter=1000, curp=market().curp, prob=Between.makeprob2(r.lms, curp).prob)
     lms = r.lms
     risk = 100 * r.risk
-    segs = LL.toSegments(lms, CONFIG5[].adjustprices)
+    segs = LL.toSegments(lms, CONFIG6[].adjustprices)
     bal = 10000.0
     netsum = 0.0
     pnlratesum = 0.0
@@ -112,6 +134,25 @@ Base.isless(a::Result{T}, b::Result{T}) where T = a.r.evrate < b.r.evrate
 
 Base.vec(keeper::Keeper{Result}) = map(x -> x.r, keeper.store)
 
+function run(inc=3; skipto=nothing, kws...)
+    res3 = isnothing(skipto) ? findkel(inc; kws...) : skipto
+    global krun = res3
+    r1 = first(res3)
+    lms = r1.lms
+    target = Pricing.price(Action.open, lms)
+    bdaysout = DateUtil.bdays(today(),SH.getExpir(lms))
+    println("Best candidate: evrate:$(r1.evrate) probprofit:$(r1.probprofit) min:$(r1.neto) target:$(target) risk:$(r1.risk) daysout:$(bdaysout)");
+    DrawUtil.draw(:lines, SH.toDraw(lms))
+    DrawUtil.drawprob!(kprobs[SH.getExpir(lms)])
+    return r1
+end
+
+import Trading
+function opentrade(r; minextra=P(0.01))
+    println("Opening trade: neto:$(r.neto)")
+    Trading.open_trade(market(), r.lms, r.neto; pre=false, price_add=P(0.0), minextra);
+end
+
 function findkel(inc; keep=100, tsx=ktsx, kdelen=-100000)
     kde = kde_from_tsx(tsx, kdelen)
     ts = now(UTC)
@@ -133,7 +174,7 @@ function findkel(inc; keep=100, tsx=ktsx, kdelen=-100000)
         riskrat = calcriskrat(date, xpir)
         ctx = (;curp, prob, riskrat, xpir, kelly_buffer)
         kprobs[xpir] = prob
-        oqss = ChainUtil.oqssEntry(chain(xpir).chain, curp, Positions.positions())
+        oqss = ChainUtil.oqssEntry(chain(xpir).chain, curp; legsCheck=Positions.positions(), shortbidgt=max(CZ,-CONFIG6[].adjustprices))
         println("num calls $(length(oqss.call.long))")
         println("num puts $(length(oqss.put.long))")
         1 in inc && findkel1!(ress, ctx, oqss)
@@ -164,12 +205,21 @@ calcevrate(evret, xpir, date) = evret * DateUtil.timult(date, xpir)
 # calcrate(r, date=today()) = DateUtil.calcRate(date, r.xpir, r.kel * r.ev, r.risk)
 # calcret(r, date=today()) = r.kel * calcrate(r, date)
 
+function make_leg(oq, side)
+    lm = LegMetaOpen(oq, side; adjustprices=CONFIG6[].adjustprices)
+    if SH.getBid(lm) == 0
+        global kmakeleg=(;adjust=CONFIG6[].adjustprices, oq, side, lm)
+        error("bid 0")
+    end
+    return lm
+end
+
 function findkel1!(ress, ctx, oqss)
     Threads.@threads for call in oqss.call.long
-        check!(ress, ctx, (LegMetaOpen(call, Side.long),))
+        check!(ress, ctx, (make_leg(call, Side.long),))
     end
     Threads.@threads for put in oqss.put.long
-        check!(ress, ctx, (LegMetaOpen(put, Side.long),))
+        check!(ress, ctx, (make_leg(put, Side.long),))
     end
 end
 
@@ -191,7 +241,7 @@ function findkel3!(ress, ctx, oqss)
         # Threads.@threads
         twith(ThreadPools.QueuePool(12, 11)) do pool
             @tthreads pool for oq in oqss.call.long
-                lms2 = sortuple(SH.getStrike, lms..., LegMetaOpen(oq, Side.long))
+                lms2 = sortuple(SH.getStrike, lms..., make_leg(oq, Side.long))
                 # global kcheckargs = (res, ctx, lms2)
                 # error("stop")
                 check!(ress, ctx, lms2)
@@ -200,7 +250,7 @@ function findkel3!(ress, ctx, oqss)
         count[thid] += length(oqss.call.long)
         twith(ThreadPools.QueuePool(12, 11)) do pool
             @tthreads pool for oq in oqss.put.long
-                lms2 = sortuple(SH.getStrike, lms..., LegMetaOpen(oq, Side.long))
+                lms2 = sortuple(SH.getStrike, lms..., make_leg(oq, Side.long))
                 check!(ress, ctx, lms2)
             end
         end
@@ -212,13 +262,13 @@ function findkel3!(ress, ctx, oqss)
     GenCands.paraSpreads(oqss.put, 4, (_...) -> true) do thid, lms
         # Threads.@threads
         for oq in oqss.call.long
-            lms2 = sortuple(SH.getStrike, lms..., LegMetaOpen(oq, Side.long))
+            lms2 = sortuple(SH.getStrike, lms..., make_leg(oq, Side.long))
             check!(ress, ctx, lms2)
         end
         count[thid] += length(oqss.call.long)
         # Threads.@threads
         for oq in oqss.put.long
-            lms2 = sortuple(SH.getStrike, lms..., LegMetaOpen(oq, Side.long))
+            lms2 = sortuple(SH.getStrike, lms..., make_leg(oq, Side.long))
             check!(ress, ctx, lms2)
         end
         count[thid] += length(oqss.put.long)
@@ -235,7 +285,7 @@ end
 
 function check!(ress, ctx, lms)
     ss = tosegsz(ctx.curp, lms)
-    !isnothing(ss) || ( println("ss was nothing") ; return true )
+    !isnothing(ss) || return true # println("ss was nothing")
     (;segs, segsz, netos) = ss
     try
         thid = Threads.threadid()
@@ -271,8 +321,8 @@ import Kelly, Pricing, LinesLeg as LL
 # end
 
 function tosegsz(curp, lms::Coll{<:LegLike})
-    adjustprices = CONFIG5[].adjustprices
-    segs, netos = LL.toSegments(lms, adjustprices)
+    # adjustprices = CONFIG5[].adjustprices
+    segs, netos = Between.toSegmentsN(lms) # , adjustprices) <- moved to lms
     LL.canprofit(segs) || return nothing
     segsz = LL.toSegmentsWithZeros(segs; extent=(0.5*curp, 1.5*curp))
     return (;segs, segsz, netos)
@@ -286,7 +336,7 @@ function calckel(prob::Prob, riskrat::Real, lms::Coll{<:LegLike})
 end
 
 function calckel(buf, prob, riskrat::Real, segs, segsz)
-    probadjust = CONFIG5[].kelprobadjust
+    probadjust = CONFIG6[].kelprobadjust
     risk = riskrat * max(Pricing.calcMarg(prob.center, segs))
     try
         return (;Kelly.calckel(buf, prob, risk, segsz; probadjust)..., risk)
@@ -585,7 +635,7 @@ function makeprob(curp, tkde, xpir)
     end
     cdfvals ./= cdfvals[end]
     VectorCalcUtil.normalize!(pdfvals)
-    display(DrawUtil.draw(:lines, xs, cdfvals))
+    # display(DrawUtil.draw(:lines, xs, cdfvals))
     return ProbKde4(curp, xs, pdfvals, cdfvals, xmin, xmax)
 end
 
