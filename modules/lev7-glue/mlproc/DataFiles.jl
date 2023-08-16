@@ -30,6 +30,18 @@ callstable(y, m) = Arrow.Table(pathcalls(y, m))
 putstable(y, m) = Arrow.Table(pathcalls(y, m))
 xpirstable() = Arrow.Table(path_xpirs())
 tstoxpirtable() = Arrow.Table(path_tstoxpir())
+function dftsx()
+    lup = ts2under_lup()
+    # TODO: after rerun create this file, won't need to / unders
+    df = DataFrame(Arrow.Table(path_tstoxpir()); copycols=true)
+    for i in eachindex(df.vol)
+        df.vol[i] /= lup[df.ts[i]]
+    end
+    gdf = groupby(df, [:ts,:expiration])
+    df = combine(gdf, :tex => first => :tex, :vol => mean => :vol, :ret => first => :ret, :logret => first => :logret)
+    df.logvol = log.(df.vol)
+    return df
+end
 
 using DataStructures
 tssdf() = DataFrame(Arrow.Table(path_tss()); copycols=false)
@@ -140,7 +152,7 @@ function combineall(dfs_ts, dfs_xpir, dfs_ntm)::Nothing
     _tstoxpir = @spawn sort!(reduce(vcat, Iterators.flatten(dfs_ntm)), [:ts,:expiration])
     # dftss = fetch(_tss)
     dfxpirs = fetch(_xpirs)
-    dftstoxpir  = fetch(_tstoxpir)
+    dftstoxpir = fetch(_tstoxpir)
     # Arrow.write(path_tss(), dftss)
     Arrow.write(path_xpirs(), dfxpirs)
     Arrow.write(path_tstoxpir(), dftstoxpir)
@@ -157,6 +169,7 @@ function make_ntm_data(f_extrin, path, style)
         ts, xpir = first(tss), first(xpirs)
         tex = Calendars.calcTex(ts, xpir)
         extrins = f_extrin(unders, strikes, bids, asks)
+        extrins ./= unders
         total = CZ
         mean_count = length(extrins)
         neg_count = 0
@@ -178,6 +191,7 @@ function make_ntm_data(f_extrin, path, style)
                 global kerr = (;path, style, extrins, tex, tss, xpirs, unders, strikes, bids, asks)
             end
         end
+        # TODO: maybe should use geometric/harmonic mean?
         extrin = iszero(mean_count) ? CZ : total / mean_count
         vol = extrin / tex
         logvol = log(vol)

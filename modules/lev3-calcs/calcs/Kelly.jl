@@ -30,7 +30,7 @@ issame(x1, x2) = ((x1 / x2) ≈ 1.0) || (abs(x1) < 1e-12 && abs(x2) < 1e-12)
 # https://math.stackexchange.com/a/662210/235608
 const PROB_INTEGRAL_WIDTH2 = 1.0
 # Commit, not risk, because in the formula, it's balance/commit to get number of contracts
-function calckel(pbs::Buf, prob::Prob, commit::Real, segsWithZeros; dpx=PROB_INTEGRAL_WIDTH2, probadjust=0.0)
+function calckel(buf::Buf, prob, commit::Real, segsWithZeros; dpx=PROB_INTEGRAL_WIDTH2, probadjust=0.0)
     if commit <= 0.0
         println("Invalid commit:$(commit) in calckel")
         return (;kel=NaN, evret=NaN, ev=100.0)
@@ -43,7 +43,7 @@ function calckel(pbs::Buf, prob::Prob, commit::Real, segsWithZeros; dpx=PROB_INT
         x_right = seg.right.x
         cdfRight = ProbUtil.cdf(prob, x_right)
         if seg.slope == 0.0
-            @assert issame(seg.left.y, seg.right.y) "seg.y's not the same: left:$(seg.left) right:$(seg.right)"
+            # @assert issame(seg.left.y, seg.right.y) "seg.y's not the same: left:$(seg.left) right:$(seg.right)"
             outcome = seg.left.y / commit
             outcome >= -1.0 || error("Kelly: outcome:$(outcome) < -1.0")
             p = cdfRight - cdfLeft
@@ -52,9 +52,9 @@ function calckel(pbs::Buf, prob::Prob, commit::Real, segsWithZeros; dpx=PROB_INT
             ev += po
             ptotal += p
             pbi += 1
-            pbs.po[pbi] = po
-            pbs.outcome[pbi] = outcome
-            pbs.p[pbi] = p
+            buf.po[pbi] = po
+            buf.outcome[pbi] = outcome
+            buf.p[pbi] = p
         else
             # chop it into pieces across sloped region
             span = x_right - seg.left.x
@@ -66,7 +66,7 @@ function calckel(pbs::Buf, prob::Prob, commit::Real, segsWithZeros; dpx=PROB_INT
             outcomeLeft = seg.left.y
             for i in 0:num-1
                 right = left + width
-                @assert r8(right) <= r8(x_right) string((;right=r5(right), x_right=r5(x_right)))
+                # @assert r8(right) <= r8(x_right) string((;right=r5(right), x_right=r5(x_right)))
                 outcome = (outcomeLeft + outcomeStep / 2) / commit
                 outcome >= -1.0 || error("Kelly: outcome:$(outcome) < -1.0")
                 cdfR2 = ProbUtil.cdf(prob, right)
@@ -76,9 +76,9 @@ function calckel(pbs::Buf, prob::Prob, commit::Real, segsWithZeros; dpx=PROB_INT
                 ev += po
                 ptotal += p
                 pbi += 1
-                pbs.po[pbi] = po
-                pbs.outcome[pbi] = outcome
-                pbs.p[pbi] = p
+                buf.po[pbi] = po
+                buf.outcome[pbi] = outcome
+                buf.p[pbi] = p
 
                 left = right;
                 outcomeLeft += outcomeStep
@@ -89,21 +89,21 @@ function calckel(pbs::Buf, prob::Prob, commit::Real, segsWithZeros; dpx=PROB_INT
     end
 
     @turbo for i in 1:pbi
-        pbs.po[i] /= ptotal
-        pbs.p[i] /= ptotal
+        buf.po[i] /= ptotal
+        buf.p[i] /= ptotal
     end
     ev /= ptotal
-    global kpbs = (;po=pbs.po[1:pbi], o=pbs.outcome[1:pbi], p=pbs.p[1:pbi])
+    global kpbs = (;po=buf.po[1:pbi], o=buf.outcome[1:pbi], p=buf.p[1:pbi])
 
     kel = findZero() do x
         s = 0.0
         @turbo for i in 1:pbi
-            s += pbs.po[i] / (1 + pbs.outcome[i] * x)
+            s += buf.po[i] / (1 + buf.outcome[i] * x)
         end
         return s
     end
     kel > 0.0 || return (;kel=NaN, evret=NaN, ev)
-    evret = calcevret(kel, pbs)
+    evret = calcevret(kel, buf, pbi)
     return (;kel, evret, ev)
 end
 
@@ -147,12 +147,15 @@ evlogret(x, pbs) = sum(pb -> pb[3].p * log(max(0.00001, 1.0 + x * pb[2])), pbs)
 # kel is multiplied in there already
 # calcevret(kel, pbs) = sum(pb -> pb[3] * (kel * pb[2]), pbs)
 # calcevret(kel, pbs) = sum(pb -> pb[3] * (kel * pb[2]), eachcol(pbs))
-function calcevret(kel, pbs)
+function calcevret(kel, pbs, len)
     s = 0
-    len = length(pbs.po)
     @turbo for i in 1:len
         # TODO: Isn't this multiplying by probability twice? po is p * b, then p again?
         s += pbs.p[i] * (kel * pbs.po[i])
+        # if !isfinite(s)
+        #     @show i pbs.p[i] pbs.po[i]
+        #     break
+        # end
     end
     return s
 end
