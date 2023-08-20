@@ -2,7 +2,7 @@
 
 julia_version = "1.9.0"
 manifest_format = "2.0"
-project_hash = "803fc2bd7f91d1dd674367891b7a1245b8d41200"
+project_hash = "e41d68de91ecd398f98134e3e93f533cc7b30364"
 
 [[deps.AbstractFFTs]]
 deps = ["LinearAlgebra"]
@@ -1418,12 +1418,6 @@ version = "0.3.4"
 [[deps.MozillaCACerts_jll]]
 uuid = "14a3606d-f60d-562e-9121-12d972cd8159"
 version = "2022.10.11"
-
-[[deps.MultiKDE]]
-deps = ["Distributions", "SpecialFunctions"]
-path = "dev/MultiKDE"
-uuid = "77543b7f-bd95-4024-91c1-46775346e0e7"
-version = "0.1.1"
 
 [[deps.MutableNamedTuples]]
 git-tree-sha1 = "0faaabea6ebbfde9a5a01455f851009fb2603aac"

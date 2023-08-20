@@ -90,7 +90,7 @@ function drawdist!(ax, center, xs, vals; at1=false, kws...)
     v2 = vals
     width = v1[2] - v1[1]
     p = GLMakie.barplot!(ax, v1, v2; gap=0.0, width=width, inspectable=true, color=Makie.RGBA(0.1, 0.1, 0.9, 0.25), kws...) #, color=colors[colorIndex])
-    GLMakie.vlines!(center; color=Makie.RGBA(0.1, 1.0, 0.2, 0.25))
+    GLMakie.vlines!(ax, center; color=Makie.RGBA(0.1, 1.0, 0.2, 0.25))
     return p
 end
 
@@ -153,7 +153,7 @@ function __init__()
     if ccall(:jl_generating_output, Cint, ()) != 1
         println("Loading DrawUtil")
         # This makes it plot in separate window instead of in VSCode.
-        GLMakie.activate!(inline=false)
+        GLMakie.activate!(true)
         GLMakie.set_theme!(GLMakie.theme_black())
         GLMakie.update_theme!(fontsize=12)
         GLMakie.set_window_config!(;
@@ -161,7 +161,7 @@ function __init__()
             float = false,
             focus_on_show = true,
             decorated = true,
-            render_on_demand = true,
+            # render_on_demand = true,
             title = "Journey"
         )
     end
