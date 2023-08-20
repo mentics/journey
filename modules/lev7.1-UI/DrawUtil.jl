@@ -89,8 +89,8 @@ function drawdist!(ax, center, xs, vals; at1=false, kws...)
     # v2 = .01 * vals ./ Bins.width()
     v2 = vals
     width = v1[2] - v1[1]
-    p = GLMakie.barplot!(ax, v1, v2; gap=0.0, width=width, inspectable=true, kws...) #, color=colors[colorIndex])
-    GLMakie.vlines!(center; color=Makie.RGBA(0.1, 1.0, 0.2, 0.5))
+    p = GLMakie.barplot!(ax, v1, v2; gap=0.0, width=width, inspectable=true, color=Makie.RGBA(0.1, 0.1, 0.9, 0.25), kws...) #, color=colors[colorIndex])
+    GLMakie.vlines!(center; color=Makie.RGBA(0.1, 1.0, 0.2, 0.25))
     return p
 end
 
@@ -175,6 +175,7 @@ function getAxis(args...; axis=nothing, kws...)::Axis
     return ax
 end
 
+newfig() = getFig(; newFig=true)
 function getFig(; newFig=true, newWin=false, kws...)::Figure
     fig = newFig ? makeFig() : current_figure()
     if newWin

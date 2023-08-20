@@ -21,6 +21,7 @@ normalizeI(v::T) where T = (v2 = copy(v) ; return normalize!(v2))
 (normalize1I!(v::T)) where T = (mn = minimum(v) ; v .-= mn ; s = sum(v) ; v ./= s ; return (v, -mn, 1/s))
 (normalize1(v::T)::T) where T = (v2 = copy(v) ; normalize1I!(v2) ; return v2)
 
+fit_01(v::Vector{Float64}) = (cv = copy(v) ; (ad, scale) = fitIn01!(cv) ; return (;v=cv, ad, scale))
 fitIn01(v::Vector{Float64}) = (cv = copy(v) ; fitIn01!(cv) ; return cv)
 function fitIn01!(v::Vector{Float64})
     mn, mx = extrema(v)
@@ -29,6 +30,15 @@ function fitIn01!(v::Vector{Float64})
     replace!(x -> (x - mn) / k, v)
     return (-mn, 1.0/k)
 end
+
+# fit_01(v::Vector{Float64}) = (cv = copy(v) ; fitIn01!(cv) ; return cv)
+# function fit_01!(v::Vector{Float64})
+#     mn, mx = extrema(v)
+#     k = mx - mn
+#     k != 0 || return (-mn, 0.0)
+#     replace!(x -> (x - mn) / k, v)
+#     return (-mn, 1.0/k)
+# end
 
 smooth(v::AVec{Float64}, cnt::Int=10)::AVec{Float64} = smooth!(copy(v), cnt)
 function smooth!(v::AVec{Float64}, cnt::Int=10)::AVec{Float64}

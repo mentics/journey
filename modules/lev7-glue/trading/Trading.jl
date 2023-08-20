@@ -198,10 +198,10 @@ function pos_modify_order(action::Action.T, tid, oid, price::PT, timeout)
     listener = watch_for(cond, tag, timeout)
     TradierAccount.register_listener(listener)
 
-    resp = modify_order(tid, oid, price)
-
+    modify_order(tid, oid, price)
     resp = get_wait(cond)
     println("## modify resp from get_wait: $(resp)")
+
     TradierAccount.unregister_listener(listener)
     return resp
 end
@@ -211,19 +211,25 @@ const STATUS_ERROR = ["expired", "canceled", "rejected", "error"]
 
 function watch_for(cond, tag, timeout=2.0)
     return function(resp)
-        println("on_account received: $(resp)")
+        println("watch_for received: $(resp)")
         tg = get(resp, "tag", nothing)
+        finished = Threads.Atomic{Bool}(false)
         if tg == tag
             status = get(resp, "status", nothing)
             if status in STATUS_TERMINAL
                 println("Order terminal status received: $(status)")
+                Threads.atomic_xchg!(finished, true)
                 send_notify(cond, resp)
             elseif status == "open"
                 println("Order is open, waiting timeout:$(timeout) seconds for fill")
                 Threads.@spawn Timer(timeout) do t
-                    println("Timed out waiting for fill")
-                    send_notify(cond, nothing)
+                    if !finished[]
+                        println("Timed out waiting for fill")
+                        send_notify(cond, nothing)
+                    end
                 end
+            else
+                println("watch_for received other status:$(status)")
             end
         end
     end
@@ -233,16 +239,18 @@ end
 #region Wrappers
 function new_order(action, tid, leg, price; pre)
     payload = TradierOrder.make_payload(action, tid, leg, price; pre)
-    @info "## $(action) pos" tid payload
+    println("## new order $(action) pos tid:$(tid) - $(payload)")
     resp = submitOrder(payload)
-    @info "## $(action) pos response" resp
-    return get(resp, "id") do; pre ? 0 : error("no id in new_order resp:$(resp)") end
+    oid = get(resp, "id") do; pre ? 0 : error("no id in new_order resp:$(resp)") end
+    println("new order $(action) response has oid:$(oid)")
+    return oid
 end
 
 function modify_order(tid, oid, price)
-    @info "## modify pos" tid oid price
+    println("## modify tid:$(tid) order:$(oid) price:$(price)")
     resp = TradierOrder.modifyOrder(oid, price)
-    @info "## modify pos response" resp
+
+    println("modify pos response $(resp)")
     return resp
 end
 #endregion

@@ -135,7 +135,7 @@ function listening(callback, ws)
     try
         for msg in ws
             try
-                println("TradierAccount.listening msg receieved: $(msg)")
+                # println("TradierAccount.listening msg receieved: $(msg)")
                 d = JSON3.read(msg)
                 typ = get(d, "event", nothing)
                 if typ == "order"
@@ -152,7 +152,7 @@ function listening(callback, ws)
             showerror(stderr, e)
         end
     end
-    println("TradierAccount.listening() returning")
+    # println("TradierAccount.listening() returning")
     websocket[] = nothing
     return
 end

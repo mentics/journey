@@ -1,14 +1,21 @@
 module Explore
 using Dates
 using ThreadPools
+import Makie
 using BaseTypes, LegTypes
 import Keepers:Keeper
 import SH, DateUtil
 import CollUtil:sortuple
 import Positions
 using OutputUtil
-import Makie
+import VectorCalcUtil
 
+const CONFIG6 = Ref((;
+    adjustprices = C(-0.01),
+    kelprobadjust = 0.1
+))
+
+#region test
 function test1(x, extra=nothing)
     a = 2*x
     b = if isnothing(extra)
@@ -45,11 +52,7 @@ end
 using LegMetaTypes, QuoteTypes
 discount(lm::LegMetaOpen, r=0.75) = LegMetaOpen(SH.getLeg(lm), discount(SH.getQuote(lm), r), SH.getMeta(lm))
 discount(q::Quote, r=0.75) = Quote(P(q.bid + r), P(q.ask + r))
-
-const CONFIG6 = Ref((;
-    adjustprices = C(-0.01),
-    kelprobadjust = 0.1
-))
+#endregion
 
 #region Troubleshooting
 function pbstoxys(pbs)
@@ -134,17 +137,44 @@ Base.isless(a::Result{T}, b::Result{T}) where T = a.r.evrate < b.r.evrate
 
 Base.vec(keeper::Keeper{Result}) = map(x -> x.r, keeper.store)
 
-function run(inc=3; skipto=nothing, kws...)
-    res3 = isnothing(skipto) ? findkel(inc; kws...) : skipto
-    global krun = res3
-    r1 = first(res3)
-    lms = r1.lms
-    target = Pricing.price(Action.open, lms)
-    bdaysout = DateUtil.bdays(today(),SH.getExpir(lms))
-    println("Best candidate: evrate:$(r1.evrate) probprofit:$(r1.probprofit) min:$(r1.neto) target:$(target) risk:$(r1.risk) daysout:$(bdaysout)");
-    DrawUtil.draw(:lines, SH.toDraw(lms))
-    DrawUtil.drawprob!(kprobs[SH.getExpir(lms)])
-    return r1
+run(inc::Integer; kws...) = run([inc]; kws...)
+function run(incsin=1:3; skipto=nothing, kws...)
+    incs = collect(incsin)
+    if isnothing(skipto)
+        res = map(incs) do inc
+            findkel(inc; kws...)
+        end
+        global krun = res
+    else
+        res = skipto
+    end
+
+    DrawUtil.newfig()
+    evrate_max, i_max = findmax(eachindex(res)) do i
+        num = incs[i]
+        rs = res[i]
+        !isempty(rs) || return 0.0
+        r1 = rs[1]
+        lms = r1.lms
+        target = Pricing.price(Action.open, lms)
+        bdaysout = DateUtil.bdays(today(),SH.getExpir(lms))
+        println("$(num): evrate:$(r1.evrate) probprofit:$(r1.probprofit) min:$(r1.neto) target:$(target) risk:$(r1.risk) daysout:$(bdaysout)");
+        DrawUtil.draw!(:lines, SH.toDraw(lms); label="$(i)-pnl")
+        DrawUtil.drawprob!(kprobs[SH.getExpir(lms)]; label="$(i)-prob")
+        return r1.evrate
+    end
+
+    if evrate_max > 0.0
+        r = res[i_max]
+        r1 = r[1]
+        lms = r1.lms
+        println("#$(incs[i_max]) has best")
+        DrawUtil.updateLegend()
+        return res, r1, lms
+    else
+        println("No results")
+        return
+    end
 end
 
 import Trading
@@ -155,9 +185,10 @@ end
 
 function findkel(inc; keep=100, tsx=ktsx, kdelen=-100000)
     kde = kde_from_tsx(tsx, kdelen)
-    ts = now(UTC)
+    mkt = market()
+    curp = mkt.curp
+    ts = mkt.tsMarket
     date = Date(ts)
-    curp = market().curp
     println("Finding kel for curp: $(curp)")
     # xpirs = Expirations.xpirsinrange(1, 4)
     xpirs = Expirations.expirs()[1:2]
@@ -168,9 +199,10 @@ function findkel(inc; keep=100, tsx=ktsx, kdelen=-100000)
     global kprobs = Dict{Any, Any}()
     for xpir in xpirs
         println("Searching xpir: $(xpir)")
+        xpirts = Calendars.getMarketClose(xpir)
         # prob = Between.makeprob(xpir, curp)
         # TODO: it's getting chain twice
-        prob = makeprob(curp, kde, xpir)
+        prob = makeprob(kde, curp, ts, xpirts)
         riskrat = calcriskrat(date, xpir)
         ctx = (;curp, prob, riskrat, xpir, kelly_buffer)
         kprobs[xpir] = prob
@@ -443,15 +475,15 @@ end
 #endregion
 
 #region kde
-import Distributions, KernelDensityEstimate, DrawUtil
-function kdedata()
-    nspy = Distributions.Normal(1.0, 0.1)
-    numsamples = 10000
-    maxdur = 200
-    basevix = 10
-    vixspread = 2
-    return [(dur = 1 + i % maxdur ; spy = log(rand(nspy)) ; [spy*dur, basevix + vixspread*spy + rand() - 0.5, dur]) for i in 0:numsamples]
-end
+# import Distributions, KernelDensityEstimate, DrawUtil
+# function kdedata()
+#     nspy = Distributions.Normal(1.0, 0.1)
+#     numsamples = 10000
+#     maxdur = 200
+#     basevix = 10
+#     vixspread = 2
+#     return [(dur = 1 + i % maxdur ; spy = log(rand(nspy)) ; [spy*dur, basevix + vixspread*spy + rand() - 0.5, dur]) for i in 0:numsamples]
+# end
 # function testkde()
 #     bws = [0.1, 0.1, 1.01]
 #     data = stack(kdedata())
@@ -466,96 +498,23 @@ end
 #     end
 # end
 
-using MultiKDE, Distributions, Random
-function multikde()
-    data = kdedata()
-    dims = [ContinuousDim(), ContinuousDim(), ContinuousDim()]
-    bws = [0.1, 0.1, 1.01]
-    kde = KDEMulti(dims, bws, data)
+# using MultiKDE, Distributions, Random
+# function multikde()
+#     data = kdedata()
+#     dims = [ContinuousDim(), ContinuousDim(), ContinuousDim()]
+#     bws = [0.1, 0.1, 1.01]
+#     kde = KDEMulti(dims, bws, data)
 
-    xs = -0.49:0.01:0.49
-    display(DrawUtil.draw(:scatter, [0.0], [0.0]))
-    for dur in 1.0:10.0:200.0
-        vals = [MultiKDE.pdf(kde, [x, 10.0, dur]) for x in xs]
-        DrawUtil.draw!(:scatter, xs, vals)
-        println("done: $(dur)")
-        yield()
-    end
-end
-
-function kde_from_tsx(tsx, len)
-    len_tot = length(tsx.ts)
-    inds = len > 0 ? (1:len) : ((len_tot+len):len_tot)
-    data = [[tsx.ret[i], tsx.logvol[i], tsx.tex[i]] for i in inds]
-    return TheKde(make_kde(data), extrema(first, data)...)
-end
-
-function make_kde(data)
-    dims = [ContinuousDim(), ContinuousDim(), ContinuousDim()]
-    bws = [0.005, 0.1, 20.0]
-    # bws = nothing
-
-    # kde = KDEMulti(dims, bws, data)
-    # bws = MultiKDE.default_bandwidth(data) ./ 4
-    return KDEMulti(dims, bws, data)
-end
-
-using MultiKDE, Distributions, Random
-import VectorCalcUtil
-function multikde2(data::Vector{Vector{Float64}}=kdedata()
-            ; coordinit::Vector{Float64}, xs, durs, vols)
-    kde = make_kde(data)
-    # function KDEMulti(dims::Vector, bws::Union{Vector, Nothing}, mat_observations::Matrix, candidates::Union{Dict{Int, Vector}, Nothing})
-    # kde = KDEMulti(dims, bws, data, nothing)
-    global kkde = kde
-
-    display(DrawUtil.draw(:scatter, [0.0], [0.0]; label="Zero", showlegend=true))
-    vals = Vector{Float64}(undef, length(xs))
-    coord = copy(coordinit)
-    for dur in durs
-        for vol in vols
-            coord[2] = vol
-            coord[3] = dur
-            # vals = [( coord[1] = x ; MultiKDE.pdf(kde, coord) ) for x in xs]
-            for i in eachindex(xs)
-                coord[1] = xs[i]
-                vals[i] = MultiKDE.pdf(kde, coord)
-            end
-            VectorCalcUtil.normalize!(vals)
-            DrawUtil.draw!(:scatter, xs, vals; label="$(r2(vol))-$(r2(dur))")
-            # println("done: $(dur)")
-            # yield()
-        end
-    end
-    DrawUtil.updateLegend()
-end
-
-import StatsBase, DataFiles
-using DataFrames
-# function setuptestkde(len)
-#     df = DataFrame(DataFiles.tstoxpirtable(); copycols=false)
-#     dff = dropmissing(df, [:ret, :logret])
-#     testkde(dff, len)
-#     return df, dff
+#     xs = -0.49:0.01:0.49
+#     display(DrawUtil.draw(:scatter, [0.0], [0.0]))
+#     for dur in 1.0:10.0:200.0
+#         vals = [MultiKDE.pdf(kde, [x, 10.0, dur]) for x in xs]
+#         DrawUtil.draw!(:scatter, xs, vals)
+#         println("done: $(dur)")
+#         yield()
+#     end
 # end
-function testkde(dff, len)
-    len_tot = length(dff.ret)
-    inds = len > 0 ? (1:len) : ((len_tot+len):len_tot)
-    # data = [dff.ret[1:len], dff.logvol[1:len], dff.tex[1:len]]
-    # data = collect(hcat(dff.ret[1:len], dff.logvol[1:len], dff.tex[1:len])')
-    data = [[dff.ret[i], dff.logvol[i], dff.tex[i]] for i in inds]
-    xmin, xmax = extrema(dff.ret[inds])
-    xs = xmin:((xmax-xmin)/500):xmax
-    volmin, volmax = extrema(dff.logvol[inds])
-    volmean = StatsBase.mean(dff.logvol[inds])
-    durmin, durmax = extrema(dff.tex[inds])
-    durs = durmin:((durmax-durmin)/10):durmax
-    @show volmin volmax
-    vols = volmin:((volmax-volmin)/10):volmax
-    @show xs vols durs
-    # multikde2(data; xs, coordinit=[0.0, volmean, 0.0], durs=[20], vols)
-    multikde2(data; xs, coordinit=[0.0, volmean, 0.0], durs, vols=[volmean])
-end
+
 
 function ntm4s(ts, xpir, curp, oqs, style)
     f_extrin = style == Style.call ? OptionUtil.extrin_call : OptionUtil.extrin_put
@@ -567,21 +526,27 @@ function ntm4s(ts, xpir, curp, oqs, style)
 end
 
 import Calendars, OptionUtil
-function makekdeargs(xpir=Calendars.getMarketClose(expir(1)))
+function makekdeargs(xpirts::DateTime)
     mkt = market()
     curp = mkt.curp
     ts = mkt.tsMarket
-    chain = Chains.chain(Date(xpir)).chain
+    xpirts = Calendars.getMarketClose(xpir)
+    makekdeargs(curp, ts, xpirts)
+end
+function makekdeargs(curp, ts, xpirts::DateTime)
+    chain = Chains.chain(Date(xpirts)).chain
 
-    calltex, _, callvol, _ = ntm4s(ts, xpir, curp, filter(isCall, chain), Style.call)
-    puttex, _, putvol, _ = ntm4s(ts, xpir, curp, filter(isPut, chain), Style.put)
+    calltex, _, callvol, _ = ntm4s(ts, xpirts, curp, filter(isCall, chain), Style.call)
+    puttex, _, putvol, _ = ntm4s(ts, xpirts, curp, filter(isPut, chain), Style.put)
     @assert calltex == puttex # TODO: remove
     tex = calltex
     logvol = log(mean((callvol, putvol)))
     return (;tex, logvol)
 end
 
-struct ProbKde4
+struct ProbKde5
+    kde::TheKde
+    ts::DateTime
     center::Float64
     xs::Vector{Float64}
     pdf::Vector{Float64}
@@ -596,31 +561,43 @@ struct TheKde
     xmax::Float64
 end
 
-function ProbUtil.cdf(prob::ProbKde4, x)
+function ProbUtil.cdf(prob::ProbKde5, x)
     xr = x / prob.center
     len = length(prob.cdf)
     binwidth = (prob.xmax - prob.xmin) / (len-1)
     xr > prob.xmin || return 0.0
     xr < prob.xmax || return 1.0
-    indleft = floor(Int, 1 + (xr - prob.xmin) / binwidth)
+    # indleft = floor(Int, 1 + (xr - prob.xmin) / binwidth)
+    # indright = indleft + 1
+    indright = searchsortedfirst(prob.xs, xr)
+    indleft = indright - 1
     indleft > 0 || return
-    indright = indleft + 1
-    xin = xr - prob.xmin
-    xleft = (indleft-1) * binwidth
-    xright = (indright-1) * binwidth
+    # xin = xr - prob.xmin
+    # xleft = (indleft-1) * binwidth
+    # xright = (indright-1) * binwidth
+    xin = xr
+    xleft = prob.xs[indleft]
+    xright = prob.xs[indright]
     @assert xleft <= xin <= xright string((;xleft, xin, xright))
+    @assert prob.xs[indleft] <= xr <= prob.xs[indright] string((;xsleft=prob.xs[indleft], xr, xsright=prob.xs[indright]))
     leftratio = (xin - xleft) / (xright - xleft)
     global kcdfargs = (prob, x)
-    return leftratio * prob.cdf[indleft] + (1.0 - leftratio) * prob.cdf[indright]
+    leftpart = leftratio * prob.cdf[indleft]
+    rightpart = (1.0 - leftratio) * prob.cdf[indright]
+    # @show indleft indright xin xleft xright prob.cdf[indleft] prob.cdf[indright] leftratio leftpart rightpart
+    return leftpart + rightpart
 end
 
 import DrawUtil
-DrawUtil.drawprob(prob::ProbKde4; kws...) = DrawUtil.drawdist!(DrawUtil.getAxis(;newFig=true), prob.center, prob.xs, prob.pdf; kws...)
-DrawUtil.drawprob!(prob::ProbKde4; kws...) = DrawUtil.drawdist!(DrawUtil.getAxis(;newFig=false), prob.center, prob.xs, prob.pdf; kws...)
+DrawUtil.drawprob(prob::ProbKde5; kws...) = DrawUtil.drawdist!(DrawUtil.getAxis(;newFig=true), prob.center, prob.xs, probdispvals(prob); kws...)
+DrawUtil.drawprob!(prob::ProbKde5; kws...) = DrawUtil.drawdist!(DrawUtil.getAxis(;newFig=false), prob.center, prob.xs, probdispvals(prob); kws...)
+probdispvals(prob::ProbKde5) = ( k = 0.01 / xswidth(prob) ; prob.pdf .* k )
+xswidth(prob::ProbKde5) = prob.xs[2] - prob.xs[1]
 
-function makeprob(curp, tkde, xpir)
-    numbins = 400
-    (;tex, logvol) = makekdeargs(xpir)
+makeprob(tkde, curp, xpir::Date) = makeprob(tkde, curp, Calendars.getMarketClose(xpir))
+function makeprob(tkde, curp, ts::DateTime, xpirts::DateTime)
+    numbins = 200
+    (;tex, logvol) = makekdeargs(curp, ts, xpirts)
     kde, xmin, xmax = tkde.kde, tkde.xmin, tkde.xmax
     binwidth = (xmax - xmin) / numbins
     coord = [0.0, logvol, tex]
@@ -630,13 +607,13 @@ function makeprob(curp, tkde, xpir)
     for i in 1:numbins
         xs[i] = xmin + i * binwidth
         coord[1] = xs[i]
-        cdfvals[i] = MultiKDE.cdf(kde, coord)
+        # cdfvals[i] = MultiKDE.cdf(kde, coord) This doesn't work as expected with multivariate case, I think
         pdfvals[i] = MultiKDE.pdf(kde, coord)
     end
-    cdfvals ./= cdfvals[end]
+    # cdfvals ./= cdfvals[end]
     VectorCalcUtil.normalize!(pdfvals)
     # display(DrawUtil.draw(:lines, xs, cdfvals))
-    return ProbKde4(curp, xs, pdfvals, cdfvals, xmin, xmax)
+    return ProbKde5(tkde, ts, curp, xs, pdfvals, cdfvals, xmin, xmax)
 end
 
 function tsx_for_kde()
@@ -645,6 +622,257 @@ function tsx_for_kde()
     global ktsx = tsx
     return tsx
 end
+
+function data_from_tsx(tsx, len)
+    len_tot = length(tsx.ts)
+    inds = len > 0 ? (1:len) : ((len_tot+len+1):len_tot)
+    return [[tsx.ret[i], tsx.logvol[i], tsx.tex[i]] for i in inds]
+end
+function kde_from_tsx(tsx, len)
+    return TheKde(make_kde(data_from_tsx(tsx, len)), extrema(first, data)...)
+end
+
+function make_kde(data)
+    dims = [ContinuousDim(), ContinuousDim(), ContinuousDim()]
+    bws = [0.005, 0.1, 20.0]
+
+    # TODO: consider normalizing the inputs, then might use same bandwidths
+    # the nature of the variables are different, so need to adjust
+
+    # bws = nothing
+
+    # kde = KDEMulti(dims, bws, data)
+    # bws = MultiKDE.default_bandwidth(data) ./ 4
+    return KDEMulti(dims, bws, data)
+end
+
+function plotkde(; len=-100000, gridcount=10)
+    tsx = ktsx
+    kde = kde_from_tsx(tsx, len).kde
+
+    len_tot = length(tsx.ts)
+    inds = len > 0 ? (1:len) : ((len_tot+len):len_tot)
+    # data = [[tsx.ret[i], tsx.logvol[i], tsx.tex[i]] for i in inds]
+    rets, logvols, texs = grid3((extrema(tsx.ret[inds]), extrema(tsx.logvol[inds]), extrema(tsx.tex[inds])); num=gridcount)
+
+    numcoords = length(rets) * length(logvols) * length(texs)
+    xs = Vector{Float64}(undef, numcoords)
+    ys = Vector{Float64}(undef, numcoords)
+    zs = Vector{Float64}(undef, numcoords)
+    ps = Vector{Float64}(undef, numcoords)
+
+    i = 0
+    coord = [0., 0., 0.]
+    for x in rets, y in logvols, z in texs
+        i += 1
+        coord .= [x, y, z]
+        xs[i] = x; ys[i] = y; zs[i] = z
+        ps[i] = MultiKDE.pdf(kde, coord)
+    end
+    VectorCalcUtil.normalize!(ps)
+
+    display(Makie.scatter(xs, ys, zs; color=ps, markersize=5, colormap=:viridis, axis=(type=Makie.Axis3,)))
+end
+
+function over(extent; num=10)
+    left = first(extent)
+    right = last(extent)
+    step = (right - left) / (num - 1)
+    return [left + i * step for i in 0:num-1]
+end
+grid3(extents; num=10) = map(x -> over(x; num), extents)
+
+# function calckde(; len=-100000, gridcount=10, area=gridcount ÷ 10)
+#     count = gridcount + 2 * area
+#     m = zeros(count, count, count)
+#     global km = m
+#     data = data_from_tsx(ktsx, len)
+#     tfs = VectorCalcUtil.fit_01.(data)
+
+#     width = 1 / (gridcount - 1)
+#     gridcs = [togrid(tfs[i].v, width) for i in eachindex(tfs)]
+
+#     for i in eachindex(tfs[1].v)
+#         for x in toarea(gridcs[1][i], area), y in toarea(gridcs[2][i], area), z in toarea(gridcs[3][i], area)
+#             m[x, y, z] = kernel()
+#         end
+#     end
+# end
+
+struct Transform3
+    ad::NTuple{3, Float64}
+    scale::NTuple{3, Float64}
+end
+
+struct KDENew4
+    m::Array{Vector{NTuple{3,Float64}}, 3}
+    txs::Transform3
+    width::Float64
+end
+
+function calckde(; len=-100000, gridcount=10, area=gridcount ÷ 10)
+    m = [Vector{NTuple{3,Float64}}() for _ in 1:gridcount, _ in 1:gridcount, _ in 1:gridcount]
+    # @show m
+    global km = m
+
+    tsx = ktsx
+    len_tot = length(tsx.ts)
+    inds = len > 0 ? (1:len) : ((len_tot+len+1):len_tot)
+    data = (tsx.ret[inds], tsx.logvol[inds], tsx.tex[inds])
+    global kdata = data
+    tfs = VectorCalcUtil.fit_01.(data)
+    global ktfs = tfs
+
+    tx = Transform3(map(tf -> tf.ad, tfs), map(tf -> tf.scale, tfs))
+
+    width = 1.0 / (gridcount - 1)
+    gridcs = [togrid(tfs[i].v, width) for i in eachindex(tfs)]
+
+    # coord = zeros(3)
+    for i in eachindex(tfs[1].v)
+        # @show i
+        coord = (tfs[1].v[i], tfs[2].v[i], tfs[3].v[i])
+        for x in toarea(gridcs[1][i], area, gridcount), y in toarea(gridcs[2][i], area, gridcount), z in toarea(gridcs[3][i], area, gridcount)
+            # println("Pushing $((;x, y, z)), $(coord)")
+            push!(m[x, y, z], coord)
+        end
+    end
+    return KDENew4(m, tx, width)
+end
+
+@inline togrid(x, width) = 1 .+ round.(Int, x ./ width)
+@inline toarea(mid::Integer, width::Integer, gridcount::Integer) = (max(1, mid - width)):(min(gridcount, mid + width))
+
+function pdf(kde::KDENew4, x, k)
+    xin = txin(kde, x) # (x .+ kde.txs.ad) .* kde.txs.scale
+    coord = togrid.(xin, kde.width)
+    # @show coord
+    obs = kde.m[coord...]
+    dens = kernel(obs, xin, k)
+    return dens
+end
+
+txin(kde::KDENew4, x) = (x .+ kde.txs.ad) .* kde.txs.scale
+txout(kde::KDENew4, x) = (x ./ kde.txs.scale) .- kde.txs.ad
+
+function kernel(obs, x, k)
+    # e^(-(obs - x)^2/k)
+    # TODO: multikde uses prod() instead of sum?
+    global kobs = obs
+    return sum(map(obs) do o
+        exp.(-dot2(o .- x) / k)
+    end)
+    # return sum(exp.(-dot2.(tsub.(obs, x)) / k))
+end
+
+@inline dot2(v::NTuple{3,Float64}) = return v[1]^2 + v[2]^2 + v[3]^2
+# @inline dot2(v::Vector{Float64}) = return v[1]^2 + v[2]^2 + v[3]^2
+# @inline tsub(o, x) = o .- x
+
+function drawfield(m)
+    inds = reshape(CartesianIndices(m), prod(size(m)))
+    ps = [length(m[ind]) for ind in inds]
+    xyzs = [Tuple(i) for i in inds]
+    global kxyzs = xyzs
+    plot = Makie.scatter(xyzs; color=ps, markersize=5, colormap=:viridis, axis=(type=Makie.Axis3,))
+    #  camera=Makie.cam3d_cad!
+    display(plot)
+    # return Makie.camera(plot.figure.scene)
+    scene = plot.figure.scene
+    Makie.cam3d_cad!(scene)
+end
+
+function drawrandfield(kde::KDENew4, num=100; k=0.001)
+    # pts = Vector{Vector{Float64}}()
+    pts = Vector{NTuple{3,Float64}}()
+    denss = Vector{Float64}()
+    skipped = 0
+    while length(pts) < num
+        txin = Tuple(rand(3))
+        x = txout(kde, txin)
+        # @show txin x
+        dens = pdf(kde, x, k)
+        if dens > 100
+            push!(pts, x)
+            push!(denss, dens)
+        else
+            skipped += 1
+        end
+    end
+    @show skipped
+    @show extrema(denss)
+    VectorCalcUtil.normalize!(denss)
+    plot = Makie.scatter(pts; color=denss, markersize=5, colormap=:viridis, axis=(type=Makie.Axis3,))
+    #  camera=Makie.cam3d_cad!
+    display(plot)
+    # return Makie.camera(plot.figure.scene)
+    scene = plot.figure.scene
+    # Makie.cam3d_cad!(scene)
+    return
+end
+
+TODO: tex isn't an obs dim, it's a property of an obs and because we're counting, that will be off because
+we don't have as much data for higher tex.
+
+#endregion
+
+#region testing kde
+# using MultiKDE, Distributions, Random
+# import VectorCalcUtil
+# function multikde2(data::Vector{Vector{Float64}}=kdedata()
+#             ; coordinit::Vector{Float64}, xs, durs, vols)
+#     kde = make_kde(data)
+#     # function KDEMulti(dims::Vector, bws::Union{Vector, Nothing}, mat_observations::Matrix, candidates::Union{Dict{Int, Vector}, Nothing})
+#     # kde = KDEMulti(dims, bws, data, nothing)
+#     global kkde = kde
+
+#     display(DrawUtil.draw(:scatter, [0.0], [0.0]; label="Zero", showlegend=true))
+#     vals = Vector{Float64}(undef, length(xs))
+#     coord = copy(coordinit)
+#     for dur in durs
+#         for vol in vols
+#             coord[2] = vol
+#             coord[3] = dur
+#             # vals = [( coord[1] = x ; MultiKDE.pdf(kde, coord) ) for x in xs]
+#             for i in eachindex(xs)
+#                 coord[1] = xs[i]
+#                 vals[i] = MultiKDE.pdf(kde, coord)
+#             end
+#             VectorCalcUtil.normalize!(vals)
+#             DrawUtil.draw!(:scatter, xs, vals; label="$(r2(vol))-$(r2(dur))")
+#             # println("done: $(dur)")
+#             # yield()
+#         end
+#     end
+#     DrawUtil.updateLegend()
+# end
+
+# import StatsBase, DataFiles
+# using DataFrames
+# # function setuptestkde(len)
+# #     df = DataFrame(DataFiles.tstoxpirtable(); copycols=false)
+# #     dff = dropmissing(df, [:ret, :logret])
+# #     testkde(dff, len)
+# #     return df, dff
+# # end
+# function testkde(dff, len)
+#     len_tot = length(dff.ret)
+#     inds = len > 0 ? (1:len) : ((len_tot+len):len_tot)
+#     # data = [dff.ret[1:len], dff.logvol[1:len], dff.tex[1:len]]
+#     # data = collect(hcat(dff.ret[1:len], dff.logvol[1:len], dff.tex[1:len])')
+#     data = [[dff.ret[i], dff.logvol[i], dff.tex[i]] for i in inds]
+#     xmin, xmax = extrema(dff.ret[inds])
+#     xs = xmin:((xmax-xmin)/500):xmax
+#     volmin, volmax = extrema(dff.logvol[inds])
+#     volmean = StatsBase.mean(dff.logvol[inds])
+#     durmin, durmax = extrema(dff.tex[inds])
+#     durs = durmin:((durmax-durmin)/10):durmax
+#     @show volmin volmax
+#     vols = volmin:((volmax-volmin)/10):volmax
+#     @show xs vols durs
+#     # multikde2(data; xs, coordinit=[0.0, volmean, 0.0], durs=[20], vols)
+#     multikde2(data; xs, coordinit=[0.0, volmean, 0.0], durs, vols=[volmean])
+# end
 #endregion
 
 end
