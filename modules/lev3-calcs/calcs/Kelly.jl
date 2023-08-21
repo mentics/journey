@@ -31,6 +31,7 @@ issame(x1, x2) = ((x1 / x2) ≈ 1.0) || (abs(x1) < 1e-12 && abs(x2) < 1e-12)
 const PROB_INTEGRAL_WIDTH2 = 1.0
 # Commit, not risk, because in the formula, it's balance/commit to get number of contracts
 function calckel(buf::Buf, prob, commit::Real, segsWithZeros; dpx=PROB_INTEGRAL_WIDTH2, probadjust=0.0)
+    dpx = 2 * prob.center * prob.xs.binwidth
     if commit <= 0.0
         println("Invalid commit:$(commit) in calckel")
         return (;kel=NaN, evret=NaN, ev=100.0)
@@ -60,6 +61,8 @@ function calckel(buf::Buf, prob, commit::Real, segsWithZeros; dpx=PROB_INTEGRAL_
             span = x_right - seg.left.x
             num = ceil(span / dpx)
             width = span / num
+            w13 = width / 3
+            w23 = width * 2 / 3
             outcomeStep = (span / num) * seg.slope
 
             left = seg.left.x
@@ -67,22 +70,69 @@ function calckel(buf::Buf, prob, commit::Real, segsWithZeros; dpx=PROB_INTEGRAL_
             for i in 0:num-1
                 right = left + width
                 # @assert r8(right) <= r8(x_right) string((;right=r5(right), x_right=r5(x_right)))
-                outcome = (outcomeLeft + outcomeStep / 2) / commit
-                outcome >= -1.0 || error("Kelly: outcome:$(outcome) < -1.0")
-                cdfR2 = ProbUtil.cdf(prob, right)
-                p = cdfR2 - cdfLeft
-                p *= outcome > 0 ? 1.0 - probadjust : 1.0 + probadjust
-                po = p * outcome
-                ev += po
-                ptotal += p
+
+                # outcome = (outcomeLeft + outcomeStep / 2) / commit
+                # outcome >= -1.0 || error("Kelly: outcome:$(outcome) < -1.0")
+                # cdfR2 = ProbUtil.cdf(prob, right)
+                # p = cdfR2 - cdfLeft
+                # p *= outcome > 0 ? 1.0 - probadjust : 1.0 + probadjust
+                # po = p * outcome
+                # ev += po
+                # pbi += 1
+                # ptotal += p
+                # buf.po[pbi] = po
+                # buf.outcome[pbi] = outcome
+                # buf.p[pbi] = p
+
+                outcome1 = (outcomeLeft + outcomeStep * 1/6) / commit
+                outcome2 = (outcomeLeft + outcomeStep * 3/6) / commit
+                outcome3 = (outcomeLeft + outcomeStep * 5/6) / commit
+                outcomenew = (outcome1 + outcome2 + outcome3) / 3 # TODO: use other mean?
+
+                lr1 = left + w13
+                lr2 = left + w23
+                @assert lr1 < lr2 < right
+                cdflr1 = ProbUtil.cdf(prob, lr1)
+                cdflr2 = ProbUtil.cdf(prob, lr2)
+                cdflr3 = ProbUtil.cdf(prob, right)
+                # @assert cdflr1 <= cdflr2 <= cdflr3
+                if !(cdflr1 <= cdflr2 <= cdflr3)
+                    @show lr1 lr2 right cdflr1 cdflr2 cdflr3
+                    # error("ugh: ", (;lr1, lr2, right, cdflr1, cdflr2, cdflr3))
+                end
+                p1 = cdflr1 - cdfLeft
+                p2 = cdflr2 - cdflr1
+                p3 = cdflr3 - cdflr2
+                @assert p1 >= 0 && p2 >= 0 && p3 >= 0 string((;p1, p2, p3, cdflr1, cdflr2, cdflr3))
+
+                p1 *= outcome1 > 0 ? 1.0 - probadjust : 1.0 + probadjust
+                p2 *= outcome2 > 0 ? 1.0 - probadjust : 1.0 + probadjust
+                p3 *= outcome3 > 0 ? 1.0 - probadjust : 1.0 + probadjust
+                pnew = (p1 + p2 + p3) # TODO: use other mean?
+
+                po1 = p1 * outcome1
+                po2 = p2 * outcome2
+                po3 = p3 * outcome3
+                ponew = (po1 + po2 + po3) # TODO: use other mean?
+
+                # if ponew > po + 1e-3
+                #     @show p pnew outcome outcomenew po ponew
+                #     @show p1 p2 p3 outcome1 outcome2 outcome3 po1 po2 po3
+                # end
+
+                ev += ponew
                 pbi += 1
-                buf.po[pbi] = po
-                buf.outcome[pbi] = outcome
-                buf.p[pbi] = p
+                ptotal += pnew
+                buf.po[pbi] = ponew
+                buf.outcome[pbi] = outcomenew
+                buf.p[pbi] = pnew
 
                 left = right;
                 outcomeLeft += outcomeStep
-                cdfLeft = cdfR2
+                cdfLeft = cdflr3 # cdfR2
+                if cdfLeft >= (1.0 - 1e-6)
+                    break
+                end
             end
         end
         cdfLeft = cdfRight;

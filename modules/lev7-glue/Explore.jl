@@ -12,7 +12,7 @@ import VectorCalcUtil
 import DataFiles
 using DataFrames, StatsBase
 
-const CONFIG6 = Ref((;
+const CONFIG8 = Ref((;
     adjustprices = C(-0.01),
     kelprobadjust = 0.1
 ))
@@ -80,7 +80,7 @@ import LinesLeg as LL
 function testmc(r; numiter=1000, curp=market().curp, prob=Between.makeprob2(r.lms, curp).prob)
     lms = r.lms
     risk = 100 * r.risk
-    segs = LL.toSegments(lms, CONFIG6[].adjustprices)
+    segs = LL.toSegments(lms, CONFIG8[].adjustprices)
     bal = 10000.0
     netsum = 0.0
     pnlratesum = 0.0
@@ -181,8 +181,9 @@ end
 
 import Trading
 function opentrade(r; minextra=P(0.01))
+    # TODO: warn if curp has changed much
     println("Opening trade: neto:$(r.neto)")
-    Trading.open_trade(market(), r.lms, r.neto; pre=false, price_add=P(0.0), minextra);
+    Trading.open_trade(market(), r.lms, r.neto; pre=false, minextra);
 end
 
 function findkel(inc; keep=100)
@@ -208,7 +209,7 @@ function findkel(inc; keep=100)
         riskrat = calcriskrat(date, xpir)
         ctx = (;curp, prob, riskrat, xpir, kelly_buffer)
         kprobs[xpir] = prob
-        oqss = ChainUtil.oqssEntry(chain(xpir).chain, curp; legsCheck=Positions.positions(), shortbidgt=max(CZ,-CONFIG6[].adjustprices))
+        oqss = ChainUtil.oqssEntry(chain(xpir).chain, curp; legsCheck=Positions.positions(), shortbidgt=max(CZ,-CONFIG8[].adjustprices))
         println("num calls $(length(oqss.call.long))")
         println("num puts $(length(oqss.put.long))")
         1 in inc && findkel1!(ress, ctx, oqss)
@@ -240,9 +241,9 @@ calcevrate(evret, xpir, date) = evret * DateUtil.timult(date, xpir)
 # calcret(r, date=today()) = r.kel * calcrate(r, date)
 
 function make_leg(oq, side)
-    lm = LegMetaOpen(oq, side; adjustprices=CONFIG6[].adjustprices)
+    lm = LegMetaOpen(oq, side; adjustprices=CONFIG8[].adjustprices)
     if SH.getBid(lm) == 0
-        global kmakeleg=(;adjust=CONFIG6[].adjustprices, oq, side, lm)
+        global kmakeleg=(;adjust=CONFIG8[].adjustprices, oq, side, lm)
         error("bid 0")
     end
     return lm
@@ -331,9 +332,9 @@ function check!(ress, ctx, lms)
             xpir = ctx.xpir
             evrate = calcevrate(evret, xpir, today())
             probprofit = Between.calcprobprofit(ctx.prob, segsz)
-            # if probprofit > 0.6
+            if probprofit > 0.7
                 push!(ress[thid], Result((;ev, kel, evret, evrate, risk, xpir, lms, probprofit, netos, neto=sum(netos))))
-            # end
+            end
         end
     catch e
         global kcheck = (;ctx, lms, ss)
@@ -364,13 +365,13 @@ end
 
 calckel(lms) = calckel(kprobs[SH.getExpir(lms)], lms)
 calckel(prob, lms) = calckel(prob, calcriskrat(today(), SH.getExpir(lms)), lms)
-function calckel(prob::Prob, riskrat::Real, lms::Coll{<:LegLike})
-    (;segs, segsz) = tosegsz(market().curp, lms)
+function calckel(prob, riskrat::Real, lms::Coll{<:LegLike})
+    (;segs, segsz) = tosegsz(prob.center, lms)
     calckel(Kelly.make_buf(), prob, riskrat, segs, segsz)
 end
 
 function calckel(buf, prob, riskrat::Real, segs, segsz)
-    probadjust = CONFIG6[].kelprobadjust
+    probadjust = CONFIG8[].kelprobadjust
     risk = riskrat * max(Pricing.calcMarg(prob.center, segs))
     try
         return (;Kelly.calckel(buf, prob, risk, segsz; probadjust)..., risk)
@@ -599,7 +600,7 @@ function ProbUtil.cdf(prob::ProbKde7, x)
     indright = floor(Int, 2 + (xr - mn) / binwidth) # this was faster: 19.7 ns vs. 25.4 ns
     # @show indright indright2
     indleft = indright - 1
-    indleft > 0 || return
+    indleft > 0 || error("cdf: indleft > 0")
     # xin = xr - prob.xmin
     # xleft = (indleft-1) * binwidth
     # xright = (indright-1) * binwidth
@@ -608,12 +609,16 @@ function ProbUtil.cdf(prob::ProbKde7, x)
     xright = xs[indright]
     @assert xleft <= xin <= xright string((;xleft, xin, xright))
     @assert xs[indleft] <= xr <= xs[indright] string((;xsleft=xs[indleft], xr, xsright=xs[indright]))
-    leftratio = (xin - xleft) / (xright - xleft)
-    global kcdfargs = (prob, x)
-    leftpart = leftratio * prob.cdf[indleft]
-    rightpart = (1.0 - leftratio) * prob.cdf[indright]
-    # @show indleft indright xin xleft xright prob.cdf[indleft] prob.cdf[indright] leftratio leftpart rightpart
-    return leftpart + rightpart
+    rightratio = (xin - xleft) / (xright - xleft)
+    # global kcdfargs = (prob, x)
+    rightpart = rightratio * prob.cdf[indright]
+    leftpart = (1.0 - rightratio) * prob.cdf[indleft]
+    # @show indleft indright xin xleft xright prob.cdf[indleft] prob.cdf[indright] rightratio leftpart rightpart
+    res = leftpart + rightpart
+    @assert res >= 0.0 "assertion failed, prob cdf >= 0: $(res)"
+    res > 1e-10 || return 0.0
+    res < (1.0 - 1e-10) || return 1.0
+    return res
 end
 
 # getxmin(prob::ProbKde7) = prob.src.extents[1].mn

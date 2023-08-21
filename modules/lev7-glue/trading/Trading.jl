@@ -13,7 +13,7 @@ using OutputUtil
 import Chains, Between, Pricing
 
 #region Public
-function open_trade(mkt, legsin, mineto::PT; pre=true, minextra::PT=P(0.02), kws...)
+function open_trade(mkt, legsin, mineto::PT; pre=false, minextra::PT=P(0.02), kws...)
     TradierAccount.ensure_listening()
 
     legs = update_legs(Action.open, legsin, mkt.curp)
@@ -28,7 +28,7 @@ function open_trade(mkt, legsin, mineto::PT; pre=true, minextra::PT=P(0.02), kws
 end
 
 using Markets
-function close_trade(tid, minetc::PT; pre=true, minextra::PT=P(0.02), curp=market().curp, kws...)
+function close_trade(tid, minetc::PT; pre=false, minextra::PT=P(0.02), curp=market().curp, kws...)
     trade = getTradeOpen(tid)
     legsin = getLegs(trade)
 
@@ -54,7 +54,7 @@ function pos_list_cont(inds, minet=kminet)
     pos_list_do(kaction, ktid, legs, minet, kextra)
 end
 
-function pos_list_do(action::Action.T, tid, legs, minet::PT, extra::PT=PZ; pre=true, saveforeach::PT=P(0.01), kws...)
+function pos_list_do(action::Action.T, tid, legs, minet::PT, extra::PT=PZ; pre=false, saveforeach::PT=P(0.01), kws...)
     global kaction = action
     global ktid = tid
     global klegs = legs
@@ -130,11 +130,11 @@ function validate_legs(action::Action.T, legs, minet, minextra, minextraleg=CZ)
     return extra
 end
 
-function pos_do(action::Action.T, tid, leg, price_tgt::PT, price_min::PT; pre=true, timeout=2.0, price_add::PT=P(1.0))
-    println("## $(action) $(getSide(leg)) $(getOption(leg)) between $(price_tgt) and $(price_min) $(price_add != P(0) ? string(" + $(price_add)") : "")")
-    price = price_tgt + price_add
+function pos_do(action::Action.T, tid, leg, price_tgt::PT, price_min::PT; pre=false, timeout=2.0)
+    println("## $(action) $(getSide(leg)) $(getOption(leg)) between $(price_tgt) and $(price_min)")
+    price = price_tgt
     oid, resp = pos_new_order(action, tid, leg, price, pre, timeout)
-    while !pre && isnothing(resp) && price > (price_min + price_add)
+    while !pre && isnothing(resp) && price > price_min
         price -= P(0.01)
         resp = pos_modify_order(action, tid, oid, price, timeout)
     end
@@ -248,7 +248,7 @@ end
 
 function modify_order(tid, oid, price)
     println("## modify tid:$(tid) order:$(oid) price:$(price)")
-    resp = TradierOrder.modifyOrder(oid, price)
+    resp = TradierOrder.modifyOrder(oid, abs(price))
 
     println("modify pos response $(resp)")
     return resp
