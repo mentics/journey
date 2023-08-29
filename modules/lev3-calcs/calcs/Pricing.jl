@@ -49,14 +49,14 @@ end
 flip_quote(qt::Quote) = Quote(-getAsk(qt), -getBid(qt))
 price_long_flip(qt, closing = false) = price_long(flip_quote(getQuote(qt)), closing)
 
-price_long(has, closing = false) = (qt = getQuote(has) ; price_long(getBid(qt), getAsk(qt), closing) )
+price_long(has, closing::Bool = false) = (qt = getQuote(has) ; price_long(getBid(qt), getAsk(qt), closing) )
 function price_long(bid::Currency, ask::Currency, closing::Bool = false) # ::Union{Nothing,Currency}
     if bid >= 0
         if closing
             return CZ
         else
             # println("WARN: Tried to price long for no bid ($bid, $ask)")
-            error("WARN: Tried to price long for no bid", (bid, ask))
+            throw(DomainError((bid, ask), "Tried to price long for no bid"))
             # return nothing
         end
     end
@@ -70,7 +70,7 @@ function price_short(bid::Currency, ask::Currency, closing::Bool = false) # ::Un
             return CZ
         else
             # println("WARN: Tried to price short for no bid ($bid, $ask)")
-            error("WARN: Tried to price short for no bid", (bid, ask))
+            throw(DomainError((bid, ask), "Tried to price short for no bid"))
             # return nothing
         end
     end
@@ -164,11 +164,11 @@ end
 # TODO: remove this dep?
 import OptionUtil, ChainUtil
 
-netExpired(lms, curp::Currency)::PT = sum(x -> netExpired1(x, curp), lms)
-function netExpired1(lm::LegLike, curp::Currency)::PT
-    return getQuantity(lm) * Int(getSide(lm)) * netExpired(getStyle(lm), getStrike(lm), curp)
-end
-netExpired(style::Style.T, strike::Currency, curp::Currency)::PT = (OptionUtil.extrinSub(style, strike, curp) ? abs(curp - strike) : 0.0)
+# netExpired(lms, curp::Currency)::PT = sum(x -> netExpired1(x, curp), lms)
+# function netExpired1(lm::LegLike, curp::Currency)::PT
+#     return getQuantity(lm) * Int(getSide(lm)) * netExpired(getStyle(lm), getStrike(lm), curp)
+# end
+(netExpired(style::Style.T, strike::T, curp::T)::T) where T<:Real = (OptionUtil.extrin_sub_dist(style, strike, curp) ? abs(curp - strike) : zero(T))
 
 fallbackExpired(curp, otoq) = function(o)
     res = ChainUtil.oToOq(otoq, o)

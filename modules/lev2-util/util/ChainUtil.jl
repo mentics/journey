@@ -108,7 +108,20 @@ function oqssAll(oqs)::Oqss
     return oqss
 end
 
-function oqssEntry(oqs, curp::Currency; legsCheck=LegTypes.LEGS_EMPTY, shortbidgt::Currency=0.0)::Oqss
+# abstract type OQSS end
+
+# struct OqSource{T} <: OQSS
+#     src::T
+# end
+# struct OqSourceStyle{T}
+#     src::T
+#     style::Style.T
+# end
+
+# Base.getproperty(df::OqSource{T}, style::Symbol) where T = OqSourceStyle{T}(df, style)
+# Base.getproperty(df::OqSourceStyle{AbstractDataFrame}, side::Side.T) = find_oqs(df, df.style, side)
+
+function oqssEntry(oqs, curp::Currency; legsCheck=LegTypes.LEGS_EMPTY, shortbidgt::Currency=CZ)::Oqss
     lc = Vector{OptionQuote}()
     sc = Vector{OptionQuote}()
     lp = Vector{OptionQuote}()

@@ -339,6 +339,39 @@ function maxkey(d)
     minkey
 end
 
+# # TODO: could write optimized loop for sorted one
+# uniqueidx(v) = unique(i -> v[i], eachindex(v))
+
+# function pushsortedunique!(into::AbstractVector{T}, vals::AbstractVector{T}, into2::AbstractVector{B}, vals2::AbstractVector{B}) where {T,B}
+
+function pushsortedunique!(into, vals)
+    last = first(vals)
+    push!(into, last)
+    for i in eachindex(vals)
+        x = vals[i]
+        if x !== last
+            push!(into, x)
+            last = x
+        end
+    end
+    return nothing
+end
+
+function pushsortedunique!(into, vals, into2, vals2)
+    last = first(vals)
+    push!(into, last)
+    push!(into2, first(vals2))
+    for i in eachindex(vals)
+        x = vals[i]
+        if x !== last
+            push!(into, x)
+            push!(into2, vals2[i])
+            last = x
+        end
+    end
+    return nothing
+end
+
 # function accumul!(op, B, A; dims::Union{Integer, Nothing} = nothing, kw...)
 #     if isnothing(init)
 #         Base._accumulate!(op, B, A, dims, nothing)

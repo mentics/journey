@@ -36,15 +36,25 @@ function calc_extrin(oq::OptionQuote, curp::Real)::Tuple{Currency,Currency}
     # end
 end
 
-function calc_extrin(style::Style.T, curp::Real, strike, bid, ask)::Tuple{Currency,Currency}
+function calc_extrin(style::Style.T, curp::Real, strike::Currency, bid::Currency, ask::Currency)::Tuple{Currency,Currency}
     dist = abs(curp - strike)
     return xor(Style.call == style, strike >= curp) ?
                 (bid - dist, ask - dist) : (bid, ask)
 end
 
-function extrin_call2(curp, strike, bid, ask)
-    dist = (strike .<= curp) .* abs.(curp .- strike)
-    return (bid .- dist, ask .- dist)
+# function extrin_call2(curp, strike, bid, ask)
+#     dist = (strike .<= curp) .* abs.(curp .- strike)
+#     return (bid .- dist, ask .- dist)
+# end
+
+function calc_extrin(style, curp::Real, strike::Real, bid::Real, ask::Real)
+    s = extrin_sub_dist(style, strike, curp)
+    return ((bid + ask) / 2) - (s * abs(strike - curp))
+end
+
+function calc_extrin(style, curps, strikes, bids, asks)
+    ss = extrin_sub_dist.(style, strikes, curps)
+    return ((bids .+ asks) ./ 2) .- (ss .* abs.(strikes .- curps))
 end
 
 function extrin_call(curp, strike, bid, ask)
@@ -73,7 +83,7 @@ end
 #     return res
 # end
 
-extrinSub(style::Style.T, strike::Real, curp::Real)::Bool = xor(Style.call == style, strike >= curp)
+extrin_sub_dist(style::Style.T, strike::Real, curp::Real)::Bool = xor(Style.call == style, strike >= curp)
 
 #region OldExtrema
 # legsExtrema(neto, legs::NTuple{2}) = spreadExtrema(neto, longShort(legs[1], legs[2])...)

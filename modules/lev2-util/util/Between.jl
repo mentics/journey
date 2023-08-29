@@ -3,6 +3,7 @@ using Dates
 using SH, BaseTypes, SmallTypes, QuoteTypes, OptionMetaTypes, StratTypes, LegMetaTypes, RetTypes, StatusTypes, ChainTypes
 using CollUtil, ChainUtil
 using Rets, LegTypes, TradeTypes, LegTradeTypes, Pricing
+import ProbMultiKde as pmk
 
 #region Lines
 import LinesLeg:LinesLeg as LL,Segments
@@ -61,14 +62,14 @@ function calcprobprofit(prob, segsz::SegmentsWithZeros)
     p = 0.0
     s1 = first(segsz)
     if s1.left.y > 0 || s1.slope < 0
-        p += ProbUtil.cdf(prob, s1.left.x)
+        p += pmk.cdf(prob, s1.left.x)
         # println("added1 ", (; s1, p))
     end
 
     lasts = s1
     for s in segsz
         if s.left.y > 0 || s.right.y > 0
-            p += ProbUtil.cdf(prob, s.right.x) - ProbUtil.cdf(prob, s.left.x)
+            p += pmk.cdf(prob, s.right.x) - pmk.cdf(prob, s.left.x)
             # println("added2 ", (; s, p))
         end
         lasts = s
@@ -76,7 +77,7 @@ function calcprobprofit(prob, segsz::SegmentsWithZeros)
 
     s = lasts
     if s.right.y > 0 || s.slope > 0
-        p += 1 - ProbUtil.cdf(prob, s.right.x)
+        p += 1 - pmk.cdf(prob, s.right.x)
         # println("added3 ", (; s, p))
     end
 

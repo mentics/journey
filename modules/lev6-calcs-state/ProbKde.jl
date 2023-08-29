@@ -257,13 +257,13 @@ function update()
     return
 end
 
-using Serialization
-function saveData()
-    serialize(makePath(:varbins), VarBins[])
-    serialize(makePath(:kdes), Kdes[])
-    serialize(makePath(:kdeinterps), KdeInterps[])
-    return
-end
+# using Serialization
+# function saveData()
+#     serialize(makePath(:varbins), VarBins[])
+#     serialize(makePath(:kdes), Kdes[])
+#     serialize(makePath(:kdeinterps), KdeInterps[])
+#     return
+# end
 
 function loadData()
     println("Loading ProbKde")

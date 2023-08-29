@@ -1,9 +1,11 @@
 module ThreadUtil
 import Base.Threads:@spawn
+import ThreadPools
 
 export Atomic, resetAtomics, runSync, wrapErr, spawnWrapped, bg
 export sleepWait, lockNotify
 
+# TODO: this is built in now or something?
 mutable struct Atomic{T}
     @atomic count::T
 end
@@ -80,6 +82,25 @@ function bg(f)
         @info "bg task done"
         # whenDone()
     end
+end
+
+function loop(f, xs, args...)
+    stop = false
+    ThreadPools.twith(ThreadPools.QueuePool(2, 11)) do pool
+        ThreadPools.@tthreads pool for x in xs
+            !stop || return
+            thid = Threads.threadid()
+            try
+                f(x, args...)
+                yield()
+            catch e
+                stop = true
+                println("Exception in thid:$(thid) thrown for x:$(x) and args:$(args)")
+                rethrow(e)
+            end
+        end
+    end
+    return
 end
 
 #region Local

@@ -1,45 +1,23 @@
 module Explore
-using Dates
-using ThreadPools
+using Dates, ThreadPools
 import Makie
 using BaseTypes, LegTypes
 import Keepers:Keeper
-import SH, DateUtil
+import SH, DateUtil, Calendars
 import CollUtil:sortuple
 import Positions
 using OutputUtil
 import VectorCalcUtil
 import DataFiles
 using DataFrames, StatsBase
+using ProbMultiKde
 
-const CONFIG8 = Ref((;
+const CONFIG10 = Ref((;
     adjustprices = C(-0.01),
     kelprobadjust = 0.1
 ))
 
 #region test
-function test1(x, extra=nothing)
-    a = 2*x
-    b = if isnothing(extra)
-        a
-    else
-        a + extra
-    end
-    c = sqrt(b)
-    return c
-end
-
-function test2(x; extra=nothing)
-    a = 2*x
-    b = if isnothing(extra)
-        a
-    else
-        a + extra
-    end
-    c = sqrt(b)
-    return c
-end
-
 function testCalcKel()
     curp = market().curp
     oqs = filter!(isCall, Chains.chain(expir(1)).chain)
@@ -80,7 +58,7 @@ import LinesLeg as LL
 function testmc(r; numiter=1000, curp=market().curp, prob=Between.makeprob2(r.lms, curp).prob)
     lms = r.lms
     risk = 100 * r.risk
-    segs = LL.toSegments(lms, CONFIG8[].adjustprices)
+    segs = LL.toSegments(lms, CONFIG10[].adjustprices)
     bal = 10000.0
     netsum = 0.0
     pnlratesum = 0.0
@@ -135,16 +113,23 @@ struct Result{T}
     r::T
 end
 
-Base.isless(a::Result{T}, b::Result{T}) where T = a.r.evrate < b.r.evrate
+# Base.isless(a::Result{T}, b::Result{T}) where T = a.r.evrate < b.r.evrate
+Base.isless(a::Result, b::Result) = a.r.evrate < b.r.evrate
 
 Base.vec(keeper::Keeper{Result}) = map(x -> x.r, keeper.store)
 
 run(inc::Integer; kws...) = run([inc]; kws...)
 function run(incsin=1:3; skipto=nothing, kws...)
+    kde = ProbMultiKde.make_kde(now(UTC))
+    # xpirs = Expirations.xpirsinrange(1, 4)
+    xpirs = Expirations.expirs()[1:2]
     incs = collect(incsin)
     if isnothing(skipto)
+        function f_to_oqss(xpir, curp)
+            return ChainUtil.oqssEntry(chain(xpir).chain, curp; legsCheck=Positions.positions(), shortbidgt=max(CZ,-CONFIG10[].adjustprices))
+        end
         res = map(incs) do inc
-            findkel(inc; kws...)
+            findkel(f_to_oqss, kde, xpirs, inc; kws...)
         end
         global krun = res
     else
@@ -186,35 +171,34 @@ function opentrade(r; minextra=P(0.01))
     Trading.open_trade(market(), r.lms, r.neto; pre=false, minextra);
 end
 
-function findkel(inc; keep=100)
-    kde = usekde()
+function make_ctx_now()
     mkt = market()
     curp = mkt.curp
     ts = mkt.tsMarket
-    date = Date(ts)
-    println("Finding kel for curp: $(curp)")
-    # xpirs = Expirations.xpirsinrange(1, 4)
-    xpirs = Expirations.expirs()[1:2]
+    (;ts, date=Date(ts), kde, curp)
+end
+make_ctx(ts, kde, curp) = (;ts, date=Date(ts), kde, curp)
+
+function findkel(f_xpir_to_oqss, ctx, xpirtss, incs; keep=100)
+    println("Finding kel for curp: $(ctx.curp)")
     ress = [Keeper{Result}(keep) for _ in 1:Threads.nthreads()]
-    # kelly_buffer = [Vector{NTuple{3,Float64}}(undef, 500) for _ in 1:Threads.nthreads()]
-    # kelly_buffer = [Matrix{Float64}(undef, 3, 500) for _ in 1:Threads.nthreads()]
     kelly_buffer = [Kelly.make_buf() for _ in 1:Threads.nthreads()]
-    global kprobs = Dict{Any, Any}()
-    for xpir in xpirs
+    # global kprobs = Dict{Any, Any}()
+    for xpirts in xpirtss
+        xpir = Date(xpirts)
         println("Searching xpir: $(xpir)")
-        xpirts = Calendars.getMarketClose(xpir)
-        # prob = Between.makeprob(xpir, curp)
-        # TODO: it's getting chain twice
-        prob = makeprob(kde, curp, ts, xpirts)
-        riskrat = calcriskrat(date, xpir)
-        ctx = (;curp, prob, riskrat, xpir, kelly_buffer)
-        kprobs[xpir] = prob
-        oqss = ChainUtil.oqssEntry(chain(xpir).chain, curp; legsCheck=Positions.positions(), shortbidgt=max(CZ,-CONFIG8[].adjustprices))
-        println("num calls $(length(oqss.call.long))")
-        println("num puts $(length(oqss.put.long))")
-        1 in inc && findkel1!(ress, ctx, oqss)
-        2 in inc && findkel2!(ress, ctx, oqss)
-        3 in inc && findkel3!(ress, ctx, oqss)
+        oqss = f_xpir_to_oqss(xpirts, ctx.curp)
+        # println("num calls $(length(oqss.call.long))")
+        # println("num puts $(length(oqss.put.long))")
+        # TODO: messy concating these after they were just separated
+        oqs = vcat(oqss.call.long, oqss.put.long)
+        prob = ProbMultiKde.makeprob(ctx.kde, ctx.curp, ctx.ts, xpirts, oqs)
+        riskrat = calcriskrat(ctx.date, xpir)
+        ctx2 = (;ctx.curp, prob, riskrat, xpir, kelly_buffer)
+        # kprobs[xpir] = prob
+        1 in incs && findkel1!(ress, ctx2, oqss)
+        2 in incs && findkel2!(ress, ctx2, oqss)
+        3 in incs && findkel3!(ress, ctx2, oqss)
     end
     println("Finished searching")
     # res = vcat(ress...)
@@ -241,9 +225,9 @@ calcevrate(evret, xpir, date) = evret * DateUtil.timult(date, xpir)
 # calcret(r, date=today()) = r.kel * calcrate(r, date)
 
 function make_leg(oq, side)
-    lm = LegMetaOpen(oq, side; adjustprices=CONFIG8[].adjustprices)
+    lm = LegMetaOpen(oq, side; adjustprices=CONFIG10[].adjustprices)
     if SH.getBid(lm) == 0
-        global kmakeleg=(;adjust=CONFIG8[].adjustprices, oq, side, lm)
+        global kmakeleg=(;adjust=CONFIG10[].adjustprices, oq, side, lm)
         error("bid 0")
     end
     return lm
@@ -332,7 +316,7 @@ function check!(ress, ctx, lms)
             xpir = ctx.xpir
             evrate = calcevrate(evret, xpir, today())
             probprofit = Between.calcprobprofit(ctx.prob, segsz)
-            if probprofit > 0.7
+            if probprofit >= 0.72
                 push!(ress[thid], Result((;ev, kel, evret, evrate, risk, xpir, lms, probprofit, netos, neto=sum(netos))))
             end
         end
@@ -371,7 +355,7 @@ function calckel(prob, riskrat::Real, lms::Coll{<:LegLike})
 end
 
 function calckel(buf, prob, riskrat::Real, segs, segsz)
-    probadjust = CONFIG8[].kelprobadjust
+    probadjust = CONFIG10[].kelprobadjust
     risk = riskrat * max(Pricing.calcMarg(prob.center, segs))
     try
         return (;Kelly.calckel(buf, prob, risk, segsz; probadjust)..., risk)
@@ -518,157 +502,20 @@ end
 #     end
 # end
 
-function ntm4s(ts, xpir, curp, oqs, style)
-    f_extrin = style == Style.call ? OptionUtil.extrin_call : OptionUtil.extrin_put
-    # TODO: could use that heap thing to do this more efficiently nextrem ?
-    sort!(oqs; by=oq -> abs(curp - SH.getStrike(oq)))
-    oq4 = oqs[1:4]
-    fntm = DataFiles.make_ntm_data(f_extrin, "", style)
-    return fntm((ts,), (xpir,), curp, SH.getStrike.(oq4), SH.getBid.(oq4), SH.getAsk.(oq4))
-end
-
-import Calendars, OptionUtil
-function makekdeargs(xpirts::DateTime)
-    mkt = market()
-    curp = mkt.curp
-    ts = mkt.tsMarket
-    xpirts = Calendars.getMarketClose(xpir)
-    makekdeargs(curp, ts, xpirts)
-end
-function makekdeargs(curp, ts, xpirts::DateTime)
-    chain = Chains.chain(Date(xpirts)).chain
-
-    calltex, _, callvol, _ = ntm4s(ts, xpirts, curp, filter(isCall, chain), Style.call)
-    puttex, _, putvol, _ = ntm4s(ts, xpirts, curp, filter(isPut, chain), Style.put)
-    @assert calltex == puttex # TODO: remove
-    tex = calltex
-    logvol = log(mean((callvol, putvol)))
-    return (;tex, logvol)
-end
-
-struct Extent2
-    mn::Float64
-    mx::Float64
-end
-
-struct Xs2
-    xs::Vector{Float64}
-    numbins::Int
-    binwidth::Float64
-end
-
-struct Transform3
-    ad::NTuple{3, Float64}
-    scale::NTuple{3, Float64}
-end
-
-struct KDENew7
-    m::Array{Vector{NTuple{3,Float64}}, 3}
-    txs::Transform3
-    width::Float64
-    extents::NTuple{3, Extent2}
-    xs::Ref{Xs2}
-end
-
-struct ProbKde7{S}
-    src::S
-    ts::DateTime
-    center::Float64
-    pdf::Vector{Float64}
-    cdf::Vector{Float64}
-    xs::Xs2
-end
-
-# struct TheKde
-#     kde::KDEMulti{Float64}
-#     xmin::Float64
-#     xmax::Float64
-# end
-
-function ProbUtil.cdf(prob::ProbKde7, x)
-    xr = x / prob.center
-    # len = length(prob.cdf)
-    # binwidth = (prob.xmax - prob.xmin) / (len-1)
-    (;mn, mx) = getxextent(prob)
-    xr > mn || return 0.0
-    xr < mx || return 1.0
-    # indleft = floor(Int, 1 + (xr - prob.xmin) / binwidth)
-    # indright = indleft + 1
-    xs = getxs(prob)
-    binwidth = getbinwidth(prob)
-    # indright = searchsortedfirst(xs, xr)
-    indright = floor(Int, 2 + (xr - mn) / binwidth) # this was faster: 19.7 ns vs. 25.4 ns
-    # @show indright indright2
-    indleft = indright - 1
-    indleft > 0 || error("cdf: indleft > 0")
-    # xin = xr - prob.xmin
-    # xleft = (indleft-1) * binwidth
-    # xright = (indright-1) * binwidth
-    xin = xr
-    xleft = xs[indleft]
-    xright = xs[indright]
-    @assert xleft <= xin <= xright string((;xleft, xin, xright))
-    @assert xs[indleft] <= xr <= xs[indright] string((;xsleft=xs[indleft], xr, xsright=xs[indright]))
-    rightratio = (xin - xleft) / (xright - xleft)
-    # global kcdfargs = (prob, x)
-    rightpart = rightratio * prob.cdf[indright]
-    leftpart = (1.0 - rightratio) * prob.cdf[indleft]
-    # @show indleft indright xin xleft xright prob.cdf[indleft] prob.cdf[indright] rightratio leftpart rightpart
-    res = leftpart + rightpart
-    @assert res >= 0.0 "assertion failed, prob cdf >= 0: $(res)"
-    res > 1e-10 || return 0.0
-    res < (1.0 - 1e-10) || return 1.0
-    return res
-end
-
-# getxmin(prob::ProbKde7) = prob.src.extents[1].mn
-# getxmax(prob::ProbKde7) = prob.src.extents[1].mx
-getxs(prob::ProbKde7) = prob.xs.xs
-getxextent(prob::ProbKde7) = prob.src.extents[1]
-getbinwidth(prob::ProbKde7) = prob.xs.binwidth
+# getxmin(prob::KdeProb) = prob.src.extents[1].mn
+# getxmax(prob::KdeProb) = prob.src.extents[1].mx
 
 import DrawUtil
-DrawUtil.drawprob(prob::ProbKde7; kws...) = DrawUtil.drawdist!(DrawUtil.getAxis(;newFig=true), prob.center, prob.xs.xs, probdispvals(prob); kws...)
-DrawUtil.drawprob!(prob::ProbKde7; kws...) = DrawUtil.drawdist!(DrawUtil.getAxis(;newFig=false), prob.center, prob.xs.xs, probdispvals(prob); kws...)
-probdispvals(prob::ProbKde7) = ( k = 0.01 / xswidth(prob) ; prob.pdf .* k )
-xswidth(prob::ProbKde7) = prob.xs.xs[2] - prob.xs.xs[1]
+DrawUtil.drawprob(prob::KdeProb; kws...) = DrawUtil.drawdist!(DrawUtil.getAxis(;newFig=true), prob.center, prob.xs.xs, probdispvals(prob); kws...)
+DrawUtil.drawprob!(prob::KdeProb; kws...) = DrawUtil.drawdist!(DrawUtil.getAxis(;newFig=false), prob.center, prob.xs.xs, probdispvals(prob); kws...)
+probdispvals(prob::KdeProb) = ( k = 0.01 / xswidth(prob) ; prob.pdf .* k )
+xswidth(prob::KdeProb) = prob.xs.xs[2] - prob.xs.xs[1]
 
-function makeprob(kde, xpir; kws...)
-    mkt = market()
-    return makeprob(kde, mkt.curp, mkt.tsMarket, Calendars.getMarketClose(xpir); kws...)
-end
-
-# makeprob(tkde, curp, xpir::Date) = makeprob(tkde, curp, Calendars.getMarketClose(xpir))
-function makeprob(kde, curp, ts::DateTime, xpirts::DateTime; numbins=600, k=0.001)
-    (;tex, logvol) = makekdeargs(curp, ts, xpirts)
-    sxs = kde_xs(kde, numbins)
-    xs = sxs.xs
-
-    # coord = [0.0, logvol, tex]
-    cdfvals = Vector{Float64}(undef, numbins)
-    pdfvals = Vector{Float64}(undef, numbins)
-    for i in 1:numbins
-        # coord[1] = xs[i]
-        coord = (xs[i], logvol, tex)
-        pdfvals[i] = kde_pdf(kde, coord, k)
-    end
-    VectorCalcUtil.normalize!(pdfvals)
-    cdfvals = accumulate(+, pdfvals)
-    return ProbKde7(kde, ts, F(curp), pdfvals, cdfvals, sxs)
-end
-
-function tsx_for_kde()
-    tsx = DataFiles.dftsx()
-    dropmissing!(tsx, [:ret, :logret])
-    global ktsx = tsx
-    return tsx
-end
-
-function data_from_tsx(tsx, len)
-    len_tot = length(tsx.ts)
-    inds = len > 0 ? (1:len) : ((len_tot+len+1):len_tot)
-    return [[tsx.ret[i], tsx.logvol[i], tsx.tex[i]] for i in inds]
-end
+# function data_from_tsx(tsx, len)
+#     len_tot = length(tsx.ts)
+#     inds = len > 0 ? (1:len) : ((len_tot+len+1):len_tot)
+#     return [[tsx.ret[i], tsx.logvol[i], tsx.tex[i]] for i in inds]
+# end
 
 # function kde_from_tsx(tsx, len)
 #     return TheKde(make_kde(data_from_tsx(tsx, len)), extrema(first, data)...)
@@ -741,83 +588,13 @@ end
 #     end
 # end
 
-function usekde(;refresh=false)
-    if refresh || !isdefined(@__MODULE__, :kkde)
-        tsx = tsx_for_kde()
-        global kkde = calckde(tsx)
-    end
-    return kkde
-end
-
-function calckde(tsx=ktsx; len=-100000, gridcount=20, area=4)
-    m = [Vector{NTuple{3,Float64}}() for _ in 1:gridcount, _ in 1:gridcount, _ in 1:gridcount]
-
-    len_tot = length(tsx.ts)
-    inds = len > 0 ? (1:len) : ((len_tot+len+1):len_tot)
-    data = (tsx.ret[inds], tsx.logvol[inds], tsx.tex[inds])
-    extents = map(d -> Extent2(extrema(d)...), data)
-    tfs = VectorCalcUtil.fit_01.(data)
-
-    tx = Transform3(map(tf -> tf.ad, tfs), map(tf -> tf.scale, tfs))
-
-    width = 1.0 / (gridcount - 1)
-    gridcs = [togrid(tfs[i].v, width) for i in eachindex(tfs)]
-
-    # coord = zeros(3)
-    for i in eachindex(tfs[1].v)
-        coord = (tfs[1].v[i], tfs[2].v[i], tfs[3].v[i])
-        for x in toarea(gridcs[1][i], area, gridcount), y in toarea(gridcs[2][i], area, gridcount), z in toarea(gridcs[3][i], area, gridcount)
-            push!(m[x, y, z], coord)
-        end
-    end
-    return KDENew7(m, tx, width, extents, Xs2([], 0, 0.0))
-end
-
-@inline togrid(x, width) = 1 .+ round.(Int, x ./ width)
-@inline toarea(mid::Integer, width::Integer, gridcount::Integer) = (max(1, mid - width)):(min(gridcount, mid + width))
-
-function kde_pdf(kde::KDENew7, x, k)
-    xin = txin(kde, x) # (x .+ kde.txs.ad) .* kde.txs.scale
-    coord = togrid.(xin, kde.width)
-    # @show coord
-    obs = kde.m[coord...]
-    dens = kernel(obs, xin, k)
-    return dens
-end
-
-txin(kde::KDENew7, x) = (x .+ kde.txs.ad) .* kde.txs.scale
-txout(kde::KDENew7, x) = (x ./ kde.txs.scale) .- kde.txs.ad
-
-function kernel(obs, x, k)
-    # e^(-(obs - x)^2/k)
-    # TODO: multikde uses prod() instead of sum?
-    global kobs = obs
-    return sum(map(obs) do o
-        exp.(-dot2(o .- x) / k)
-    end; init=0.0)
-    # return sum(exp.(-dot2.(tsub.(obs, x)) / k))
-end
-
-@inline dot2(v::NTuple{3,Float64}) = return v[1]^2 + v[2]^2 + v[3]^2
-# @inline dot2(v::Vector{Float64}) = return v[1]^2 + v[2]^2 + v[3]^2
-# @inline tsub(o, x) = o .- x
-
-function kde_xs(kde::KDENew7, numbins)
-    if kde.xs[].numbins != numbins
-        kde.xs[] = calcxs(kde, numbins)
-    end
-    return kde.xs[]
-    # return Xs2(kde.xs[].xs, numbins, kde.xs[].binwidth)
-end
-
-function calcxs(kde::KDENew7, numbins)
-    mn, mx = kde_xtrem(kde)
-    binwidth = (mx - mn) / (numbins - 1)
-    xs = collect(map(i -> mn + i * binwidth, 0:(numbins-1)))
-    return Xs2(xs, numbins, binwidth)
-end
-
-kde_xtrem(kde::KDENew7) = ( ex = kde.extents[1] ; return ex.mn, ex.mx )
+# function usekde(;refresh=false)
+#     if refresh || !isdefined(@__MODULE__, :kkde)
+#         tsx = tsx_for_kde()
+#         global kkde = calckde(tsx)
+#     end
+#     return kkde
+# end
 
 function drawfield(m)
     inds = reshape(CartesianIndices(m), prod(size(m)))
@@ -832,7 +609,7 @@ function drawfield(m)
     Makie.cam3d_cad!(scene)
 end
 
-function drawrandfield(kde::KDENew7, num=100; k=0.001)
+function drawrandfield(kde::GridKde, num=100; k=0.001)
     # pts = Vector{Vector{Float64}}()
     pts = Vector{NTuple{3,Float64}}()
     denss = Vector{Float64}()

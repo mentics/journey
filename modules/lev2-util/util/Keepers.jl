@@ -8,6 +8,7 @@ struct Keeper{T}
     end
 end
 
+# TODO: optimize keeping top
 function Base.push!(keeper::Keeper{T}, x::T) where T
     if isempty(keeper.store) || length(keeper.store) < capacity(keeper.store) || x > keeper.store[end]
         pushfirst!(keeper.store, x)

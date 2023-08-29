@@ -25,8 +25,8 @@ export getTargetDate
 
 export to, tos, tosn, tosnn, combineTo, mapFlattenTo
 
-export v
-(v(x::Dict{K,V})::Vector{V}) where {K,V} = collect(values(x))
+# export v
+# (v(x::Dict{K,V})::Vector{V}) where {K,V} = collect(values(x))
 
 const Vals = Vector{Float64}
 

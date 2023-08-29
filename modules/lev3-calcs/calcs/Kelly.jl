@@ -1,16 +1,16 @@
 module Kelly
 using Roots, LoopVectorization
 using BaseTypes, ProbTypes
-import ProbUtil
+import ProbMultiKde as pmk
 
 struct Buf
     po::Vector{Float64}
     outcome::Vector{Float64}
     p::Vector{Float64}
     Buf() = new(
-        Vector{Float64}(undef, 500),
-        Vector{Float64}(undef, 500),
-        Vector{Float64}(undef, 500)
+        Vector{Float64}(undef, 1017),
+        Vector{Float64}(undef, 1017),
+        Vector{Float64}(undef, 1017)
     )
 end
 
@@ -28,9 +28,8 @@ using OutputUtil
 issame(x1, x2) = ((x1 / x2) ≈ 1.0) || (abs(x1) < 1e-12 && abs(x2) < 1e-12)
 
 # https://math.stackexchange.com/a/662210/235608
-const PROB_INTEGRAL_WIDTH2 = 1.0
 # Commit, not risk, because in the formula, it's balance/commit to get number of contracts
-function calckel(buf::Buf, prob, commit::Real, segsWithZeros; dpx=PROB_INTEGRAL_WIDTH2, probadjust=0.0)
+function calckel(buf::Buf, prob, commit::Real, segsWithZeros; probadjust=0.0)
     dpx = 2 * prob.center * prob.xs.binwidth
     if commit <= 0.0
         println("Invalid commit:$(commit) in calckel")
@@ -42,7 +41,7 @@ function calckel(buf::Buf, prob, commit::Real, segsWithZeros; dpx=PROB_INTEGRAL_
     ev = 0.0
     for seg in segsWithZeros
         x_right = seg.right.x
-        cdfRight = ProbUtil.cdf(prob, x_right)
+        cdfRight = pmk.cdf(prob, x_right)
         if seg.slope == 0.0
             # @assert issame(seg.left.y, seg.right.y) "seg.y's not the same: left:$(seg.left) right:$(seg.right)"
             outcome = seg.left.y / commit
@@ -59,7 +58,12 @@ function calckel(buf::Buf, prob, commit::Real, segsWithZeros; dpx=PROB_INTEGRAL_
         else
             # chop it into pieces across sloped region
             span = x_right - seg.left.x
-            num = ceil(span / dpx)
+            dpx2 = max(dpx, span / (1017 - pbi))
+            # TODO: would like this smaller
+            if dpx2 > 0.5
+                println("WARN: dpx:$(dpx2) too high")
+            end
+            num = ceil(span / dpx2)
             width = span / num
             w13 = width / 3
             w23 = width * 2 / 3
@@ -73,7 +77,7 @@ function calckel(buf::Buf, prob, commit::Real, segsWithZeros; dpx=PROB_INTEGRAL_
 
                 # outcome = (outcomeLeft + outcomeStep / 2) / commit
                 # outcome >= -1.0 || error("Kelly: outcome:$(outcome) < -1.0")
-                # cdfR2 = ProbUtil.cdf(prob, right)
+                # cdfR2 = pmk.cdf(prob, right)
                 # p = cdfR2 - cdfLeft
                 # p *= outcome > 0 ? 1.0 - probadjust : 1.0 + probadjust
                 # po = p * outcome
@@ -92,9 +96,9 @@ function calckel(buf::Buf, prob, commit::Real, segsWithZeros; dpx=PROB_INTEGRAL_
                 lr1 = left + w13
                 lr2 = left + w23
                 @assert lr1 < lr2 < right
-                cdflr1 = ProbUtil.cdf(prob, lr1)
-                cdflr2 = ProbUtil.cdf(prob, lr2)
-                cdflr3 = ProbUtil.cdf(prob, right)
+                cdflr1 = pmk.cdf(prob, lr1)
+                cdflr2 = pmk.cdf(prob, lr2)
+                cdflr3 = pmk.cdf(prob, right)
                 # @assert cdflr1 <= cdflr2 <= cdflr3
                 if !(cdflr1 <= cdflr2 <= cdflr3)
                     @show lr1 lr2 right cdflr1 cdflr2 cdflr3
@@ -122,6 +126,12 @@ function calckel(buf::Buf, prob, commit::Real, segsWithZeros; dpx=PROB_INTEGRAL_
 
                 ev += ponew
                 pbi += 1
+
+                if pbi > 1017
+                    global kargs = (;buf, prob, commit, segsWithZeros)
+                    global kstate = (;num)
+                end
+
                 ptotal += pnew
                 buf.po[pbi] = ponew
                 buf.outcome[pbi] = outcomenew

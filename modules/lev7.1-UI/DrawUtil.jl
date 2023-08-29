@@ -153,7 +153,7 @@ function __init__()
     if ccall(:jl_generating_output, Cint, ()) != 1
         println("Loading DrawUtil")
         # This makes it plot in separate window instead of in VSCode.
-        GLMakie.activate!(true)
+        # GLMakie.activate!(true)
         GLMakie.set_theme!(GLMakie.theme_black())
         GLMakie.update_theme!(fontsize=12)
         GLMakie.set_window_config!(;
