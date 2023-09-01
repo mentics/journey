@@ -4,9 +4,6 @@ using BaseTypes, MarketDurTypes
 using Globals, DateUtil, LogUtil, ThreadUtil, MarketDurUtil, FileUtil
 using TradierData
 
-export cal
-const cal = @__MODULE__
-
 export isMarketOpen, nextMarketChange, getMarketOpen, getMarketClose, getMarketTime
 export calcTex, calcDurToExpr
 
@@ -17,8 +14,8 @@ function isMarketOpen()
 end
 # TODO: change name to mktChangeNext
 nextMarketChange()::DateTime = ( check() ; MktState.nextChange )
-getMarketOpen(d::Date)::DateTime = fromMarketTZ(d, first(getMarketTime(d).opens))
-getMarketClose(d::Date)::DateTime = fromMarketTZ(d, last(getMarketTime(d).opens))
+getMarketOpen(d::Date)::DateTime = isBusDay(d) ? fromMarketTZ(d, first(getMarketTime(d).opens)) : error("Not a bday: $(d)")
+getMarketClose(d::Date)::DateTime = isBusDay(d) ? fromMarketTZ(d, last(getMarketTime(d).opens)) : error("Not a bday: $(d)")
 # DateTime(astimezone(ZonedDateTime(DateTime("$(d)T$(cal[d]["open"]["end"])"), tz"America/New_York"), tz"UTC"))
 function getMarketTime(d::Date)::MarketTime
     ensureCal(d)

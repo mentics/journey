@@ -2,19 +2,77 @@ module Kelly
 using Roots, LoopVectorization
 using BaseTypes, ProbTypes
 import ProbMultiKde as pmk
+import Lines:at
 
-struct Buf
+struct ParamsFunction{F,P}
+    f::F
+    p::P
+end
+function (pf::ParamsFunction{F,P})(x) where {F,P}
+    pf.f(x, pf.p)
+end
+function testpf()
+    pf = ParamsFunction(pftest, 100)
+    x = 20
+    @show isbits(pf)
+    @btime $pf($x)
+end
+pftest(x, p) = x + p
+
+struct Buf4
     po::Vector{Float64}
     outcome::Vector{Float64}
     p::Vector{Float64}
-    Buf() = new(
-        Vector{Float64}(undef, 1017),
-        Vector{Float64}(undef, 1017),
-        Vector{Float64}(undef, 1017)
-    )
+    function Buf4()
+        len_max = 500
+        po = Vector{Float64}(undef, len_max)
+        o = Vector{Float64}(undef, len_max)
+        p = Vector{Float64}(undef, len_max)
+        return new(po, o, p)
+    end
 end
 
-make_buf() = Buf()
+# struct Buf3{F}
+#     po::Vector{Float64}
+#     outcome::Vector{Float64}
+#     p::Vector{Float64}
+#     f::F
+#     len::Ref{Int}
+#     function Buf3()
+#         len_max = 500
+#         po = Vector{Float64}(undef, len_max)
+#         o = Vector{Float64}(undef, len_max)
+#         len = Ref(0)
+#         f = f_kel(po, o, len)
+#         buf = new{typeof(f)}(po, o, Vector{Float64}(undef, len_max), f, len)
+#         return buf
+#     end
+# end
+
+# f_kel(po, o, len) = function(x)
+#     return 0.5 - x + length(po)/1e+10
+#     # k = len[]
+#     # return 0.5 - x + k/10000
+#     # s = 0.0
+#     # @turbo for i in 1:len[]
+#     #     s += po[i] / (1 + o[i] * x)
+#     # end
+#     # return s
+# end
+
+# triv(x) = 0.5 - x
+
+make_buf() = Buf4()
+
+function kel3(x, (po, o, len))
+    # return 0.5 - x + 1/10000
+    s = 0.0
+    @turbo for i in 1:len
+        s += po[i] / (1 + o[i] * x)
+    end
+    return s
+end
+
 
 #=
 integral(s)[ ( pdf(s) * out(s) ds ) / ( 1 + out(s) x ) ]
@@ -27,145 +85,209 @@ Can be integrated: https://bit.ly/3mud4SA
 using OutputUtil
 issame(x1, x2) = ((x1 / x2) ≈ 1.0) || (abs(x1) < 1e-12 && abs(x2) < 1e-12)
 
+using BenchmarkTools
+function test()
+    buf = make_buf()
+    # buf.len[] = 1
+    prob, commit, segs = kargs
+    @btime Kelly.calckel($buf, $prob, $commit, $segs)
+end
+
 # https://math.stackexchange.com/a/662210/235608
 # Commit, not risk, because in the formula, it's balance/commit to get number of contracts
-function calckel(buf::Buf, prob, commit::Real, segsWithZeros; probadjust=0.0)
-    dpx = 2 * prob.center * prob.xs.binwidth
+function calckel(buf::Buf4, prob, commit::Real, segs, probadjust=0.0)::NamedTuple{(:kel, :evret, :ev), Tuple{Float64, Float64, Float64}}
     if commit <= 0.0
-        println("Invalid commit:$(commit) in calckel")
+        # println("Invalid commit:$(commit) in calckel")
         return (;kel=NaN, evret=NaN, ev=100.0)
     end
-    cdfLeft = 0.0
-    pbi = 0
-    ptotal = 0.0
+
+    len = length(prob.xs.xs)
     ev = 0.0
-    for seg in segsWithZeros
-        x_right = seg.right.x
-        cdfRight = pmk.cdf(prob, x_right)
-        if seg.slope == 0.0
-            # @assert issame(seg.left.y, seg.right.y) "seg.y's not the same: left:$(seg.left) right:$(seg.right)"
-            outcome = seg.left.y / commit
-            outcome >= -1.0 || error("Kelly: outcome:$(outcome) < -1.0")
-            p = cdfRight - cdfLeft
-            p *= outcome > 0 ? 1.0 - probadjust : 1.0 + probadjust
-            po = p * outcome
-            ev += po
-            ptotal += p
-            pbi += 1
-            buf.po[pbi] = po
-            buf.outcome[pbi] = outcome
-            buf.p[pbi] = p
-        else
-            # chop it into pieces across sloped region
-            span = x_right - seg.left.x
-            dpx2 = max(dpx, span / (1017 - pbi))
-            # TODO: would like this smaller
-            if dpx2 > 0.5
-                println("WARN: dpx:$(dpx2) too high")
-            end
-            num = ceil(span / dpx2)
-            width = span / num
-            w13 = width / 3
-            w23 = width * 2 / 3
-            outcomeStep = (span / num) * seg.slope
-
-            left = seg.left.x
-            outcomeLeft = seg.left.y
-            for i in 0:num-1
-                right = left + width
-                # @assert r8(right) <= r8(x_right) string((;right=r5(right), x_right=r5(x_right)))
-
-                # outcome = (outcomeLeft + outcomeStep / 2) / commit
-                # outcome >= -1.0 || error("Kelly: outcome:$(outcome) < -1.0")
-                # cdfR2 = pmk.cdf(prob, right)
-                # p = cdfR2 - cdfLeft
-                # p *= outcome > 0 ? 1.0 - probadjust : 1.0 + probadjust
-                # po = p * outcome
-                # ev += po
-                # pbi += 1
-                # ptotal += p
-                # buf.po[pbi] = po
-                # buf.outcome[pbi] = outcome
-                # buf.p[pbi] = p
-
-                outcome1 = (outcomeLeft + outcomeStep * 1/6) / commit
-                outcome2 = (outcomeLeft + outcomeStep * 3/6) / commit
-                outcome3 = (outcomeLeft + outcomeStep * 5/6) / commit
-                outcomenew = (outcome1 + outcome2 + outcome3) / 3 # TODO: use other mean?
-
-                lr1 = left + w13
-                lr2 = left + w23
-                @assert lr1 < lr2 < right
-                cdflr1 = pmk.cdf(prob, lr1)
-                cdflr2 = pmk.cdf(prob, lr2)
-                cdflr3 = pmk.cdf(prob, right)
-                # @assert cdflr1 <= cdflr2 <= cdflr3
-                if !(cdflr1 <= cdflr2 <= cdflr3)
-                    @show lr1 lr2 right cdflr1 cdflr2 cdflr3
-                    # error("ugh: ", (;lr1, lr2, right, cdflr1, cdflr2, cdflr3))
-                end
-                p1 = cdflr1 - cdfLeft
-                p2 = cdflr2 - cdflr1
-                p3 = cdflr3 - cdflr2
-                @assert p1 >= 0 && p2 >= 0 && p3 >= 0 string((;p1, p2, p3, cdflr1, cdflr2, cdflr3))
-
-                p1 *= outcome1 > 0 ? 1.0 - probadjust : 1.0 + probadjust
-                p2 *= outcome2 > 0 ? 1.0 - probadjust : 1.0 + probadjust
-                p3 *= outcome3 > 0 ? 1.0 - probadjust : 1.0 + probadjust
-                pnew = (p1 + p2 + p3) # TODO: use other mean?
-
-                po1 = p1 * outcome1
-                po2 = p2 * outcome2
-                po3 = p3 * outcome3
-                ponew = (po1 + po2 + po3) # TODO: use other mean?
-
-                # if ponew > po + 1e-3
-                #     @show p pnew outcome outcomenew po ponew
-                #     @show p1 p2 p3 outcome1 outcome2 outcome3 po1 po2 po3
-                # end
-
-                ev += ponew
-                pbi += 1
-
-                if pbi > 1017
-                    global kargs = (;buf, prob, commit, segsWithZeros)
-                    global kstate = (;num)
-                end
-
-                ptotal += pnew
-                buf.po[pbi] = ponew
-                buf.outcome[pbi] = outcomenew
-                buf.p[pbi] = pnew
-
-                left = right;
-                outcomeLeft += outcomeStep
-                cdfLeft = cdflr3 # cdfR2
-                if cdfLeft >= (1.0 - 1e-6)
-                    break
-                end
-            end
-        end
-        cdfLeft = cdfRight;
+    prob_tot = 0.0
+    for i in 1:len
+        x = prob.xs.xs[i]
+        p = prob.prob_mass[i]
+        prob_tot += p
+        o = at(segs, x * prob.center)
+        po = p * o
+        p *= o > 0 ? 1.0 - probadjust : 1.0 + probadjust
+        ev += po
+        # probability, outcome, probability * outcome
+        buf.p[i] = p
+        buf.outcome[i] = o
+        buf.po[i] = po
     end
 
-    @turbo for i in 1:pbi
-        buf.po[i] /= ptotal
-        buf.p[i] /= ptotal
+    # buf.po ./= prob_tot
+    # buf.p ./= prob_tot
+    @turbo for i in 1:len
+        buf.po[i] /= prob_tot
+        buf.p[i] /= prob_tot
     end
-    ev /= ptotal
-    global kpbs = (;po=buf.po[1:pbi], o=buf.outcome[1:pbi], p=buf.p[1:pbi])
+    ev /= prob_tot
 
-    kel = findZero() do x
-        s = 0.0
-        @turbo for i in 1:pbi
-            s += buf.po[i] / (1 + buf.outcome[i] * x)
-        end
-        return s
-    end
+    # global kargs = (;prob, commit, segs, probadjust)
+    # global kpbs = (;po=buf.po[1:len], o=buf.outcome[1:len], p=buf.p[1:len])
+
+    # a = @allocated begin pf = ParamsFunction(kel3, (buf.po, buf.outcome, len)) end
+    # b = @allocated begin kel = findZero(pf) end
+    kel = findZero(ParamsFunction(kel3, (buf.po, buf.outcome, len)))
+    # buf.len[] = len
+    # kel = findZero(buf.f)
+    # kel = findZero(triv)
+    # kel = findZero() do x
+    #     s = 0.0
+    #     # @turbo
+    #     for i in 1:len
+    #         s += buf.po[i] / (1 + buf.outcome[i] * x)
+    #     end
+    #     return s
+    # end
     kel > 0.0 || return (;kel=NaN, evret=NaN, ev)
-    evret = calcevret(kel, buf, pbi)
+    evret = kel * ev # calcevret(kel, buf, len)
     return (;kel, evret, ev)
 end
+
+
+
+# function calckel_old(buf::Buf, prob, commit::Real, segsWithZeros; probadjust=0.0)
+#     dpx = 2 * prob.center * prob.xs.binwidth
+#     if commit <= 0.0
+#         println("Invalid commit:$(commit) in calckel")
+#         return (;kel=NaN, evret=NaN, ev=100.0)
+#     end
+#     cdfLeft = 0.0
+#     pbi = 0
+#     ptotal = 0.0
+#     ev = 0.0
+#     for seg in segsWithZeros
+#         x_right = seg.right.x
+#         cdfRight = pmk.cdf(prob, x_right)
+#         if seg.slope == 0.0
+#             # @assert issame(seg.left.y, seg.right.y) "seg.y's not the same: left:$(seg.left) right:$(seg.right)"
+#             outcome = seg.left.y / commit
+#             outcome >= -1.0 || error("Kelly: outcome:$(outcome) < -1.0")
+#             p = cdfRight - cdfLeft
+#             p *= outcome > 0 ? 1.0 - probadjust : 1.0 + probadjust
+#             po = p * outcome
+#             ev += po
+#             ptotal += p
+#             pbi += 1
+#             buf.po[pbi] = po
+#             buf.outcome[pbi] = outcome
+#             buf.p[pbi] = p
+#         else
+#             left, right = pmk.pdf_trim(prob, seg.left.x, x_right)
+#             !isnan(left) || continue
+#             # chop it into pieces across sloped region
+#             span = x_right - seg.left.x
+#             dpx2 = max(dpx, span / (1017 - pbi))
+#             # TODO: would like this smaller?
+#             if dpx2 > 0.1
+#                 @show x_right seg.left.x span dpx dpx2 pbi
+#                 println("WARN: dpx:$(dpx2) too high")
+#                 global kargs = (;buf, prob, commit, segsWithZeros)
+#                 global kstate = (;x_right, dpx, span, pbi)
+#                 error("stop")
+#             end
+#             num = ceil(span / dpx2)
+#             width = span / num
+#             w13 = width / 3
+#             w23 = width * 2 / 3
+#             outcomeStep = (span / num) * seg.slope
+
+#             # left = seg.left.x # removed because trim call above
+#             # outcomeLeft = seg.left.y # removed because trim call above
+#             outcomeLeft = at(seg, left)
+#             for i in 0:num-1
+#                 right = left + width
+#                 # @assert r8(right) <= r8(x_right) string((;right=r5(right), x_right=r5(x_right)))
+
+#                 # outcome = (outcomeLeft + outcomeStep / 2) / commit
+#                 # outcome >= -1.0 || error("Kelly: outcome:$(outcome) < -1.0")
+#                 # cdfR2 = pmk.cdf(prob, right)
+#                 # p = cdfR2 - cdfLeft
+#                 # p *= outcome > 0 ? 1.0 - probadjust : 1.0 + probadjust
+#                 # po = p * outcome
+#                 # ev += po
+#                 # pbi += 1
+#                 # ptotal += p
+#                 # buf.po[pbi] = po
+#                 # buf.outcome[pbi] = outcome
+#                 # buf.p[pbi] = p
+
+#                 outcome1 = (outcomeLeft + outcomeStep * 1/6) / commit
+#                 outcome2 = (outcomeLeft + outcomeStep * 3/6) / commit
+#                 outcome3 = (outcomeLeft + outcomeStep * 5/6) / commit
+#                 outcomenew = (outcome1 + outcome2 + outcome3) / 3 # TODO: use other mean?
+
+#                 lr1 = left + w13
+#                 lr2 = left + w23
+#                 @assert lr1 < lr2 < right
+#                 cdflr1 = pmk.cdf(prob, lr1)
+#                 cdflr2 = pmk.cdf(prob, lr2)
+#                 cdflr3 = pmk.cdf(prob, right)
+#                 # @assert cdflr1 <= cdflr2 <= cdflr3
+#                 if !(cdflr1 <= cdflr2 <= cdflr3)
+#                     @show lr1 lr2 right cdflr1 cdflr2 cdflr3
+#                     # error("ugh: ", (;lr1, lr2, right, cdflr1, cdflr2, cdflr3))
+#                 end
+#                 p1 = cdflr1 - cdfLeft
+#                 p2 = cdflr2 - cdflr1
+#                 p3 = cdflr3 - cdflr2
+#                 @assert p1 >= 0 && p2 >= 0 && p3 >= 0 string((;p1, p2, p3, cdflr1, cdflr2, cdflr3))
+
+#                 p1 *= outcome1 > 0 ? 1.0 - probadjust : 1.0 + probadjust
+#                 p2 *= outcome2 > 0 ? 1.0 - probadjust : 1.0 + probadjust
+#                 p3 *= outcome3 > 0 ? 1.0 - probadjust : 1.0 + probadjust
+#                 pnew = (p1 + p2 + p3) # TODO: use other mean?
+
+#                 po1 = p1 * outcome1
+#                 po2 = p2 * outcome2
+#                 po3 = p3 * outcome3
+#                 ponew = (po1 + po2 + po3) # TODO: use other mean?
+
+#                 # if ponew > po + 1e-3
+#                 #     @show p pnew outcome outcomenew po ponew
+#                 #     @show p1 p2 p3 outcome1 outcome2 outcome3 po1 po2 po3
+#                 # end
+
+#                 ev += ponew
+#                 pbi += 1
+#                 ptotal += pnew
+#                 buf.po[pbi] = ponew
+#                 buf.outcome[pbi] = outcomenew
+#                 buf.p[pbi] = pnew
+
+#                 left = right;
+#                 outcomeLeft += outcomeStep
+#                 cdfLeft = cdflr3 # cdfR2
+#                 if cdfLeft >= (1.0 - 1e-6)
+#                     break
+#                 end
+#             end
+#         end
+#         cdfLeft = cdfRight;
+#     end
+
+#     @turbo for i in 1:pbi
+#         buf.po[i] /= ptotal
+#         buf.p[i] /= ptotal
+#     end
+#     ev /= ptotal
+#     global kpbs = (;po=buf.po[1:pbi], o=buf.outcome[1:pbi], p=buf.p[1:pbi])
+
+#     kel = findZero() do x
+#         s = 0.0
+#         @turbo for i in 1:pbi
+#             s += buf.po[i] / (1 + buf.outcome[i] * x)
+#         end
+#         return s
+#     end
+#     kel > 0.0 || return (;kel=NaN, evret=NaN, ev)
+#     evret = calcevret(kel, buf, pbi)
+#     return (;kel, evret, ev)
+# end
 
 # NOTE: use this for debugging. Run DrawUtil.draw(:lines, retcurve()) to see the curve it's trying to maximize.
 function retcurve(pbs=kpbs)
@@ -190,36 +312,35 @@ to maximize that, derivative with respect to x
 d/dx = sum( p_i * (o_i / commit) / (1 + x * o_i / commit) )
 =#
 
-probouts() = [(;prob=pb[3].p, outcome=pb[2]) for pb in kpbs]
-devlogret(x) = devlogret(x, probouts())
-function devlogret(x, probouts)
-    sum(po -> po.prob * po.outcome / (1 + x * po.outcome), probouts)
-end
+# probouts() = [(;prob=pb[3].p, outcome=pb[2]) for pb in kpbs]
+# devlogret(x) = devlogret(x, probouts())
+# function devlogret(x, probouts)
+#     sum(po -> po.prob * po.outcome / (1 + x * po.outcome), probouts)
+# end
 
-evlogretpo(x) = evlogretpo(x, probouts())
-function evlogretpo(x, probouts)
-    sum(po -> po.prob * log(max(0.00001, 1.0 + x * po.outcome)), probouts)
-end
-evlogret(x, pbs) = sum(pb -> pb[3].p * log(max(0.00001, 1.0 + x * pb[2])), pbs)
+# evlogretpo(x) = evlogretpo(x, probouts())
+# function evlogretpo(x, probouts)
+#     sum(po -> po.prob * log(max(0.00001, 1.0 + x * po.outcome)), probouts)
+# end
+# evlogret(x, pbs) = sum(pb -> pb[3].p * log(max(0.00001, 1.0 + x * pb[2])), pbs)
 
 # evret adjusted for duration is what we want to maximize
 # pb[2] (outcome) is already divided by commit so it's a percentage return
 # kel is multiplied in there already
 # calcevret(kel, pbs) = sum(pb -> pb[3] * (kel * pb[2]), pbs)
 # calcevret(kel, pbs) = sum(pb -> pb[3] * (kel * pb[2]), eachcol(pbs))
-function calcevret(kel, pbs, len)
-    s = 0
-    # @turbo
-    for i in 1:len
-        # TODO: Isn't this multiplying by probability twice? po is p * b, then p again?
-        s += pbs.p[i] * (kel * pbs.po[i])
-        # if !isfinite(s)
-        #     @show i pbs.p[i] pbs.po[i]
-        #     break
-        # end
-    end
-    return s
-end
+# function calcevret(kel, pbs, len)::Float64
+#     s = 0
+#     @turbo for i in 1:len
+#         # TODO: Isn't this multiplying by probability twice? po is p * b, then p again?
+#         s += pbs.p[i] * (kel * pbs.po[i])
+#         # if !isfinite(s)
+#         #     @show i pbs.p[i] pbs.po[i]
+#         #     break
+#         # end
+#     end
+#     return s
+# end
 
 # calc(pvals, vals) = ded(pvals, vals)
 calc!(pvals, vals) = ded(buf, pvals, vals)
@@ -379,7 +500,7 @@ function kellySimple(probs::AbstractVector{Float64}, rets::AbstractVector{Float6
     findZero(kellySimpleF(probs, rets), min, max)
 end
 
-function findZero(f, mn=0.001, mx=.999)
+function findZero(f, mn=0.001, mx=.999)::Float64
     # left = f(mn)
     # right = f(mx)
     # if left >= 0.0 && right >= 0.0
@@ -390,9 +511,11 @@ function findZero(f, mn=0.001, mx=.999)
             res = solve(ZeroProblem(f, (mn, mx)))
             return isfinite(res) ? res : (f(mx) > 0.0 ? 1.0 : NaN)
         catch e
-            # ignore
-            # showerror(stderr, e)
-            return NaN
+            if e isa ArgumentError
+                return NaN
+            else
+                showerror(stderr, e)
+            end
         end
         # catch e
         #     @error "findZero2" mn mx f(mn) f(mx) f1 f2 (f(mn) * f(mx)) (f(mn) * f(mx) < 0.0)

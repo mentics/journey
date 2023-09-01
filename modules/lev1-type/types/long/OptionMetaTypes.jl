@@ -30,8 +30,8 @@ def(x) = x
 function OptionMeta(delta, theta, phi, vega, rho, gamma, bid_iv, ask_iv, mid_iv)
     return OptionMeta(Greeks(def(delta), def(theta), def(phi), def(vega), def(rho), def(gamma)), def(bid_iv), def(ask_iv), def(mid_iv))
 end
-const MetaZero = OptionMeta()
 OptionMeta(;delta=NaN, theta=NaN, phi=NaN, vega=NaN, rho=NaN, gamma=NaN, bid_iv=NaN, ask_iv=NaN, mid_iv=NaN, kws...) = OptionMeta(delta, theta, phi, vega, rho, gamma, bid_iv, ask_iv, mid_iv)
+const MetaZero = OptionMeta()
 OptionMeta(d::Dict{String,Any}) = OptionMeta(; (Symbol(x[1]) => x[2] for x in d)...)
 function newOptionMeta(om::OptionMeta, dir::DirSQ)
     OptionMeta(multGreeks(dirMult(dir), om.greeks), om.bid_iv, om.ask_iv, om.mid_iv)

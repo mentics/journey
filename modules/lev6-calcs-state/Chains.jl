@@ -55,6 +55,7 @@ using ChainUtil
 # end
 
 using ThreadPools
+chain(xpirts::DateTime; kws...) = chain(Date(xpirts); kws...)
 chain(xpir::Date; kws...)::OptionChain = chains([xpir]; kws...)["SPY"][xpir]
 chain(xpir::Date, sym::String; kws...)::OptionChain = chains([xpir], [sym]; kws...)[sym][xpir]
 # chain(xprs, sym::String; kws...)::OptionChain = chains(xprs, [sym]; kws...)[sym]

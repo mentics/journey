@@ -4,10 +4,10 @@ using DateUtil, DictUtil, ThreadUtil, LogUtil
 
 export cache!, setCache!
 
-function (cache!(provider::Function, ::Type{T}, sym::Symbol, period::Period; up=false)::T) where T
+function (cache!(provider::Function, ::Type{T}, sym::Symbol, period::Period; refresh=false)::T) where T
     return runSync(Lock) do
         prop = get(Props, sym, nothing)
-        if up || isnothing(prop) || prop.ts < (now(UTC) - period)
+        if refresh || isnothing(prop) || prop.ts < (now(UTC) - period)
             prop = updateCache!(sym, provider())
         end
         return prop.val

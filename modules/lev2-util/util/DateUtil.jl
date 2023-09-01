@@ -76,6 +76,8 @@ toDateMarket(ts::DateTime)::Date = Date(ZonedDateTime(ts, MARKET_TZ; from_utc=tr
 # toDateLocal(ts::DateTime)::Date = Date(ZonedDateTime(ts, LOCALZONE; from_utc=true))
 toTimeMarket(ts::DateTime)::Time = Time(ZonedDateTime(ts, MARKET_TZ; from_utc=true))
 toTimeLocal(ts::DateTime)::Time = Time(ZonedDateTime(ts, LOCALZONE; from_utc=true))
+to_local(ts::DateTime) = ZonedDateTime(ts, LOCALZONE; from_utc=true)
+to_local(s::Int) = ZonedDateTime(unix2datetime(s), LOCALZONE; from_utc=true)
 #endregion
 
 #region Parsing
@@ -128,6 +130,8 @@ const MARKET_TZ = tz"America/New_York"
 toDate(z::ZonedDateTime)::Date = Date(astimezone(z, LOCALZONE))
 
 isBusDay(d::Date) = isbday(:USNYSE, d)
+export isbd
+isbd(d::Date) = isbday(:USNYSE, d)
 
 bdays(d1::Date, d2::Date)::Int = bdayscount(:USNYSE, d1, d2)
 # bdaysUntil(dt::Date) = days(Dates.today(), dt)

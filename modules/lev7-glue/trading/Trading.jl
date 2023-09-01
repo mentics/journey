@@ -24,6 +24,8 @@ function open_trade(mkt, legsin, mineto::PT; pre=false, minextra::PT=P(0.02), kw
     println("Created trade:$(tid)")
 
     fills = pos_list_do(Action.open, tid, legs, mineto, extra; pre, kws...)
+    rem = length(legs) - length(fills)
+    global krem_legs = rem == 0 ? nothing : legs[(end - (rem - 1)):end]
     return fills
 end
 
@@ -48,10 +50,12 @@ function close_trade(tid, minetc::PT; pre=false, minextra::PT=P(0.02), curp=mark
     return fills
 end
 
-function pos_list_cont(inds, minet=kminet)
-    legs = klegs[inds]
+function pos_list_cont(minet=kminet) # inds, minet=kminet)
+    legs = krem_legs[inds]
     validate_legs(kaction, legs, minet, kminextra)
     pos_list_do(kaction, ktid, legs, minet, kextra)
+    rem = length(legs) - length(fills)
+    global krem_legs = rem == 0 ? nothing : legs[(end - (rem - 1)):end]
 end
 
 function pos_list_do(action::Action.T, tid, legs, minet::PT, extra::PT=PZ; pre=false, saveforeach::PT=P(0.01), kws...)

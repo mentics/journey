@@ -8,11 +8,14 @@ import CollUtil:sortuple
 import Positions
 using OutputUtil
 import VectorCalcUtil
-import DataFiles
+import DataFiles as dat
 using DataFrames, StatsBase
 using ProbMultiKde
+import ProbMultiKde as pmk
 
-const CONFIG10 = Ref((;
+const ProbLup = Dict{Date,pmk.KdeProb}()
+
+const CONFIG2 = Ref((;
     adjustprices = C(-0.01),
     kelprobadjust = 0.1
 ))
@@ -24,7 +27,7 @@ function testCalcKel()
     sort!(oqs; by=oq -> abs(curp - SH.getStrike(oq)))
     lms = sortuple(SH.getStrike, LegMetaOpen(oqs[1], Side.short), LegMetaOpen(oqs[2], Side.long))
     # lms = discount.(lms, 0.1)
-    DrawUtil.drawprob(kprobs[SH.getExpir(lms)]; color=Makie.RGBA(.1, .1, .5, 0.5))
+    DrawUtil.drawprob(ProbLup[SH.getExpir(lms)]; color=Makie.RGBA(.1, .1, .5, 0.5))
     display(DrawUtil.draw!(:lines, SH.toDraw(lms)))
     return calckel(lms)
 end
@@ -58,7 +61,7 @@ import LinesLeg as LL
 function testmc(r; numiter=1000, curp=market().curp, prob=Between.makeprob2(r.lms, curp).prob)
     lms = r.lms
     risk = 100 * r.risk
-    segs = LL.toSegments(lms, CONFIG10[].adjustprices)
+    segs = LL.toSegments(lms, CONFIG2[].adjustprices)
     bal = 10000.0
     netsum = 0.0
     pnlratesum = 0.0
@@ -109,6 +112,11 @@ using SmallTypes, LegMetaTypes
 using Markets, Expirations, Chains
 import Kelly, ChainUtil, Between, ProbUtil
 
+function prob_test(xpir=expir(1), kde=pmk.make_kde(now(UTC)))
+    prob = pmk.makeprob(kde, market().curp, now(UTC), dat.market_close(xpir), Chains.chain(xpir).chain)
+    return kde, prob
+end
+
 struct Result{T}
     r::T
 end
@@ -119,49 +127,74 @@ Base.isless(a::Result, b::Result) = a.r.evrate < b.r.evrate
 Base.vec(keeper::Keeper{Result}) = map(x -> x.r, keeper.store)
 
 run(inc::Integer; kws...) = run([inc]; kws...)
-function run(incsin=1:3; skipto=nothing, kws...)
-    kde = ProbMultiKde.make_kde(now(UTC))
+function run(incs=1:3; skipto=nothing, kws...)
+    global kcalckel = nothing
+    global kmakeleg = nothing
+    global krun = nothing
+    global kcheck = nothing
+    global kctx = nothing
+
+    # kde = use_kde()
     # xpirs = Expirations.xpirsinrange(1, 4)
     xpirs = Expirations.expirs()[1:2]
-    incs = collect(incsin)
+    # incs = collect(incsin)
     if isnothing(skipto)
-        function f_to_oqss(xpir, curp)
-            return ChainUtil.oqssEntry(chain(xpir).chain, curp; legsCheck=Positions.positions(), shortbidgt=max(CZ,-CONFIG10[].adjustprices))
+        res = findkel(make_ctx_now(), xpirs, incs; kws...) do xpirts, curp
+            return ChainUtil.oqssEntry(chain(xpirts).chain, curp; legsCheck=Positions.positions(), shortbidgt=max(CZ,-CONFIG2[].adjustprices))
         end
-        res = map(incs) do inc
-            findkel(f_to_oqss, kde, xpirs, inc; kws...)
-        end
-        global krun = res
+        # global krun = res
     else
         res = skipto
     end
 
-    DrawUtil.newfig()
-    evrate_max, i_max = findmax(eachindex(res)) do i
-        num = incs[i]
-        rs = res[i]
-        !isempty(rs) || return 0.0
-        r1 = rs[1]
-        lms = r1.lms
-        target = Pricing.price(Action.open, lms)
-        bdaysout = DateUtil.bdays(today(),SH.getExpir(lms))
-        println("$(num): evrate:$(r1.evrate) probprofit:$(r1.probprofit) min:$(r1.neto) target:$(target) risk:$(r1.risk) daysout:$(bdaysout)");
-        DrawUtil.draw!(:lines, SH.toDraw(lms); label="$(i)-pnl")
-        DrawUtil.drawprob!(kprobs[SH.getExpir(lms)]; label="$(i)-prob")
-        return r1.evrate
-    end
-
-    if evrate_max > 0.0
-        r = res[i_max]
-        r1 = r[1]
-        lms = r1.lms
-        println("#$(incs[i_max]) has best")
-        DrawUtil.updateLegend()
-        return res, r1, lms
-    else
+    if isempty(res)
         println("No results")
         return
     end
+
+    r1 = res[1]
+    lms = r1.lms
+    target = Pricing.price(Action.open, lms)
+    bdaysout = DateUtil.bdays(today(),SH.getExpir(lms))
+    println("evrate:$(r1.evrate) probprofit:$(r1.probprofit) min:$(r1.neto) target:$(target) risk:$(r1.risk) daysout:$(bdaysout)");
+    drawres(lms)
+
+    # DrawUtil.newfig()
+    # evrate_max, i_max = findmax(eachindex(res)) do i
+    #     num = incs[i]
+    #     rs = res[i]
+    #     !isempty(rs) || return 0.0
+    #     r1 = rs[1]
+    #     lms = r1.lms
+    #     target = Pricing.price(Action.open, lms)
+    #     bdaysout = DateUtil.bdays(today(),SH.getExpir(lms))
+    #     println("$(num): evrate:$(r1.evrate) probprofit:$(r1.probprofit) min:$(r1.neto) target:$(target) risk:$(r1.risk) daysout:$(bdaysout)");
+    #     DrawUtil.draw!(:lines, SH.toDraw(lms); label="$(i)-pnl")
+    #     DrawUtil.drawprob!(ProbLup[SH.getExpir(lms)]; label="$(i)-prob")
+    #     return r1.evrate
+    # end
+
+    # if evrate_max > 0.0
+    #     r = res[i_max]
+    #     r1 = r[1]
+    #     lms = r1.lms
+    #     println("#$(incs[i_max]) has best")
+    #     DrawUtil.updateLegend()
+    #     return res, r1, lms
+    # else
+    #     println("No results")
+    #     return
+    # end
+    return r1
+end
+
+function drawres(lms)
+    prob = ProbLup[SH.getExpir(lms)]
+    numlegs = length(lms)
+    DrawUtil.newfig()
+    DrawUtil.draw!(:lines, SH.toDraw(lms); label="$(numlegs)-pnl")
+    DrawUtil.drawprob!(prob; label="$(numlegs)-prob")
+    DrawUtil.updateLegend()
 end
 
 import Trading
@@ -173,17 +206,19 @@ end
 
 function make_ctx_now()
     mkt = market()
-    curp = mkt.curp
     ts = mkt.tsMarket
-    (;ts, date=Date(ts), kde, curp)
+    curp = mkt.curp
+    kde = use_kde()
+    (;ts, date=Date(ts), curp, kde)
 end
 make_ctx(ts, kde, curp) = (;ts, date=Date(ts), kde, curp)
 
-function findkel(f_xpir_to_oqss, ctx, xpirtss, incs; keep=100)
+findkel(f_xpir_to_oqss, ctx, xpirs::Coll{Date}, incs; keep=100) = findkel(f_xpir_to_oqss, ctx, Calendars.getMarketClose.(xpirs), incs)
+function findkel(f_xpir_to_oqss, ctx, xpirtss::Coll{DateTime}, incs; keep=100)
+    empty!(ProbLup)
     println("Finding kel for curp: $(ctx.curp)")
     ress = [Keeper{Result}(keep) for _ in 1:Threads.nthreads()]
     kelly_buffer = [Kelly.make_buf() for _ in 1:Threads.nthreads()]
-    # global kprobs = Dict{Any, Any}()
     for xpirts in xpirtss
         xpir = Date(xpirts)
         println("Searching xpir: $(xpir)")
@@ -192,19 +227,16 @@ function findkel(f_xpir_to_oqss, ctx, xpirtss, incs; keep=100)
         # println("num puts $(length(oqss.put.long))")
         # TODO: messy concating these after they were just separated
         oqs = vcat(oqss.call.long, oqss.put.long)
-        prob = ProbMultiKde.makeprob(ctx.kde, ctx.curp, ctx.ts, xpirts, oqs)
+        prob = pmk.makeprob(ctx.kde, ctx.curp, ctx.ts, xpirts, oqs)
         riskrat = calcriskrat(ctx.date, xpir)
         ctx2 = (;ctx.curp, prob, riskrat, xpir, kelly_buffer)
-        # kprobs[xpir] = prob
+        ProbLup[xpir] = prob
         1 in incs && findkel1!(ress, ctx2, oqss)
         2 in incs && findkel2!(ress, ctx2, oqss)
         3 in incs && findkel3!(ress, ctx2, oqss)
     end
     println("Finished searching")
-    # res = vcat(ress...)
-    # return ress
     res = merge(ress, keep)
-    # sort!(res; rev=true, by=r->r.evrate)
     return vec(res)
 end
 
@@ -225,9 +257,14 @@ calcevrate(evret, xpir, date) = evret * DateUtil.timult(date, xpir)
 # calcret(r, date=today()) = r.kel * calcrate(r, date)
 
 function make_leg(oq, side)
-    lm = LegMetaOpen(oq, side; adjustprices=CONFIG10[].adjustprices)
+    # if SH.getBid(oq) > SH.getAsk(oq)
+    #     @show oq side
+    #     global kmakeleg=(;adjust=CONFIG10[].adjustprices, oq, side)
+    #     error("stop")
+    # end
+    lm = LegMetaOpen(oq, side; adjustprices=CONFIG2[].adjustprices)
     if SH.getBid(lm) == 0
-        global kmakeleg=(;adjust=CONFIG10[].adjustprices, oq, side, lm)
+        global kmakeleg=(;adjust=CONFIG2[].adjustprices, oq, side, lm)
         error("bid 0")
     end
     return lm
@@ -254,43 +291,35 @@ end
 
 function findkel3!(ress, ctx, oqss)
     count = zeros(Int, Threads.nthreads())
-    println("Searching calls")
     finish = GenCands.paraSpreads(oqss.call, 4, (_...) -> true) do thid, lms
-        # println("findkel3 checking spread $(SH.getStrike(lms[1])) $(SH.getStrike(lms[2]))")
-        # Threads.@threads
-        twith(ThreadPools.QueuePool(12, 11)) do pool
-            @tthreads pool for oq in oqss.call.long
-                lms2 = sortuple(SH.getStrike, lms..., make_leg(oq, Side.long))
-                # global kcheckargs = (res, ctx, lms2)
-                # error("stop")
-                check!(ress, ctx, lms2)
-            end
-        end
-        count[thid] += length(oqss.call.long)
-        twith(ThreadPools.QueuePool(12, 11)) do pool
-            @tthreads pool for oq in oqss.put.long
-                lms2 = sortuple(SH.getStrike, lms..., make_leg(oq, Side.long))
-                check!(ress, ctx, lms2)
-            end
-        end
-        count[thid] += length(oqss.put.long)
-        return true
-    end
-    finish || return
-    println("Searching puts")
-    GenCands.paraSpreads(oqss.put, 4, (_...) -> true) do thid, lms
-        # Threads.@threads
         for oq in oqss.call.long
             lms2 = sortuple(SH.getStrike, lms..., make_leg(oq, Side.long))
             check!(ress, ctx, lms2)
         end
+        yield()
         count[thid] += length(oqss.call.long)
-        # Threads.@threads
         for oq in oqss.put.long
             lms2 = sortuple(SH.getStrike, lms..., make_leg(oq, Side.long))
             check!(ress, ctx, lms2)
         end
         count[thid] += length(oqss.put.long)
+        yield()
+        return true
+    end
+    finish || return
+    GenCands.paraSpreads(oqss.put, 4, (_...) -> true) do thid, lms
+        for oq in oqss.call.long
+            lms2 = sortuple(SH.getStrike, lms..., make_leg(oq, Side.long))
+            check!(ress, ctx, lms2)
+        end
+        count[thid] += length(oqss.call.long)
+        yield()
+        for oq in oqss.put.long
+            lms2 = sortuple(SH.getStrike, lms..., make_leg(oq, Side.long))
+            check!(ress, ctx, lms2)
+        end
+        count[thid] += length(oqss.put.long)
+        yield()
         return true
     end
     println("Searched $(sum(count)) permutations")
@@ -316,7 +345,7 @@ function check!(ress, ctx, lms)
             xpir = ctx.xpir
             evrate = calcevrate(evret, xpir, today())
             probprofit = Between.calcprobprofit(ctx.prob, segsz)
-            if probprofit >= 0.72
+            if probprofit >= 0.84
                 push!(ress[thid], Result((;ev, kel, evret, evrate, risk, xpir, lms, probprofit, netos, neto=sum(netos))))
             end
         end
@@ -347,18 +376,20 @@ function tosegsz(curp, lms::Coll{<:LegLike})
     return (;segs, segsz, netos)
 end
 
-calckel(lms) = calckel(kprobs[SH.getExpir(lms)], lms)
+calckel(lms) = calckel(ProbLup[SH.getExpir(lms)], lms)
 calckel(prob, lms) = calckel(prob, calcriskrat(today(), SH.getExpir(lms)), lms)
 function calckel(prob, riskrat::Real, lms::Coll{<:LegLike})
     (;segs, segsz) = tosegsz(prob.center, lms)
+    segsz = nothing
+    # TODO: remove segsz if not needed
     calckel(Kelly.make_buf(), prob, riskrat, segs, segsz)
 end
 
 function calckel(buf, prob, riskrat::Real, segs, segsz)
-    probadjust = CONFIG10[].kelprobadjust
+    probadjust = CONFIG2[].kelprobadjust
     risk = riskrat * max(Pricing.calcMarg(prob.center, segs))
     try
-        return (;Kelly.calckel(buf, prob, risk, segsz; probadjust)..., risk)
+        return (;Kelly.calckel(buf, prob, risk, segs, probadjust)..., risk)
     catch e
         global kcalckel = (;prob, risk, segsz, probadjust)
         rethrow(e)
@@ -508,7 +539,7 @@ end
 import DrawUtil
 DrawUtil.drawprob(prob::KdeProb; kws...) = DrawUtil.drawdist!(DrawUtil.getAxis(;newFig=true), prob.center, prob.xs.xs, probdispvals(prob); kws...)
 DrawUtil.drawprob!(prob::KdeProb; kws...) = DrawUtil.drawdist!(DrawUtil.getAxis(;newFig=false), prob.center, prob.xs.xs, probdispvals(prob); kws...)
-probdispvals(prob::KdeProb) = ( k = 0.01 / xswidth(prob) ; prob.pdf .* k )
+probdispvals(prob::KdeProb) = ( k = 0.01 / xswidth(prob) ; prob.prob_mass .* k )
 xswidth(prob::KdeProb) = prob.xs.xs[2] - prob.xs.xs[1]
 
 # function data_from_tsx(tsx, len)
@@ -588,19 +619,16 @@ xswidth(prob::KdeProb) = prob.xs.xs[2] - prob.xs.xs[1]
 #     end
 # end
 
-# function usekde(;refresh=false)
-#     if refresh || !isdefined(@__MODULE__, :kkde)
-#         tsx = tsx_for_kde()
-#         global kkde = calckde(tsx)
-#     end
-#     return kkde
-# end
+using Caches
+use_kde(;refresh=false) = cache!(GridKde, :kde, Hour(8); refresh) do
+    pmk.make_kde(now(UTC))
+end
 
 function drawfield(m)
     inds = reshape(CartesianIndices(m), prod(size(m)))
     ps = [length(m[ind]) for ind in inds]
     xyzs = [Tuple(i) for i in inds]
-    global kxyzs = xyzs
+    # global kxyzs = xyzs
     plot = Makie.scatter(xyzs; color=ps, markersize=5, colormap=:viridis, axis=(type=Makie.Axis3,))
     #  camera=Makie.cam3d_cad!
     display(plot)

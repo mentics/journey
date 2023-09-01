@@ -2,14 +2,13 @@ module ThreadUtil
 import Base.Threads:@spawn
 import ThreadPools
 
-export Atomic, resetAtomics, runSync, wrapErr, spawnWrapped, bg
+export resetAtomics, runSync, wrapErr, spawnWrapped, bg
 export sleepWait, lockNotify
 
-# TODO: this is built in now or something?
-mutable struct Atomic{T}
-    @atomic count::T
+mutable struct Atomic2{T}
+    @atomic value::T
 end
-resetAtomics(ats::Atomic{Int}...) = for at in ats; @atomic at.count = 0 end
+resetAtomics(ats::Atomic2{Int}...) = for at in ats; @atomic at.value = 0 end
 
 # TODO: consolidate (syncOut in RunStats) and put somewhere?
 function runSync(f, lk, args...)
@@ -23,7 +22,11 @@ end
 
 export sync_output
 const lock_output = ReentrantLock()
-sync_output(f) = runSync(f, lock_output)
+# sync_output(f) = runSync(f, lock_output)
+sync_output(out) = runSync(lock_output) do
+    println(out)
+    flush(STDOUT)
+end
 
 function wrapErr(f)
     function(args...)
@@ -85,22 +88,22 @@ function bg(f)
 end
 
 function loop(f, xs, args...)
-    stop = false
+    stop = Atomic2(false)
     ThreadPools.twith(ThreadPools.QueuePool(2, 11)) do pool
         ThreadPools.@tthreads pool for x in xs
-            !stop || return
+            !(@atomic stop.value) || return
             thid = Threads.threadid()
             try
                 f(x, args...)
                 yield()
             catch e
-                stop = true
-                println("Exception in thid:$(thid) thrown for x:$(x) and args:$(args)")
+                @atomic stop.value = true
+                sync_output("Exception in thid:$(thid) thrown for x:$(x) and args:$(args)")
                 rethrow(e)
             end
         end
     end
-    return
+    return @atomic stop.value
 end
 
 #region Local

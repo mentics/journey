@@ -106,6 +106,7 @@ function incDictKey(d::Dict, k1, k2)
 end
 
 export dictFromVals, dictFromKeys
+pairsFromVals(f, vals) = (f(x) => x for x in vals)
 dictFromVals(f, vals) = Dict(f(x) => x for x in vals)
 dictFromKeys(f, keys) = Dict(x => f(x) for x in keys)
 # function toDict(f, v)
@@ -115,5 +116,11 @@ dictFromKeys(f, keys) = Dict(x => f(x) for x in keys)
 #     end
 #     return d
 # end
+
+setindexes!(d::Dict, pairs) = foreach(pairs) do pair
+    d[first(pair)] = last(pair)
+end
+
+set_from_vals!(f, d::Dict, vals) = setindexes!(d, pairsFromVals(f, vals))
 
 end

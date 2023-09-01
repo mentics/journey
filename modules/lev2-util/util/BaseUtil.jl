@@ -1,6 +1,6 @@
 module BaseUtil
 
-export isSomething, coal, @coal, toEnum
+export isSomething, coal, @coal, toEnum, round_step
 
 isSomething(v) = !isnothing(v) && !ismissing(v)
 
@@ -21,5 +21,7 @@ end
 
 toEnum(mod::Module, sym::Symbol) = getproperty(mod, sym)
 toEnum(mod::Module, s::AbstractString) = toEnum(mod, Symbol(s))
+
+round_step(step, x) = round(x / step) * step
 
 end

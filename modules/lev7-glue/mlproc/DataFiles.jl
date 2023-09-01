@@ -8,37 +8,41 @@ using DataStructures
 import StatsBase:mean
 using DateUtil
 using BaseTypes, SmallTypes
-import SH, OptionUtil, CollUtil, Pricing
+import SH, DictUtil, OptionUtil, CollUtil, Pricing
 import Calendars
 using ThreadUtil
 #endregion
 
 
 ############## TODO: 2010, 1 is not loading things that are within xpirs range of the next month? #######
+## If tsx_for_prob is missing any times, it will mess up kde
 
 
 #region Public
-ts_df() = DataFrame(ts_table(); copycols=false)
-tsx_df() = DataFrame(tsx_table(); copycols=false)
+# TODO: can remove this after rebuilding from CSV where I added the filter.
+filter_bday(df) = filter(:ts => ts -> DateUtil.isBusDay(Date(ts)), df)
+
+ts_df() = filter_bday(DataFrame(ts_table(); copycols=false))
+tsx_df() = filter_bday(DataFrame(tsx_table(); copycols=false))
 # oq_df() = DataFrame(oq_table(); copycols=false)
 
 function tsx_for_prob(ts::DateTime; len=10000)
-    df = get_tsx()
+    df = get_tsx_for_prob()
     ind = searchsortedlast(df.ts, ts - Second(1))
     if ind < len
         @show len length(df.ts) ind ts
         error("Insuffient events previous to ts for prob")
     end
     df = df[(ind - len + 1):ind,:]
-    rename!(df, :vol => :extrindt, :logvol => :vol)
+    # rename!(df, :vol => :extrindt, :logvol => :vol)
 end
 
-filter_tsx_prob(ts) = second(ts) == 0 && ts != Calendars.getMarketClose(Date(ts))
+filter_tsx_prob(ts) = is_ts_normal(ts)
 const TSX_CACHE2 = Ref{Union{DataFrame,Nothing}}(nothing)
-function get_tsx()
+function get_tsx_for_prob()
     if isnothing(TSX_CACHE2[])
         df = filter(:ts => filter_tsx_prob, tsx_df())
-        dropmissing!(df, [:ret, :logret])
+        dropmissing!(df, [:ret, :logret, :extrin, :extrindt, :vol])
         TSX_CACHE2[] = df
     else
         df = TSX_CACHE2[]
@@ -46,15 +50,21 @@ function get_tsx()
     return df
 end
 
-estimate_min_ts(;len=10000) = ts_table().ts[len+1]
+const MIN_TS_EST2 = Dict{Int,DateTime}()
+function estimate_min_ts(;len=100000)
+    get!(MIN_TS_EST2, len) do
+        println("estimate_min_ts: Loading tsx")
+        tsx_table().ts[len + div(len, 10) + 1]
+    end
+end
 #endregion Public
 
 #region Local
 
 #region Consts
 const XPIRS_RANGE2 = 0:20
-const NTM_INDS = 1:4
-const TS_MAX = DateTime("2022-09-30T20:00:00")
+const NTM_COUNT = 4
+const TS_MAX2 = DateTime("2023-06-30T20:00:00")
 #endregion
 
 #region Loaders
@@ -86,7 +96,7 @@ tsxs_df(y, m) = DataFrame(tsxs_table(y, m); copycols=false)
 oqs_pre_table(y, m) = Arrow.Table(path_oqs_pre(y, m))
 oqs_pre_df(y, m) = DataFrame(oqs_pre_table(y, m); copycols=false)
 oqs_table(y, m) = Arrow.Table(path_oqs(y, m))
-oqs_df(y, m) = DataFrame(oqs_table(y, m); copycols=false)
+oqs_df(y, m) = filter_bday(DataFrame(oqs_table(y, m); copycols=false))
 
 ts_table() = Arrow.Table(path_ts())
 xpir_table() = Arrow.Table(path_xpir())
@@ -101,7 +111,8 @@ function ts_indexed()
     return (;df, index)
 end
 ts_rows(dftsi, tss) = dftsi.df[getindex.(Ref(dftsi.index), tss),:]
-lup_under(dftsi, tss) = map(lup_under, Ref(dftsi), tss)
+lup_under(dftsi, tss::Vector{DateTime}) = [lup_under(dftsi, ts) for ts in tss]
+#map(lup_under, Ref(dftsi), tss)
 function lup_under(dftsi, ts::DateTime)
     ind = get(dftsi.index, ts, missing)
     return ismissing(ind) ? missing : dftsi.df.under[ind]
@@ -160,23 +171,11 @@ function oq_post(yms=make_yms())
 end
 
 function chains_to_oq_pre(yms=make_yms())
-    stop = false
-    ThreadPools.twith(ThreadPools.QueuePool(2, 11)) do pool
-        ThreadPools.@tthreads pool for (y, m) in yms
-            !stop || return
-            thid = threadid()
-            try
-                df = proc_oq(y, m)
-                Arrow.write(path_oqs_pre(y, m), df)
-                println("Expiration count for $((y,m)): $(size(unique(df.expiration), 1))")
-                println("Thread $(thid) completed $((y,m)) - df size $(size(df, 1))")
-                yield()
-            catch e
-                stop = true
-                println("Exception thrown for $((y,m)), thid:$(thid)")
-                rethrow(e)
-            end
-        end
+    ThreadUtil.loop(yms) do (y, m)
+        df = proc_oq(y, m)
+        Arrow.write(path_oqs_pre(y, m), df)
+        println("Expiration count for $((y,m)): $(size(unique(df.expiration), 1))")
+        println("Thread $(thid) completed $((y,m)) - df size $(size(df, 1))")
     end
     return
 end
@@ -259,7 +258,7 @@ function calc_xpir_price(strikes, xpirtss)
     m = Matrix{Union{Int32,Missing}}(undef, length(strikes), 4)
     for i in eachindex(strikes)
         xpirts = xpirtss[i]
-        xpirts <= TS_MAX || ( m[i,:] .= missing ; continue )
+        xpirts <= TS_MAX2 || ( m[i,:] .= missing ; continue )
         r = oqi_row(xpirts, xpirts, strikes[i])
         if ismissing(r)
             m[i,:] .= missing
@@ -307,7 +306,7 @@ end
 #region ChainsToTsx
 combine_tsx() = combine_dfs(tsxs_df, [:ts, :expiration], path_tsx())
 
-const negative_extrin_count = ThreadUtil.Atomic{Int}(0)
+const negative_extrin_count2 = ThreadUtil.Atomic2{Int}(0)
 
 mid(x1, x2) = (x1 .+ x2) ./ 2
 logdot(x) = log.(x)
@@ -316,44 +315,34 @@ calc_extrindt(extrin, tex) = extrin ./ tex
 calc_extrindt(extrin_c::Real, extrin_p::Real, tex::Real) = mid(extrin_c, extrin_p) / tex
 calc_vol(extrindts) = log.(extrindts)
 
-function calc_vol(curp::Real, tex::Real, oqs)
+function calc_vol(curp::Real, tex::Real, oqs, ts)
     oqs_call = filter(isCall, oqs)
     oqs_put = filter(isPut, oqs)
-    xtrin_call = calc_xtrin(Style.call, curp, oqs_call)
-    xtrin_put = calc_xtrin(Style.put, curp, oqs_put)
-    @show xtrin_call xtrin_put
+    xtrin_call = calc_xtrin(Style.call, curp, oqs_call, ts)
+    xtrin_put = calc_xtrin(Style.put, curp, oqs_put, ts)
     return calc_vol(calc_extrindt(xtrin_call, xtrin_put, tex))
 end
 
 function chains_to_tsx(yms=make_yms())::Nothing
-    @atomic negative_extrin_count.count = 0
-    lupp = ts2under_lupp()
+    @atomic negative_extrin_count2.value = 0
+    tsindex = ts_indexed()
 
-    ThreadPools.twith(ThreadPools.QueuePool(2, 11)) do pool
-        ThreadPools.@tthreads pool for (y, m) in yms
-            try
-                thid = threadid()
-                df = proc_tsx(y, m, lupp)
-                Arrow.write(path_tsxs(y, m), df)
-                println("Expiration count for $((y,m)): $(size(unique(df.expiration), 1))")
-                println("Thread $(thid) completed $((y,m)) - df size $(size(df, 1))")
-                yield()
-            catch e
-                println("Exception thrown for $((y,m)), thid:$(thid)")
-                rethrow(e)
-            end
-        end
+    ThreadUtil.loop(yms) do (y, m)
+        df = proc_tsx(y, m, tsindex)
+        Arrow.write(path_tsxs(y, m), df)
+        println("Expiration count for $((y,m)): $(size(unique(df.expiration), 1))")
+        println("Thread $(Threads.threadid()) completed $((y,m)) - df size $(size(df, 1))")
     end
     # println("Finished threads $(length.((thr_dfs_ts, thr_dfs_xpir, thr_dfs_ntm)))")
     # combineall(thr_dfs_xpir, thr_dfs_ntm)
     return
 end
 
-function proc_tsx(y, m, lupp)
+function proc_tsx(y, m, tsindex)
     fntm_call = f_calc_xtrin(Style.call)
     fntm_put = f_calc_xtrin(Style.put)
-    dfcalls = chains_to_tsx!(DataFrame(calls_table(y, m); copycols=false), lupp, fntm_call)
-    dfputs = chains_to_tsx!(DataFrame(puts_table(y, m); copycols=false), lupp, fntm_put)
+    dfcalls = chains_to_tsx!(DataFrame(calls_table(y, m); copycols=false), tsindex, fntm_call)
+    dfputs = chains_to_tsx!(DataFrame(puts_table(y, m); copycols=false), tsindex, fntm_put)
     df = innerjoin(dfcalls, dfputs; on=[:ts,:expiration], renamecols = "_c" => "_p")
     if !(size(dfcalls, 1) == size(dfputs, 1) == size(df, 1))
         println("DataFrame sizes didn't match")
@@ -365,7 +354,7 @@ function proc_tsx(y, m, lupp)
     return df
 end
 
-function chains_to_tsx!(dfro, lupp, fntm)
+function chains_to_tsx!(dfro, tsindex, fntm)
     df = filter([:ts, :expiration] => filter_xpirs, dfro)
     # df.strikedist = abs.(df.under .- df.strike)
     # sort!(df, [:ts,:expiration,:strikedist])
@@ -375,7 +364,7 @@ function chains_to_tsx!(dfro, lupp, fntm)
     # gdf = combine(gdf, sdf -> first(sdf, NTM_INDS); ungroup=false)
     df = combine(gdf,
         # [:ts,:expiration,:under,:strike,:bid,:ask] => fntm => [:tex,:extrin,:vol,:logvol],
-        [:under,:strike,:bid,:ask] => fntm => :extrin,
+        [:ts, :expiration, :under,:strike,:bid,:ask] => fntm => :extrin,
 
 
         # [:ts,:expiration,:under] => ( function(tss, xpirs, unders)
@@ -384,14 +373,16 @@ function chains_to_tsx!(dfro, lupp, fntm)
         #     return [ret logret]
         # end) => [:ret,:logret],
 
+        :under => first => :under,
+
         :iv => mean => :iv_mean
 
         ; threads=false
     )
 
-    f_ret = (xpirts, under) -> calc_ret(lupp, xpirts, under)
-    transform!(df, [:ts, :expiration] => (ts, xpirts) -> Calendars.calcTex => :tex,
-                   [:ts, :expiration, :under] => f_ret => :ret,
+    f_ret = (xpirtss, unders) -> calc_ret(tsindex, xpirtss, unders)
+    transform!(df, [:ts, :expiration] => ((tss, xpirtss) -> Calendars.calcTex.(tss, xpirtss)) => :tex,
+                   [:expiration, :under] => f_ret => :ret
     )
 
     return df
@@ -401,7 +392,9 @@ end
 #     ret = get(lupp, first(xpirs), missing) / Float64(first(unders))
 #     return ret
 # end
-calc_ret(lupp, xpirts, under) = get(lupp, xpirts, missing) / Float64(under)
+# calc_ret(lupp, xpirts, under) = get(lupp, xpirts, missing) / Float64(under)
+calc_ret(tsindex, xpirtss, unders) = lup_under(tsindex, xpirtss) ./ unders
+# (@show typeof(xpirtss) typeof(unders) ;
 
 # function combineall(dfs_xpir, dfs_ntm)::Nothing
 #     # TODO: maybe don't need spawn because dataframe sort might multithread?
@@ -418,29 +411,25 @@ calc_ret(lupp, xpirts, under) = get(lupp, xpirts, missing) / Float64(under)
 # filter_xpirs(ts, xpir) = bdays(Date(ts), Date(xpir)) in XPIRS_RANGE
 filter_xpirs(ts, xpir) = Dates.value(Date(xpir) - Date(ts)) in XPIRS_RANGE2
 
-# # This must match what happens in chains_to_tsx!
-# f_strikedist(curp) = strike -> abs(curp - strike)
-# function prep_oqs(oqs)
-#     sort(oqs; by=strikedist(curp))
-# end
-
-f_calc_xtrin(style) = (unders, strikes, bids, asks) -> calc_xtrin(style, first(unders), strikes, bids, asks)
-# calc_ntm_data(style, tss, xpirs, unders, strikes, bids, asks) = calc_ntm_data(style, first(tss), first(xpirs), first(unders), strikes, bids, asks)
-
-# function calc_xtrin(style, under::Real, strikes, bids, asks)
-#     inds = sortperm(strikes; rev=true, by=x -> abs(x - curp))[NTM_INDS]
-#     strikes = strikes[inds]
-#     bids = bids[inds]
-#     asks = asks[inds]
-#     return calc_xtrin_top(style, under, strikes, bids, asks)
-# end
-
-function calc_xtrin(style, under::Real, oqs_style)
-    oqs_sorted = sort(oqs_style; by=oq -> abs(under - SH.getStrike(oq)))[NTM_INDS]
-    return calc_xtrin_top(style, under, SH.getStrike.(oqs_sorted), SH.getBid.(oqs_sorted), SH.getAsk.(oqs_sorted))
+f_calc_xtrin(style) = function(tss, expirations, unders, strikes, bids, asks)
+    calc_xtrin(style, first(unders), strikes, bids, asks, (;ts=first(tss), xpir=Date(first(expirations))))
 end
 
-function calc_xtrin_top(style, under::Real, strikes, bids, asks)
+function calc_xtrin(style, under::Real, strikes, bids, asks, ctx)
+    inds = first(sortperm(strikes; by=x -> abs(x - under)), NTM_COUNT)
+    strikes = strikes[inds]
+    bids = bids[inds]
+    asks = asks[inds]
+    return calc_xtrin_top(style, under, strikes, bids, asks, ctx)
+end
+
+function calc_xtrin(style, under::Real, oqs_style, ts)
+    oqs_sorted = first(sort(oqs_style; by=oq -> abs(under - SH.getStrike(oq))), NTM_COUNT)
+    ctx = (;ts, xpir=SH.getExpir(first(oqs_style)))
+    return calc_xtrin_top(style, under, SH.getStrike.(oqs_sorted), SH.getBid.(oqs_sorted), SH.getAsk.(oqs_sorted), ctx)
+end
+
+function calc_xtrin_top(style, under::Real, strikes, bids, asks, ctx)
     # @show under strikes bids asks
     extrins = OptionUtil.calc_extrin(style, under, strikes, bids, asks)
     extrins ./= under
@@ -457,15 +446,23 @@ function calc_xtrin_top(style, under::Real, strikes, bids, asks)
             total += x
         end
     end
-    # TODO: track down if neg xtrins is just bad data, or if a bug
-    # if !iszero(neg_count)
-    #     @atomic negative_extrin_count.count += 1
-    #     if Second(ts) != 10 && ts != Calendars.getMarketClose(Date(ts))
-    #         # Only expect weird values at open or close
-    #         println("**** Found neg extrin not market open/close $(ts) ****")
-    #         global kerr = (;style, ts, xpirts, under, extrins, strikes, bids, asks)
-    #     end
-    # end
+
+    # Missing quotes is bad data. Confirmed on ts = 2014-01-10T14:30:10.
+    # neg xtrins?
+    if !iszero(neg_count)
+        @atomic negative_extrin_count2.value += 1
+        if neg_count > 2
+            # Only expect weird values at open or close
+            if is_ts_normal(ctx.tx)
+                println("xtrin $(ctx): Found neg extrin not market open/close: $(neg_count) / $(length(strikes))")
+                @show style under strikes bids asks extrins
+                # global kerr = (;style, ts, xpirts, under, extrins, strikes, bids, asks)
+            end
+            return missing
+        end
+    end
+    xtrin_check_strikes(under, strikes, ctx) || return missing
+
     # TODO: maybe should use geometric/harmonic mean?
     extrin = iszero(mean_count) ? CZ : total / mean_count
     # vol = extrin / tex
@@ -473,6 +470,22 @@ function calc_xtrin_top(style, under::Real, strikes, bids, asks)
     # return [tex extrin vol logvol]
     return extrin
 end
+
+function xtrin_check_strikes(under, strikes, ctx)
+    if length(strikes) < NTM_COUNT
+        is_ts_normal(ctx.ts) || println("xtrin $(ctx): Too few strikes $(length(strikes)) < $(NTM_COUNT)")
+        return false
+    end
+    x = sum(abs.(strikes .- under))
+    y = 1000 * (2 + 3 * NTM_COUNT)
+    if x > y
+        is_ts_normal(ctx.ts) || println("xtrin $(ctx): Strikes too far away $(x) > $(y) from under:$(under) - $(strikes)")
+        return false
+    end
+    return true
+end
+
+is_ts_normal(ts::DateTime) = second(ts) == 0 && DateUtil.isBusDay(Date(ts)) && ts < market_close(ts)
 
 # function combine_ntmdf(dfs_ntm)
 #     lup = ts2under_lup()
@@ -522,7 +535,7 @@ end
 
 function chains_to_arrow(y::Int, m::Int)
     mkpath(path_chains())
-    df = dfincoming(y, m)
+    df = filter_bday(dfincoming(y, m))
     println("Loaded dataframe for $((;y,m))")
     transformraw(df)
     println("Transformed dataframe for $((;y,m))")
@@ -613,33 +626,22 @@ end
 #region ChainsTs
 function chains_to_ts()
     thr_tss = [Set{Tuple{DateTime,Int32}}() for _ in 1:nthreads()]
-    stop = false
-    ThreadPools.twith(ThreadPools.QueuePool(2, 11)) do pool
-        ThreadPools.@tthreads pool for (y, m) in make_yms()
-            !stop || return
-            try
-                thid = threadid()
-                calls = calls_table(y, m)
-                puts = puts_table(y, m)
-                union!(thr_tss[thid], zip(calls.ts, calls.under))
-                union!(thr_tss[thid], zip(puts.ts, puts.under))
-                println("$(thid): Completed $((;y, m))")
-                yield()
-            catch e
-                stop = true
-                println("Exception thrown for thid:$(thid), $((;y, m))")
-                rethrow(e)
-            end
-        end
+    stopped = ThreadUtil.loop(yms) do (y, m)
+        thid = threadid()
+        calls = calls_table(y, m)
+        puts = puts_table(y, m)
+        union!(thr_tss[thid], zip(calls.ts, calls.under))
+        union!(thr_tss[thid], zip(puts.ts, puts.under))
+        println("$(thid): Completed $((;y, m))")
     end
-    !stop || return
+    !stopped || return
     println("Finished threads, now combining...")
     tss = reduce(union!, thr_tss)
     df = DataFrame(tss, [:ts,:under])
     sort!(df, :ts)
     # unique!(df, [:ts]) # puts and calls are separate files so will duplicate
     global kdf_tss = df
-    @assert isunique(df.ts)
+    # @assert isunique(df.ts) # isunique doesn't exist
     Arrow.write(path_ts(), df)
     kdf_tss = nothing # if above line throws exception, it's not cleared and we can try writing manually
     return df
@@ -647,26 +649,22 @@ end
 #endregion
 
 #region ChainsToXpir
-function chains_to_xpir()
-    thr_xpirs = [Vector{DateTime}() for _ in 1:nthreads()]
-    ThreadPools.twith(ThreadPools.QueuePool(2, 11)) do pool
-        ThreadPools.@tthreads pool for (y, m) in make_yms()
-            thid = Threads.threadid()
-            calls = calls_table(y, m)
-            puts = puts_table(y, m)
-            # CollUtil.pushsortedunique!(thr_xpirs[thid], calls.expiration)
-            # CollUtil.pushsortedunique!(thr_xpirs[thid], puts.expiration)
-            # unique!(thr_xpirs[thid])
-            append!(thr_xpirs[thid], intersect(calls.expiration, puts.expiration))
-            println("$(thid): Completed $((;y, m))")
-            yield()
-        end
+function chains_to_xpirts(yms=make_yms())
+    thr_xpirtss = [Vector{DateTime}() for _ in 1:nthreads()]
+    ThreadUtil.loop(yms) do (y, m)
+        thid = Threads.threadid()
+        calls = calls_table(y, m)
+        puts = puts_table(y, m)
+        append!(thr_xpirtss[thid], unique(calls.expiration))
+        append!(thr_xpirtss[thid], unique(puts.expiration))
+        println("$(thid): Completed $((;y, m))")
+        yield()
     end
     println("Finished threads, now combining...")
-    xpirs = reduce(vcat, thr_xpirs)
-    sort!(xpirs)
-    unique!(xpirs)
-    df = DataFrame([xpirs], [:xpir]; copycols=false)
+    xpirtss = reduce(vcat, thr_xpirtss)
+    sort!(xpirtss)
+    unique!(xpirtss)
+    df = DataFrame([xpirtss], [:xpirts]; copycols=false)
     Arrow.write(path_xpir(), df)
     return df
 end
@@ -711,8 +709,8 @@ end
 
 #region Misc
 function make_yms()
-    return sort!(filter!(vec([(y, m) for y in 2010:2022, m in 1:12])) do (y, m)
-        y != 2022 || m <= 9
+    return sort!(filter!(vec([(y, m) for y in 2010:2023, m in 1:12])) do (y, m)
+        y != 2023 || m <= 6
     end)
 end
 
@@ -737,6 +735,56 @@ end
 prefix(pre::AbstractString) = s::AbstractString -> pre * s
 
 get_ym(ts) = (year(ts), month(ts))
+
+find_dfrow(df, ts, xpir::Date, strike) = find_dfrow(df, ts, market_close(xpir), strike)
+find_dfrow(df, ts, expiration::DateTime, strike) = only(df[(df.ts .== ts) .& (df.expiration .== expiration) .& (df.strike .== strike),:])
+
+const XPIRS = Dict{Date,DateTime}()
+market_close(ts::DateTime) = market_close(Date(ts))
+function market_close(date::Date)
+    if isempty(XPIRS)
+        tbl = xpir_table()
+        DictUtil.set_from_vals!(Date, XPIRS, tbl.xpirts)
+    end
+    xpirts1 = get(XPIRS, date, missing)
+    xpirts2 = ts_day_last(date)
+    xpirts3 = Calendars.getMarketClose(date)
+    # all = (;xpirts1, xpirts2, xpirts3)
+    if !ismissing(xpirts1)
+        if xpirts1 != xpirts2 || xpirts1 != xpirts3
+            # println("WARN: market close didn't match: $(all)")
+            push!(EOD_DONT_MATCH, date)
+        end
+    elseif !ismissing(xpirts2)
+        if xpirts2 != xpirts3
+            # println("WARN: market close didn't match (not xpir): $(all)")
+            push!(EOD_DONT_MATCH, date)
+        end
+    end
+    return xpirts3
+end
+const EOD_DONT_MATCH = Set{Date}()
+
+const TSS = Dict{Date,DateTime}()
+ts_day_last(ts::DateTime) = ts_day_last(Date(ts))
+function ts_day_last(date::Date)
+    if isempty(TSS)
+        tbl = ts_table()
+        ts_prev, tss = Iterators.peel(tbl.ts)
+        tsd_prev = Date(ts_prev)
+        for ts in tss
+            tsd = Date(ts)
+            if tsd != tsd_prev
+                @assert tsd > tsd_prev
+                TSS[tsd_prev] = ts_prev
+            end
+            ts_prev = ts
+            tsd_prev = tsd
+        end
+        TSS[tsd_prev] = ts_prev
+    end
+    return get(TSS, date, missing)
+end
 #endregion Misc
 
 #region Old

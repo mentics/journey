@@ -31,6 +31,24 @@ function find(f, itr)
     return nothing
 end
 
+function find2(f, pred, itr)
+    for x in itr
+        y = f(x)
+        pred(y) && return (x, y)
+    end
+    return nothing
+end
+
+# function find3(f, pred, itr)
+#     i = 0
+#     for x in itr
+#         i += 1
+#         y = f(x)
+#         pred(y) && return (i, x, y)
+#     end
+#     return nothing
+# end
+
 function (find(f, v::AVec{T}, inds)::Tuple{Int,Union{Nothing,T}}) where T
     for i in inds
         x = v[i]

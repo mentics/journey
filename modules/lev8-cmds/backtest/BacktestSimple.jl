@@ -735,8 +735,6 @@ tosLLMC(lms, lup) = map(lm -> toLMC(getLeg(lm), lup), lms)
 tosLMC(legs, lup) = map(leg -> toLMC(leg, lup), legs)
 
 # tofrac(x::Millisecond) = Dates.value(x) * 1e-3 / 3600 / 24
-
-round_step(x, step) = round(x / step) * step
 #endregion
 
 end
