@@ -1,5 +1,5 @@
 module DateUtil
-using Dates, BusinessDays, TimeZones, Intervals
+using Dates, BusinessDays, TimeZones, Intervals, Memoization
 # TODO: exports are filtered, but unused functions need to be cleaned up
 
 # export numDays
@@ -40,7 +40,7 @@ const DateLike = Union{Date,Dates.AbstractDateTime}
 
 export timult, calcRate
 bdaysPerYear() = 252.0
-durRisk(from::Date, to::Date) = 1 + bdays(from, to)
+durRisk(from::Date, to::Date) = 1 + bdays_t(from, to)
 timult(from::Date, to::Date) = bdaysPerYear() / durRisk(from, to)
 riskyears(from::Date, to::Date) = durRisk(from, to) / bdaysPerYear()
 durtimult(from::Date, to::Date) = ( dur = durRisk(from, to) ; (dur, bdaysPerYear() / dur) )
@@ -129,12 +129,19 @@ const MARKET_TZ = tz"America/New_York"
 
 toDate(z::ZonedDateTime)::Date = Date(astimezone(z, LOCALZONE))
 
-isBusDay(d::Date) = isbday(:USNYSE, d)
-export isbd
-isbd(d::Date) = isbday(:USNYSE, d)
 
-bdays(d1::Date, d2::Date)::Int = bdayscount(:USNYSE, d1, d2)
-# bdaysUntil(dt::Date) = days(Dates.today(), dt)
+using Memoization
+export isbd
+import ThreadSafeDicts
+# TODO: cleanup
+isBusDay(d::Date) = isbd_t(d) # isbday(:USNYSE, d)
+isbd(d::Date) = isbd_t(d)
+@memoize ThreadSafeDicts.ThreadSafeDict isbd_t(d::Date) = isbday(:USNYSE, d)
+
+bdays(d1::Date, d2::Date)::Int = bdays_t(d1, d2)
+@memoize ThreadSafeDicts.ThreadSafeDict bdays_t(d1::Date, d2::Date)::Int = bdayscount(:USNYSE, d1, d2)
+# @memoize bdays(d1::Date, d2::Date)::Int = bdayscount(:USNYSE, d1, d2)
+
 lastTradingDay(d::Date)::Date = tobday(:USNYSE, d; forward=false)
 lastTradingDay(d)::Date = tobday(:USNYSE, Date(d); forward=false)
 nextTradingDay(d::Date)::Date = tobday(:USNYSE, d; forward=true)

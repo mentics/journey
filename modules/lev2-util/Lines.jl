@@ -1,11 +1,7 @@
 module Lines
 using BaseTypes, LineTypes
-import OutputUtil:r5
 
 export Segments, SegSide, Left, Right, Point
-
-Base.show(io::IO, x::Segment) = print(io, "Seg{$(x.left) -> $(x.right)}")
-Base.show(io::IO, x::Point) = print(io, "Pt($(r5(x.x)),$(r5(x.y)))")
 
 abstract type SegSide end
 

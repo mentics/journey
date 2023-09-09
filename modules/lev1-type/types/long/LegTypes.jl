@@ -29,8 +29,6 @@ SH.getQuantityDir(l::Leg) = Int(getSide(l)) * l.quantity
 
 # SH.addQuantity(leg::Leg, addend::Real) = Leg(leg.option, leg.quantity + addend, leg.side)
 
-Base.show(io::IO, leg::Leg) = print(io, "Leg($(leg.side) $(leg.quantity) $(leg.option))")
-
 isConflict(l1, l2) = getOption(l1) == getOption(l2) && getSide(l1) != getSide(l2)
 # isConflict(legs::Coll, leg) = !isnothing(findfirst(check -> isConflict(leg, check), legs))
 

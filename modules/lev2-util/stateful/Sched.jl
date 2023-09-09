@@ -1,6 +1,6 @@
 module Sched
 using Dates
-using Globals, ThreadUtil, CollUtil, LogUtil, OutputUtil
+using Globals, ThreadUtil, CollUtil, LogUtil
 using Calendars
 # TODO: should not depend directly on Calendars, more generic
 # could have some generic thing that it called into for time important events: adding, each run, etc.

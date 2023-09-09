@@ -36,6 +36,7 @@ LL.toSections(lms::NTuple{N,LegMeta}) where N = LL.toSections(lms, map(P ∘ Pri
 # SH.toDraw(lms::NTuple{N,LegLike}; mn=100.0, mx=600.0) where N = collect(LL.toLineTuples(LL.toSegments(lms); mn, mx)) # collect because Makie can't handle tuples of coords
 SH.toDraw(lms::Vector{<:LegLike}; kws...) = SH.toDraw(Tuple(lms); kws...)
 SH.toDraw(lms::NTuple{N,LegLike}; mn=100.0, mx=600.0) where N = collect(LL.toLineTuples(LL.toSegments(lms); mn, mx)) # collect because Makie can't handle tuples of coords
+SH.toDraw(lms::NTuple{N,LegLike}, netos; mn=100.0, mx=600.0) where N = collect(LL.toLineTuples(LL.toSegments(lms, netos); mn, mx)) # collect because Makie can't handle tuples of coords
 # SH.toDraw(lms::NTuple{N,LegMeta}) where N = collect(LL.toLineTuples(LL.toSegmentsWithZeros(lms))) # collect because Makie can't handle tuples of coords
 # SH.toDraw(lms::NTuple{N,LegMeta}) where N = collect(LL.toLineTuples(LL.toSegmentsWithZeros(lms))) # collect because Makie can't handle tuples of coords
 #end
@@ -58,6 +59,7 @@ makeprob2(xpir::Date, curp::Real) = ( prob = ProbKde.probToClose(F(curp), F(Mark
 # makeprob2(ts::DateTime, xpir::Date, curp::Real) = toProbWithMin(ProbKde.probToClose(F(curp), F(HistData.vixOpen(DateUtil.lastTradingDay(ts))), ts, xpir))
 
 calcprobprofit(prob, lms) = calcprobprofit(prob, LL.toSegmentsWithZeros(lms))
+calcprobprofit(prob, segs::Segments) = calcprobprofit(prob, LL.toSegmentsWithZeros(segs))
 function calcprobprofit(prob, segsz::SegmentsWithZeros)
     p = 0.0
     s1 = first(segsz)

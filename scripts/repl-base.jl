@@ -14,7 +14,7 @@ end
 # save = Dict()
 # save[:dir] = 1
 
-ENV["PATH"] = "D:\\app\\dev\\jdk11\\bin;" * ENV["PATH"]
-ENV["JAVA_HOME"] = "D:\\app\\dev\\jdk11"
+# ENV["PATH"] = "D:\\app\\dev\\jdk11\\bin;" * ENV["PATH"]
+# ENV["JAVA_HOME"] = "D:\\app\\dev\\jdk11"
 # not on windows: ENV["JULIA_COPY_STACKS"] = 1
 nothing

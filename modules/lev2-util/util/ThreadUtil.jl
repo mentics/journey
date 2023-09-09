@@ -10,7 +10,6 @@ mutable struct Atomic2{T}
 end
 resetAtomics(ats::Atomic2{Int}...) = for at in ats; @atomic at.value = 0 end
 
-# TODO: consolidate (syncOut in RunStats) and put somewhere?
 function runSync(f, lk, args...)
     lock(lk)
     try
@@ -25,7 +24,10 @@ const lock_output = ReentrantLock()
 # sync_output(f) = runSync(f, lock_output)
 sync_output(out) = runSync(lock_output) do
     println(out)
-    flush(STDOUT)
+    flush(stdout)
+end
+function show_exc(e, msg="")
+    sync_output(msg * "\n" * sprint(showerror, e, catch_backtrace()) * "\n")
 end
 
 function wrapErr(f)
@@ -91,15 +93,19 @@ function loop(f, xs, args...)
     stop = Atomic2(false)
     ThreadPools.twith(ThreadPools.QueuePool(2, 11)) do pool
         ThreadPools.@tthreads pool for x in xs
-            !(@atomic stop.value) || return
+            !(@atomic stop.value) || return true
             thid = Threads.threadid()
             try
                 f(x, args...)
                 yield()
             catch e
                 @atomic stop.value = true
-                sync_output("Exception in thid:$(thid) thrown for x:$(x) and args:$(args)")
-                rethrow(e)
+                if e isa InterruptException
+                    sync_output("Interrupted thid:$(thid)")
+                else
+                    show_exc(e, "Exception in thid:$(thid) thrown for x:$(first(string(x), 1000)) and args:$(args)")
+                end
+                return true
             end
         end
     end

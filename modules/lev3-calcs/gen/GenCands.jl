@@ -143,8 +143,11 @@ end
 function paraSpreads(f::Function, oqs::Sides{Vector{ChainTypes.OptionQuote}}, maxSpreadWidth::Real, isLegAllowed, args...)::Bool
     !isempty(oqs.long) || return true
     stop = false
-    twith(ThreadPools.QueuePool(2, 11)) do pool
-        @tthreads pool for oq1 in oqs.long
+    # twith(ThreadPools.QueuePool(2, 11)) do pool
+    #     @tthreads pool for oq1 in oqs.long
+        # @qbthreads
+        for oq1 in oqs.long
+        # ThreadUtil.loop(oqs.long) do oq1
             if !stop
                 try
                     thid = Threads.threadid()
@@ -164,11 +167,11 @@ function paraSpreads(f::Function, oqs::Sides{Vector{ChainTypes.OptionQuote}}, ma
                     end
                 catch e
                     stop = true
-                    sync_output(() -> ( showerror(stderr, e, catch_backtrace()) ; println(stderr) ))
+                    ThreadUtil.show_exc(e)
                 end
             end
         end
-    end
+    # end
     return !stop
 end
 

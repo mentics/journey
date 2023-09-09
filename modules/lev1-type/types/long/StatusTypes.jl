@@ -39,8 +39,6 @@ strToStatus(str::AbstractString) = getproperty(@__MODULE__, Symbol(str))
 symToStatus(sym::Symbol) = getproperty(@__MODULE__, sym)
 toStatus(str) = StrToStatus[str]
 
-Base.show(io::IO, x::Type{<:Status}) = print(io, x.name.name)
-
 #region Local
 # TODO: add expired
 const StrToStatus = Dict{String,DataType}(

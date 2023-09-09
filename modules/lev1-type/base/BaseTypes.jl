@@ -21,20 +21,6 @@ const PZ = P(0)
 
 F(x::Real) = Float64(x)
 
-function Base.show(io::IO, x::Currency)
-    print(io, x)
-end
-function Base.show(io::IO, x::PT)
-    print(io, x)
-end
-function Base.show(io::IO, ::Type{Currency})
-    print(io, "Currency")
-end
-function Base.show(io::IO, ::Type{PT})
-    print(io, "Price")
-end
-
-# TODO: create a macro that calls a function with a string IO as firct arg and returns the string
 # TODO: create @assert replacement that I can disable and that auto prints everything in expression
 export @str
 macro str(exs...)

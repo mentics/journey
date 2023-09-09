@@ -4,6 +4,7 @@ using BaseTypes, ProbTypes
 import ProbMultiKde as pmk
 import Lines:at
 
+import BenchmarkTools
 struct ParamsFunction{F,P}
     f::F
     p::P
@@ -15,7 +16,7 @@ function testpf()
     pf = ParamsFunction(pftest, 100)
     x = 20
     @show isbits(pf)
-    @btime $pf($x)
+    BenchmarkTools.@btime $pf($x)
 end
 pftest(x, p) = x + p
 
@@ -82,7 +83,6 @@ Can be integrated: https://bit.ly/3mud4SA
 (x (2 b m p + b m q x - 2 q))/(2 b^2 m) - ((b m p - b o q - q) log(b m x + b o + 1))/(b^3 m^2) + constant
 =#
 
-using OutputUtil
 issame(x1, x2) = ((x1 / x2) ≈ 1.0) || (abs(x1) < 1e-12 && abs(x2) < 1e-12)
 
 using BenchmarkTools
@@ -96,6 +96,7 @@ end
 # https://math.stackexchange.com/a/662210/235608
 # Commit, not risk, because in the formula, it's balance/commit to get number of contracts
 function calckel(buf::Buf4, prob, commit::Real, segs, probadjust=0.0)::NamedTuple{(:kel, :evret, :ev), Tuple{Float64, Float64, Float64}}
+    global kcalckelargs = (;buf, prob, commit, segs, probadjust)
     if commit <= 0.0
         # println("Invalid commit:$(commit) in calckel")
         return (;kel=NaN, evret=NaN, ev=100.0)
@@ -108,7 +109,7 @@ function calckel(buf::Buf4, prob, commit::Real, segs, probadjust=0.0)::NamedTupl
         x = prob.xs.xs[i]
         p = prob.prob_mass[i]
         prob_tot += p
-        o = at(segs, x * prob.center)
+        o = at(segs, x * prob.center) / commit
         po = p * o
         p *= o > 0 ? 1.0 - probadjust : 1.0 + probadjust
         ev += po
@@ -117,6 +118,8 @@ function calckel(buf::Buf4, prob, commit::Real, segs, probadjust=0.0)::NamedTupl
         buf.outcome[i] = o
         buf.po[i] = po
     end
+    ev > 0 || return (;kel=NaN, evret=NaN, ev)
+    # @show prob_tot findfirst(isnan, buf.po[1:len])
 
     # buf.po ./= prob_tot
     # buf.p ./= prob_tot
@@ -131,7 +134,12 @@ function calckel(buf::Buf4, prob, commit::Real, segs, probadjust=0.0)::NamedTupl
 
     # a = @allocated begin pf = ParamsFunction(kel3, (buf.po, buf.outcome, len)) end
     # b = @allocated begin kel = findZero(pf) end
-    kel = findZero(ParamsFunction(kel3, (buf.po, buf.outcome, len)))
+    fmn = sum(buf.po[1:len]) # TODO: is this the fastest way to sum?
+    ctx = (buf.po, buf.outcome, len)
+    global kctx = ctx
+    fmx = kel3(1.0, ctx)
+    # @show fmn fmx Roots.isbracket(fmn, fmx)
+    kel = Roots.isbracket(fmn, fmx) ? kel = findZero(ParamsFunction(kel3, ctx)) : NaN
     # buf.len[] = len
     # kel = findZero(buf.f)
     # kel = findZero(triv)
@@ -290,11 +298,16 @@ end
 # end
 
 # NOTE: use this for debugging. Run DrawUtil.draw(:lines, retcurve()) to see the curve it's trying to maximize.
-function retcurve(pbs=kpbs)
-    xs = collect(0.0:0.02:1.0)
-    return [calcevlog(pbs.p, pbs.o, x) for x in xs]
+# function retcurve(pbs=kpbs)
+#     xs = collect(0.0:0.02:1.0)
+#     return [calcevlog(pbs.p, pbs.o, x) for x in xs]
+# end
+function retcurve(buf, len)
+    xs = collect(0.0:0.01:1.0)
+    return [calcevlog(buf.p[1:len], buf.outcome[1:len], x) for x in xs]
 end
-calcevlog(probs, outcomes, ratio) = sum(probs .* log.(1.0 .+ ratio .* outcomes))
+calcevlog(probs, outcomes, ratio) = sum(probs .* log_safe.(1.0 .+ ratio .* outcomes))
+log_safe(x) = x > 0.0 ? log(x) : -100.0
 
 #=
 Expected value of sum of log of the resulting balance
@@ -508,6 +521,7 @@ function findZero(f, mn=0.001, mx=.999)::Float64
         # TODO: this code might be doing 1 allocation. but have to check at higher level
         # try
         try
+            # TODO: consider changing the lib to return NaN instead of throwing an exception for performance
             res = solve(ZeroProblem(f, (mn, mx)))
             return isfinite(res) ? res : (f(mx) > 0.0 ? 1.0 : NaN)
         catch e

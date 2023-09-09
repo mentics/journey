@@ -23,11 +23,17 @@ function draw(type::Symbol, xs::Coll{<:DateLike}, ys; dtformat="mm/dd/yyyy", kws
     dateticks = PlotUtils.optimize_datetime_ticks(Dates.value(xs[1]), Dates.value(xs[end]))[1]
     tickdts = dtFromValue.(dateticks)
     ax.xticks[] = (datetime2unix.(tickdts), Dates.format.(tickdts, dtformat));
+    plots(ax)[1].inspector_label = date_info
     return ax
 end
+function date_info(plot, index, position)
+    # @show plot index position
+    return string("ts:", fromunix(position[1]), "\nval:", position[2])
+end
 # tounix(d::Date) = datetime2unix(DateTime(d))
+tounix(d::Date) = datetime2unix(DateTime(d))
 tounix(d::DateTime) = datetime2unix(d)
-fromunix(ts::Float64) = unix2datetime(ts)
+fromunix(ts::Real) = unix2datetime(ts)
 
 # left::DateLike, right::DateLike
 drawWithDates!(type::Symbol, left, right, args...; kws...)::Axis = drawWithDates(type, left, right, args...; newFig=false, kws...)
@@ -187,9 +193,8 @@ function getFig(; newFig=true, newWin=false, kws...)::Figure
 end
 
 function afterDraw(; showlegend=false, kws...)
-    if showlegend
-        axislegend(current_axis())
-    end
+    showlegend && axislegend(current_axis())
+    haskey(kws, :label) && updateLegend()
 end
 
 closeWin() = GLMakie.closeall()

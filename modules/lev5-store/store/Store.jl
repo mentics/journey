@@ -1,5 +1,5 @@
 module Store
-using Globals, DateUtil, LogUtil, StoreUtil, OutputUtil
+using Globals, DateUtil, LogUtil, StoreUtil
 using StatusTypes
 using Markets
 

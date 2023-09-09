@@ -3,6 +3,11 @@ using SH, BaseTypes, SmallTypes, QuoteTypes, LegTypes, OptionMetaTypes, ChainTyp
 
 export LegMeta, LegMetaOpen, LegMetaClose
 
+# TODO:
+# abstract type Dir end
+# abstract type Open <: Dir end
+# abstract type Close <: Dir end
+
 abstract type Open end
 abstract type Close end
 

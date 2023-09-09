@@ -11,6 +11,8 @@ using BaseTypes, SmallTypes
 import SH, DictUtil, OptionUtil, CollUtil, Pricing
 import Calendars
 using ThreadUtil
+
+import LRUCache
 #endregion
 
 
@@ -26,7 +28,7 @@ ts_df() = filter_bday(DataFrame(ts_table(); copycols=false))
 tsx_df() = filter_bday(DataFrame(tsx_table(); copycols=false))
 # oq_df() = DataFrame(oq_table(); copycols=false)
 
-function tsx_for_prob(ts::DateTime; len=10000)
+function tsx_for_prob(ts::DateTime, len::Int)
     df = get_tsx_for_prob()
     ind = searchsortedlast(df.ts, ts - Second(1))
     if ind < len
@@ -51,10 +53,10 @@ function get_tsx_for_prob()
 end
 
 const MIN_TS_EST2 = Dict{Int,DateTime}()
-function estimate_min_ts(;len=100000)
+function estimate_min_ts(;len=200000)
     get!(MIN_TS_EST2, len) do
         println("estimate_min_ts: Loading tsx")
-        tsx_table().ts[len + div(len, 10) + 1]
+        tsx_table().ts[len + div(len, 5) + 1]
     end
 end
 #endregion Public
@@ -96,24 +98,37 @@ tsxs_df(y, m) = DataFrame(tsxs_table(y, m); copycols=false)
 oqs_pre_table(y, m) = Arrow.Table(path_oqs_pre(y, m))
 oqs_pre_df(y, m) = DataFrame(oqs_pre_table(y, m); copycols=false)
 oqs_table(y, m) = Arrow.Table(path_oqs(y, m))
-oqs_df(y, m) = filter_bday(DataFrame(oqs_table(y, m); copycols=false))
+oqs_df_load(y, m) = filter_bday(DataFrame(oqs_table(y, m); copycols=false))
 
 ts_table() = Arrow.Table(path_ts())
 xpir_table() = Arrow.Table(path_xpir())
 tsx_table() = Arrow.Table(path_tsx())
 oq_table() = Arrow.Table(path_oq())
+
+const OQS_CACHE = Ref(LRUCache.LRU{Tuple{Int,Int}, DataFrame}(;maxsize=6))
+function oqs_df(y, m)
+    ym = (y, m)
+    return get!(OQS_CACHE[], ym) do
+        println("Loading oqs_df $(ym)")
+        return oqs_df_load(y, m)
+    end
+end
 #endregion
 
 #region Indexes
+const DFTSI = Ref{Union{Nothing,NamedTuple{(:df, :index), Tuple{DataFrames.DataFrame, DataStructures.SortedDict{DateTime, Int64, Base.Order.ForwardOrdering}}}}}(nothing)
 function ts_indexed()
+    isnothing(DFTSI[]) || return DFTSI[]
     df = ts_df()
     index = SortedDict{DateTime,Int}(zip(df.ts, eachindex(df.ts)))
-    return (;df, index)
+    DFTSI[] = (;df, index)
+    return DFTSI[]
 end
 ts_rows(dftsi, tss) = dftsi.df[getindex.(Ref(dftsi.index), tss),:]
 lup_under(dftsi, tss::Vector{DateTime}) = [lup_under(dftsi, ts) for ts in tss]
 #map(lup_under, Ref(dftsi), tss)
-function lup_under(dftsi, ts::DateTime)
+function lup_under(ts::DateTime)
+    dftsi = ts_indexed()
     ind = get(dftsi.index, ts, missing)
     return ismissing(ind) ? missing : dftsi.df.under[ind]
 end
@@ -137,12 +152,12 @@ tsx_rows(dftsxi, tss, xpirtss) = dftsxi.df[getindex.(Ref(dftsxi.index), tuple.(t
 #     return ismissing(ind) ? missing : dfoqi.df[ind,:]
 # end
 
-import LRUCache
 const OQI_TYPE = NamedTuple{(:df, :index), Tuple{DataFrame, SortedDict{Tuple{DateTime, DateTime, Int64}, Int64}}}
 const oqi_cache2 = Ref(LRUCache.LRU{Tuple{Int,Int}, OQI_TYPE}(;maxsize=6))
 # oqi_rows(dfoqi, tss, xpirtss, strikes) = dfoqi.df[getindex.(Ref(dfoqi.index), tuple.(tss, xpirtss, strikes)),:]
 # map(eachindex(tss)) do i
-function oqi_row(ts, xpirts, strike)
+oqi_row(ts, xpir::Date, strike) = oqi_row(ts, market_close(xpir), strike)
+function oqi_row(ts, xpirts::DateTime, strike)
     ym = get_ym(ts)
     dfoqi = get!(oqi_cache2[], ym) do
         println("Loading oqs_df $(ym)")

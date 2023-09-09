@@ -121,7 +121,7 @@ end
 # Base.getproperty(df::OqSource{T}, style::Symbol) where T = OqSourceStyle{T}(df, style)
 # Base.getproperty(df::OqSourceStyle{AbstractDataFrame}, side::Side.T) = find_oqs(df, df.style, side)
 
-function oqssEntry(oqs, curp::Currency; legsCheck=LegTypes.LEGS_EMPTY, shortbidgt::Currency=CZ)::Oqss
+function oqssEntry(oqs, curp::Currency; legsCheck=LegTypes.LEGS_EMPTY, minlong::Currency=C(0.02), minshort::Currency=C(0.02))::Oqss
     lc = Vector{OptionQuote}()
     sc = Vector{OptionQuote}()
     lp = Vector{OptionQuote}()
@@ -132,8 +132,8 @@ function oqssEntry(oqs, curp::Currency; legsCheck=LegTypes.LEGS_EMPTY, shortbidg
     fCanS = canShort(Globals.get(:Strats), curp)
     # oqs = Iterators.filter(isValid(curp), oqs)
     for oq in oqs
-        canL = fConL(oq) && getAsk(oq) > 0.0
-        canS = fCanS(oq) && fConS(oq) && getBid(oq) > shortbidgt
+        canL = fConL(oq) && getBid(oq) >= minlong
+        canS = fCanS(oq) && fConS(oq) && getBid(oq) >= minshort
         if SmallTypes.isCall(oq)
             canL && push!(lc, oq)
             canS && push!(sc, oq)

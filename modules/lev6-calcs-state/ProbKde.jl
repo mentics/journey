@@ -1,7 +1,7 @@
 module ProbKde
 using Dates, KernelDensity
 using BaseTypes, Bins, ProbTypes, DateUtil
-using Globals, LogUtil, CollUtil, VectorCalcUtil, FileUtil, DictUtil, OutputUtil
+using Globals, LogUtil, CollUtil, VectorCalcUtil, FileUtil, DictUtil
 using Caches, HistData, Markets, Calendars
 
 # TODO: consider adding tex=0, x=x data to force endpoint data

@@ -16,7 +16,6 @@ struct Greeks
     gamma::Float64
 end
 const GreeksZero = Greeks(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
-Base.show(io::IO, x::Greeks) = print(io, "Greeks(delta=$(x.delta), gamma=$(x.gamma), theta=$(x.theta), vega=$(x.vega), phi=$(x.phi), rho=$(x.rho))")
 Base.:(*)(mult::Float64, g::Greeks) = Greeks(mult*g.delta, mult*g.theta, mult*g.phi, mult*g.vega, mult*g.rho, mult*g.gamma)
 
 struct OptionMeta

@@ -9,7 +9,6 @@ import StoreTrade:newTrade,getTradeOpen
 
 export price, submitPreview, submitLive, closeTrade, closeLeg
 
-using OutputUtil
 import Chains, Between, Pricing
 
 #region Public

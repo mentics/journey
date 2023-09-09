@@ -1,13 +1,11 @@
 include("repl-base.jl")
 
-using Calendars
-
 using Dates
 # import IterTools, NamedTupleTools
 # IT = IterTools
 # NTT = NamedTupleTools
-using SH, BaseTypes, Globals, Bins, SmallTypes, StratTypes, LegTypes, LegMetaTypes
-using OutputUtil
+using SH, BaseTypes, Globals, SmallTypes, LegTypes, LegMetaTypes
+using OutputUtil, TypeOutputs
 
 import ModuleUtil
 if ModuleUtil.findCycles()

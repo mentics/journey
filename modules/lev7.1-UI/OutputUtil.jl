@@ -1,5 +1,5 @@
 module OutputUtil
-using Dates, JSON3, Crayons
+using Dates, JSON3, Crayons, Printf
 using Tables, PrettyTables
 using BaseTypes
 using DateUtil
@@ -9,7 +9,10 @@ using DateUtil
 export confirm
 export pretty, pretyble, spretyble, niceShow, sho
 export PRI, SEC
-export r2, r3, r4, r5, r8, rd2, rd3, rd4, rd5, pp
+export disp, r2, r3, r4, r5, r8, rd2, rd3, rd4, rd5, pp
+
+disp(x::Currency) = @sprintf "%.6g" x
+disp(x::Float64) = @sprintf "%.6g" x
 
 r2(x) = round(x; sigdigits=2)
 r3(x) = round(x; sigdigits=3)

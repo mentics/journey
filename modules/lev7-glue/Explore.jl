@@ -6,113 +6,31 @@ import Keepers:Keeper
 import SH, DateUtil, Calendars
 import CollUtil:sortuple
 import Positions
-using OutputUtil
 import VectorCalcUtil
 import DataFiles as dat
 using DataFrames, StatsBase
 using ProbMultiKde
 import ProbMultiKde as pmk
+import ThreadUtil
 
 const ProbLup = Dict{Date,pmk.KdeProb}()
 
-const CONFIG2 = Ref((;
-    adjustprices = C(-0.01),
-    kelprobadjust = 0.1
-))
+# const CONFIG3 = Ref((;
+#     adjustprices = C(-0.0),
+#     kelprobadjust = 0.0
+# ))
 
-#region test
-function testCalcKel()
-    curp = market().curp
-    oqs = filter!(isCall, Chains.chain(expir(1)).chain)
-    sort!(oqs; by=oq -> abs(curp - SH.getStrike(oq)))
-    lms = sortuple(SH.getStrike, LegMetaOpen(oqs[1], Side.short), LegMetaOpen(oqs[2], Side.long))
-    # lms = discount.(lms, 0.1)
-    DrawUtil.drawprob(ProbLup[SH.getExpir(lms)]; color=Makie.RGBA(.1, .1, .5, 0.5))
-    display(DrawUtil.draw!(:lines, SH.toDraw(lms)))
-    return calckel(lms)
-end
-
-using LegMetaTypes, QuoteTypes
-discount(lm::LegMetaOpen, r=0.75) = LegMetaOpen(SH.getLeg(lm), discount(SH.getQuote(lm), r), SH.getMeta(lm))
-discount(q::Quote, r=0.75) = Quote(P(q.bid + r), P(q.ask + r))
-#endregion
-
-#region Troubleshooting
-function pbstoxys(pbs)
-    xs = map( pb -> (pb[3].left + pb[3].right) / 2, pbs)
-    probabilities = map( pb -> pb[3].p, pbs)
-    outcomes = map( pb -> pb[2], pbs)
-    products = map( pb -> pb[1], pbs)
-    return (;xs, probabilities, outcomes, products)
-end
-import GLMakie
-function drawkellycalc(sym; replace=false)
-    xys = pbstoxys(Kelly.kpbs)
-    if replace
-        GLMakie.barplot(xys.xs, xys[sym]; width=1)
-    else
-        GLMakie.barplot!(xys.xs, xys[sym]; width=1)
-    end
-end
-#endregion
-
-#region TestMonteCarlo
-import LinesLeg as LL
-function testmc(r; numiter=1000, curp=market().curp, prob=Between.makeprob2(r.lms, curp).prob)
-    lms = r.lms
-    risk = 100 * r.risk
-    segs = LL.toSegments(lms, CONFIG2[].adjustprices)
-    bal = 10000.0
-    netsum = 0.0
-    pnlratesum = 0.0
-    ncsum = 0.0
-    unders = randistrets(prob, numiter)
-    nets = Float64[]
-    rets = Float64[]
-    bals = Float64[]
-    maxdrawdown = 1.0
-    high = 0.0
-    for under in unders
-        numcontracts = floor(Int, r.kel * bal / risk)
-        # @show r.kel, bal, risk, bal / risk, numcontracts * risk / bal
-        underret = under / curp
-        net = 100 * LL.at(segs, under)
-        ret = numcontracts * net
-        @show underret, net, numcontracts, ret, bal+ret, ret/bal
-        bal += ret
-        high = max(high, bal)
-        drawdown = bal / high
-        maxdrawdown = min(maxdrawdown, drawdown)
-
-        push!(nets, net)
-        push!(rets, net)
-        push!(bals, bal)
-
-        ncsum += numcontracts
-        netsum += net
-        pnlratesum += ret / bal
-    end
-    netmean = netsum / numiter
-    ncmean = ncsum / numiter
-    pnlratemean = pnlratesum / numiter
-    @show bal netmean ncmean pnlratemean maxdrawdown
-    return (;nets, rets, bals)
-end
-
-import Random
-function randistrets(prob, n)
-    rets = [ProbUtil.xforp(prob, p) for p in 1e-6:(1.0/n):(1.0-1e-6)]
-    Random.shuffle!(rets)
-    return rets
-end
-#endregion
+config() = (;
+    adjustprices = C(-0.02),
+    kelprobadjust = 0.2
+)
 
 #region LookForBestKelly
 using SmallTypes, LegMetaTypes
 using Markets, Expirations, Chains
 import Kelly, ChainUtil, Between, ProbUtil
 
-function prob_test(xpir=expir(1), kde=pmk.make_kde(now(UTC)))
+function prob_test(xpir=expir(1), kde=pmk.get_kde(now(UTC)))
     prob = pmk.makeprob(kde, market().curp, now(UTC), dat.market_close(xpir), Chains.chain(xpir).chain)
     return kde, prob
 end
@@ -140,7 +58,7 @@ function run(incs=1:3; skipto=nothing, kws...)
     # incs = collect(incsin)
     if isnothing(skipto)
         res = findkel(make_ctx_now(), xpirs, incs; kws...) do xpirts, curp
-            return ChainUtil.oqssEntry(chain(xpirts).chain, curp; legsCheck=Positions.positions(), shortbidgt=max(CZ,-CONFIG2[].adjustprices))
+            return ChainUtil.oqssEntry(chain(xpirts).chain, curp; legsCheck=Positions.positions(), minshort=0.05, minlong=0.05)
         end
         # global krun = res
     else
@@ -191,7 +109,7 @@ end
 function drawres(lms)
     prob = ProbLup[SH.getExpir(lms)]
     numlegs = length(lms)
-    DrawUtil.newfig()
+    display(DrawUtil.newfig())
     DrawUtil.draw!(:lines, SH.toDraw(lms); label="$(numlegs)-pnl")
     DrawUtil.drawprob!(prob; label="$(numlegs)-prob")
     DrawUtil.updateLegend()
@@ -208,20 +126,20 @@ function make_ctx_now()
     mkt = market()
     ts = mkt.tsMarket
     curp = mkt.curp
-    kde = use_kde()
+    kde = pmk.get_kde(ts)
     (;ts, date=Date(ts), curp, kde)
 end
 make_ctx(ts, kde, curp) = (;ts, date=Date(ts), kde, curp)
 
 findkel(f_xpir_to_oqss, ctx, xpirs::Coll{Date}, incs; keep=100) = findkel(f_xpir_to_oqss, ctx, Calendars.getMarketClose.(xpirs), incs)
-function findkel(f_xpir_to_oqss, ctx, xpirtss::Coll{DateTime}, incs; keep=100)
-    empty!(ProbLup)
-    println("Finding kel for curp: $(ctx.curp)")
+function findkel(f_xpir_to_oqss, ctx, xpirtss::Coll{DateTime}, incs; keep=100, use_problup=true)
+    use_problup && empty!(ProbLup)
+    # println("Finding kel for curp: $(ctx.curp)")
     ress = [Keeper{Result}(keep) for _ in 1:Threads.nthreads()]
     kelly_buffer = [Kelly.make_buf() for _ in 1:Threads.nthreads()]
     for xpirts in xpirtss
         xpir = Date(xpirts)
-        println("Searching xpir: $(xpir)")
+        # println("Searching xpir: $(xpir)")
         oqss = f_xpir_to_oqss(xpirts, ctx.curp)
         # println("num calls $(length(oqss.call.long))")
         # println("num puts $(length(oqss.put.long))")
@@ -229,27 +147,16 @@ function findkel(f_xpir_to_oqss, ctx, xpirtss::Coll{DateTime}, incs; keep=100)
         oqs = vcat(oqss.call.long, oqss.put.long)
         prob = pmk.makeprob(ctx.kde, ctx.curp, ctx.ts, xpirts, oqs)
         riskrat = calcriskrat(ctx.date, xpir)
-        ctx2 = (;ctx.curp, prob, riskrat, xpir, kelly_buffer)
-        ProbLup[xpir] = prob
+        ctx2 = (;ctx.ts, ctx.date, ctx.curp, prob, riskrat, xpir, kelly_buffer)
+        use_problup && ( ProbLup[xpir] = prob )
         1 in incs && findkel1!(ress, ctx2, oqss)
         2 in incs && findkel2!(ress, ctx2, oqss)
         3 in incs && findkel3!(ress, ctx2, oqss)
     end
-    println("Finished searching")
+    # println("Finished searching")
     res = merge(ress, keep)
     return vec(res)
 end
-
-# function filt(res)
-#     filter(res) do r
-#         # r.probprofit > 0.55 && r.risk <= 5.0 &&
-#         DateUtil.bdays(today(), SH.getExpir(r.lms)) >= 3
-#     end
-# end
-
-# function sortres!(date, res)
-#     sort!(res; by=r -> calcret(r, date))
-# end
 
 calcevrate(evret, xpir, date) = evret * DateUtil.timult(date, xpir)
 
@@ -262,9 +169,9 @@ function make_leg(oq, side)
     #     global kmakeleg=(;adjust=CONFIG10[].adjustprices, oq, side)
     #     error("stop")
     # end
-    lm = LegMetaOpen(oq, side; adjustprices=CONFIG2[].adjustprices)
+    lm = LegMetaOpen(oq, side; adjustprices=config().adjustprices)
     if SH.getBid(lm) == 0
-        global kmakeleg=(;adjust=CONFIG2[].adjustprices, oq, side, lm)
+        global kmakeleg=(;adjust=config().adjustprices, oq, side, lm)
         error("bid 0")
     end
     return lm
@@ -322,7 +229,7 @@ function findkel3!(ress, ctx, oqss)
         yield()
         return true
     end
-    println("Searched $(sum(count)) permutations")
+    # println("Searched $(sum(count)) permutations")
 end
 
 # function testcheck(res, ctx, lms2)
@@ -332,30 +239,45 @@ end
 # end
 
 function check!(ress, ctx, lms)
-    ss = tosegsz(ctx.curp, lms)
-    !isnothing(ss) || return true # println("ss was nothing")
-    (;segs, segsz, netos) = ss
+    neto = Pricing.price(Action.open, lms)
+    if neto < 0.07
+        return true
+    end
+    segs, netos = Between.toSegmentsN(lms)
     try
+        LL.canprofit(segs) || return true
+        risk = ctx.riskrat * max(Pricing.calcMarg(ctx.prob.center, segs))
+        if risk < 0.5
+            netos = P.(SH.getBid.(lms))
+            segs = LL.toSegments(lms, netos)
+            risk = ctx.riskrat * max(Pricing.calcMarg(ctx.prob.center, segs))
+            LL.canprofit(segs) || return true
+            if risk < 0.1
+                global kcheck = (;ctx, lms, segs, netos)
+                # println("Skipping risk:$(risk) too low")
+                return true
+                # @show risk segs
+                # error("Risk too low")
+            end
+        end
         thid = Threads.threadid()
-        kel, evret, ev, risk = calckel(ctx.kelly_buffer[thid], ctx.prob, ctx.riskrat, segs, segsz)
-        # global kcalckelargs = (ctx.kelly_buffer[thid], ctx.prob, ctx.riskrat, segs, segsz)
-        # error("stop")
-        if isfinite(kel) && kel > 0
-            # println("$(i): Long on strike $(SH.getStrike(lms[1])) -> $(kel)")
+        kel, evret, ev = calckel(ctx.kelly_buffer[thid], ctx.prob, risk, segs)
+        if isfinite(kel) && kel >= 0.28
             xpir = ctx.xpir
-            evrate = calcevrate(evret, xpir, today())
-            probprofit = Between.calcprobprofit(ctx.prob, segsz)
-            if probprofit >= 0.84
+            evrate = calcevrate(evret, xpir, ctx.date)
+            probprofit = Between.calcprobprofit(ctx.prob, segs)
+            # TODO: filter out ones that have a lot of outcome too close to zero
+            if probprofit >= 0.98
                 push!(ress[thid], Result((;ev, kel, evret, evrate, risk, xpir, lms, probprofit, netos, neto=sum(netos))))
             end
         end
     catch e
-        global kcheck = (;ctx, lms, ss)
+        global kcheck = (;ctx, lms, segs, netos)
         rethrow(e)
     end
     return true
 end
-#endregion
+#endregion LookForBestKelly
 
 #region Kelly
 riskfreerate() = 0.04
@@ -368,129 +290,19 @@ import Kelly, Pricing, LinesLeg as LL
 #     Kelly.calcKel(makeprob(ts, xpir, curp), calcriskrat(Date(ts), xpir), lms)
 # end
 
-function tosegsz(curp, lms::Coll{<:LegLike})
-    # adjustprices = CONFIG5[].adjustprices
-    segs, netos = Between.toSegmentsN(lms) # , adjustprices) <- moved to lms
-    LL.canprofit(segs) || return nothing
-    segsz = LL.toSegmentsWithZeros(segs; extent=(0.5*curp, 1.5*curp))
-    return (;segs, segsz, netos)
-end
+# calckel(lms) = calckel(ProbLup[SH.getExpir(lms)], lms)
+# calckel(prob, lms) = calckel(prob, calcriskrat(today(), SH.getExpir(lms)), lms)
 
-calckel(lms) = calckel(ProbLup[SH.getExpir(lms)], lms)
-calckel(prob, lms) = calckel(prob, calcriskrat(today(), SH.getExpir(lms)), lms)
-function calckel(prob, riskrat::Real, lms::Coll{<:LegLike})
-    (;segs, segsz) = tosegsz(prob.center, lms)
-    segsz = nothing
-    # TODO: remove segsz if not needed
-    calckel(Kelly.make_buf(), prob, riskrat, segs, segsz)
-end
-
-function calckel(buf, prob, riskrat::Real, segs, segsz)
-    probadjust = CONFIG2[].kelprobadjust
-    risk = riskrat * max(Pricing.calcMarg(prob.center, segs))
+function calckel(buf, prob, risk::Real, segs)
+    probadjust = config().kelprobadjust
     try
-        return (;Kelly.calckel(buf, prob, risk, segs, probadjust)..., risk)
+        return Kelly.calckel(buf, prob, risk, segs, probadjust)
     catch e
-        global kcalckel = (;prob, risk, segsz, probadjust)
+        global kcalckel = (;prob, risk, segs, probadjust)
         rethrow(e)
     end
 end
-#endregion
-
-#region CalcOptPrices
-# using Random, Statistics
-# using Distributions
-
-# function american_put_option_price(S0, K, r, sigma, T, num_simulations, num_time_steps)
-#     Random.seed!(42)  # Set a seed for reproducibility
-#     dt = T / num_time_steps
-#     discount_factor = exp(-r * dt)
-
-#     # Perform Monte Carlo simulations
-#     option_payoffs = zeros(num_simulations, num_time_steps + 1)
-#     for i in 1:num_simulations
-#         S = [S0]
-#         for j in 1:num_time_steps
-#             z = randn()
-#             S_t = S[j] * exp((r - 0.5 * sigma^2) * dt + sigma * sqrt(dt) * z)
-#             push!(S, S_t)
-#         end
-#         option_payoffs[i, :] .= max.(K .- S, 0)
-#     end
-
-#     # Backward induction to calculate option price
-#     for t in (num_time_steps - 1):-1:1
-#         X = Float64[]
-#         Y = Float64[]
-#         for i in 1:num_simulations
-#             if option_payoffs[i, t] > 0
-#                 continuation_value = discount_factor * option_payoffs[i, t + 1]
-#                 push!(X, [1, option_payoffs[i, t]])
-#                 push!(Y, continuation_value)
-#             end
-#         end
-#         if length(X) > 0
-#             coefficients = X \ Y
-#             for i in 1:num_simulations
-#                 if option_payoffs[i, t] > 0
-#                     continuation_value = discount_factor * option_payoffs[i, t + 1]
-#                     exercise_value = coefficients[1] + coefficients[2] * option_payoffs[i, t]
-#                     option_payoffs[i, t] = max(exercise_value, continuation_value)
-#                 end
-#             end
-#         end
-#     end
-
-#     option_price = mean(option_payoffs[:, 1])
-#     return option_price
-# end
-
-# function runmc()
-#     # Example usage
-#     S0 = 100.0      # Initial stock price
-#     K = 110.0       # Strike price
-#     r = 0.03      # Risk-free rate
-#     sigma = 0.2   # Volatility (standard deviation)
-#     T = 1.0       # Time to expiration
-#     num_simulations = 10000
-#     num_time_steps = 100
-
-#     option_price = american_put_option_price(S0, K, r, sigma, T, num_simulations, num_time_steps)
-#     println("American Put Option Price:", option_price)
-# end
-
-
-# using FinancialMonteCarlo
-
-# function runfmc(sigma)
-#     S0 = 451.92;
-#     K = 400.0;
-#     r = 0.03;
-#     T = 4.0 / 52;
-#     d = 0.01;
-#     # D = 90.0;
-
-#     # Nsim = 10000;
-#     # Nstep = 30;
-#     Nsim = 10000 * 2;
-#     Nstep = 30 * 2;
-
-#     σ = sigma
-#     # σ = 0.10711; # Worked for S0=451.92, K=450.0, T = 2/52, 2 weeks out after friday close 7/21 - 8/4 2023
-#     # σ = 0.11016; # Worked for S0=451.92, K=450.0, T = 1/52, 1 weeks out after friday close 7/21 - 7/28 2023
-#     # σ = 0.1059; # Worked for S0=451.92, K=450.0, T = 4/52, 4 weeks out after friday close 7/21 - 8/18 2023
-#     # VIX was 13.6
-
-#     mcConfig = MonteCarloConfiguration(Nsim, Nstep);
-#     rfCurve = ZeroRate(r);
-
-#     opt = AmericanOption(T, K, false)
-
-#     Model = BlackScholesProcess(σ, Underlying(S0, d))
-
-#     @show EuPrice = pricer(Model, rfCurve, mcConfig, opt);
-# end
-#endregion
+#endregion Kelly
 
 #region kde
 # import Distributions, KernelDensityEstimate, DrawUtil
@@ -619,9 +431,13 @@ xswidth(prob::KdeProb) = prob.xs.xs[2] - prob.xs.xs[1]
 #     end
 # end
 
-using Caches
-use_kde(;refresh=false) = cache!(GridKde, :kde, Hour(8); refresh) do
-    pmk.make_kde(now(UTC))
+
+#region Explore
+function calckel(prob, lms::Coll{<:LegLike})
+    segs, _ = Between.toSegmentsN(lms)
+    riskrat = calcriskrat(tss(prob)...)
+    risk = riskrat * max(Pricing.calcMarg(prob.center, segs))
+    calckel(Kelly.make_buf(), prob, risk, segs)
 end
 
 function drawfield(m)
@@ -637,16 +453,16 @@ function drawfield(m)
     Makie.cam3d_cad!(scene)
 end
 
-function drawrandfield(kde::GridKde, num=100; k=0.001)
+function drawrandfield(kde::SimpleKde, num=100; k=0.001)
     # pts = Vector{Vector{Float64}}()
     pts = Vector{NTuple{3,Float64}}()
     denss = Vector{Float64}()
     skipped = 0
     while length(pts) < num
         txin = Tuple(rand(3))
-        x = txout(kde, txin)
+        x = pmk.txout(kde, txin)
         # @show txin x
-        dens = kde_pdf(kde, x, k)
+        dens = pmk.kde_pdf(kde, x, k)
         if dens > 100
             push!(pts, x)
             push!(denss, dens)
@@ -665,65 +481,6 @@ function drawrandfield(kde::GridKde, num=100; k=0.001)
     # Makie.cam3d_cad!(scene)
     return
 end
-#endregion
-
-#region testing kde
-# using MultiKDE, Distributions, Random
-# import VectorCalcUtil
-# function multikde2(data::Vector{Vector{Float64}}=kdedata()
-#             ; coordinit::Vector{Float64}, xs, durs, vols)
-#     kde = make_kde(data)
-#     # function KDEMulti(dims::Vector, bws::Union{Vector, Nothing}, mat_observations::Matrix, candidates::Union{Dict{Int, Vector}, Nothing})
-#     # kde = KDEMulti(dims, bws, data, nothing)
-#     global kkde = kde
-
-#     display(DrawUtil.draw(:scatter, [0.0], [0.0]; label="Zero", showlegend=true))
-#     vals = Vector{Float64}(undef, length(xs))
-#     coord = copy(coordinit)
-#     for dur in durs
-#         for vol in vols
-#             coord[2] = vol
-#             coord[3] = dur
-#             # vals = [( coord[1] = x ; MultiKDE.pdf(kde, coord) ) for x in xs]
-#             for i in eachindex(xs)
-#                 coord[1] = xs[i]
-#                 vals[i] = MultiKDE.pdf(kde, coord)
-#             end
-#             VectorCalcUtil.normalize!(vals)
-#             DrawUtil.draw!(:scatter, xs, vals; label="$(r2(vol))-$(r2(dur))")
-#             # println("done: $(dur)")
-#             # yield()
-#         end
-#     end
-#     DrawUtil.updateLegend()
-# end
-
-# import StatsBase, DataFiles
-# using DataFrames
-# # function setuptestkde(len)
-# #     df = DataFrame(DataFiles.tstoxpirtable(); copycols=false)
-# #     dff = dropmissing(df, [:ret, :logret])
-# #     testkde(dff, len)
-# #     return df, dff
-# # end
-# function testkde(dff, len)
-#     len_tot = length(dff.ret)
-#     inds = len > 0 ? (1:len) : ((len_tot+len):len_tot)
-#     # data = [dff.ret[1:len], dff.logvol[1:len], dff.tex[1:len]]
-#     # data = collect(hcat(dff.ret[1:len], dff.logvol[1:len], dff.tex[1:len])')
-#     data = [[dff.ret[i], dff.logvol[i], dff.tex[i]] for i in inds]
-#     xmin, xmax = extrema(dff.ret[inds])
-#     xs = xmin:((xmax-xmin)/500):xmax
-#     volmin, volmax = extrema(dff.logvol[inds])
-#     volmean = StatsBase.mean(dff.logvol[inds])
-#     durmin, durmax = extrema(dff.tex[inds])
-#     durs = durmin:((durmax-durmin)/10):durmax
-#     @show volmin volmax
-#     vols = volmin:((volmax-volmin)/10):volmax
-#     @show xs vols durs
-#     # multikde2(data; xs, coordinit=[0.0, volmean, 0.0], durs=[20], vols)
-#     multikde2(data; xs, coordinit=[0.0, volmean, 0.0], durs, vols=[volmean])
-# end
-#endregion
+#endregion Explore
 
 end
