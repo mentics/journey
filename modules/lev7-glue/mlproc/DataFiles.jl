@@ -1,18 +1,12 @@
 module DataFiles
 #region Imports
-using Dates, Base.Threads
-import ThreadPools
-using DelimitedFiles, DataFrames
-using Arrow
-using DataStructures
-import StatsBase:mean
-using DateUtil
+using Dates, Base.Threads, ThreadPools
+using StatsBase, DelimitedFiles, DataStructures, DataFrames, Arrow
+import LRUCache
 using BaseTypes, SmallTypes
+using DateUtil, ThreadUtil
 import SH, DictUtil, OptionUtil, CollUtil, Pricing
 import Calendars
-using ThreadUtil
-
-import LRUCache
 #endregion
 
 
@@ -500,7 +494,7 @@ function xtrin_check_strikes(under, strikes, ctx)
     return true
 end
 
-is_ts_normal(ts::DateTime) = second(ts) == 0 && DateUtil.isBusDay(Date(ts)) && ts < market_close(ts)
+is_ts_normal(ts::DateTime) = second(ts) < 8 && DateUtil.isBusDay(Date(ts)) && ts < market_close(ts)
 
 # function combine_ntmdf(dfs_ntm)
 #     lup = ts2under_lup()
@@ -536,7 +530,7 @@ is_ts_normal(ts::DateTime) = second(ts) == 0 && DateUtil.isBusDay(Date(ts)) && t
 #endregion
 
 #region ChainsToArrow
-function chains_to_arrow(yms::Coll{NTuple{2,Int}})
+function chains_to_arrow(yms::CollT{NTuple{2,Int}})
     # ThreadPools.twith(ThreadPools.QueuePool(2, floor(Int, (Threads.nthreads() - 1)/2))) do pool
     ThreadPools.twith(ThreadPools.QueuePool(2, 12)) do pool
         ThreadPools.@tthreads pool for (y, m) in yms

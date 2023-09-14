@@ -26,8 +26,12 @@ sync_output(out) = runSync(lock_output) do
     println(out)
     flush(stdout)
 end
+sync_err(out) = runSync(lock_output) do
+    println(stderr, out)
+    flush(stderr)
+end
 function show_exc(e, msg="")
-    sync_output(msg * "\n" * sprint(showerror, e, catch_backtrace()) * "\n")
+    sync_err(msg * "\n" * sprint(showerror, e, catch_backtrace()) * "\n")
 end
 
 function wrapErr(f)
@@ -89,15 +93,40 @@ function bg(f)
     end
 end
 
-function loop(f, xs, args...)
+# function loop(f, xs, args...)::Bool
+#     stop = Atomic2(false)
+#     # ThreadPools.twith(ThreadPools.QueuePool(2, threadcount)) do pool
+#         # ThreadPools.@tthreads pool for x in xs
+#         # ThreadPools.@bthreads for x in xs
+#         for x in xs
+#             !(@atomic stop.value) || return true
+#             thid = Threads.threadid()
+#             try
+#                 f(x, args...)
+#             catch e
+#                 @atomic stop.value = true
+#                 if e isa InterruptException
+#                     sync_output("Interrupted thid:$(thid)")
+#                 else
+#                     show_exc(e, "Exception in thid:$(thid) thrown for x:$(first(string(x), 1000)) and args:$(args)")
+#                 end
+#                 break
+#             end
+#         end
+#     # end
+#     return @atomic stop.value
+# end
+
+function loop(f, xs)::Bool
     stop = Atomic2(false)
-    ThreadPools.twith(ThreadPools.QueuePool(2, 11)) do pool
-        ThreadPools.@tthreads pool for x in xs
+    # ThreadPools.twith(ThreadPools.QueuePool(2, threadcount)) do pool
+        # ThreadPools.@tthreads pool for x in xs
+        ThreadPools.@bthreads for x in xs
+        # for x in xs
             !(@atomic stop.value) || return true
             thid = Threads.threadid()
             try
-                f(x, args...)
-                yield()
+                f(x)
             catch e
                 @atomic stop.value = true
                 if e isa InterruptException
@@ -105,10 +134,10 @@ function loop(f, xs, args...)
                 else
                     show_exc(e, "Exception in thid:$(thid) thrown for x:$(first(string(x), 1000)) and args:$(args)")
                 end
-                return true
+                break
             end
         end
-    end
+    # end
     return @atomic stop.value
 end
 

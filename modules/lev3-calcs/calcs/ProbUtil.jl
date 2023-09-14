@@ -2,6 +2,8 @@ module ProbUtil
 using Bins, ProbTypes
 using CalcUtil, VectorCalcUtil, NormDists
 
+ERROR: not in use
+
 export probsNormDist, probsCdf
 
 probrand(prob::ProbWithMin) = xrforp(prob, rand())

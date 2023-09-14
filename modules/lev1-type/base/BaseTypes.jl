@@ -1,12 +1,13 @@
 module BaseTypes
-using FixedPointDecimals
+using FixedPointDecimals, StaticArrays
 
-export AStr, Coll, CollN, AVec, Currency, C, CZ, PriceT, PT, P, PZ, F, toPT
+export AStr, Coll, CollT, CollN, AVec, Currency, C, CZ, PriceT, PT, P, PZ, F, toPT
 
 const AStr = AbstractString
 const AVec = AbstractVector
-const Coll{T,N} = Union{AVec{T},NTuple{N,T}}
-const CollN{N} = Union{AVec{T},NTuple{N,T}} where T
+const Coll{N,T} = Union{SVector{N,T},NTuple{N,T}}
+const CollT{T} = Union{SVector{N,T},AVec{T},NTuple{N,T}} where N
+const CollN{N} = Union{SVector{N,T},NTuple{N,T}} where T
 
 const Currency = FixedDecimal{Int,3}
 C(x::Real) = Currency(x)

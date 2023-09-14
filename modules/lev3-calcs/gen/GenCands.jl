@@ -2,9 +2,8 @@ module GenCands
 using ThreadPools
 using SH, BaseTypes, SmallTypes, LegMetaTypes
 using OptionUtil, LogUtil, ThreadUtil
-import CalcUtil
+# import CalcUtil
 using ChainTypes
-using Rets, StratTypes
 
 const MinSpreadMx = 0.03
 
@@ -141,38 +140,24 @@ function iterSpreads(f::Function, oqs::Sides{Vector{ChainTypes.OptionQuote}}, ma
 end
 
 function paraSpreads(f::Function, oqs::Sides{Vector{ChainTypes.OptionQuote}}, maxSpreadWidth::Real, isLegAllowed, args...)::Bool
-    !isempty(oqs.long) || return true
-    stop = false
-    # twith(ThreadPools.QueuePool(2, 11)) do pool
-    #     @tthreads pool for oq1 in oqs.long
-        # @qbthreads
-        for oq1 in oqs.long
-        # ThreadUtil.loop(oqs.long) do oq1
-            if !stop
-                try
-                    thid = Threads.threadid()
-                    # println("running thid:$(thid)")
-                    for oq2 in oqs.short
-                        strikeWidth(oq1, oq2) <= maxSpreadWidth || continue
-                        # (getStrike(oq1) >= strikeMin && getStrike(oq2) >= strikeMin && oq1 != oq2) || continue
-                        oq1 != oq2 || continue
-                        (isLegAllowed(oq1, Side.long) && isLegAllowed(oq2, Side.short)) || continue
-                        legLong = to(LegMetaOpen, oq1, Side.long)
-                        legShort = to(LegMetaOpen, oq2, Side.short)
-                        _, mx = oextrema(legLong, legShort)
-                        mx >= MinSpreadMx || continue
-                        spr = getStrike(legLong) < getStrike(legShort) ? (legLong, legShort) : (legShort, legLong)
-                        f(thid, spr, args...) || ( stop = true ; return false )
-                        yield()
-                    end
-                catch e
-                    stop = true
-                    ThreadUtil.show_exc(e)
-                end
-            end
+    !isempty(oqs.long) || return false
+    return ThreadUtil.loop(oqs.long) do oq1
+        thid = Threads.threadid()
+        # println("running thid:$(thid)")
+        for oq2 in oqs.short
+            strikeWidth(oq1, oq2) <= maxSpreadWidth || continue
+            # (getStrike(oq1) >= strikeMin && getStrike(oq2) >= strikeMin && oq1 != oq2) || continue
+            oq1 != oq2 || continue
+            (isLegAllowed(oq1, Side.long) && isLegAllowed(oq2, Side.short)) || continue
+            legLong = to(LegMetaOpen, oq1, Side.long)
+            legShort = to(LegMetaOpen, oq2, Side.short)
+            # _, mx = oextrema(legLong, legShort)
+            # mx >= MinSpreadMx || continue
+            spr = getStrike(legLong) < getStrike(legShort) ? (legLong, legShort) : (legShort, legLong)
+            f(thid, spr, args...)
         end
-    # end
-    return !stop
+        return
+    end
 end
 
 function oextrema(os...)

@@ -18,7 +18,10 @@ import Kelly
 import Between
 import StoreTrade:ST
 
+ERROR: not in use
+
 export cret, cmet, ckel
+
 cret(lms::Coll{LegMeta}, curp::Currency=market().curp)::Ret = SH.combineTo(Ret, lms, curp)
 cret(lms::Coll{LegMeta}, add::Coll{LegMeta}, curp::Currency=market().curp)::Ret = cret(concat(lms, add), curp)
 cmet(prob::Prob, ret::Ret) = CalcUtil.calcMetrics(prob, ret)

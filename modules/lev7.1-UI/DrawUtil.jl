@@ -18,7 +18,7 @@ draw(type::Symbol, args...; kws...)::Axis = _draw(type, args...; kws...)
 function draw(type::Symbol, points::AbstractVector{<:Tuple{DateLike,T}}; kws...)::Axis where T
     draw(type, getindex.(points, 1), getindex.(points, 2); kws...)
 end
-function draw(type::Symbol, xs::Coll{<:DateLike}, ys; dtformat="mm/dd/yyyy", kws...)::Axis
+function draw(type::Symbol, xs::CollT{<:DateLike}, ys; dtformat="mm/dd/yyyy", kws...)::Axis
     ax = _draw(type, tounix.(xs), ys; kws...)
     dateticks = PlotUtils.optimize_datetime_ticks(Dates.value(xs[1]), Dates.value(xs[end]))[1]
     tickdts = dtFromValue.(dateticks)

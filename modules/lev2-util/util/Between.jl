@@ -2,17 +2,21 @@ module Between
 using Dates
 using SH, BaseTypes, SmallTypes, QuoteTypes, OptionMetaTypes, StratTypes, LegMetaTypes, RetTypes, StatusTypes, ChainTypes
 using CollUtil, ChainUtil
-using Rets, LegTypes, TradeTypes, LegTradeTypes, Pricing
+using LegTypes, TradeTypes, LegTradeTypes, Pricing
 import ProbMultiKde as pmk
 
 #region Lines
 import LinesLeg:LinesLeg as LL,Segments
-(LL.toSegments(legs::NTuple{N,LegMeta})::Segments{N}) where N = LL.toSegments(legs, map(P ∘ Pricing.price_open, legs))
-function toSegmentsN(legs::NTuple{N,LegLike}) where N
-    netos = map(P ∘ Pricing.price_open, legs) # map(leg -> P(Pricing.price(Action.open, leg)), legs)
-    segs = LL.toSegments(legs, netos)
-    return (;segs, netos)
-end
+# TODO: add a Pricing for Trades
+# (LL.toSegments(legs::Coll{N,T})) where {N,T<:LegLike} = LL.toSegments(legs, map(P ∘ Pricing.price_open, legs))
+(LL.toSegments(legs::CollT{T})) where {T<:LegLike} = LL.toSegments(legs, map(P ∘ Pricing.price_open, legs))
+# (LL.toSegments(legs::NTuple{N,LegTrade})::Segments{N}) where N = LL.toSegments(legs, map(P ∘ getNetOpen, legs))
+
+# function toSegmentsN(legs::NTuple{N,LegLike}) where N
+#     netos = map(P ∘ Pricing.price_open, legs) # map(leg -> P(Pricing.price(Action.open, leg)), legs)
+#     segs = LL.toSegments(legs, netos)
+#     return (;segs, netos)
+# end
 # function LL.toSegments(legs::NTuple{N,LegLike}, adjustprices::Real) where N
 #     netos = map(leg -> P(Pricing.price(Action.open, leg) + adjustprices), legs)
 #     segs = LL.toSegments(legs, netos)
@@ -29,34 +33,33 @@ end
 #     segs = LL.toSegments(legs, netos)
 #     return segs
 # end
-(LL.toSegments(legs::NTuple{N,LegTrade})::Segments{N}) where N = LL.toSegments(legs, map(P ∘ getNetOpen, legs))
 
 LL.toSegmentsWithZeros(lms::NTuple{N,LegMeta}) where N = LL.toSegmentsWithZeros(lms, map(P ∘ Pricing.price, lms))
 LL.toSections(lms::NTuple{N,LegMeta}) where N = LL.toSections(lms, map(P ∘ Pricing.price, lms))
 # SH.toDraw(lms::NTuple{N,LegLike}; mn=100.0, mx=600.0) where N = collect(LL.toLineTuples(LL.toSegments(lms); mn, mx)) # collect because Makie can't handle tuples of coords
-SH.toDraw(lms::Vector{<:LegLike}; kws...) = SH.toDraw(Tuple(lms); kws...)
-SH.toDraw(lms::NTuple{N,LegLike}; mn=100.0, mx=600.0) where N = collect(LL.toLineTuples(LL.toSegments(lms); mn, mx)) # collect because Makie can't handle tuples of coords
-SH.toDraw(lms::NTuple{N,LegLike}, netos; mn=100.0, mx=600.0) where N = collect(LL.toLineTuples(LL.toSegments(lms, netos); mn, mx)) # collect because Makie can't handle tuples of coords
+# SH.toDraw(lms::Vector{<:LegLike}; kws...) = SH.toDraw(Tuple(lms); kws...)
+SH.toDraw(lms::Coll{N,<:LegLike}; mn=100.0, mx=600.0) where N = collect(LL.toLineTuples(LL.toSegments(lms); mn, mx)) # collect because Makie can't handle tuples of coords
+SH.toDraw(lms::Coll{N,<:LegLike}, netos; mn=100.0, mx=600.0) where N = collect(LL.toLineTuples(LL.toSegments(lms, netos); mn, mx)) # collect because Makie can't handle tuples of coords
 # SH.toDraw(lms::NTuple{N,LegMeta}) where N = collect(LL.toLineTuples(LL.toSegmentsWithZeros(lms))) # collect because Makie can't handle tuples of coords
 # SH.toDraw(lms::NTuple{N,LegMeta}) where N = collect(LL.toLineTuples(LL.toSegmentsWithZeros(lms))) # collect because Makie can't handle tuples of coords
 #end
 
 #region Prob
-import DateUtil, Markets, ProbKde, HistData
-using ProbTypes
+# import DateUtil, Markets, ProbKde, HistData
+# using ProbTypes
 import LineTypes:SegmentsWithZeros
-import ProbUtil
-makeprob(hasexpir)::ProbWithMin = makeprob(getExpir(hasexpir), Markets.market().curp)
-makeprob(hasexpir, curp::Real)::ProbWithMin = makeprob(getExpir(hasexpir), curp)
-makeprob(xpir::Date, curp::Real)::ProbWithMin = toProbWithMin(ProbKde.probToClose(F(curp), F(Markets.market().vix), now(UTC), xpir))
-makeprob(ts::DateTime, hasexpir, curp::Real)::ProbWithMin = makeprob(ts, getExpir(hasexpir), curp)
-makeprob(ts::DateTime, xpir::Date, curp::Real)::ProbWithMin = toProbWithMin(ProbKde.probToClose(F(curp), F(HistData.vixOpen(DateUtil.lastTradingDay(ts))), ts, xpir))
+# import ProbUtil
+# makeprob(hasexpir)::ProbWithMin = makeprob(getExpir(hasexpir), Markets.market().curp)
+# makeprob(hasexpir, curp::Real)::ProbWithMin = makeprob(getExpir(hasexpir), curp)
+# makeprob(xpir::Date, curp::Real)::ProbWithMin = toProbWithMin(ProbKde.probToClose(F(curp), F(Markets.market().vix), now(UTC), xpir))
+# makeprob(ts::DateTime, hasexpir, curp::Real)::ProbWithMin = makeprob(ts, getExpir(hasexpir), curp)
+# makeprob(ts::DateTime, xpir::Date, curp::Real)::ProbWithMin = toProbWithMin(ProbKde.probToClose(F(curp), F(HistData.vixOpen(DateUtil.lastTradingDay(ts))), ts, xpir))
 
-makeprob2(hasexpir) = makeprob2(hasexpir, Markets.market().curp)
-makeprob2(hasexpir, curp::Real) = makeprob2(getExpir(hasexpir), curp)
-makeprob2(xpir::Date, curp::Real) = ( prob = ProbKde.probToClose(F(curp), F(Markets.market().vix), now(UTC), xpir) ; (;prob, probwithmin=toProbWithMin(prob)) )
-# makeprob2(ts::DateTime, hasexpir, curp::Real) = makeprob(ts, getExpir(hasexpir), curp)
-# makeprob2(ts::DateTime, xpir::Date, curp::Real) = toProbWithMin(ProbKde.probToClose(F(curp), F(HistData.vixOpen(DateUtil.lastTradingDay(ts))), ts, xpir))
+# makeprob2(hasexpir) = makeprob2(hasexpir, Markets.market().curp)
+# makeprob2(hasexpir, curp::Real) = makeprob2(getExpir(hasexpir), curp)
+# makeprob2(xpir::Date, curp::Real) = ( prob = ProbKde.probToClose(F(curp), F(Markets.market().vix), now(UTC), xpir) ; (;prob, probwithmin=toProbWithMin(prob)) )
+# # makeprob2(ts::DateTime, hasexpir, curp::Real) = makeprob(ts, getExpir(hasexpir), curp)
+# # makeprob2(ts::DateTime, xpir::Date, curp::Real) = toProbWithMin(ProbKde.probToClose(F(curp), F(HistData.vixOpen(DateUtil.lastTradingDay(ts))), ts, xpir))
 
 calcprobprofit(prob, lms) = calcprobprofit(prob, LL.toSegmentsWithZeros(lms))
 calcprobprofit(prob, segs::Segments) = calcprobprofit(prob, LL.toSegmentsWithZeros(segs))
@@ -104,21 +107,26 @@ SH.to(::Type{LegMetaClose}, lm::Union{LegMetaOpen,LegTrade}, fotoq::Function) = 
 #endregion
 
 #region ToRet
-SH.to(::Type{Ret}, leg::Leg, curp::Currency, neto::Currency)::Ret = makeRet(leg, neto, curp)
-# Can't do this because need one neto per leg: SH.combineTo(::Type{Ret}, ::Type{<:ElType{<:Leg}}, legs, curp::Currency, neto::Currency)::Ret = combineRets(tos(Ret, legs, curp, neto))
+# SH.to(::Type{Ret}, leg::Leg, curp::Currency, neto::Currency)::Ret = makeRet(leg, neto, curp)
+# # Can't do this because need one neto per leg: SH.combineTo(::Type{Ret}, ::Type{<:ElType{<:Leg}}, legs, curp::Currency, neto::Currency)::Ret = combineRets(tos(Ret, legs, curp, neto))
 
-SH.to(::Type{Ret}, lm::LegMetaOpen, curp::Currency)::Ret = to(Ret, getLeg(lm), curp, bap(lm))
-SH.combineTo(::Type{Ret}, ::Type{<:ElType{<:LegMetaOpen}}, lms, curp::Currency)::Ret = combineRets(map(lm -> to(Ret, lm, curp), lms)) # combineTo(Ret, tos(Leg, lms), curp, bap(lms))
-# isempty(lms) ? Ret(curp) : combineRets(tos(Ret, lms, curp))
-# SH.combineTo(::Type{Ret}, ::Type{<:ElType{<:LegMeta}}, lms, forDate::Date, curp::Currency, vtyRatio::Float64=1.0)::Ret = combineRets(tos(Ret, lms, forDate, curp, vtyRatio))
+# SH.to(::Type{Ret}, lm::LegMetaOpen, curp::Currency)::Ret = to(Ret, getLeg(lm), curp, bap(lm))
+# SH.combineTo(::Type{Ret}, ::Type{<:ElType{<:LegMetaOpen}}, lms, curp::Currency)::Ret = combineRets(map(lm -> to(Ret, lm, curp), lms)) # combineTo(Ret, tos(Leg, lms), curp, bap(lms))
+# # isempty(lms) ? Ret(curp) : combineRets(tos(Ret, lms, curp))
+# # SH.combineTo(::Type{Ret}, ::Type{<:ElType{<:LegMeta}}, lms, forDate::Date, curp::Currency, vtyRatio::Float64=1.0)::Ret = combineRets(tos(Ret, lms, forDate, curp, vtyRatio))
 
-SH.to(::Type{Ret}, leg::LegTrade, curp::Currency)::Ret = to(Ret, getLeg(leg), curp, getNetOpen(leg))
-SH.combineTo(::Type{Ret}, ::Type{<:ElType{<:LegTrade}}, legs, curp::Currency)::Ret = combineRets(map(leg -> to(Ret, getLeg(leg), curp, getNetOpen(leg)), legs))
-# combineTo(Ret, map(getLeg, legs), curp, getNetOpen(legs))
+# SH.to(::Type{Ret}, leg::LegTrade, curp::Currency)::Ret = to(Ret, getLeg(leg), curp, getNetOpen(leg))
+# SH.combineTo(::Type{Ret}, ::Type{<:ElType{<:LegTrade}}, legs, curp::Currency)::Ret = combineRets(map(leg -> to(Ret, getLeg(leg), curp, getNetOpen(leg)), legs))
+# # combineTo(Ret, map(getLeg, legs), curp, getNetOpen(legs))
 
-SH.to(::Type{Ret}, trade::Trade, curp::Currency)::Ret = combineTo(Ret, getLegs(trade), curp)
-# combineRets(tos(Ret, getLegs(trade), combineTo(Ret, tos(LegMeta, getLegs(trade)), curp)
-SH.combineTo(::Type{Ret}, ::Type{<:ElType{<:Trade}}, trades, sp::Currency)::Ret = combineRets(tos(Ret, trades, sp))
+# SH.to(::Type{Ret}, trade::Trade, curp::Currency)::Ret = combineTo(Ret, getLegs(trade), curp)
+# # combineRets(tos(Ret, getLegs(trade), combineTo(Ret, tos(LegMeta, getLegs(trade)), curp)
+# SH.combineTo(::Type{Ret}, ::Type{<:ElType{<:Trade}}, trades, sp::Currency)::Ret = combineRets(tos(Ret, trades, sp))
+
+# # TODO: do this differently?
+# SH.combineTo(::Type{Ret}, lms::Coll{LegMeta}, forDate::Date, sp::Currency, vtyRatio::Float64=1.0)::Ret = combineRets(tos(Ret, lms, forDate, sp, vtyRatio))
+# SH.combineTo(::Type{Ret}, lms::Coll{LegMeta}, sp::Currency)::Ret = isempty(lms) ? Ret(sp) : combineRets(tos(Ret, lms, sp))
+# SH.combineTo(::Type{Ret}, legs::Coll{Leg,4}, oqter, forDate::Date, sp::Currency, vtyRatio::Float64)::Ret = combineRets(tos(Ret, tos(LegMeta, legs, oqter), forDate, sp, vtyRatio))
 #endregion
 
 # export requote
@@ -126,7 +134,7 @@ function reqlm(lup, leg::Leg, act::Action.T)
     oq = lup(leg)
     return act == Action.open ? LegMetaOpen(leg, oq) : LegMetaClose(leg, oq)
 end
-function reqlms(lup, legs::Coll{Leg}, act::Action.T)
+function reqlms(lup, legs::CollT{Leg}, act::Action.T)
     map(x -> reqlm(lup, x, act), legs)
 end
 function reqlms(lup, legs::Coll, act::Action.T)
@@ -180,11 +188,6 @@ tradesToLMOs(trades) = collect(mapflatmap(getLegs, legTradeToLMO, trades))
 
 # using Globals, Expirations, Markets
 # SH.to(::Type{Ret}, lg::Leg, sp::Currency=market().startPrice) = toRet(toLegMeta(lg), expir(1), sp, Globals.get(:vtyRatio))
-
-# TODO: do this differently?
-SH.combineTo(::Type{Ret}, lms::Coll{LegMeta}, forDate::Date, sp::Currency, vtyRatio::Float64=1.0)::Ret = combineRets(tos(Ret, lms, forDate, sp, vtyRatio))
-SH.combineTo(::Type{Ret}, lms::Coll{LegMeta}, sp::Currency)::Ret = isempty(lms) ? Ret(sp) : combineRets(tos(Ret, lms, sp))
-SH.combineTo(::Type{Ret}, legs::Coll{Leg,4}, oqter, forDate::Date, sp::Currency, vtyRatio::Float64)::Ret = combineRets(tos(Ret, tos(LegMeta, legs, oqter), forDate, sp, vtyRatio))
 
 # (SH.to(::Type{LegMeta}, lg::T)::LegMeta) where T<:LegTrade = LegMeta(Leg(getOption(lg), getQuantity(lg), getSide(lg)), Quote(Action.open, getNetOpen(lg)), OptionMeta(getIv(lg)))
 

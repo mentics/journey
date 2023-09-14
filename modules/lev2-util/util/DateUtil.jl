@@ -40,9 +40,9 @@ const DateLike = Union{Date,Dates.AbstractDateTime}
 
 export timult, calcRate
 bdaysPerYear() = 252.0
-durRisk(from::Date, to::Date) = 1 + bdays_t(from, to)
-timult(from::Date, to::Date) = bdaysPerYear() / durRisk(from, to)
-riskyears(from::Date, to::Date) = durRisk(from, to) / bdaysPerYear()
+durRisk(from::DateLike, to::DateLike) = 1 + bdays_t(from, to)
+timult(from::DateLike, to::DateLike) = bdaysPerYear() / durRisk(from, to)
+riskyears(from::DateLike, to::DateLike) = durRisk(from, to) / bdaysPerYear()
 durtimult(from::Date, to::Date) = ( dur = durRisk(from, to) ; (dur, bdaysPerYear() / dur) )
 calcRate(from::Date, to::Date, ret, risk)::Float64 = (ret / Float64(risk)) * timult(from, to)
 calcRate(tmult, ret, risk)::Float64 = (ret / Float64(risk)) * tmult
@@ -136,10 +136,10 @@ import ThreadSafeDicts
 # TODO: cleanup
 isBusDay(d::Date) = isbd_t(d) # isbday(:USNYSE, d)
 isbd(d::Date) = isbd_t(d)
-@memoize ThreadSafeDicts.ThreadSafeDict isbd_t(d::Date) = isbday(:USNYSE, d)
+@memoize ThreadSafeDicts.ThreadSafeDict isbd_t(d::DateLike) = isbday(:USNYSE, d)
 
-bdays(d1::Date, d2::Date)::Int = bdays_t(d1, d2)
-@memoize ThreadSafeDicts.ThreadSafeDict bdays_t(d1::Date, d2::Date)::Int = bdayscount(:USNYSE, d1, d2)
+bdays(d1::DateLike, d2::DateLike)::Int = bdays_t(d1, d2)
+@memoize ThreadSafeDicts.ThreadSafeDict bdays_t(d1::DateLike, d2::DateLike)::Int = bdayscount(:USNYSE, Date(d1), Date(d2))
 # @memoize bdays(d1::Date, d2::Date)::Int = bdayscount(:USNYSE, d1, d2)
 
 lastTradingDay(d::Date)::Date = tobday(:USNYSE, d; forward=false)

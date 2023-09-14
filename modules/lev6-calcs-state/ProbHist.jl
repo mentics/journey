@@ -4,6 +4,8 @@ using Globals, DateUtil, LogUtil
 using BaseTypes, Bins, ProbTypes
 using Caches, HistData, Markets
 
+ERROR: not in use
+
 export probHist
 
 probHist(center::Real, interval::Int; up=false)::Prob = Prob(Float64(center), probHists(; up)[interval == 0 ? 1 : interval]) # TODO: do something better for interval 0

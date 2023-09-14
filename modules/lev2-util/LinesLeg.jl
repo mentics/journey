@@ -1,7 +1,7 @@
 module LinesLeg
 using SH, BaseTypes, SmallTypes
 using LineTypes
-import Lines:Segments, SegSide, Left, Right, at, combine, toLineTuples, findZeros, segmentsWithZeros
+import Lines:Lines, Segments, SegSide, Left, Right, at, combine, toLineTuples, findZeros, segmentsWithZeros
 import LegTypes:LegLike
 
 export Segments, Section, toLineTuples
@@ -34,11 +34,50 @@ function toSeg(leg::LegLike, neto::PT)::SegSide
     qty = getQuantity(leg)
     return getStyle(leg) == Style.call ? segCall(strike, side, qty, neto) : segPut(strike, side, qty, neto)
 end
-function toSegments(legs::NTuple{N,LegLike}, netos::NTuple{N,PT})::Segments{N} where N
-    # @assert issorted(legs; by=getStrike)
-    segs = toSeg.(legs, netos)
+
+import Lines:Seg3,DirRight,DirLeft
+@inline seg3Call(strike::Currency, side::Side.T, qty::Float64, neto::PT)::Seg3 = Seg3(Point(strike, F(neto)), side == Side.long ? qty : -qty, DirRight)
+@inline seg3Put(strike::Currency, side::Side.T, qty::Float64, neto::PT)::Seg3 = Seg3(Point(strike, F(neto)), side == Side.long ? -qty : qty, DirLeft)
+@inline function toSeg3(leg::LegLike, neto::PT)::Seg3
+    # println("toSeg ", (;leg, neto))
+    strike = getStrike(leg)
+    side = getSide(leg)
+    qty = getQuantity(leg)
+    return getStyle(leg) == Style.call ? seg3Call(strike, side, qty, neto) : seg3Put(strike, side, qty, neto)
+end
+
+function toSegments(legs::Tuple{<:LegLike}, netos::Tuple{PT})
+    segs = toSeg3.(legs, netos)
     return combine(segs)
 end
+
+# function toSegments(legs::Coll{N,T}, netos::Coll{N,PT})::Segments{N} where {N,T<:LegLike}
+#     @assert issorted(legs; by=getStrike)
+#     segs = toSeg.(legs, netos)
+#     return combine(segs)
+# end
+
+function testsegs(segs, netos)
+    s = 0.0
+    for _ in 1:1000000
+        x = toSegments(segs, netos)
+        s += first(x.slopes)
+    end
+    return s
+end
+
+# function toSegments(legs::Coll{N,T}, netos::Coll{N,PT}) where {N,T<:LegLike}
+#     # @assert issorted(legs; by=getStrike)
+#     segs = toSeg3.(legs, netos)
+#     return Lines.combine(segs)
+# end
+
+function toSegments(legs::CollT{T}, netos::CollT{PT}) where {T<:LegLike}
+    # @assert issorted(legs; by=getStrike)
+    segs = toSeg3.(legs, netos)
+    return Lines.combine(segs)
+end
+
 (slopeprofit(s::Segments{N}) where N) = s.slopes[1] < 0 || s.slopes[end] > 0
 canprofit(s::Segments{1}) = slopeprofit(s) || s.points[1].y > 0
 canprofit(s::Segments{2}) = slopeprofit(s) || s.points[1].y > 0 || s.points[2].y > 0

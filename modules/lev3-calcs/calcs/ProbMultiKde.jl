@@ -6,7 +6,7 @@ import Calendars
 import DataFiles as dat
 import VectorCalcUtil as vcu
 
-export SimpleKde, KdeProb
+export SimpleKde, KdeProb2
 
 #region Types
 const IntervalFCC = Interval{Float64,Closed,Closed}
@@ -47,14 +47,16 @@ struct SimpleKde
     extents::Coord{IntervalFCC}
 end
 
-struct KdeProb{S}
+struct KdeProb2{S}
     src::S
     ts::DateTime
+    xpirts::DateTime
     center::Float64
     prob_mass::Vector{Float64}
     cumu_mass::Vector{Float64}
     xs::Xs
 end
+tss(prob::KdeProb2) = (prob.ts, prob.xpirts)
 #endregion
 
 #region Public
@@ -225,55 +227,67 @@ dist_euc(c1::CoordF, c2::NTuple{3,<:Real}) = (c1.ret * c2[1])^2 + (c1.tex * c2[2
 # makeprob(tkde, curp, xpir::Date) = makeprob(tkde, curp, dat.market_close(xpir))
 # binwidth is hardcoded to 10th of a percent
 
+using LRUCache
+const PROB_CACHE2 = LRUCache.LRU{Tuple{DateTime,DateTime},KdeProb2}(;maxsize=2000)
+
 function makeprob(kde::SimpleKde, curp, ts::DateTime, xpirts::DateTime, oqs; binwidth=1e-3, k=(0.001, 0.01, 0.01))
-    # global kmakeprobargs = (kde, curp, ts, xpirts, oqs)
-    (;tex, vol) = make_kde_args(curp, ts, xpirts, oqs)
-    # println("makeprob: $(tex), $(vol)")
-    if !(tex in kde.extents.tex)
-        println("WARN: tex:$(tex) not in kde extents $(kde.extents.tex)")
-    end
-    if !(vol in kde.extents.vol)
-        println("WARN: vol:$(vol) not in kde extents $(kde.extents.vol)")
-    end
+    return get!(PROB_CACHE2, (ts, xpirts)) do
+        # global kmakeprobargs = (kde, curp, ts, xpirts, oqs)
+        (;tex, vol) = make_kde_args(curp, ts, xpirts, oqs)
+        println("making prob for $(ts) -> $(xpirts) with tex:$(tex), vol:$(vol)")
+        tex > 12.0 || error("tex too small for makeprob")
+        if !(tex in kde.extents.tex)
+            println("WARN: tex:$(tex) not in kde extents $(kde.extents.tex)")
+        end
+        if !(vol in kde.extents.vol)
+            println("WARN: vol:$(vol) not in kde extents $(kde.extents.vol)")
+        end
 
-    pdfvals = Vector{Float64}()
-    ret_min, ret_max = extrem(kde.extents.ret)
-    start = round_step(binwidth, 0.9 * ret_min)
-    stop = round_step(binwidth, 1.1 * ret_max)
-    # Can't search for left and right beforehand because we're going to normalize it, so we don't know what threshold to use.
-    # xleft, pdleft = CollUtil.find2(x -> kde_pdf(kde, (x, tex, vol), k), y -> y > 1e-8, start:binwidth:ret_max)
-    # xright, pdright = CollUtil.find2(x -> kde_pdf(kde, (x, tex, vol), k), y -> y > 1e-8, stop:-binwidth:start)
-    xs = collect(start:binwidth:stop)
-    pdfvals = map(xs) do x
-        return kde_pdf(kde, (x, tex, vol), k, allow_oob=true)
-    end
-    # global kxs1 = copy(xs)
-    # global kpdfvals1 = copy(pdfvals)
-    # global kxs = xs
-    # global kpdfvals = pdfvals
-    mn = minimum(pdfvals)
-    pdfvals .-= mn
-    vcu.normalize!(pdfvals)
-    left = findfirst(x -> x > 1e-5, pdfvals)
-    right = findlast(x -> x > 1e-5, pdfvals)
-    global kpdfvals = pdfvals
-    inds = left:right
-    xs = xs[inds]
-    pdfvals = pdfvals[inds]
-    vcu.normalize!(pdfvals) # not sure if this second normalize! is ideal
-    cdfvals = accumulate(+, pdfvals)
-    return KdeProb(kde, ts, F(curp), pdfvals, cdfvals, Xs(xs,-1,binwidth))
-    # sxs = kde_xs(kde, numbins)
-    # xs = sxs.xs
+        pdfvals = Vector{Float64}()
+        ret_min, ret_max = extrem(kde.extents.ret)
+        start = round_step(binwidth, 0.9 * ret_min)
+        stop = round_step(binwidth, 1.1 * ret_max)
+        # Can't search for left and right beforehand because we're going to normalize it, so we don't know what threshold to use.
+        # xleft, pdleft = CollUtil.find2(x -> kde_pdf(kde, (x, tex, vol), k), y -> y > 1e-8, start:binwidth:ret_max)
+        # xright, pdright = CollUtil.find2(x -> kde_pdf(kde, (x, tex, vol), k), y -> y > 1e-8, stop:-binwidth:start)
+        xs = collect(start:binwidth:stop)
 
-    # pdfvals = Vector{Float64}(undef, numbins)
-    # for i in 1:numbins
-    #     coord = (xs[i], tex, vol)
-    #     pdfvals[i] = kde_pdf(kde, coord, k)
-    # end
-    # vcu.normalize!(pdfvals)
-    # cdfvals = accumulate(+, pdfvals)
-    # return KdeProb(kde, ts, F(curp), pdfvals, cdfvals, sxs)
+        # pdfvals = map(xs) do x
+        #     return kde_pdf(kde, (x, tex, vol), k, allow_oob=true)
+        # end
+
+        pdfvals = ThreadPools.bmap(xs) do x
+            return kde_pdf(kde, (x, tex, vol), k, allow_oob=true)
+        end
+
+        # global kxs1 = copy(xs)
+        # global kpdfvals1 = copy(pdfvals)
+        # global kxs = xs
+        # global kpdfvals = pdfvals
+        mn = minimum(pdfvals)
+        pdfvals .-= mn
+        vcu.normalize!(pdfvals)
+        left = findfirst(x -> x > 1e-5, pdfvals)
+        right = findlast(x -> x > 1e-5, pdfvals)
+        # global kpdfvals = pdfvals
+        inds = left:right
+        xs = xs[inds]
+        pdfvals = pdfvals[inds]
+        vcu.normalize!(pdfvals) # not sure if this second normalize! is ideal
+        cdfvals = accumulate(+, pdfvals)
+        return KdeProb2(kde, ts, xpirts, F(curp), pdfvals, cdfvals, Xs(xs,-1,binwidth))
+        # sxs = kde_xs(kde, numbins)
+        # xs = sxs.xs
+
+        # pdfvals = Vector{Float64}(undef, numbins)
+        # for i in 1:numbins
+        #     coord = (xs[i], tex, vol)
+        #     pdfvals[i] = kde_pdf(kde, coord, k)
+        # end
+        # vcu.normalize!(pdfvals)
+        # cdfvals = accumulate(+, pdfvals)
+        # return KdeProb(kde, ts, F(curp), pdfvals, cdfvals, sxs)
+    end
 end
 
 # function makeprob(kde::TheGrid, curp, ts::DateTime, xpirts::DateTime, oqs; binwidth=1e-3, k=(0.001, 0.01, 0.01))
@@ -325,7 +339,7 @@ end
 # end
 
 apply(x, f1, f2) = (f1(x), f2(x))
-function cdf(prob::KdeProb, x::Float64)::Float64
+function cdf(prob::KdeProb2, x::Float64)::Float64
     xr = x / prob.center
     # mn, mx = apply(getxextent(prob), first, last)
     mn, mx = apply(prob.xs.xs, first, last)
@@ -360,9 +374,9 @@ end
 #endregion Public
 
 #region Local
-getxs(prob::KdeProb) = prob.xs.xs
+getxs(prob::KdeProb2) = prob.xs.xs
 # getxextent(prob::KdeProb) = prob.src.extents.ret
-getbinwidth(prob::KdeProb) = prob.xs.binwidth
+getbinwidth(prob::KdeProb2) = prob.xs.binwidth
 
 @inline function togrid(x::CoordF, width)
     @assert x.ret in 0.0..1.0 && x.tex in 0.0..1.0 && x.vol in 0.0..1.0

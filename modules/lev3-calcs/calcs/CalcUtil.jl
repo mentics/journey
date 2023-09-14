@@ -1,6 +1,8 @@
 module CalcUtil
 using SH, BaseTypes, Bins, ProbTypes, RetTypes
 
+ERROR: not in use
+
 export calcMetrics
 export adjust!
 

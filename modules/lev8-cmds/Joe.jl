@@ -8,6 +8,8 @@ using CmdUtil
 using CmdPos
 import LegTypes
 
+ERROR: not in use
+
 export jorn
 
 # rs = Vector(undef,20) ; [(i, (rs[i] = jorn(expir(i)); rs[i][1].roi)) for i in 1:1]

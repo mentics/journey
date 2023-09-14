@@ -1,6 +1,6 @@
 include("repl-base.jl")
 
-using Dates
+using Dates, StaticArrays
 # import IterTools, NamedTupleTools
 # IT = IterTools
 # NTT = NamedTupleTools

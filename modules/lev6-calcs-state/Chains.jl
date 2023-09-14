@@ -1,6 +1,6 @@
 module Chains
 using Dates
-using CollUtil, DictUtil, DateUtil, CalcUtil, LogUtil, VectorCalcUtil
+using CollUtil, DictUtil, DateUtil, LogUtil, VectorCalcUtil
 using Globals, BaseTypes, SH, Bins, SmallTypes, ChainTypes, QuoteTypes, OptionTypes, OptionMetaTypes, LegTypes, LegMetaTypes
 using TradierData, Caches
 using DataHelper, Markets, Calendars, Expirations

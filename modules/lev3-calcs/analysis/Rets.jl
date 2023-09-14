@@ -5,6 +5,8 @@ using DateUtil, LogUtil
 using BlacksPricing
 using Globals
 
+ERROR: shouldn't be importing this anywhere
+
 export makeRet, estAtPrice, combineRetVals!, combineRets, combineRetsC, combineRetVals
 
 # This is where we convert from Currency to Float64
@@ -82,14 +84,14 @@ function combineRetVals(rets)::Vector{Float64}
     c = first(rets).center ; @assert isnothing(findfirst(x->x.center!=c, rets))
     return mapreduce(r->r.vals, +, rets)
 end
-function combineRets(rets::Coll{Ret})::Ret
+function combineRets(rets::CollT{Ret})::Ret
     c = first(rets).center ; @assert isnothing(findfirst(x->x.center!=c, rets))
     vals, numLegs = mapreduce(r -> (r.vals, r.numLegs), tupadd, rets)
     return Ret(vals, c, numLegs)
 end
 (tupadd((x11, x12)::Tuple{T1,T2}, (x21, x22)::Tuple{T1,T2})::Tuple{T1,T2}) where {T1,T2} = (x11 + x21, x12 + x22)
 # r1.vals + r2.vals, r1.numLegs + r2.numLegs
-function combineRetsC(rets::Coll{Ret}, cnew=sum(r -> r.center, rets) / length(rets))::Ret
+function combineRetsC(rets::CollT{Ret}, cnew=sum(r -> r.center, rets) / length(rets))::Ret
     # cnew = sum(r -> r.center, rets) / length(rets)
     vals = Bins.with(0.0) # similar(getVals(rets[1]))
     for (i, x) in Bins.xsi()

@@ -10,7 +10,7 @@ export newTrade, loadTrade, loadLegTrade, findTrades
 export queryLegStatus, queryNumLegs, queryLeftovers, queryEntered, queryLegsEntered
 export findTradeEntered
 
-function newTrade(primitDir::PriceT, legs::Coll{LegMetaOpen}, underBid::Currency, underAsk::Currency)::Int
+function newTrade(primitDir::PriceT, legs::CollT{LegMetaOpen}, underBid::Currency, underAsk::Currency)::Int
     @assert sum(getBid, legs) <= primitDir <= sum(getAsk, legs) "Invalid primitDir $(primitDir) $(sum(getBid, legs)) $(sum(getAsk, legs))\n$(legs)"
     exp = minimum(getExpir, legs)
     tid = 0
@@ -53,7 +53,7 @@ qmarks(num) = "$(join(repeat(['?'], num), ','))"
 
 using IterTools
 const VEC_EMPTY_TRADES = Trade[]
-loadTrades(tids::Coll{Int})::Vector{Trade} = loadTrades(qmarks(length(tids)), tids)
+loadTrades(tids::CollT{Int})::Vector{Trade} = loadTrades(qmarks(length(tids)), tids)
 function loadTrades(clauseIn::String, clauseArgs...)::Vector{Trade}
     # ts = select("select * from VTrade where tid in ($(clauseIn))", clauseArgs...)
     # TODO: There's a bug in db

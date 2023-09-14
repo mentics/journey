@@ -1,8 +1,8 @@
 module Kelly
 using Roots, LoopVectorization
-using BaseTypes, ProbTypes
+using BaseTypes
 import ProbMultiKde as pmk
-import Lines:at
+import Lines:atsegs, Segments
 
 import BenchmarkTools
 struct ParamsFunction{F,P}
@@ -69,6 +69,7 @@ function kel3(x, (po, o, len))
     # return 0.5 - x + 1/10000
     s = 0.0
     @turbo for i in 1:len
+    # @inbounds for i in 1:len
         s += po[i] / (1 + o[i] * x)
     end
     return s
@@ -87,16 +88,23 @@ issame(x1, x2) = ((x1 / x2) ≈ 1.0) || (abs(x1) < 1e-12 && abs(x2) < 1e-12)
 
 using BenchmarkTools
 function test()
-    buf = make_buf()
-    # buf.len[] = 1
-    prob, commit, segs = kargs
+    # buf = make_buf()
+    # # buf.len[] = 1
+    buf, prob, commit, segs = kcalckelargs
     @btime Kelly.calckel($buf, $prob, $commit, $segs)
+end
+
+function testprof()
+    for _ in 1:1000
+        Kelly.calckel(kcalckelargs...)
+    end
 end
 
 # https://math.stackexchange.com/a/662210/235608
 # Commit, not risk, because in the formula, it's balance/commit to get number of contracts
-function calckel(buf::Buf4, prob, commit::Real, segs, probadjust=0.0)::NamedTuple{(:kel, :evret, :ev), Tuple{Float64, Float64, Float64}}
-    global kcalckelargs = (;buf, prob, commit, segs, probadjust)
+function calckel(buf, prob, commit, segs, probadjust)::NamedTuple{(:kel, :evret, :ev), Tuple{Float64, Float64, Float64}}
+    # global kcalckelargs = (;buf, prob, commit, segs, probadjust)
+    # error("stop")
     if commit <= 0.0
         # println("Invalid commit:$(commit) in calckel")
         return (;kel=NaN, evret=NaN, ev=100.0)
@@ -107,11 +115,11 @@ function calckel(buf::Buf4, prob, commit::Real, segs, probadjust=0.0)::NamedTupl
     prob_tot = 0.0
     for i in 1:len
         x = prob.xs.xs[i]
+        o = atsegs(segs, x * prob.center) / commit
         p = prob.prob_mass[i]
-        prob_tot += p
-        o = at(segs, x * prob.center) / commit
-        po = p * o
         p *= o > 0 ? 1.0 - probadjust : 1.0 + probadjust
+        prob_tot += p
+        po = p * o
         ev += po
         # probability, outcome, probability * outcome
         buf.p[i] = p

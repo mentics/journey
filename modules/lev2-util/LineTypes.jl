@@ -1,5 +1,5 @@
 module LineTypes
-using ComputedFieldTypes
+using ComputedFieldTypes, StaticArrays
 
 export Point, Segment, Segments, SegmentsZeros, SegmentsWithZeros
 
@@ -16,8 +16,8 @@ struct Segment
 end
 
 @computed struct Segments{N}
-    slopes::NTuple{N+1,Float64}
-    points::NTuple{N,Point}
+    slopes::SVector{N+1,Float64}
+    points::SVector{N,Point}
 end
 
 @computed struct SegmentsZeros{N}

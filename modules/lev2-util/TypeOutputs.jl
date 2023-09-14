@@ -37,6 +37,10 @@ Base.show(io::IO, ::Type{LegMetaTypes.Close}) = print(io, "Close")
 
 #region Collections
 function Base.show(io::IO, lms::NTuple{N,LegMetaTypes.LegMeta{T}}) where {N,T}
+    if N == 0
+        println(io, "ODD EMPTY TUPLE")
+        return
+    end
     println(io, "( ", lms[1])
     for lm in lms[2:end-1]
         println(io, "  ", lm)

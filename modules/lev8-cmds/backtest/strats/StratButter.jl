@@ -9,6 +9,8 @@ import ProbKde, ProbUtil, Kelly, HistData
 import LinesLeg as LL
 using Scoring
 
+ERROR: not in use
+
 # TODO: updating margin is probably using the close mid instead of the open mid when choosing between short and long
 # TODO: try using delta vix in choosing between high/low findEntry
 

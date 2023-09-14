@@ -5,6 +5,8 @@ using LogUtil, CollUtil
 using StoreTrade
 using Chains, Expirations
 
+ERROR: not in use
+
 export xlms, xlmsv
 
 # TODO: remove after fixing calcs to not need it

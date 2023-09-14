@@ -34,9 +34,9 @@ isConflict(l1, l2) = getOption(l1) == getOption(l2) && getSide(l1) != getSide(l2
 
 isConflict(leg, opt::Option, side::Side.T) = side != getSide(leg) && opt == getOption(leg)
 isConflict(leg, opt, side::Side.T) = side != getSide(leg) && getOption(opt) == getOption(leg)
-isConflict(legs::Coll) = (opt, side::Side.T) -> !isnothing(findfirst(leg -> isConflict(leg, opt, side), legs))
+isConflict(legs::CollT{<:LegLike}) = (opt, side::Side.T) -> !isnothing(findfirst(leg -> isConflict(leg, opt, side), legs))
 # isConflict(legs::Coll, opt, side::Side.T) = !isnothing(findfirst(leg -> isConflict(leg, opt, side), legs))
-isConflict(legs::Coll, side::Side.T) = opt -> !isnothing(findfirst(leg -> isConflict(leg, opt, side), legs))
+isConflict(legs::CollT{<:LegLike}, side::Side.T) = opt -> !isnothing(findfirst(leg -> isConflict(leg, opt, side), legs))
 function hasConflict(legs)
     for i in eachindex(legs)[1:end-1]
         for j in i+1:lastindex(legs)
