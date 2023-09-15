@@ -130,16 +130,17 @@ const MARKET_TZ = tz"America/New_York"
 toDate(z::ZonedDateTime)::Date = Date(astimezone(z, LOCALZONE))
 
 
-using Memoization
+using Memoization, ThreadSafeDicts
 export isbd
-import ThreadSafeDicts
 # TODO: cleanup
 isBusDay(d::Date) = isbd_t(d) # isbday(:USNYSE, d)
 isbd(d::Date) = isbd_t(d)
-@memoize ThreadSafeDicts.ThreadSafeDict isbd_t(d::DateLike) = isbday(:USNYSE, d)
+# @memoize ThreadSafeDicts.ThreadSafeDict isbd_t(d::DateLike) = isbday(:USNYSE, d)
+@memoize isbd_t(d::DateLike) = isbday(:USNYSE, d)
 
 bdays(d1::DateLike, d2::DateLike)::Int = bdays_t(d1, d2)
-@memoize ThreadSafeDicts.ThreadSafeDict bdays_t(d1::DateLike, d2::DateLike)::Int = bdayscount(:USNYSE, Date(d1), Date(d2))
+# @memoize ThreadSafeDicts.ThreadSafeDict bdays_t(d1::DateLike, d2::DateLike)::Int = bdayscount(:USNYSE, Date(d1), Date(d2))
+@memoize bdays_t(d1::DateLike, d2::DateLike)::Int = bdayscount(:USNYSE, Date(d1), Date(d2))
 # @memoize bdays(d1::Date, d2::Date)::Int = bdayscount(:USNYSE, d1, d2)
 
 lastTradingDay(d::Date)::Date = tobday(:USNYSE, d; forward=false)

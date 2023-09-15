@@ -15,19 +15,33 @@ struct Segment
     slope::Float64
 end
 
-@computed struct Segments{N}
-    slopes::SVector{N+1,Float64}
-    points::SVector{N,Point}
+struct Segments
+    slopes::Vector{Float64}
+    points::Vector{Point}
 end
 
-@computed struct SegmentsZeros{N}
-    s::fulltype(Segments{N})
+struct SegmentsZeros
+    s::Segments
 end
 
-# Segments plus extra ones around zeros
-@computed struct SegmentsWithZeros{N}
-    s::fulltype(Segments{N})
+struct SegmentsWithZeros
+    s::Segments
     extent::Tuple{Float64,Float64}
 end
+
+# @computed struct Segments{N}
+#     slopes::SVector{N+1,Float64}
+#     points::SVector{N,Point}
+# end
+
+# @computed struct SegmentsZeros{N}
+#     s::fulltype(Segments{N})
+# end
+
+# Segments plus extra ones around zeros
+# @computed struct SegmentsWithZeros{N}
+#     s::fulltype(Segments{N})
+#     extent::Tuple{Float64,Float64}
+# end
 
 end

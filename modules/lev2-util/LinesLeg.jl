@@ -51,7 +51,7 @@ function toSegments(legs::Tuple{<:LegLike}, netos::Tuple{PT})
     return combine(segs)
 end
 
-# function toSegments(legs::Coll{N,T}, netos::Coll{N,PT})::Segments{N} where {N,T<:LegLike}
+# function toSegments(legs::Coll{N,T}, netos::Coll{N,PT})::Segments where {N,T<:LegLike}
 #     @assert issorted(legs; by=getStrike)
 #     segs = toSeg.(legs, netos)
 #     return combine(segs)
@@ -78,19 +78,21 @@ function toSegments(legs::CollT{T}, netos::CollT{PT}) where {T<:LegLike}
     return Lines.combine(segs)
 end
 
-(slopeprofit(s::Segments{N}) where N) = s.slopes[1] < 0 || s.slopes[end] > 0
-canprofit(s::Segments{1}) = slopeprofit(s) || s.points[1].y > 0
-canprofit(s::Segments{2}) = slopeprofit(s) || s.points[1].y > 0 || s.points[2].y > 0
-canprofit(s::Segments{3}) = slopeprofit(s) || s.points[1].y > 0 || s.points[2].y > 0 || s.points[3].y > 0
-canprofit(s::Segments{4}) = slopeprofit(s) || s.points[1].y > 0 || s.points[2].y > 0 || s.points[3].y > 0 || s.points[4].y > 0
-# function extrema(s::Segments{N}) where N
+(slopeprofit(s::Segments)) = s.slopes[1] < 0 || s.slopes[end] > 0
+canprofit(s::Segments) = slopeprofit(s) || !isnothing(findfirst(p -> p.y > 0, s.points))
+
+# canprofit(s::Segments{1}) = slopeprofit(s) || s.points[1].y > 0
+# canprofit(s::Segments{2}) = slopeprofit(s) || s.points[1].y > 0 || s.points[2].y > 0
+# canprofit(s::Segments{3}) = slopeprofit(s) || s.points[1].y > 0 || s.points[2].y > 0 || s.points[3].y > 0
+# canprofit(s::Segments{4}) = slopeprofit(s) || s.points[1].y > 0 || s.points[2].y > 0 || s.points[3].y > 0 || s.points[4].y > 0
+# function extrema(s::Segments)
 # end
 
 toSegmentsWithZeros(legs::NTuple{N,LegLike}, netos::NTuple{N,PT}) where N = toSegmentsWithZeros(toSegments(legs, netos))
 toSegmentsWithZeros(segs::Segments; extent=(100.0, 600.0)) = segmentsWithZeros(segs; extent)
 
 toSections(legs::NTuple{N,LegLike}, netos::NTuple{N,PT}) where N = toSections(toSegments(legs, netos))
-function toSections(segs::Segments{N}) where N
+function toSections(segs::Segments)
     zs = findZeros(segs)
     x1 = first(segs.points).x
     x1 -= abs(x1) + 1 # subtract an extra 1 in case x1 == 0

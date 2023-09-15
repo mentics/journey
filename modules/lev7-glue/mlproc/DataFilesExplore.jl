@@ -78,7 +78,7 @@ function explore(;inds=nothing, yms=dat.make_yms(), skip_existing=true, use_prob
 
                 res = ore.findkel(ctx, xpirts, oqss, top_xpir, 1:3; use_problup)
                 # isnothing(res) && @goto stop
-                global kres = res
+                # global kres = res
 
                 if !isempty(res) # && res[1].evrate > 1e-4
                     expres = 10
@@ -88,17 +88,17 @@ function explore(;inds=nothing, yms=dat.make_yms(), skip_existing=true, use_prob
                     # showres(tsi_index, ts, sdf, curp, res[end])
                     # showres(tsi_index, ts, sdf, curp, res[1])
                     r1 = res[1]
-                    all = df_calc_pnl(sdf, r1.lms, dat.market_close(SH.getExpir(r1.lms)))
+                    all = df_calc_pnl(sdf, r1.lms, xpirts) # dat.market_close(SH.getExpir(r1.lms)))
                     # ThreadUtil.runSync(lock_proc) do
                         r = (;ts, curp, r1, all)
-                        # push!(top_xpir, r)
-                        # push!(rs_ts, r)
+                        push!(top_xpir, r)
+                        push!(rs_ts, r)
                     # end
                 else
                     println("$(ts): No results for $(xpirts)")
                 end
             end
-            # TOP_TS[ts] = rs_ts
+            TOP_TS[ts] = rs_ts
             println("Completed ts:$(ts) at $(DateUtil.nowz())")
         end
     end
@@ -135,13 +135,23 @@ function drawbal(kelrat = 1.0, newfig=false)
         # drets[xpir] = rets
 
         # rs = dxpirs[xpir]
-        rs = TOP_XPIRTS[xpirts]
-        count = length(rs)
+        rs = filter(TOP_XPIRTS[xpirts]) do r
+            # r.r1.probprofit >= .92
+            if r.r1.balrat < 0 || r.r1.balrat > 1
+                println("broken")
+            end
+            true
+            # r.r1.balrat < 1
+        end
+        # count = length(rs)
         rets = map(rs) do r
+            if invalid(r.r1.risk) || invalid(r.r1.kel)
+                @show r.r1.risk r.all.pnl_value r.r1.kel
+            end
             r.r1.balrat * r.r1.kel * r.all.pnl_value / r.r1.risk
         end
         # drets[xpir] = sum(rets) * kelrat / count
-        drets[xpirts] = sum(rets) * kelrat
+        drets[xpirts] = isempty(rets) ? 0.0 : sum(rets) * kelrat
     end
     # vals = map(x -> d[x], xpirs)
     # acc = accumulate(+, vals)
@@ -154,9 +164,11 @@ function drawbal(kelrat = 1.0, newfig=false)
     if newfig
         DrawUtil.draw(:scatter, xpirtss, acc)
     else
-        DrawUtil.draw!(:scatter, xpirtss, acc)
+        DrawUtil.draw!(:scatter, xpirtss, acc; label="$(DateUtil.nowz())")
     end
 end
+
+invalid(x) = !isfinite(x) || x < 0
 
 function updown()
     all = get_all()
@@ -168,6 +180,7 @@ function updown()
     stats(up, tot_count)
     println("down:")
     stats(down, tot_count)
+    return
 end
 
 using StatsBase
@@ -180,6 +193,18 @@ function stats(rs, tot_count)
     display(bdays_out)
     neto_sign = countmap([sign(r.r1.neto) for r in rs])
     display(neto_sign)
+    kel = quantile(map(r -> r.r1.kel, rs))
+    @show kel
+    evret = quantile(map(r -> r.r1.evret, rs))
+    @show evret
+    evrate = quantile(map(r -> r.r1.evrate, rs))
+    @show evrate
+    probprofit = quantile(map(r -> r.r1.probprofit, rs))
+    @show probprofit
+    risk = quantile(map(r -> r.r1.risk, rs))
+    @show risk
+    # TODO: look for how many cases of isolated losses, vs. all for that expiration
+    return
 end
 
 bdout(r) = bdays(r.ts, SH.getExpir(r.r1.lms))
@@ -283,7 +308,7 @@ end
 function reset()
     empty!(TOP_TS)
     empty!(TOP_XPIRTS)
-    ore.MAX_LEN[] = 0
+    # ore.MAX_LEN[] = 0
 end
 const TOP_TS = SortedDict{DateTime,Vector}()
 const TOP_XPIRTS = SortedDict{DateTime,Vector}()

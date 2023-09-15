@@ -119,9 +119,9 @@ end
 
 function loop(f, xs)::Bool
     stop = Atomic2(false)
-    # ThreadPools.twith(ThreadPools.QueuePool(2, threadcount)) do pool
-        # ThreadPools.@tthreads pool for x in xs
-        ThreadPools.@bthreads for x in xs
+    ThreadPools.twith(ThreadPools.QueuePool(2, 10)) do pool
+        ThreadPools.@tthreads pool for x in xs
+        # ThreadPools.@bthreads for x in xs
         # for x in xs
             !(@atomic stop.value) || return true
             thid = Threads.threadid()
@@ -132,12 +132,11 @@ function loop(f, xs)::Bool
                 if e isa InterruptException
                     sync_output("Interrupted thid:$(thid)")
                 else
-                    show_exc(e, "Exception in thid:$(thid) thrown for x:$(first(string(x), 1000)) and args:$(args)")
+                    show_exc(e, "Exception in thid:$(thid) thrown for x:$(first(string(x), 1000))")
                 end
-                break
             end
         end
-    # end
+    end
     return @atomic stop.value
 end
 

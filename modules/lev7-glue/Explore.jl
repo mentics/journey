@@ -23,8 +23,8 @@ const ProbLup4 = Dict{DateTime,pmk.KdeProb2}()
 # ))
 
 config() = (;
-    adjustprices = C(-0.0),
-    kelprobadjust = 0.0
+    adjustprices = C(-0.01),
+    kelprobadjust = 0.1
 )
 
 #region LookForBestKelly
@@ -172,8 +172,8 @@ function findkel(ctx, xpirts::DateTime, oqss, pos_rs, incs; keep=10, use_problup
         lms = get_pos_lms(pos_rs)
         segs = LL.toSegments(lms, P.(SH.getBid.(lms)))
         risk = riskrat * max(Pricing.calcMarg(prob.center, segs))
-        kel, evret, ev = calckel(kelly_buffer[Threads.threadid()], prob, risk, segs)
-        pos = kv(;lms=nc(lms), segs=nc(segs), risk, kel, evret, ev, count=length(pos_rs))
+        kel, evret, ev, probprofit = calckel(kelly_buffer[Threads.threadid()], prob, risk, segs)
+        pos = kv(;lms=nc(lms), segs=nc(segs), risk, kel, evret, ev, probprofit, count=length(pos_rs))
     end
 
     ctx2 = kv(;ctx.ts, ctx.date, ctx.curp, prob, riskrat, xpirts, kelly_buffer, pos)
@@ -195,7 +195,7 @@ function get_pos_lms(pos)
     # res = SVector{len}(v)
     # return res
 end
-const MAX_LEN = Ref(0)
+# const MAX_LEN = Ref(0)
 
 # findkel(f_xpir_to_oqss, ctx, xpirs::Coll{Date}, incs; keep=100) = findkel(f_xpir_to_oqss, ctx, Calendars.getMarketClose.(xpirs), incs)
 # function findkel(f_xpir_to_oqss, ctx, xpirtss::Coll{DateTime}, incs; keep=100, use_problup=true)
@@ -327,22 +327,11 @@ function check!(ress, ctx, lms)::Nothing
     try
         LL.canprofit(segs) || return
         risk = ctx.riskrat * max(Pricing.calcMarg(ctx.prob.center, segs))
-        if risk < 0.5
-            netos = P.(SH.getBid.(lms))
-            segs = LL.toSegments(lms, netos)
-            risk = ctx.riskrat * max(Pricing.calcMarg(ctx.prob.center, segs))
-            LL.canprofit(segs) || return
-            if risk < 0.1
-                # global kcheck = (;ctx, lms, segs, netos)
-                # println("Skipping risk:$(risk) too low")
-                return
-                # @show risk segs
-                # error("Risk too low")
-            end
-        end
+        0.14 < risk < 6.0 || return
         thid = Threads.threadid()
-        kel, evret, ev = calckel(ctx.kelly_buffer[thid], ctx.prob, risk, segs)
+        kel, evret, ev, probprofit = calckel(ctx.kelly_buffer[thid], ctx.prob, risk, segs)
         isfinite(kel) || return
+        probprofit >= 0.85 || return
 
         pos = ctx.pos
         pos_count = 0
@@ -358,14 +347,14 @@ function check!(ress, ctx, lms)::Nothing
             all_lms = sort!(vcat(pos.lms, lms...); by=SH.getStrike)
             all_segs = LL.toSegments(all_lms, P.(SH.getBid.(all_lms)))
             all_risk = ctx.riskrat * max(Pricing.calcMarg(ctx.prob.center, all_segs))
-            all_kel, all_evret, all_ev = calckel(ctx.kelly_buffer[thid], ctx.prob, all_risk, all_segs)
-            if !isnan(all_evret) && all_evret <= pos.evret
+            all_kel, all_evret, all_ev, all_probprofit = calckel(ctx.kelly_buffer[thid], ctx.prob, all_risk, all_segs)
+            if !isnan(all_evret) && (all_evret <= pos.evret) # || all_probprofit <= pos.probprofit)
                 return
             end
 
             all_evrate = calcevrate(evret, ctx.xpirts, ctx.date)
             # ThreadUtil.sync_output(@str (pos.kel, pos.evret) (kel, evret) (all_kel, all_evret))
-            all = kv(;evrate=all_evrate, kel=all_kel, evret=all_evret, ev=all_ev)
+            all = kv(;evrate=all_evrate, kel=all_kel, evret=all_evret, ev=all_ev, probprofit=all_probprofit)
             # if length(lms) == 1 && (all_kel > pos.kel || all_evret > pos.evret)
             #     ThreadUtil.sync_output(@str all_kel pos.kel all_evret pos.evret)
             #     error("Found improved by one leg")
@@ -374,12 +363,15 @@ function check!(ress, ctx, lms)::Nothing
 
         # if isfinite(kel) # && kel >= 0.48
             evrate = calcevrate(evret, ctx.xpirts, ctx.date)
-            probprofit = Between.calcprobprofit(ctx.prob, segs)
-            balrat = 1 / (pos_count + numtradestoxpir(ctx.ts, ctx.xpirts))
+            # probprofit = Between.calcprobprofit(ctx.prob, segs)
+            cnt = 1 + (pos_count + numtradestoxpir(ctx.ts, ctx.xpirts))
+            # if cnt < 1
+            #     global kctx = ctx
+            #     error("invalid count")
+            # end
+            balrat = 1 / cnt
             # TODO: filter out ones that have a lot of outcome too close to zero
-            if probprofit >= 0.68
-                push!(ress[thid], Result(kv(;all, evrate, balrat, kel, ev, evret, risk, ctx.xpirts, lms=lms=nc(lms), probprofit, netos=netos=nc(netos), neto=sum(netos))))
-            end
+            push!(ress[thid], Result(kv(;all, evrate, balrat, kel, ev, evret, probprofit, risk, ctx.xpirts, lms=lms=nc(lms), netos=netos=nc(netos), neto=sum(netos))))
         # end
     catch e
         # global kcheck = kv(;ctx, lms=nc(lms), segs, netos)

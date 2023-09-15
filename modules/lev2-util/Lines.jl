@@ -3,8 +3,8 @@ using BaseTypes, LineTypes
 
 export Segments, SegSide, Left, Right, Point
 
-function scale(s::Segments{N}, k)::Segments{N} where N
-    return Segments{N}(k .* s.slopes, scale.(s.points, k))
+function scale(s::Segments, k)::Segments
+    return Segments(k .* s.slopes, scale.(s.points, k))
 end
 
 scale(p::Point, k) = Point(p.x, k * p.y)
@@ -43,7 +43,7 @@ sloperight(s::Left, x::Float64)::Float64 = x < s.point.x ? s.slope : 0.0
 
 Base.convert(::Type{Tuple{Float64,Float64}}, p::Point) = (p.x, p.y)
 
-function toLineTuples(s::Segments{N}; mn=100.0, mx=600.0)::NTuple{N+2,Tuple{Float64,Float64}} where N
+function toLineTuples(s::Segments; mn=100.0, mx=600.0)::NTuple{N+2,Tuple{Float64,Float64}}
     w = s.points[end].x - s.points[1].x
     x0 = max(0.0, min(mn, s.points[1].x - w))
     y0 = at(s, x0)
@@ -115,8 +115,8 @@ end
 # end
 
 # combine(args...) = combine(args)
-# TODO: why not ::Segments{N} at the end?
-# function combine(segsides::Coll{N,<:SegSide}) where N
+# TODO: why not ::Segments at the end?
+# function combine(segsides::Coll{N,<:SegSide})
 #     slopes1 = map(segsides) do segside
 #         sum(slopeleft.(segsides, segside.point.x))
 #     end
@@ -130,95 +130,95 @@ end
 #     return Segments{length(segsides)}(slopes, Tuple(points))
 # end
 
-function combine(segsides::Coll{N,<:SegSide})::Segments{N} where N
-    error("not this one")
-    slopes1 = map(segsides) do segside
-        sum(slopeleft.(segsides, segside.point.x))
-    end
-    points = map(segsides) do segside
-        x = segside.point.x
-        y = sum(at.(segsides, x))
-        Point(x, y)
-    end
-    slope_last = sum(sloperight.(segsides, segsides[end].point.x))
-    slopes = (slopes1..., slope_last)
-    return Segments{N}(slopes, Tuple(points))
-end
+# function combine(segsides::Coll{N,<:SegSide})::Segments
+#     error("not this one")
+#     slopes1 = map(segsides) do segside
+#         sum(slopeleft.(segsides, segside.point.x))
+#     end
+#     points = map(segsides) do segside
+#         x = segside.point.x
+#         y = sum(at.(segsides, x))
+#         Point(x, y)
+#     end
+#     slope_last = sum(sloperight.(segsides, segsides[end].point.x))
+#     slopes = (slopes1..., slope_last)
+#     return Segments(slopes, Tuple(points))
+# end
 
-function combine3(seg2s::Coll{N,Seg3})::Segments{N} where N
-    slopes1 = map(seg2s) do segside
-        sum(slopeleft.(seg2s, segside.point.x))
-    end
-    points = map(seg2s) do segside
-        x = segside.point.x
-        y = sum(at.(seg2s, x))
-        Point(x, y)
-    end
-    slope_last = sum(sloperight.(seg2s, seg2s[end].point.x))
-    slopes = vcat(slopes1, slope_last)
-    return Segments{N}(slopes, points)
-end
+# function combine3(seg2s::Coll{N,Seg3})::Segments
+#     slopes1 = map(seg2s) do segside
+#         sum(slopeleft.(seg2s, segside.point.x))
+#     end
+#     points = map(seg2s) do segside
+#         x = segside.point.x
+#         y = sum(at.(seg2s, x))
+#         Point(x, y)
+#     end
+#     slope_last = sum(sloperight.(seg2s, seg2s[end].point.x))
+#     slopes = vcat(slopes1, slope_last)
+#     return Segments(slopes, points)
+# end
 
-using LoopVectorization
-function combine2(segs::Coll{N,Seg3})::Segments{N} where N
-    slopes1 = map(segs) do seg
-        slopeat(segs, seg.point.x)
-    end
-    points = map(segs) do seg
-        s = 0.0
-        x = seg.point.x
-        @inbounds for i in eachindex(segs)
-            s += at(segs[i], x)
-        end
-        return Point(x, s)
-    end
+# using LoopVectorization
+# function combine2(segs::Coll{N,Seg3})::Segments
+#     slopes1 = map(segs) do seg
+#         slopeat(segs, seg.point.x)
+#     end
+#     points = map(segs) do seg
+#         s = 0.0
+#         x = seg.point.x
+#         @inbounds for i in eachindex(segs)
+#             s += at(segs[i], x)
+#         end
+#         return Point(x, s)
+#     end
 
-    slope_last = slopeat(segs, segs[end].point.x)
-    slopes = vcat(slopes1, slope_last)
+#     slope_last = slopeat(segs, segs[end].point.x)
+#     slopes = vcat(slopes1, slope_last)
 
-    return Segments{N}(slopes, points)
-end
+#     return Segments(slopes, points)
+# end
 
-@inline function slopeat(segs, x)
-    s = 0.0
-    @inbounds for i in eachindex(segs)
-        s += slopeleft(segs[i], x)
-    end
-    return s
-end
+# @inline function slopeat(segs, x)
+#     s = 0.0
+#     @inbounds for i in eachindex(segs)
+#         s += slopeleft(segs[i], x)
+#     end
+#     return s
+# end
 
-using StaticArrays
-function combine_good(segs::Coll{N,Seg3})::Segments{N} where N
-    slopes = MVector{N+1,Float64}(undef)
-    points = MVector{N,Point}(undef)
-    @inbounds for i in eachindex(segs)
-        seg1 = segs[i]
-        x = seg1.point.x
+# using StaticArrays
+# function combine_good(segs::Coll{N,Seg3})::Segments
+#     slopes = MVector{N+1,Float64}(undef)
+#     points = MVector{N,Point}(undef)
+#     @inbounds for i in eachindex(segs)
+#         seg1 = segs[i]
+#         x = seg1.point.x
 
-        s = 0.0
-        y = 0.0
-        @inbounds for j in eachindex(segs)
-            seg2 = segs[j]
-            s += slopeleft(seg2, x)
-            y += at(seg2, x)
-        end
+#         s = 0.0
+#         y = 0.0
+#         @inbounds for j in eachindex(segs)
+#             seg2 = segs[j]
+#             s += slopeleft(seg2, x)
+#             y += at(seg2, x)
+#         end
 
-        slopes[i] = s
-        points[i] = Point(x, y)
-    end
+#         slopes[i] = s
+#         points[i] = Point(x, y)
+#     end
 
-    s = 0.0
-    x = segs[end].point.x
-    @inbounds for i in eachindex(segs)
-        s += sloperight(segs[i], x)
-    end
+#     s = 0.0
+#     x = segs[end].point.x
+#     @inbounds for i in eachindex(segs)
+#         s += sloperight(segs[i], x)
+#     end
 
-    slopes[end] = s
+#     slopes[end] = s
 
-    return Segments{N}(slopes, points)
-end
+#     return Segments(slopes, points)
+# end
 
-# function combine(segs::Coll{N,Seg3}) where N
+# function combine(segs::Coll{N,Seg3})
 #     slopes = MVector{N+1,Float64}(undef)
 #     points = MVector{N,Point}(undef)
 #     prevx = -1.0
@@ -256,7 +256,7 @@ end
 #     ps2 = points[1:(i-1)]
 #     ss2 = slopes[1:i]
 #     return Segments{i-1}(ss2, ps2)
-#     # return Segments{N}(slopes, points)
+#     # return Segments(slopes, points)
 # end
 
 # function combine(segs::CollT{Seg3})
@@ -298,7 +298,7 @@ end
 #     ps2 = points[1:(i-1)]
 #     ss2 = slopes[1:i]
 #     return Segments{i-1}(ss2, ps2)
-#     # return Segments{N}(slopes, points)
+#     # return Segments(slopes, points)
 # end
 
 function combine(segs::CollT{Seg3})
@@ -339,23 +339,23 @@ function combine(segs::CollT{Seg3})
 
     ps2 = points[1:(i-1)]
     ss2 = slopes[1:i]
-    return Segments{i-1}(ss2, ps2)
-    # return Segments{N}(slopes, points)
+    return Segments(ss2, ps2)
+    # return Segments(slopes, points)
 end
 
 # using StaticArrays
-# function combine(segs::Segments{N}, segsides::Coll{A,<:SegSide})::Segments{N+A} where {N,A}
+# function combine(segs::Segments, segsides::Coll{A,<:SegSide})::Segments{N+A} where {N,A}
 #     slopes = MVector{N+A+1,Float64}(undef)
 #     points = MVector{N+A,Point}(undef)
 #     return Segments{N+A}(slopes, points)
 # end
 
 #region SegmentsWithZeros
-findZeros(s::Segments{N}) where N = SegmentsZeros{N}(s)
-Base.IteratorSize(::Type{SegmentsZeros{N}}) where N = Base.SizeUnknown()
-Base.IteratorSize(::Type{SegmentsZeros{N,M}}) where {N,M} = Base.SizeUnknown()
-Base.eltype(::Type{SegmentsZeros{N,M}}) where {N,M} = Float64
-Base.eltype(::Type{SegmentsZeros{N}}) where N = Float64
+findZeros(s::Segments) = SegmentsZeros(s)
+# Base.IteratorSize(::Type{SegmentsZeros}) = Base.SizeUnknown()
+Base.IteratorSize(::Type{SegmentsZeros}) = Base.SizeUnknown()
+# Base.eltype(::Type{SegmentsZeros}) = Float64
+Base.eltype(::Type{SegmentsZeros}) = Float64
 
 function Base.iterate(z::SegmentsZeros)::Union{Nothing,Tuple{Float64,Int}}
     s = z.s
@@ -394,11 +394,11 @@ function Base.iterate(z::SegmentsZeros, i::Int)::Union{Nothing,Tuple{Float64,Int
     return nothing
 end
 
-segmentsWithZeros(s::Segments{N}; extent) where N = SegmentsWithZeros{N}(s, extent)
-Base.IteratorSize(::Type{SegmentsWithZeros{N}}) where N = Base.SizeUnknown()
-Base.IteratorSize(::Type{SegmentsWithZeros{N,M}}) where {N,M} = Base.SizeUnknown()
-Base.eltype(::Type{SegmentsWithZeros{N,M}}) where {N,M} = Segment
-Base.eltype(::Type{SegmentsWithZeros{N}}) where N = Segment
+segmentsWithZeros(s::Segments; extent) = SegmentsWithZeros(s, extent)
+# Base.IteratorSize(::Type{SegmentsWithZeros}) = Base.SizeUnknown()
+Base.IteratorSize(::Type{SegmentsWithZeros}) = Base.SizeUnknown()
+# Base.eltype(::Type{SegmentsWithZeros}) = Segment
+Base.eltype(::Type{SegmentsWithZeros}) = Segment
 const SegWZIterType3 = Tuple{Segment,Tuple{Int,Union{Nothing,Point}}}
 
 function Base.iterate(z::SegmentsWithZeros)::Union{Nothing,SegWZIterType3}

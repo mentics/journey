@@ -102,22 +102,24 @@ end
 
 # https://math.stackexchange.com/a/662210/235608
 # Commit, not risk, because in the formula, it's balance/commit to get number of contracts
-function calckel(buf, prob, commit, segs, probadjust)::NamedTuple{(:kel, :evret, :ev), Tuple{Float64, Float64, Float64}}
+function calckel(buf, prob, commit, segs, probadjust)::NamedTuple{(:kel, :evret, :ev, :probprofit), Tuple{Float64, Float64, Float64, Float64}}
     # global kcalckelargs = (;buf, prob, commit, segs, probadjust)
     # error("stop")
     if commit <= 0.0
         # println("Invalid commit:$(commit) in calckel")
-        return (;kel=NaN, evret=NaN, ev=100.0)
+        return (;kel=NaN, evret=NaN, ev=100.0, probprofit=0.0)
     end
 
     len = length(prob.xs.xs)
     ev = 0.0
     prob_tot = 0.0
+    probprofit = 0.0
     for i in 1:len
         x = prob.xs.xs[i]
         o = atsegs(segs, x * prob.center) / commit
         p = prob.prob_mass[i]
-        p *= o > 0 ? 1.0 - probadjust : 1.0 + probadjust
+        p *= o >= 0.0 ? 1.0 - probadjust : 1.0 + probadjust
+        o > 0 && (probprofit += p)
         prob_tot += p
         po = p * o
         ev += po
@@ -126,7 +128,7 @@ function calckel(buf, prob, commit, segs, probadjust)::NamedTuple{(:kel, :evret,
         buf.outcome[i] = o
         buf.po[i] = po
     end
-    ev > 0 || return (;kel=NaN, evret=NaN, ev)
+    ev > 0 || return (;kel=NaN, evret=NaN, ev, probprofit=0.0)
     # @show prob_tot findfirst(isnan, buf.po[1:len])
 
     # buf.po ./= prob_tot
@@ -136,6 +138,7 @@ function calckel(buf, prob, commit, segs, probadjust)::NamedTuple{(:kel, :evret,
         buf.p[i] /= prob_tot
     end
     ev /= prob_tot
+    probprofit /= prob_tot
 
     # global kargs = (;prob, commit, segs, probadjust)
     # global kpbs = (;po=buf.po[1:len], o=buf.outcome[1:len], p=buf.p[1:len])
@@ -159,9 +162,9 @@ function calckel(buf, prob, commit, segs, probadjust)::NamedTuple{(:kel, :evret,
     #     end
     #     return s
     # end
-    kel > 0.0 || return (;kel=NaN, evret=NaN, ev)
+    kel > 0.0 || return (;kel=NaN, evret=NaN, ev, probprofit=0.0)
     evret = kel * ev # calcevret(kel, buf, len)
-    return (;kel, evret, ev)
+    return (;kel, evret, ev, probprofit)
 end
 
 

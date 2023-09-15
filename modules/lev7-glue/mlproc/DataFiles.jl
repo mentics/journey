@@ -7,6 +7,8 @@ using BaseTypes, SmallTypes
 using DateUtil, ThreadUtil
 import SH, DictUtil, OptionUtil, CollUtil, Pricing
 import Calendars
+
+using Memoization, ThreadSafeDicts
 #endregion
 
 
@@ -494,7 +496,10 @@ function xtrin_check_strikes(under, strikes, ctx)
     return true
 end
 
-is_ts_normal(ts::DateTime) = second(ts) < 8 && DateUtil.isBusDay(Date(ts)) && ts < market_close(ts)
+
+using Memoization, ThreadSafeDicts
+# @memoize ThreadSafeDicts.ThreadSafeDict is_ts_normal(ts::DateTime) = second(ts) < 8 && DateUtil.isBusDay(Date(ts)) && ts < market_close(ts)
+@memoize is_ts_normal(ts::DateTime) = second(ts) < 8 && DateUtil.isBusDay(Date(ts)) && ts < market_close(ts)
 
 # function combine_ntmdf(dfs_ntm)
 #     lup = ts2under_lup()
@@ -750,7 +755,7 @@ find_dfrow(df, ts, expiration::DateTime, strike) = only(df[(df.ts .== ts) .& (df
 
 const XPIRS = Dict{Date,DateTime}()
 market_close(ts::DateTime) = market_close(Date(ts))
-function market_close(date::Date)
+@memoize ThreadSafeDicts.ThreadSafeDict function market_close(date::Date)
     if isempty(XPIRS)
         tbl = xpir_table()
         DictUtil.set_from_vals!(Date, XPIRS, tbl.xpirts)
