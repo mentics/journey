@@ -21,7 +21,7 @@ include("../repl-ml.jl")
 
 
 # using Dates
-# using SH, BaseTypes, Globals, Bins, SmallTypes, StratTypes, LegTypes, LegMetaTypes
+# using SH, BaseTypes, Globals, Bins, SmallTypes, StratTypes, LegTypes, LegQuoteTypes
 # using DateUtil, Scoring
 # using StoreUtil, Store
 # using Snapshots, Calendars, Markets, Expirations, Chains
@@ -34,7 +34,7 @@ include("../repl-ml.jl")
 # devon();
 # snap(5,24,0,0);
 
-# # an(1;maxRun=100000, scorer=scoreRand, lmsPos=Vector{LegMeta}());
+# # an(1;maxRun=100000, scorer=scoreRand, lmsPos=Vector{LegQuote}());
 # # dr(1);
 # drsh("s400p@1 / l402p@2 / l404c@2 / s406c@1", expirs()[1:3]);
 

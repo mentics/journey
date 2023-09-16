@@ -8,7 +8,7 @@ export getStyle, getExpir, getStrike, getSide, getQuantity, getAction
 export getBid, getAsk
 export toCode, toOther
 export getIv
-export getOption, getLeg, getMeta, getOptionMeta, getQuote, getGreeks
+export getOption, getLeg, getQuote, getGreeks
 export calcQuote, calcOptQuote
 export getQuantityDir, addQuantity # , withQuantity
 
@@ -24,6 +24,11 @@ export getTargetDate
 # export getMaxClose
 
 export to, tos, tosn, tosnn, combineTo, mapFlattenTo
+export random
+function random end
+
+export getMeta
+function getMeta end
 
 # export v
 # (v(x::Dict{K,V})::Vector{V}) where {K,V} = collect(values(x))
@@ -46,8 +51,6 @@ function getAction() end
 
 function getOption() end
 function getQuote() end
-function getMeta() end
-function getOptionMeta() end
 function getLeg() end
 function getGreeks() end
 

@@ -1,6 +1,6 @@
 module StratSpreads
 using Dates
-using SH, BaseTypes, SmallTypes, BackTypes, LegMetaTypes
+using SH, BaseTypes, SmallTypes, BackTypes, LegQuoteTypes
 using LogUtil, OutputUtil, BacktestUtil, CollUtil, DateUtil, ThreadUtil
 import DateUtil:timult,calcRate
 import ChainUtil as ch
@@ -23,7 +23,7 @@ end
 
 #region Types
 struct Cand{N}
-    lms::NTuple{N,LegMetaOpen}
+    lms::NTuple{N,LegQuoteOpen}
     score::Float64
     neto::Float64
     margin::Sides{Float64}
@@ -247,8 +247,8 @@ function handleKeep!(s, params, ops, tim, otoq, curp, curpPrev, keep)
 end
 # BaseTypes.toPT(sides::Sides{Float64})::Sides{PT} = Sides(toPT(sides.long, RoundDown), round(toPT(sides.short, RoundDown)))
 
-BackTypes.pricingOpen(::TStrat2, lmso::NTuple{N,LegMetaOpen}) where N = toPT(price_open(lmso))
-BackTypes.pricingClose(::TStrat2, lmsc::NTuple{N,LegMetaClose}) where N = toPT(price_close(lmsc))
+BackTypes.pricingOpen(::TStrat2, lmso::NTuple{N,LegQuoteOpen}) where N = toPT(price_open(lmso))
+BackTypes.pricingClose(::TStrat2, lmsc::NTuple{N,LegQuoteClose}) where N = toPT(price_close(lmsc))
 price_open(lms) = Pricing.price(lms, false)
 price_close(lms) = Pricing.price(lms, true)
 # calcPrice(lms)::PT = toPT(Pricing.price(lms)) # toPT(bap(lms, 0.0)) + P(0.02)
@@ -364,7 +364,7 @@ function findEntryHigh!(keep, params, prob, searchLeft, searchRight, canOpenPos,
                     str4 - str1 <= maxWidth || break
                     # @show (oq1, oq2, oq3, oq4)
 
-                    lms = CollUtil.sortuple(x -> getStrike(x) + (isCall(x) ? eps(Currency) : 0.0), LegMetaOpen(oq1, Side.short), LegMetaOpen(oq2, Side.long), LegMetaOpen(oq3, Side.long), LegMetaOpen(oq4, Side.short))
+                    lms = CollUtil.sortuple(x -> getStrike(x) + (isCall(x) ? eps(Currency) : 0.0), LegQuoteOpen(oq1, Side.short), LegQuoteOpen(oq2, Side.long), LegQuoteOpen(oq3, Side.long), LegQuoteOpen(oq4, Side.short))
                     if mid - str1 <= 4 && str4 - mid <= 4
                         # println("found new")
                         global checkLms = lms
@@ -415,7 +415,7 @@ function findSpreadPut!(keep, params, prob, searchLeft, canOpenPos, args...)
             str2 - str1 <= maxWidth || break
             canOpenPos(getOption(oq2), Side.short) || continue
 
-            lms = CollUtil.sortuple(x -> getStrike(x) + (isCall(x) ? eps(Currency) : 0.0), LegMetaOpen(oq1, Side.long), LegMetaOpen(oq2, Side.short))
+            lms = CollUtil.sortuple(x -> getStrike(x) + (isCall(x) ? eps(Currency) : 0.0), LegQuoteOpen(oq1, Side.long), LegQuoteOpen(oq2, Side.short))
             r = scoreLow(lms, params, prob, args...)
             count += 1
             if !isnothing(r) && (isempty(keep) || r.score > keep[end].score)
@@ -453,7 +453,7 @@ function findSpreadCall!(keep, params, prob, searchRight, canOpenPos, args...)
             str4 - str3 <= maxWidth || break
             canOpenPos(getOption(oq4), Side.long) || continue
 
-            lms = CollUtil.sortuple(x -> getStrike(x) + (isCall(x) ? eps(Currency) : 0.0), LegMetaOpen(oq3, Side.short), LegMetaOpen(oq4, Side.long))
+            lms = CollUtil.sortuple(x -> getStrike(x) + (isCall(x) ? eps(Currency) : 0.0), LegQuoteOpen(oq3, Side.short), LegQuoteOpen(oq4, Side.long))
             r = scoreLow(lms, params, prob, args...)
             count += 1
             if !isnothing(r) && (isempty(keep) || r.score > keep[end].score)
@@ -514,12 +514,12 @@ function testLms()
     o2 = Option(Style.put, Date("2022-01-19"), 430.000)
     o3 = Option(Style.put, Date("2022-01-19"), 434.000)
     return (
-        LegMetaOpen(SS.quoteFor(ts, o1), Side.long),
-        LegMetaOpen(SS.quoteFor(ts, o2), Side.long),
-        LegMetaOpen(SS.quoteFor(ts, o3), Side.short)
-        # LegMetaOpen(Leg(o1, 1.0, Side.long), getQuote(SS.quoteFor(ts, o1)), OptionMeta()),
-        # LegMetaOpen(Leg(o2, 1.0, Side.long), getQuote(SS.quoteFor(ts, o2)), OptionMeta()),
-        # LegMetaOpen(Leg(o3, 1.0, Side.short), getQuote(SS.quoteFor(ts, o3)), OptionMeta())
+        LegQuoteOpen(SS.quoteFor(ts, o1), Side.long),
+        LegQuoteOpen(SS.quoteFor(ts, o2), Side.long),
+        LegQuoteOpen(SS.quoteFor(ts, o3), Side.short)
+        # LegQuoteOpen(Leg(o1, 1.0, Side.long), getQuote(SS.quoteFor(ts, o1)), OptionMeta()),
+        # LegQuoteOpen(Leg(o2, 1.0, Side.long), getQuote(SS.quoteFor(ts, o2)), OptionMeta()),
+        # LegQuoteOpen(Leg(o3, 1.0, Side.short), getQuote(SS.quoteFor(ts, o3)), OptionMeta())
     )
 end
 testCalcWinRate(tradeOpen) = testCalcWinRate(tradeOpen.ts, tradeOpen.lms)

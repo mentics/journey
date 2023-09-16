@@ -74,9 +74,8 @@ function explore(;inds=nothing, yms=dat.make_yms(), skip_existing=true, use_prob
                 0 < bdays(ts, xpir) || continue
                 oqss = ChainUtil.oqssEntry(to_oqs(sdf), curp; minlong=C(0.05), minshort=C(0.05))
 
-                top_xpir = get!(TOP_XPIRTS, xpirts) do; Vector() end
-
-                res = ore.findkel(ctx, xpirts, oqss, top_xpir, 1:3; use_problup)
+                pos = get!(ore.pos_new, XPIR_POS, xpirts)
+                res = ore.findkel(ctx, xpirts, oqss, pos, 1:3; use_problup)
                 # isnothing(res) && @goto stop
                 # global kres = res
 
@@ -91,7 +90,9 @@ function explore(;inds=nothing, yms=dat.make_yms(), skip_existing=true, use_prob
                     all = df_calc_pnl(sdf, r1.lms, xpirts) # dat.market_close(SH.getExpir(r1.lms)))
                     # ThreadUtil.runSync(lock_proc) do
                         r = (;ts, curp, r1, all)
-                        push!(top_xpir, r)
+                        # top_xpir = get!(TOP_XPIRTS, xpirts) do; Vector() end
+                        # push!(top_xpir, r)
+                        pos_add(pos, r)
                         push!(rs_ts, r)
                     # end
                 else
@@ -312,6 +313,7 @@ function reset()
 end
 const TOP_TS = SortedDict{DateTime,Vector}()
 const TOP_XPIRTS = SortedDict{DateTime,Vector}()
+const XPIR_POS = Dict{DateTime,Any}()
 const lock_proc = ReentrantLock()
 
 function showres(tsi_index, ts, sdf, under, r1)

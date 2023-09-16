@@ -31,6 +31,8 @@ function newQuote(q::Quote, dir::DirSQA; adjustprices::Currency=CZ)::Quote # sid
     return nq
 end
 
+SH.random(::Type{Quote}, side) = Quote(-Int(side) * C(toPT(rand())))
+
 # Quote(quot::Quote, side::Side.T) = Quote(getAction(quot), side, getBid(quot), getAsk(quot))
 # Quote(quot::Quote, action::Action.T, side::Side.T) = Quote(action, side, getBid(quot), getAsk(quot))
 # function Quote(action::Action.T, side::Side.T, bid::Currency, ask::Currency)

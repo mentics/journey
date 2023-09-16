@@ -247,15 +247,15 @@ Globals is at data level?
 Utils can depend on types
 Types mostly only depend on Types
 
-lmsPos = LegMeta[]
+lmsPos = LegQuote[]
 empty!(lmsPos)
 an(2)
-lmsPos = tos(LegMeta, CmdStrats.lastPosStrat[])
+lmsPos = tos(LegQuote, CmdStrats.lastPosStrat[])
 ana(2,3,4; lmsPos)
-append!(lmsPos, tos(LegMeta, ar(1)))
+append!(lmsPos, tos(LegQuote, ar(1)))
 
 setvr(.7)
-lmsPos = LegMeta[]
+lmsPos = LegQuote[]
 days1 = [4,5,6,7,8]
 days2 = [11,12,13,14]
 days3 = [18,19,20,21,22, 25]
@@ -264,7 +264,7 @@ for day in days1
 	snap(4,day,0,0)
 	ex = findfirst(x -> x == Date("2022-04-29"), expirs())
 	ana(ex, ex+1; lmsPos)
-	append!(lmsPos, tos(LegMeta, ar(1)))
+	append!(lmsPos, tos(LegQuote, ar(1)))
 end
 
 Important configs:
@@ -334,7 +334,7 @@ Fix output for sa* netopen is wrong and check others
 
 in results, show ev profit and loss values with vals * probs for just wins and loss bins
 
-store bid/ask in TradeLegMeta
+store bid/ask in TradeLegQuote
 
 Figure out ideal trade given user input params and put in score/filter for that in InfoStrats and keep N best candidates
 

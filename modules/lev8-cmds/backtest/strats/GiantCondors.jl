@@ -1,7 +1,7 @@
 module GiantCondors
 using Dates
 using PrettyPrinting
-using SH, BaseTypes, SmallTypes, LegMetaTypes, ChainTypes
+using SH, BaseTypes, SmallTypes, LegQuoteTypes, ChainTypes
 using DateUtil, Pricing
 import HistData as HD
 using Markets, Expirations, Chains
@@ -488,7 +488,7 @@ function findSpreadEntryLong(res::Vector{Entry2{T}}, keep, oqss, calcScore, stri
     # if isnothing(best)
     #     return nothing
     # else
-    #     return (bestScore, ((LegMetaOpen(best[2], Side.long, 1.0), LegMetaOpen(best[3], Side.short, 1.0)), best[1]))
+    #     return (bestScore, ((LegQuoteOpen(best[2], Side.long, 1.0), LegQuoteOpen(best[3], Side.short, 1.0)), best[1]))
     # end
     return
 end
@@ -532,7 +532,7 @@ function findSpreadEntryShort(oqss, calcScore, strikeExt; maxStrikeWidth=40, deb
     if isnothing(best)
         return nothing
     else
-        return (bestScore, ((LegMetaOpen(best[3], Side.short, 1.0), LegMetaOpen(best[2], Side.long, 1.0)), best[1]))
+        return (bestScore, ((LegQuoteOpen(best[3], Side.short, 1.0), LegQuoteOpen(best[2], Side.long, 1.0)), best[1]))
     end
 end
 #endregion
@@ -565,8 +565,8 @@ function qtyForMargin(acct, side, risk, kel)
 end
 
 function toLms(side, lo, sho)
-    lmo = LegMetaOpen(lo, Side.long, 1.0)
-    lms = LegMetaOpen(sho, Side.short, 1.0)
+    lmo = LegQuoteOpen(lo, Side.long, 1.0)
+    lms = LegQuoteOpen(sho, Side.short, 1.0)
     return side == Side.long ? (lmo, lms) : (lms, lmo)
 end
 #endregion

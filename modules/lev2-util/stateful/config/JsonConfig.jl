@@ -1,6 +1,6 @@
 module JsonConfig
 using BaseTypes, SmallTypes, OptionTypes, QuoteTypes, ChainTypes, LegTypes
-using TradeTypes, LegTradeTypes, StatusTypes, LegMetaTypes, OptionMetaTypes, RetTypes
+using TradeTypes, LegTradeTypes, StatusTypes, LegQuoteTypes, OptionMetaTypes, RetTypes
 import JSON3
 
 JSON3.StructType(::Type{<:Trade}) = JSON3.Struct()
@@ -10,7 +10,7 @@ JSON3.StructType(::Type{LegTradeMeta}) = JSON3.Struct()
 JSON3.StructType(::Type{<:Status}) = JSON3.StringType() # TODO: is this working/needed?
 # JSON3.StructType(::Type{Type{<:Status}}) = JSON3.StringType() # TODO: is this working/needed?
 
-JSON3.StructType(::Type{LegMeta}) = JSON3.Struct()
+JSON3.StructType(::Type{LegQuote}) = JSON3.Struct()
 JSON3.StructType(::Type{OptionMeta}) = JSON3.Struct()
 JSON3.StructType(::Type{Ret}) = JSON3.Struct()
 

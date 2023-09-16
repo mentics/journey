@@ -2,7 +2,7 @@ module BacktestSimple
 using Dates, MutableNamedTuples
 using PrettyPrinting
 import StatsBase
-using SH, Globals, BaseTypes, SmallTypes, OptionTypes, LegTypes, LegMetaTypes, OptionMetaTypes, ChainTypes, QuoteTypes
+using SH, Globals, BaseTypes, SmallTypes, OptionTypes, LegTypes, LegQuoteTypes, OptionMetaTypes, ChainTypes, QuoteTypes
 using DateUtil, CollUtil, DictUtil
 using Pricing, Between
 import OptionUtil
@@ -68,7 +68,7 @@ const TradeType9 = NamedTuple{
             NamedTuple{(:label, :ts, :date, :neto, :basisAll, :netVal, :riskVal, :rateVal, :quotes, :metas),
                 Tuple{String, DateTime, Date, Currency, Currency, Currency, Currency, Float64, Tuple{QuoteTypes.Quote, QuoteTypes.Quote}, Tuple{OptionMetaTypes.OptionMeta, OptionMetaTypes.OptionMeta}}},
             Date, Int64, Currency,
-            Ref{Tuple{LegMetaTypes.LegMetaClose, LegMetaTypes.LegMetaClose}},
+            Ref{Tuple{LegQuoteTypes.LegQuoteClose, LegQuoteTypes.LegQuoteClose}},
             Ref{NamedTuple{(:label, :ts, :netc, :quotes, :metas),
                 Tuple{String, DateTime, Currency, Tuple{QuoteTypes.Quote, QuoteTypes.Quote}, Tuple{OptionMetaTypes.OptionMeta, OptionMetaTypes.OptionMeta}}}},
             Ref{Currency}, Ref{Currency}, Ref{Float64}, Ref{Float64}}
@@ -371,7 +371,7 @@ function updatePossLmsTrack(lup, trades)
     for trade in trades
         try
             trade.lmsTrack[] = tosLMC(trade.legs, lup)
-            # trade.lmsTrack = map(leg -> LegMetaClose(leg, lup(getOption(leg)), trade.legs))
+            # trade.lmsTrack = map(leg -> LegQuoteClose(leg, lup(getOption(leg)), trade.legs))
         catch e
             log("Could not quote trade $(string(trade))")
             # rethrow(e)
@@ -451,7 +451,7 @@ end
 #endregion
 
 #region Actions
-function openTrade(acct, lms::Coll{LegMetaOpen}, multiple, basisAll, label)
+function openTrade(acct, lms::Coll{LegQuoteOpen}, multiple, basisAll, label)
     @assert getQuantity(lms[1]) == getQuantity(lms[2])
     neto = bap(lms, .1)
     spreadWidth = getSpreadWidth(lms) # abs(getStrike(lms[1]) - getStrike(lms[2]))
@@ -500,7 +500,7 @@ function openTrade(acct, lms::Coll{LegMetaOpen}, multiple, basisAll, label)
     log("Open #$(trade.id) $(Shorthand.tosh(lms, acct.xpirs)): $((;multiple, neto, basisAll, netVal, riskVal)) '$(label)'")
     return trade
 end
-function closeTrade(acct, trade, lms::Coll{LegMetaClose}, netc, label)
+function closeTrade(acct, trade, lms::Coll{LegQuoteClose}, netc, label)
     multiple = trade.multiple
     neto = trade.open.neto
     pnlVal = trade.open.netVal + netc
@@ -690,8 +690,8 @@ marginAvail(acct, side) = marginTotal(acct) - (side == Side.long ? acct.margin.p
 #endregion
 
 #region TradeAccessorsAndCalcs
-netOpen(x::Union{LegMetaOpen,Coll{LegMetaOpen}}, r=0.1) = bap(x, r)
-netClose(x::Union{LegMetaClose,Coll{LegMetaClose}}, r=0.0) = bap(x, r)
+netOpen(x::Union{LegQuoteOpen,Coll{LegQuoteOpen}}, r=0.1) = bap(x, r)
+netClose(x::Union{LegQuoteClose,Coll{LegQuoteClose}}, r=0.0) = bap(x, r)
 netOpen(oq::OptionQuote, side::Side.T, r=0.1)::Currency = bap(QuoteTypes.newQuote(getQuote(oq), DirSQA(side, 1.0, Action.open)), r)
 netOpen(oq1::OptionQuote, side1::Side.T, oq2::OptionQuote, side2::Side.T, r=0.1)::Currency = netOpen(oq1, side1, r) + netOpen(oq2, side2, r)
 
@@ -728,9 +728,9 @@ isClosed(trade) = isassigned(trade.close)
 #endregion
 
 #region MaybeMove
-toLMC(leg, lup) = LegMetaClose(leg, lup(getOption(leg)))
-# toLMC(leg::Leg, lup) = LegMetaClose(leg, lup(getOption(leg)))
-toLMC(lm::LegMetaOpen, lup) = toLMC(getLeg(lm), lup)
+toLMC(leg, lup) = LegQuoteClose(leg, lup(getOption(leg)))
+# toLMC(leg::Leg, lup) = LegQuoteClose(leg, lup(getOption(leg)))
+toLMC(lm::LegQuoteOpen, lup) = toLMC(getLeg(lm), lup)
 tosLLMC(lms, lup) = map(lm -> toLMC(getLeg(lm), lup), lms)
 tosLMC(legs, lup) = map(leg -> toLMC(leg, lup), legs)
 

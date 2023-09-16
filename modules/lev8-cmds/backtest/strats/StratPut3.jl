@@ -1,6 +1,6 @@
 module StratPut3
 using Dates
-using SH, BaseTypes, SmallTypes, BackTypes, LegMetaTypes
+using SH, BaseTypes, SmallTypes, BackTypes, LegQuoteTypes
 using LogUtil, OutputUtil, BacktestUtil, CollUtil, DateUtil, ThreadUtil
 import DateUtil:timult,calcRate
 import ChainUtil as ch
@@ -26,7 +26,7 @@ struct Scoring
 end
 
 struct Cand{N}
-    lms::NTuple{N,LegMetaOpen}
+    lms::NTuple{N,LegQuoteOpen}
     score::Float64
     neto::Float64
     margin::Sides{Float64}
@@ -133,8 +133,8 @@ function (s::TStrat)(ops, tim, chain, otoq)::Nothing
 end
 # BaseTypes.toPT(sides::Sides{Float64})::Sides{PT} = Sides(toPT(sides.long, RoundDown), round(toPT(sides.short, RoundDown)))
 
-BackTypes.pricingOpen(::TStrat, lmso::NTuple{N,LegMetaOpen}) where N = calcPrice(lmso)
-BackTypes.pricingClose(::TStrat, lmsc::NTuple{N,LegMetaClose}) where N = calcPrice(lmsc)
+BackTypes.pricingOpen(::TStrat, lmso::NTuple{N,LegQuoteOpen}) where N = calcPrice(lmso)
+BackTypes.pricingClose(::TStrat, lmsc::NTuple{N,LegQuoteClose}) where N = calcPrice(lmsc)
 calcPrice(lms)::PT = toPT(Pricing.price(lms)) # toPT(bap(lms, 0.0)) + P(0.02)
 calcPriceFast(lms)::Float64 = Pricing.price(lms) # Pricing.bapFast(lms, 0.0) + 0.02
 
@@ -226,7 +226,7 @@ function findEntry!(keep, params, prob, search, otoq, args...)
                 # str3 - str2 <= maxWidth || break
                 str3 - str1 <= maxWidth || break
 
-                lms = (LegMetaOpen(oq1, Side.long), LegMetaOpen(oq2, Side.long), LegMetaOpen(oq3, Side.short))
+                lms = (LegQuoteOpen(oq1, Side.long), LegQuoteOpen(oq2, Side.long), LegQuoteOpen(oq3, Side.short))
                 r = score(lms, params, prob, args...)
                 if !isnothing(r) && (isempty(keep) || r[1].score > keep[end].score)
                     # TODO: not optimized
@@ -308,12 +308,12 @@ function testLms()
     o2 = Option(Style.put, Date("2022-01-19"), 430.000)
     o3 = Option(Style.put, Date("2022-01-19"), 434.000)
     return (
-        LegMetaOpen(SS.quoteFor(ts, o1), Side.long),
-        LegMetaOpen(SS.quoteFor(ts, o2), Side.long),
-        LegMetaOpen(SS.quoteFor(ts, o3), Side.short)
-        # LegMetaOpen(Leg(o1, 1.0, Side.long), getQuote(SS.quoteFor(ts, o1)), OptionMeta()),
-        # LegMetaOpen(Leg(o2, 1.0, Side.long), getQuote(SS.quoteFor(ts, o2)), OptionMeta()),
-        # LegMetaOpen(Leg(o3, 1.0, Side.short), getQuote(SS.quoteFor(ts, o3)), OptionMeta())
+        LegQuoteOpen(SS.quoteFor(ts, o1), Side.long),
+        LegQuoteOpen(SS.quoteFor(ts, o2), Side.long),
+        LegQuoteOpen(SS.quoteFor(ts, o3), Side.short)
+        # LegQuoteOpen(Leg(o1, 1.0, Side.long), getQuote(SS.quoteFor(ts, o1)), OptionMeta()),
+        # LegQuoteOpen(Leg(o2, 1.0, Side.long), getQuote(SS.quoteFor(ts, o2)), OptionMeta()),
+        # LegQuoteOpen(Leg(o3, 1.0, Side.short), getQuote(SS.quoteFor(ts, o3)), OptionMeta())
     )
 end
 testCalcWinRate(tradeOpen) = testCalcWinRate(tradeOpen.ts, tradeOpen.lms)

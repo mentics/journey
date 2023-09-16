@@ -1,6 +1,6 @@
 module Thetas
 using Dates
-using SH, Globals, BaseTypes, LegMetaTypes, ChainTypes
+using SH, Globals, BaseTypes, LegQuoteTypes, ChainTypes
 using DateUtil, OptionUtil, OutputUtil, LegUtil
 using Between, SnapUtil
 using Snapshots, Chains, Markets, Expirations
@@ -51,7 +51,7 @@ function procDay(understart)
     !ismissing(understart) || ( understart = curp )
     push!(row, (:dcurp, 100.0 * (curp / understart - 1.0)))
 
-    lms = tos(LegMeta, legs, optQuoter)
+    lms = tos(LegQuote, legs, optQuoter)
     push!(row, (:bap, bap(lms)))
 
     thetaSum = 0.0

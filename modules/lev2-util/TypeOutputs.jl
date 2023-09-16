@@ -29,14 +29,14 @@ Base.show(io::IO, q::QuoteTypes.Quote) = print(io, q.bid === q.ask ? "Q($(q.bid)
 import LegTypes
 Base.show(io::IO, leg::LegTypes.Leg) = print(io, "Leg($(disp(leg.quantity)) $(leg.side) $(leg.option))")
 
-import LegMetaTypes
-Base.show(io::IO, lm::LegMetaTypes.LegMeta{T}) where T = print(io, "LM($(T) $(lm.leg) $(lm.quot))")
-Base.show(io::IO, ::Type{LegMetaTypes.Open}) = print(io, "Open")
-Base.show(io::IO, ::Type{LegMetaTypes.Close}) = print(io, "Close")
+import LegQuoteTypes
+Base.show(io::IO, lm::LegQuoteTypes.LegQuote{T}) where T = print(io, "LM($(T) $(lm.leg) $(lm.quot))")
+Base.show(io::IO, ::Type{LegQuoteTypes.Open}) = print(io, "Open")
+Base.show(io::IO, ::Type{LegQuoteTypes.Close}) = print(io, "Close")
 #endregion Legs
 
 #region Collections
-function Base.show(io::IO, lms::NTuple{N,LegMetaTypes.LegMeta{T}}) where {N,T}
+function Base.show(io::IO, lms::NTuple{N,LegQuoteTypes.LegQuote{T}}) where {N,T}
     if N == 0
         println(io, "ODD EMPTY TUPLE")
         return

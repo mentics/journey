@@ -1,6 +1,6 @@
 module Trade4Data
 using Dates
-using SH, BaseTypes, SmallTypes, ChainTypes, LegMetaTypes
+using SH, BaseTypes, SmallTypes, ChainTypes, LegQuoteTypes
 using BaseUtil, DateUtil, ChainUtil, CollUtil
 import Pricing, Calendars
 import SimpleStore as SS
@@ -180,13 +180,13 @@ function enc_lm(lm, curp)
         SCALAR(spread / curp), # TODO: consider dividing by curp
         # SCALAR(getQuantity(lm)),
         # TODO: flatten get meta
-        SCALAR.(LegMetaTypes.metaToFlat(lm))...,
+        SCALAR.(LegQuoteTypes.metaToFlat(lm))...,
     )
 end
 
 # TODO: move to where it belongs
 # import LinesLeg as LL
-# SH.getRisk(lms::Coll{<:LegMeta}) = -Pricing.calcCommit(LL.toSegments(Tuple(lms)))
+# SH.getRisk(lms::Coll{<:LegQuote}) = -Pricing.calcCommit(LL.toSegments(Tuple(lms)))
 
 function make_label(ts_start, lms::NTuple, neto, risk)
     date_start = Date(ts_start)
@@ -288,9 +288,9 @@ function find_price_last(otoq_last, lms, ts_last)
 end
 
 using Between
-requote(otoq, lms::NTuple) = tosn(LegMetaClose, lms, otoq)
+requote(otoq, lms::NTuple) = tosn(LegQuoteClose, lms, otoq)
 reprice(otoq, lms::NTuple) = ( req = requote(otoq, lms) ; isnothing(req) ? nothing : Pricing.price(req, true) )
-which_is_missing(otoq, lms) = findfirst(lm -> isnothing(to(LegMetaClose, lm, otoq)), lms)
+which_is_missing(otoq, lms) = findfirst(lm -> isnothing(to(LegQuoteClose, lm, otoq)), lms)
 
 #region Util move
 Pricing.price_short(x::Real) = x # to deal with searchsorted*
@@ -337,7 +337,7 @@ function make_condors_long(f, prob, curp, tmult, calls, puts; max_spread=4) # TO
                     # call_price = call_prices[call_left_ind].short + call_prices[call_right_ind].long
                     call_price = get_call_price(call_left, call_right)
                     (!isnothing(call_price) && call_price >= 0.03) || continue
-                    lms = (LegMetaOpen(put_left, Side.long), LegMetaOpen(put_right, Side.short), LegMetaOpen(call_left, Side.short), LegMetaOpen(call_right, Side.long))
+                    lms = (LegQuoteOpen(put_left, Side.long), LegQuoteOpen(put_right, Side.short), LegQuoteOpen(call_left, Side.short), LegQuoteOpen(call_right, Side.long))
                     score = Scoring.score_condor_long(prob, curp, tmult, lms; params=ScoringParams[])
                     count += 1
                     isnothing(score) || ( added += 1 ; f(lms, score) )

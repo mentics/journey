@@ -1,6 +1,6 @@
 module ChainUtil
 import Dates:Date
-using Globals, SH, BaseTypes, SmallTypes, OptionTypes, LegTypes, LegMetaTypes, ChainTypes
+using Globals, SH, BaseTypes, SmallTypes, OptionTypes, LegTypes, LegQuoteTypes, ChainTypes
 using CollUtil, OptionUtil
 import DictUtil:dictFromVals
 

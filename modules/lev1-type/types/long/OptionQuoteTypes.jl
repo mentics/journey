@@ -10,7 +10,6 @@ struct OptionQuote
 end
 SH.getOption(oq::OptionQuote) = oq.option
 SH.getQuote(oq::OptionQuote) = oq.quot
-SH.getOptionMeta(oq::OptionQuote) = oq.meta
 
 SH.getStyle(oq::OptionQuote) = getStyle(oq.option)
 SH.getExpir(oq::OptionQuote) = getExpir(oq.option)

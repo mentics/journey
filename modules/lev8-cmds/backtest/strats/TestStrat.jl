@@ -1,6 +1,6 @@
 module TestStrat
 using Dates
-using SH, BaseTypes, SmallTypes, BackTypes, LegMetaTypes
+using SH, BaseTypes, SmallTypes, BackTypes, LegQuoteTypes
 using LogUtil, OutputUtil, BacktestUtil, CollUtil, DateUtil, ThreadUtil
 import DateUtil:timult,calcRate
 import ChainUtil as ch
@@ -24,7 +24,7 @@ struct Scoring
 end
 
 struct Cand{N}
-    lms::NTuple{N,LegMetaOpen}
+    lms::NTuple{N,LegQuoteOpen}
     score::Float64
     neto::Float64
     margin::Sides{Float64}
@@ -129,8 +129,8 @@ function (s::TStrat)(ops, tim, chain, otoq)::Nothing
     return
 end
 
-BackTypes.pricingOpen(::TStrat, lmso::NTuple{N,LegMetaOpen}) where N = calcPrice(lmso)
-BackTypes.pricingClose(::TStrat, lmsc::NTuple{N,LegMetaClose}) where N = calcPrice(lmsc)
+BackTypes.pricingOpen(::TStrat, lmso::NTuple{N,LegQuoteOpen}) where N = calcPrice(lmso)
+BackTypes.pricingClose(::TStrat, lmsc::NTuple{N,LegQuoteClose}) where N = calcPrice(lmsc)
 function BackTypes.checkExit(params::Params, tradeOpen::TradeBTOpen{4,Scoring}, tim, lmsc, curp)::Union{Nothing,String}
     Date(tradeOpen.ts) < tim.date || return # No closing on the same day
     netc = calcPrice(lmsc)
@@ -225,7 +225,7 @@ function checkScore4!(keep, params, vix, lms)::Bool
 end
 const LockKeep = ReentrantLock()
 const KeepCandCombos = Vector{Cand{4}}()
-makeLm(oq, dirq) = LegMetaOpen(oq, dirq > 0 ? Side.long : Side.short, F(abs(dirq)))
+makeLm(oq, dirq) = LegQuoteOpen(oq, dirq > 0 ? Side.long : Side.short, F(abs(dirq)))
 function makeLms(oqs, dirqs)
     map(makeLm, oqs, dirqs)
 end
@@ -376,7 +376,7 @@ function findEntryFixed!(keep, params, prob, search, otoq, xpirsExtra, args...)
     oq3 = oqs[i3]
     # @show strike1 getStrike(oq1) getStrike(oq2) getStrike(oq3)
     # oq1, oq2, oq3 = (oqs[end], oqs[end-4], oqs[end-8])
-    lms = (LegMetaOpen(oq3, Side.long), LegMetaOpen(oq2, Side.long), LegMetaOpen(oq1, Side.short))
+    lms = (LegQuoteOpen(oq3, Side.long), LegQuoteOpen(oq2, Side.long), LegQuoteOpen(oq1, Side.short))
     global keepLms = lms
     r = score(lms, params, prob, args...)
     if !isnothing(r) && (isempty(keep) || r[1].score > keep[end].score)
@@ -411,7 +411,7 @@ function findEntry!(keep, params, prob, search, otoq, xpirsExtra, args...)
                 for xpir in xpirsExtra
                     oq3 = ch.xssToq(otoq, xpir, Style.put, strike)
                     !isnothing(oq3) || continue
-                    lms = (LegMetaOpen(oq3, Side.long), LegMetaOpen(oq2, Side.long), LegMetaOpen(oq1, Side.short))
+                    lms = (LegQuoteOpen(oq3, Side.long), LegQuoteOpen(oq2, Side.long), LegQuoteOpen(oq1, Side.short))
                     r = score(lms, params, prob, args...)
                     if !isnothing(r) && (isempty(keep) || r[1].score > keep[end].score)
                         # TODO: not optimized
@@ -447,7 +447,7 @@ function findEntryShort!(keep, params, prob, search, args...)
                 if getStrike(oq3) - getStrike(oq2) > params.MaxWidthRat * prob.center
                     break
                 end
-                lms = (LegMetaOpen(oq1, Side.short), LegMetaOpen(oq2, Side.long), LegMetaOpen(oq3, Side.long))
+                lms = (LegQuoteOpen(oq1, Side.short), LegQuoteOpen(oq2, Side.long), LegQuoteOpen(oq3, Side.long))
                 r = score(lms, params, prob, args...)
                 if !isnothing(r) && (isempty(keep) || r[1].score > keep[end].score)
                     # TODO: not optimized

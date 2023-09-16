@@ -152,6 +152,8 @@ function sortuple(x1::T, x2::T, x3::T, by)::NTuple{3,T} where T
     return a[2], b[2], c[2]
 end
 
+# sortargs(args...) = sortuple(identity, args)
+
 function sortuple(by::Function, x1::T, x2::T)::NTuple{2,T} where T
     a, b = decorate(by, x1, x2)
     a, b = minmax2(a, b)

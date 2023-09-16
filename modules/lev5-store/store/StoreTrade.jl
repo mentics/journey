@@ -1,6 +1,6 @@
 module StoreTrade
 using Dates
-using SH, BaseTypes, SmallTypes, OptionTypes, LegTypes, TradeTypes, LegTradeTypes, StatusTypes, LegMetaTypes
+using SH, BaseTypes, SmallTypes, OptionTypes, LegTypes, TradeTypes, LegTradeTypes, StatusTypes, LegQuoteTypes
 using Globals, BaseUtil, DateUtil, StoreUtil, FileUtil, LogUtil
 
 export ST
@@ -10,7 +10,7 @@ export newTrade, loadTrade, loadLegTrade, findTrades
 export queryLegStatus, queryNumLegs, queryLeftovers, queryEntered, queryLegsEntered
 export findTradeEntered
 
-function newTrade(primitDir::PriceT, legs::CollT{LegMetaOpen}, underBid::Currency, underAsk::Currency)::Int
+function newTrade(primitDir::PriceT, legs::CollT{LegQuoteOpen}, underBid::Currency, underAsk::Currency)::Int
     @assert sum(getBid, legs) <= primitDir <= sum(getAsk, legs) "Invalid primitDir $(primitDir) $(sum(getBid, legs)) $(sum(getAsk, legs))\n$(legs)"
     exp = minimum(getExpir, legs)
     tid = 0

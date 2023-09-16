@@ -12,16 +12,16 @@ export xlms, xlmsv
 # TODO: remove after fixing calcs to not need it
 TexPerDay = 6.5 + .3 * (24 - 6.2)
 
-# xlmsv(ex::Int=0)::Vector{LegMeta} = tos(Vector{LegMeta}, tradesToClose(ex))
-# function xlms(when::Int=0)::Vector{LegMeta}
-#     combineTo(Vector{LegMeta}, tradesToClose(when))
+# xlmsv(ex::Int=0)::Vector{LegQuote} = tos(Vector{LegQuote}, tradesToClose(ex))
+# function xlms(when::Int=0)::Vector{LegQuote}
+#     combineTo(Vector{LegQuote}, tradesToClose(when))
 #     # trades = findTrades(forDate, Filled)
 #     # if !isempty(trades)
-#     #     lms = tos(Vector{LegMeta}, trades)
+#     #     lms = tos(Vector{LegQuote}, trades)
 #     #     sort!(lms; by=getStrike)
 #     #     return lms
 #     # else
-#     #     return Vector{LegMeta}()
+#     #     return Vector{LegQuote}()
 #     # end
 # end
 
@@ -80,7 +80,7 @@ function probFlat(center::Real, ends::Float64)::Prob
     return Prob(center, vals)
 end
 
-using Chains, SmallTypes, LegMetaTypes
+using Chains, SmallTypes, LegQuoteTypes
 # function findCondor(oqss::Oqss, curp::Currency, side::Side.T, mid, w; maxDiff=1.0)
 #     if side == Side.long
 #         distsLong = [-mid-w, mid+w] ./ 2
@@ -92,18 +92,18 @@ using Chains, SmallTypes, LegMetaTypes
 
 #     oqssLong = Chains.findOqs(oqss.call.long, curp::Currency, distsLong; maxDiff)
 #     !isnothing(oqssLong) || return nothing
-#     longs = map(oq -> LegMeta(oq, 1.0, Side.long), oqssLong)
+#     longs = map(oq -> LegQuote(oq, 1.0, Side.long), oqssLong)
 
 #     oqssShort = Chains.findOqs(oqss.call.short, curp::Currency, distsShort; maxDiff)
 #     !isnothing(oqssShort) || return nothing
-#     shorts = map(oq -> LegMeta(oq, 1.0, Side.short), oqssShort)
+#     shorts = map(oq -> LegQuote(oq, 1.0, Side.short), oqssShort)
 
 #     return sort!(vcat(shorts, longs); by=getStrike)
 # end
 
-makeLeg(oqs, ind, side) = 0 < ind < length(oqs) ? LegMeta(oqs[ind], 1.0, side) : nothing
+makeLeg(oqs, ind, side) = 0 < ind < length(oqs) ? LegQuote(oqs[ind], 1.0, side) : nothing
 
-function makeCondorCall(oqss::Oqss, mids, toInner::Int, toOuter::Int)::Union{Nothing,Coll{LegMeta}}
+function makeCondorCall(oqss::Oqss, mids, toInner::Int, toOuter::Int)::Union{Nothing,Coll{LegQuote}}
     innerUp = toInner ÷ 2
     innerDown = toInner - innerUp
     res = (makeLeg(oqss.call.short, mids.callShort - innerDown - toOuter, Side.short),
@@ -113,7 +113,7 @@ function makeCondorCall(oqss::Oqss, mids, toInner::Int, toOuter::Int)::Union{Not
     return isnothing(findfirst(isnothing, res)) ? res : nothing
 end
 
-function makeCondorPut(oqss::Oqss, mids, toInner::Int, toOuter::Int)::Union{Nothing,Coll{LegMeta}}
+function makeCondorPut(oqss::Oqss, mids, toInner::Int, toOuter::Int)::Union{Nothing,Coll{LegQuote}}
     innerUp = toInner ÷ 2
     innerDown = toInner - innerUp
     res = (makeLeg(oqss.put.short, mids.callShort - innerDown - toOuter, Side.short),
@@ -123,7 +123,7 @@ function makeCondorPut(oqss::Oqss, mids, toInner::Int, toOuter::Int)::Union{Noth
     return isnothing(findfirst(isnothing, res)) ? res : nothing
 end
 
-function makeCondorIron(oqss::Oqss, mids, toInner::Int, toOuter::Int)::Union{Nothing,Coll{LegMeta}}
+function makeCondorIron(oqss::Oqss, mids, toInner::Int, toOuter::Int)::Union{Nothing,Coll{LegQuote}}
     innerUp = toInner ÷ 2
     innerDown = toInner - innerUp
     res = (makeLeg(oqss.put.short, mids.callShort - innerDown - toOuter, Side.short),
@@ -133,11 +133,11 @@ function makeCondorIron(oqss::Oqss, mids, toInner::Int, toOuter::Int)::Union{Not
     return isnothing(findfirst(isnothing, res)) ? res : nothing
 end
 
-# makeCondorIron(oqss::Oqss, mids, toInner::Int, toOuter::Int)::Coll{LegMeta} = (
-#     LegMeta(oqss.put.short[mids.callShort - toInner - toOuter], 1.0, Side.short),
-#     LegMeta(oqss.put.long[mids.callLong - toInner], 1.0, Side.long),
-#     LegMeta(oqss.call.long[mids.callLong + toInner], 1.0, Side.long),
-#     LegMeta(oqss.call.short[mids.callShort + toInner + toOuter], 1.0, Side.short))
+# makeCondorIron(oqss::Oqss, mids, toInner::Int, toOuter::Int)::Coll{LegQuote} = (
+#     LegQuote(oqss.put.short[mids.callShort - toInner - toOuter], 1.0, Side.short),
+#     LegQuote(oqss.put.long[mids.callLong - toInner], 1.0, Side.long),
+#     LegQuote(oqss.call.long[mids.callLong + toInner], 1.0, Side.long),
+#     LegQuote(oqss.call.short[mids.callShort + toInner + toOuter], 1.0, Side.short))
 
 import Positions, StoreOrder, LegTypes
 using TradierAccount, OrderTypes, OptionTypes, TradierOrderConvert

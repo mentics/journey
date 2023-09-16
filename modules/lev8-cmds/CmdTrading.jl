@@ -1,6 +1,6 @@
 module CmdTrading
 using Dates, IterTools
-using Globals, BaseTypes, SH, SmallTypes, StatusTypes, TradeTypes, LegTradeTypes, LegMetaTypes
+using Globals, BaseTypes, SH, SmallTypes, StatusTypes, TradeTypes, LegTradeTypes, LegQuoteTypes
 using DateUtil, LogUtil, CollUtil, Pricing
 using Trading
 using Calendars, Markets, Expirations, Chains, StoreTrade
@@ -12,9 +12,9 @@ export cleg, clegr
 
 #region OpenTrades
 using Trading
-ot(lms::Coll{LegMetaOpen}; kws...) = _ot(lms; kws...)
-otr(lms::Coll{LegMetaOpen}; kws...) = _ot(lms; kws..., pre=false)
-function _ot(lms::Coll{LegMetaOpen}; pre=true, skip_confirm=false)
+ot(lms::Coll{LegQuoteOpen}; kws...) = _ot(lms; kws...)
+otr(lms::Coll{LegQuoteOpen}; kws...) = _ot(lms; kws..., pre=false)
+function _ot(lms::Coll{LegQuoteOpen}; pre=true, skip_confirm=false)
     canTrade(pre)
     Globals.set(:soRunLast, now(UTC))
 
@@ -56,7 +56,7 @@ function _ct(trad::Trade; pre=true, skip_confirm=false, leginds=nothing, kws...)
     Globals.set(:ctRunLast, now(UTC))
 
     # TODO: put in Between?
-    lms = tos(LegMetaClose, getLegs(trad), Chains.chainLookup)
+    lms = tos(LegQuoteClose, getLegs(trad), Chains.chainLookup)
     isnothing(leginds) || ( lms = lms[leginds] )
 
     println("Closing trade $(tid) with $(length(lms)) legs for $(Pricing.price(Action.close, lms)) ($(join(Pricing.price.(Action.close, lms), ",")))")
@@ -144,9 +144,9 @@ end
 
 # using RetTypes, Between, DrawStrat
 # toRet(trades, exp)::Ret = combineTo(Ret, trades, exp, market().curp, Globals.get(:vtyRatio)) # TODO: choose diff start price?
-# # toLms(trades, exp)::Ret = combineTo(LegMeta, trades, exp, market().curp, Globals.get(:vtyRatio)) # TODO: choose diff start price?
+# # toLms(trades, exp)::Ret = combineTo(LegQuote, trades, exp, market().curp, Globals.get(:vtyRatio)) # TODO: choose diff start price?
 # toRet(trades)::Ret = combineTo(Ret, trades, market().curp) # TODO: choose diff start price?
-# toLms(trades)::Vector{LegMeta} = combineTo(Vector{LegMeta}, trades) # TODO: choose diff start price?
+# toLms(trades)::Vector{LegQuote} = combineTo(Vector{LegQuote}, trades) # TODO: choose diff start price?
 # # TODO: change so matches todo and expirs and all: 0 for today, 1 for non-today next exp, and default is 0
 # # drpos(exp=expir(0)) = drawRet(toRet(tradesToClose(exp), exp); prob=prob(), curp=market().curp, label="pos")
 # export drt, adrt
@@ -219,9 +219,9 @@ end
 # getMeta.(getLegs(todo()[3]))
 # I could look up the ivs in the old db
 # using LegTypes, OptionMetaTypes, ChainTypes, Rets
-# lmToRet(lm::LegMeta, om::OptionMeta, forDate::Date, sp::Currency, vtyRatio::Float64)::Ret = makeRet(getLeg(lm), om, bap(lm), forDate, sp, vtyRatio)
+# lmToRet(lm::LegQuote, om::OptionMeta, forDate::Date, sp::Currency, vtyRatio::Float64)::Ret = makeRet(getLeg(lm), om, bap(lm), forDate, sp, vtyRatio)
 # tradesToRet(trades::AVec{<:Trade}, forDate::Date, sp::Currency, vtyRatio::Float64)::Ret =
-#     combineRets([lmToRet(lm, getMeta(optQuoter(lm)), forDate, sp, vtyRatio) for lm in collect(mapFlattenTo(getLegs, LegMeta, trades))])
+#     combineRets([lmToRet(lm, getMeta(optQuoter(lm)), forDate, sp, vtyRatio) for lm in collect(mapFlattenTo(getLegs, LegQuote, trades))])
 # toRet2(trades, ex)::Ret = tradesToRet(trades, expir(ex), market().startPrice, 1.0) # TODO: choose diff start price?
 # drpos2(ex=1) = drawRet!(toRet2(todo(ex), ex), "pos2")#, prob(), market().curp, "pos2")
 #endregion
@@ -265,7 +265,7 @@ function tradeSize(kelly::Float64, kellyRatio::Float64 = 0.5)
     rows = NamedTuple[]
     # TODO: groupby expiration and get worst case for all trades together in expiration
     for trade in trades
-        # lms = to(Vector{LegMeta}, trade)
+        # lms = to(Vector{LegQuote}, trade)
         legs = getLegs(trade)
         if length(legs) == 4
             mn = min(OptionUtil.legs4Extrema(legs)...)

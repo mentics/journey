@@ -1,6 +1,6 @@
 module PayloadUtil
 using SH
-using LegMetaTypes, LegTradeTypes
+using LegQuoteTypes, LegTradeTypes
 
 export mergeLegs!
 
@@ -15,7 +15,7 @@ function mergeLegs!(legs::AbstractVector)::Nothing
             leg2 = legs[j]
             # @info "checking" leg1 leg2
             if getOption(leg2) == curOption && getSide(leg2) == curSide
-                # TODO: very messy handling both LegTrade and LegMeta
+                # TODO: very messy handling both LegTrade and LegQuote
                 legs[i] = addQuantity(leg1, getQuantity(leg2))
                 # lgs = deleteat(lgs, j)
                 deleteat!(legs, j)

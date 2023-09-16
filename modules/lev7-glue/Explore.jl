@@ -28,7 +28,7 @@ config() = (;
 )
 
 #region LookForBestKelly
-using SmallTypes, LegMetaTypes
+using SmallTypes, LegQuoteTypes
 using Markets, Expirations, Chains
 import Kelly, ChainUtil, Between
 
@@ -186,16 +186,26 @@ function findkel(ctx, xpirts::DateTime, oqss, pos_rs, incs; keep=10, use_problup
     res = merge(ress, keep)
     return vec(res)
 end
-function get_pos_lms(pos)
-    # sort!(collect(Iterators.flatten(map(r -> r.lms, pos))); by=SH.getStrike)
-    v = sort!(collect(Iterators.flatten(map(r -> r.r1.lms, pos))); by=SH.getStrike)
-    return v
-    # len = length(v)
-    # MAX_LEN[] = max(MAX_LEN[], len)
-    # res = SVector{len}(v)
-    # return res
+
+pos_new() = Dict()
+function pos_add(pos, r)
 end
-# const MAX_LEN = Ref(0)
+
+struct LegQuoteSized
+    lq::LegQuote
+    quantity::Float64
+end
+
+# function get_pos_lms(pos)
+#     # sort!(collect(Iterators.flatten(map(r -> r.lms, pos))); by=SH.getStrike)
+#     v = sort!(collect(Iterators.flatten(map(r -> r.r1.lms, pos))); by=SH.getStrike)
+#     return v
+#     # len = length(v)
+#     # MAX_LEN[] = max(MAX_LEN[], len)
+#     # res = SVector{len}(v)
+#     # return res
+# end
+# # const MAX_LEN = Ref(0)
 
 # findkel(f_xpir_to_oqss, ctx, xpirs::Coll{Date}, incs; keep=100) = findkel(f_xpir_to_oqss, ctx, Calendars.getMarketClose.(xpirs), incs)
 # function findkel(f_xpir_to_oqss, ctx, xpirtss::Coll{DateTime}, incs; keep=100, use_problup=true)
@@ -235,7 +245,7 @@ function make_leg(oq, side)
     #     global kmakeleg=(;adjust=CONFIG10[].adjustprices, oq, side)
     #     error("stop")
     # end
-    lm = LegMetaOpen(oq, side; adjustprices=config().adjustprices)
+    lm = LegQuoteOpen(oq, side; adjustprices=config().adjustprices)
     if SH.getBid(lm) == 0
         # global kmakeleg=(;adjust=config().adjustprices, oq, side, lm)
         error("bid 0")
@@ -309,7 +319,11 @@ end
 #     end
 # end
 
-function check!(ress, ctx, lms)::Nothing
+function check!(ress, ctx, lqs)::Nothing
+    
+end
+
+function checkold!(ress, ctx, lms)::Nothing
     # neto = CZ
     # try
     #     neto = Pricing.price(Action.open, lms)

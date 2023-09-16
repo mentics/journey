@@ -68,7 +68,7 @@ end
 #region Trade
 module trad
 
-using SH, Dates, BackTypes, LegMetaTypes, DateUtil, CollUtil
+using SH, Dates, BackTypes, LegQuoteTypes, DateUtil, CollUtil
 side(trade::TradeBTOpen) = getSide(trade.lms[1])
 SH.getTargetDate(t::TradeBTOpen) = minimum(getExpir, t.lms)
 SH.getTargetDate(trade::TradeBT) = getTargetDate(trade.open)
@@ -91,7 +91,7 @@ bdaysLeft(from::Date, trade) = bdays(from, getTargetDate(trade))
 open(acct, id) = CollUtil.find(x -> x.id == id, acct.open)
 closed(acct, id) = CollUtil.find(x -> x.open.id == id, acct.closed)
 function calcCloseInfo(trade::TradeBTOpen, ts, otoq, calcPrice)
-    lmsc = tosn(LegMetaClose, trade.lms, otoq)
+    lmsc = tosn(LegQuoteClose, trade.lms, otoq)
     !isnothing(lmsc) || return nothing
     netc = calcPrice(lmsc)
     cv = trade.neto + netc

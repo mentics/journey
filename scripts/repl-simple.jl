@@ -4,7 +4,7 @@ using Dates, StaticArrays
 # import IterTools, NamedTupleTools
 # IT = IterTools
 # NTT = NamedTupleTools
-using SH, BaseTypes, Globals, SmallTypes, LegTypes, LegMetaTypes
+using SH, BaseTypes, Globals, SmallTypes, LegTypes, LegQuoteTypes
 using OutputUtil, TypeOutputs
 
 import ModuleUtil

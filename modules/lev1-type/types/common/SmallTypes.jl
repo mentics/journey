@@ -10,7 +10,7 @@ export checkDirOrder, checkDirTrade
 @enumx Style call=1 put=-1
 SH.toCode(s::Style.T) = s === Style.call ? 'c' : 'p'
 SH.to(::Type{Style.T}, s::AbstractString) = s in ("c", "C", "call") ? Style.call : (s in ("p", "P", "put") ? Style.put : error("Invalid Style code ", s))
-# SH.random(::Type{Style.T}) = rand((Style.call, Style.put))
+SH.random(::Type{Style.T}) = rand((Style.call, Style.put))
 
 struct Styles{T}
     call::T

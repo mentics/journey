@@ -45,7 +45,7 @@ function fromSpec(curp, search, spec)
     oqs = getfield(search, spec.style).oqs
     fsearch = spec.rat < 0 ? searchsortedlast : searchsortedfirst
     oq = oqs[clamp(fsearch(strikes, curp * spec.rat + spec.off), firstindex(oqs), lastindex(oqs))]
-    return LegMetaOpen(oq, spec.side, 1.0)
+    return LegQuoteOpen(oq, spec.side, 1.0)
 end
 
 using ColorSchemes

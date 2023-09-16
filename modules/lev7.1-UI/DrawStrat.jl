@@ -3,6 +3,8 @@ using GLMakie
 using DrawUtil
 using SH, BaseTypes, StratTypes, Bins, RetTypes
 
+ERROR: No longer used
+
 export drawRet, drawRet!
 
 # drawRet(r::Ret; probs=nothing, cp=nothing, label="", newWin=false) = drawRet(r, probs, cp, label; newWin)

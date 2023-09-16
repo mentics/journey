@@ -45,7 +45,7 @@ function SH.to(::Type{NamedTuple}, lt::LegTrade)
     (;lid=getId(lt), exp=getExpir(lt), strike=getStrike(lt), style=getStyle(lt), side=getSide(lt), qty=getQuantity(lt), open, close, pnl)
 end
 
-# TODO: this is identical to in LegMetaTypes
+# TODO: this is identical to in LegQuoteTypes
 # using SmallTypes, QuoteTypes, ChainTypes
 # SH.calcQuote(lookup::Function, legs::AVec{<:LegTrade}, act::Action.T=Action.open)::Quote = sumQuotes(getQuote(calcOptQuote(lookup, leg, act)) for leg in legs)
 # function SH.calcOptQuote(lookup::Function, leg::LegTrade, act::Action.T=Action.open)::Union{Nothing,OptionQuote}

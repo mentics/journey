@@ -1,7 +1,7 @@
 module Lines
 using BaseTypes, LineTypes
 
-export Segments, SegSide, Left, Right, Point
+export Segments, SegSide, Left, Right, Point, Seg3, Dir2, Point, DirLeft, DirRight
 
 function scale(s::Segments, k)::Segments
     return Segments(k .* s.slopes, scale.(s.points, k))
@@ -43,14 +43,15 @@ sloperight(s::Left, x::Float64)::Float64 = x < s.point.x ? s.slope : 0.0
 
 Base.convert(::Type{Tuple{Float64,Float64}}, p::Point) = (p.x, p.y)
 
-function toLineTuples(s::Segments; mn=100.0, mx=600.0)::NTuple{N+2,Tuple{Float64,Float64}}
+function toLineTuples(s::Segments; mn=100.0, mx=600.0) # ::NTuple{N+2,Tuple{Float64,Float64}}
     w = s.points[end].x - s.points[1].x
     x0 = max(0.0, min(mn, s.points[1].x - w))
-    y0 = at(s, x0)
+    y0 = atsegs(s, x0)
     xend = max(mx, s.points[end].x + w)
-    yend = at(s, xend)
-    return ((x0, y0), s.points..., (xend, yend))
+    yend = atsegs(s, xend)
+    return ((x0, y0), totup.(s.points)..., (xend, yend))
 end
+totup(x::Point) = (x.x, x.y)
 
 function toLineTuples(ss::Vector{Segment})
     res = Vector{NTuple{2,Float64}}() # (undef, length(ss)+1)

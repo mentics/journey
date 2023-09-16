@@ -1,7 +1,7 @@
 module Chains
 using Dates
 using CollUtil, DictUtil, DateUtil, LogUtil, VectorCalcUtil
-using Globals, BaseTypes, SH, Bins, SmallTypes, ChainTypes, QuoteTypes, OptionTypes, OptionMetaTypes, LegTypes, LegMetaTypes
+using Globals, BaseTypes, SH, Bins, SmallTypes, ChainTypes, QuoteTypes, OptionTypes, OptionMetaTypes, LegTypes, LegQuoteTypes
 using TradierData, Caches
 using DataHelper, Markets, Calendars, Expirations
 
@@ -12,8 +12,8 @@ export chains, chain, ivs, calcNearIv
 export quoter, optQuoter, isQuotable
 
 using ChainUtil
-# getOqss(i::Int, curp::Currency, legsCheck=LegMeta[])::Oqss = ChainUtil.getOqss(chain(expir(i)).chain, curp, legsCheck)
-# getOqss(expr::Date, curp::Currency, legsCheck=LegMeta[])::Oqss = ChainUtil.getOqss(chain(expr).chain, curp, legsCheck)
+# getOqss(i::Int, curp::Currency, legsCheck=LegQuote[])::Oqss = ChainUtil.getOqss(chain(expir(i)).chain, curp, legsCheck)
+# getOqss(expr::Date, curp::Currency, legsCheck=LegQuote[])::Oqss = ChainUtil.getOqss(chain(expr).chain, curp, legsCheck)
 
 # ftrue(_) = true
 
@@ -104,12 +104,12 @@ optQuoter(x, act::Action.T=Action.open)::Union{Nothing,OptionQuote} = calcOptQuo
 function SH.calcQuote(lookup, legs::Coll, act::Action.T=Action.open)::Quote
     sumQuotes(calcQuote(lookup, leg, act) for leg in legs)
 end
-function SH.calcQuote(lookup, leg::T, act::Action.T=Action.open)::Quote where T # <:Union{Leg,LegMeta,<:LegTrade}
+function SH.calcQuote(lookup, leg::T, act::Action.T=Action.open)::Quote where T # <:Union{Leg,LegQuote,<:LegTrade}
     oq = lookup(getExpir(leg), getStyle(leg), getStrike(leg))
     dir = DirSQA(getSide(leg), getQuantity(leg), act)
     return newQuote(getQuote(oq), dir)
 end
-function SH.calcOptQuote(lookup, leg::T, act::Action.T=Action.open)::OptionQuote where T # <:Union{Leg,LegMeta,<:LegTrade}
+function SH.calcOptQuote(lookup, leg::T, act::Action.T=Action.open)::OptionQuote where T # <:Union{Leg,LegQuote,<:LegTrade}
     oq = lookup(getExpir(leg), getStyle(leg), getStrike(leg))
     dir = DirSQ(getSide(leg), getQuantity(leg))
     return OptionQuote(getOption(leg), newQuote(getQuote(oq), DirSQA(dir, act)), newOptionMeta(getOptionMeta(oq), dir))

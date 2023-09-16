@@ -1,6 +1,6 @@
 module Backtests
 using Dates
-using SH, BaseTypes, SmallTypes, BackTypes, LegMetaTypes, LegTypes, OptionTypes, ChainTypes
+using SH, BaseTypes, SmallTypes, BackTypes, LegQuoteTypes, LegTypes, OptionTypes, ChainTypes
 using LogUtil, DateUtil, ChainUtil, CollUtil, DictUtil
 using SimpleStore, BacktestUtil
 import SimpleStore as SS
@@ -95,8 +95,8 @@ end
 function handleExpirations(strat, acct::Account, tim::TimeInfo, chain::ChainInfo, otoq)::Nothing
     filter!(acct.open) do tradeOpen
         if tim.date == getExpir(tradeOpen)
-            lmsc = tos(LegMetaClose, tradeOpen.lms, Pricing.fallbackExpired(getCurp(chain), otoq))
-            # lmsc = tos(LegMetaClose, tradeOpen.lms, otoq)
+            lmsc = tos(LegQuoteClose, tradeOpen.lms, Pricing.fallbackExpired(getCurp(chain), otoq))
+            # lmsc = tos(LegQuoteClose, tradeOpen.lms, otoq)
             # if isnothing(lmsc)
             #             return OptionQuote(o, Quote(C(Pricing.netExpired(getStyle(o), getStrike(o), curp))), OptionMeta())
             # end
@@ -164,7 +164,7 @@ function checkExits(strat, acct::Account, tim, otoq, curp)
     filter!(acct.open) do tradeOpen
         lmsc = nothing
         # try
-            lmsc = tosn(LegMetaClose, tradeOpen.lms, otoq)
+            lmsc = tosn(LegQuoteClose, tradeOpen.lms, otoq)
             !isnothing(lmsc) || ( DictUtil.incKey(QuoteFailed, tradeOpen.id) ; return true ) # skip if can't quote
             # !isnothing(lmsc) || ( println("couldn't quote") ; return true ) # skip if can't quote
             label = BackTypes.checkExit(strat.params, tradeOpen, tim, lmsc, curp)

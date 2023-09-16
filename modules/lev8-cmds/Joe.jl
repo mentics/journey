@@ -1,6 +1,6 @@
 module Joe
 using Dates, NamedTupleTools
-using Globals, SH, BaseTypes, SmallTypes, Bins, LegMetaTypes, RetTypes, StratTypes, OptionMetaTypes
+using Globals, SH, BaseTypes, SmallTypes, Bins, LegQuoteTypes, RetTypes, StratTypes, OptionMetaTypes
 using DateUtil, OptionUtil, CalcUtil, ThreadUtil, OutputUtil, LogUtil, DictUtil, CollUtil, ChainUtil
 import GenCands
 using Calendars, Expirations, Chains, ProbKde, Markets
@@ -199,7 +199,7 @@ function makeCtx(xpir::Date; nopos, all)::NamedTuple
     days = (1 + bdays(from, xpir))
     timt = timult(from, xpir)
     prob = xprob(xpir)
-    posLms = nopos ? LegMeta[] : xlms(xpir)
+    posLms = nopos ? LegQuote[] : xlms(xpir)
     posRet = combineTo(Ret, posLms, curp)
     posMet = calcMetrics(prob, posRet)
     threads = [(;
@@ -227,7 +227,7 @@ end
 
 import Kelly
 
-function joeSpread(ctx, lms::NTuple{2,LegMeta})
+function joeSpread(ctx, lms::NTuple{2,LegQuote})
     tctx = ctx.threads[Threads.threadid()]
     ret = combineTo(Ret, lms, ctx.curp)
     # TODO: use thread buffer, tctx.retBuf1
@@ -447,7 +447,7 @@ function getSpreads(xpir)
 
     isLegAllowed = (_,_)->true
 
-    sthreads = [Vector{NTuple{2,LegMeta}}() for _ in 1:Threads.nthreads()]
+    sthreads = [Vector{NTuple{2,LegQuote}}() for _ in 1:Threads.nthreads()]
     GenCands.paraSpreads(oqss, ctx.maxWidth/2.0, isLegAllowed, ctx, sthreads) do lms, c, rs
         # calcMetrics(c.threads[Threads.threadid()], c.prob, lms)
         met = calcMetrics(c.prob, c.curp, lms)
@@ -469,14 +469,14 @@ function CalcUtil.calcMetrics(prob::Prob, curp::Currency, lms)
 end
 
 
-# function CalcUtil.calcMetrics(buf::Vector{Float64}, curp::Currency, prob::Prob, lms::AVec{LegMeta})
+# function CalcUtil.calcMetrics(buf::Vector{Float64}, curp::Currency, prob::Prob, lms::AVec{LegQuote})
 #     combineRetVals!(buf, rets, indqs)
 #     ret = Ret(buf, curp, 2 * length(lms))
 #     met = calcMetrics(prob, ret)
 # end
 
 function runlc(xpr; maxSpreads=1000, start=GreeksZero, kws...)
-    jorn(xpr; all=true, condors=false, spreads=true, nopos=true, posLms=LegMeta[])
+    jorn(xpr; all=true, condors=false, spreads=true, nopos=true, posLms=LegQuote[])
     filt() do r
         mis = findfirst(r.lms) do lm
             gks = getGreeks(lm)

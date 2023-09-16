@@ -15,6 +15,9 @@ Leg(opt::Option, dir::DirSQ) = Leg(opt, dir.quantity, dir.side)
 Leg(row::NamedTuple) = Leg(Option(row), row.quantity, Side.T(row.side))
 Leg(; option=Option(), quantity=1.0, side=Side.long) = Leg(option, quantity, side)
 Leg(leg::Leg; option=leg.option, quantity=leg.quantity, side=leg.side) = Leg(option, quantity, side)
+
+SH.random(::Type{Leg}, style, side) = Leg(random(Option, style), rand(), side)
+
 const LEGS_EMPTY = Leg[]
 switchSide(leg::Leg) = Leg(leg; side=toOther(getSide(leg)))
 SH.getOption(l::Leg) = l.option

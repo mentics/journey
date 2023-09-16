@@ -1,6 +1,6 @@
 module StratPutSpread
 using Dates
-using SH, BaseTypes, SmallTypes, BackTypes, LegMetaTypes
+using SH, BaseTypes, SmallTypes, BackTypes, LegQuoteTypes
 using LogUtil, OutputUtil, BacktestUtil, CollUtil, DateUtil, ThreadUtil
 import DateUtil:timult,calcRate
 import ChainUtil as ch
@@ -26,7 +26,7 @@ struct Scoring
 end
 
 struct Cand{N}
-    lms::NTuple{N,LegMetaOpen}
+    lms::NTuple{N,LegQuoteOpen}
     score::Float64
     neto::Float64
     margin::Sides{Float64}
@@ -130,8 +130,8 @@ function (s::TStrat)(ops, tim, chain, otoq)::Nothing
 end
 # BaseTypes.toPT(sides::Sides{Float64})::Sides{PT} = Sides(toPT(sides.long, RoundDown), round(toPT(sides.short, RoundDown)))
 
-BackTypes.pricingOpen(::TStrat, lmso::NTuple{N,LegMetaOpen}) where N = calcPrice(lmso)
-BackTypes.pricingClose(::TStrat, lmsc::NTuple{N,LegMetaClose}) where N = calcPrice(lmsc)
+BackTypes.pricingOpen(::TStrat, lmso::NTuple{N,LegQuoteOpen}) where N = calcPrice(lmso)
+BackTypes.pricingClose(::TStrat, lmsc::NTuple{N,LegQuoteClose}) where N = calcPrice(lmsc)
 calcPrice(lms)::PT = toPT(Pricing.price(lms)) # toPT(bap(lms, 0.0)) + P(0.02)
 calcPriceFast(lms)::Float64 = Pricing.price(lms) # Pricing.bapFast(lms, 0.0) + 0.02
 
@@ -214,7 +214,7 @@ function findEntry!(keep, params, prob, search, otoq, args...)
             str2 = getStrike(oq2)
             str2 - str1 <= maxWidth || break
 
-            lms = (LegMetaOpen(oq1, Side.long), LegMetaOpen(oq2, Side.short))
+            lms = (LegQuoteOpen(oq1, Side.long), LegQuoteOpen(oq2, Side.short))
             r = score(lms, params, prob, args...)
             if !isnothing(r) && (isempty(keep) || r[1].score > keep[end].score)
                 # TODO: not optimized

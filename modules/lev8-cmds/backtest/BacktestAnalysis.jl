@@ -1,6 +1,6 @@
 module BacktestAnalysis
 using Dates
-using SH, BaseTypes, SmallTypes, BackTypes, LegMetaTypes
+using SH, BaseTypes, SmallTypes, BackTypes, LegQuoteTypes
 import Backtests as bt, SimpleStore as SS
 using DateUtil, DrawUtil, CollUtil, ChainUtil, BacktestUtil, OutputUtil, Pricing
 using StatsBase
@@ -107,7 +107,7 @@ function lyzeOpen(f::Function, trade::TradeBTOpen, ::Type{T}=Float64) where T
     xys = Vector{Tuple{DateTime,T}}()
     SS.run(from, to) do tim, chain
         otoq = ChainUtil.toOtoq(chain)
-        lms = tosn(LegMetaClose, trade.lms, otoq)
+        lms = tosn(LegQuoteClose, trade.lms, otoq)
         !isnothing(lms) || return
         y = f(tim.ts, lms)
         push!(xys, (tim.ts, y))
@@ -122,7 +122,7 @@ function lyzeTrade(f, trade::TradeBT, ::Type{T}=Float64) where T
     xys = Vector{Tuple{DateTime,T}}()
     SS.run(from, to) do tim, chain
         otoq = ChainUtil.toOtoq(chain)
-        lms = tosn(LegMetaClose, trade.open.lms, otoq)
+        lms = tosn(LegQuoteClose, trade.open.lms, otoq)
         !isnothing(lms) || return
         y = f(tim.ts, lms)
         push!(xys, (tim.ts, y))
@@ -139,7 +139,7 @@ function lyzeLms(f, lms0, from::DateTime, to::DateTime, ::Type{T}=Float64) where
     xys = Vector{Tuple{DateTime,T}}()
     SS.run(from, to) do tim, chain
         otoq = ChainUtil.toOtoq(chain)
-        lms = tosn(LegMetaClose, lms0, otoq)
+        lms = tosn(LegQuoteClose, lms0, otoq)
         # theta = getGreeks(lms).theta
         !isnothing(lms) || return
         y = f(tim.ts, lms)

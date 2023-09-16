@@ -1,6 +1,6 @@
 module BackTypes
 import Dates:DateTime
-using SH, BaseTypes, SmallTypes, LegMetaTypes
+using SH, BaseTypes, SmallTypes, LegQuoteTypes
 
 export Strat, Account, TradeBTOpen, TradeBTClose, TradeBT, MarginSide, MarginInfo, marginZero, marginSideZero
 
@@ -15,7 +15,7 @@ abstract type TradeBTStage end
 struct TradeBTOpen{N,E} <: TradeBTStage
     id::Int
     ts::DateTime
-    lms::NTuple{N,LegMetaOpen}
+    lms::NTuple{N,LegQuoteOpen}
     neto::PT
     margin::Sides{PT}
     multiple::Int
@@ -25,7 +25,7 @@ end
 
 struct TradeBTClose{N} <: TradeBTStage
     ts::DateTime
-    lms::NTuple{N,LegMetaClose}
+    lms::NTuple{N,LegQuoteClose}
     netc::PT
     label::String
 end

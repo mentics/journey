@@ -16,6 +16,7 @@ SH.getStyle(o::Option) = o.style
 SH.getStrike(o::Option) = o.strike
 SH.getExpir(o::Option) = o.expiration
 # SH.random(::Type{Option}) = Option(random(Style.T), rand((today()+Day(1)):Day(1):(today()+Day(10))), randomC())
+SH.random(::Type{Option}, style) = Option(style, today() + Day(rand(2:100)), C(300 + rand() * 200))
 
 # Usually called with config as Globals.get(:Strats)
 function canShort(config::Dict{Symbol,Any}, curp::Currency)

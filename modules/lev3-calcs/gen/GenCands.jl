@@ -1,6 +1,6 @@
 module GenCands
 using ThreadPools
-using SH, BaseTypes, SmallTypes, LegMetaTypes
+using SH, BaseTypes, SmallTypes, LegQuoteTypes
 using OptionUtil, LogUtil, ThreadUtil
 # import CalcUtil
 using ChainTypes
@@ -10,11 +10,11 @@ const MinSpreadMx = 0.03
 # TODO: consider including cash secured puts?
 function iterSingle(f::Function, oqss::Oqss, args...)
     for oq in oqss.call.long
-        f([to(LegMeta, oq, Side.long)], args...)
+        f([to(LegQuote, oq, Side.long)], args...)
     end
 
     for oq in oqss.put.long
-        f([to(LegMeta, oq, Side.long)], args...)
+        f([to(LegQuote, oq, Side.long)], args...)
     end
 end
 
@@ -113,8 +113,8 @@ end
 #     for oq1 in Iterators.filter(oq -> getStrike(oq) >= strikeMin, oqs.long), oq2 in Iterators.filter(oq -> getStrike(oq) >= strikeMin, oqs.short)
 #         strikeWidth(oq1, oq2) <= maxSpreadWidth || continue
 #         (getStrike(oq1) >= strikeMin && getStrike(oq2) >= strikeMin && oq1 != oq2) || continue
-#         legLong = to(LegMeta, oq1, Side.long)
-#         legShort = to(LegMeta, oq2, Side.short)
+#         legLong = to(LegQuote, oq1, Side.long)
+#         legShort = to(LegQuote, oq2, Side.short)
 #         _, mx = spreadExtrema(legLong, legShort)
 #         mx > 0.0 || continue
 #         spr = getStrike(legLong) < getStrike(legShort) ? (legLong, legShort) : (legShort, legLong)
@@ -129,8 +129,8 @@ function iterSpreads(f::Function, oqs::Sides{Vector{ChainTypes.OptionQuote}}, ma
         oq1 != oq2 || continue
         # println("check ", isLegAllowed(oq1, Side.long))
         (isLegAllowed(oq1, Side.long) && isLegAllowed(oq2, Side.short)) || continue
-        legLong = to(LegMeta, oq1, Side.long)
-        legShort = to(LegMeta, oq2, Side.short)
+        legLong = to(LegQuote, oq1, Side.long)
+        legShort = to(LegQuote, oq2, Side.short)
         _, mx = OptionUtil.spreadExtrema(legLong, legShort)
         mx >= MinSpreadMx || continue
         spr = getStrike(legLong) < getStrike(legShort) ? (legLong, legShort) : (legShort, legLong)
@@ -149,8 +149,8 @@ function paraSpreads(f::Function, oqs::Sides{Vector{ChainTypes.OptionQuote}}, ma
             # (getStrike(oq1) >= strikeMin && getStrike(oq2) >= strikeMin && oq1 != oq2) || continue
             oq1 != oq2 || continue
             (isLegAllowed(oq1, Side.long) && isLegAllowed(oq2, Side.short)) || continue
-            legLong = to(LegMetaOpen, oq1, Side.long)
-            legShort = to(LegMetaOpen, oq2, Side.short)
+            legLong = to(LegQuoteOpen, oq1, Side.long)
+            legShort = to(LegQuoteOpen, oq2, Side.short)
             # _, mx = oextrema(legLong, legShort)
             # mx >= MinSpreadMx || continue
             spr = getStrike(legLong) < getStrike(legShort) ? (legLong, legShort) : (legShort, legLong)
@@ -169,8 +169,8 @@ end
 # function iterSpreads(f::Function, oqs::Sides{Vector{ChainTypes.OptionQuote}}, args...)::Bool
 #     for oq1 in oqs.long, oq2 in oqs.short
 #         oq1 != oq2 || continue
-#         legLong = to(LegMeta, oq1, Side.long)
-#         legShort = to(LegMeta, oq2, Side.short)
+#         legLong = to(LegQuote, oq1, Side.long)
+#         legShort = to(LegQuote, oq2, Side.short)
 #         # lms = [legLong, legShort]
 #         # netOpen = bap(leg1) + bap(leg2)
 #         # # strikeDiff = abs(getStrike(oq1) - getStrike(oq2)) + netOpen
@@ -200,7 +200,7 @@ function maxStrike(hasStrike1, hasStrike2)
     return max(s1, s2)
 end
 
-strikeWidth(s::NTuple{2,LegMeta}) = strikeWidth(s...)
+strikeWidth(s::NTuple{2,LegQuote}) = strikeWidth(s...)
 function strikeWidth(hasStrike1, hasStrike2)
     s1 = getStrike(hasStrike1)
     s2 = getStrike(hasStrike2)

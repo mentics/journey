@@ -1,6 +1,6 @@
 module CmdExplore
 using Dates
-using SH, Globals, BaseTypes, SmallTypes, RetTypes, StratTypes, LegMetaTypes
+using SH, Globals, BaseTypes, SmallTypes, RetTypes, StratTypes, LegQuoteTypes
 using LogUtil
 using Shorthand, Between
 using Expirations, Markets, Chains
@@ -17,7 +17,7 @@ export drlms, drlms!
 # drlms!(lms; kws...) = drawRet!(combineTo(Ret, lms, minimum(getExpiration.(lms)), market().startPrice, getvr()); kws...)
 drlms(lms; curp=market().curp, kws...) = drawRet(combineTo(Ret, lms, curp); curp, kws...)
 drlms!(lms; curp=market().curp, kws...) = drawRet!(combineTo(Ret, lms, curp); kws...)
-drlms!(lm::LegMeta; curp=market().curp, kws...) = drawRet!(to(Ret, lm, curp); kws...)
+drlms!(lm::LegQuote; curp=market().curp, kws...) = drawRet!(to(Ret, lm, curp); kws...)
 
 export findShortsToClose
 # TODO: move this to scheduled
@@ -35,7 +35,7 @@ end
 
 # shc(args...) = Tuple(lr for lr in sh(args...))
 sh(str::AStr, exs::Int...) = sh(str, expir.(exs)...)
-sh(str::AStr, exps::Date...) = Tuple(tos(LegMetaOpen, shLegs(str, collect(exps)), Chains.chainLookup))
+sh(str::AStr, exps::Date...) = Tuple(tos(LegQuoteOpen, shLegs(str, collect(exps)), Chains.chainLookup))
 function shlr(str::AStr, exps=expirs(), curp=market().startPrice)
     lms = sh(str, exps...)
     # exp = minimum(getExpiration, lms)
@@ -477,10 +477,10 @@ end
 
 # calcProfit(ret) = (ret[1] + ret[end]) / 2 - .02
 calcProfit(ret) = min(ret[1], ret[end]) / 2 - .02
-calcWidth(lms::Vector{LegMeta}) = ( (mn, mx) = extrema(getStrike, lms) ; return mx - mn )
+calcWidth(lms::Vector{LegQuote}) = ( (mn, mx) = extrema(getStrike, lms) ; return mx - mn )
 
-lms(ex)::Vector{LegMeta} = find(x -> x[1] == ex, bbres)[2][1].lms
-lmsb(ex)::Vector{LegMeta} = vcat(xlms(ex), lms(ex))
+lms(ex)::Vector{LegQuote} = find(x -> x[1] == ex, bbres)[2][1].lms
+lmsb(ex)::Vector{LegQuote} = vcat(xlms(ex), lms(ex))
 
 # TODO: add query to get all Filled trades not entered today so we can check annualized rate if close
 # TODO: maybe add filter to avoid options that have low vol/interest

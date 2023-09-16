@@ -229,15 +229,15 @@ function testCalcKel()
     curp = market().curp
     oqs = filter!(isCall, Chains.chain(expir(1)).chain)
     sort!(oqs; by=oq -> abs(curp - SH.getStrike(oq)))
-    lms = sortuple(SH.getStrike, LegMetaOpen(oqs[1], Side.short), LegMetaOpen(oqs[2], Side.long))
+    lms = sortuple(SH.getStrike, LegQuoteOpen(oqs[1], Side.short), LegQuoteOpen(oqs[2], Side.long))
     # lms = discount.(lms, 0.1)
     DrawUtil.drawprob(ProbLup[SH.getExpir(lms)]; color=Makie.RGBA(.1, .1, .5, 0.5))
     display(DrawUtil.draw!(:lines, SH.toDraw(lms)))
     return calckel(lms)
 end
 
-using LegMetaTypes, QuoteTypes
-discount(lm::LegMetaOpen, r=0.75) = LegMetaOpen(SH.getLeg(lm), discount(SH.getQuote(lm), r), SH.getMeta(lm))
+using LegQuoteTypes, QuoteTypes
+discount(lm::LegQuoteOpen, r=0.75) = LegQuoteOpen(SH.getLeg(lm), discount(SH.getQuote(lm), r), SH.getMeta(lm))
 discount(q::Quote, r=0.75) = Quote(P(q.bid + r), P(q.ask + r))
 #endregion test
 
