@@ -24,7 +24,13 @@ const ProbLup4 = Dict{DateTime,pmk.KdeProb2}()
 
 config() = (;
     adjustprices = C(-0.01),
-    kelprobadjust = 0.1
+    kelprobadjust = 0.1,
+    commit_min = 0.14,
+    commit_max = 6.0,
+    probprofit_min = 0.71,
+    kel_min = 0.4,
+    evrate_min = 1.0,
+    all_risk_max = 8.4
 )
 
 #region LookForBestKelly
@@ -96,11 +102,11 @@ function run(incs=1:3; skipto=nothing, kws...)
     end
 
     r1 = res[1]
-    lms = r1.lms
-    target = Pricing.price(Action.open, lms)
-    bdaysout = bdays(today(),SH.getExpir(lms))
+    lqs = r1.lqs
+    target = Pricing.price(Action.open, lqs)
+    bdaysout = bdays(today(),SH.getExpir(lqs))
     println("evrate:$(r1.evrate) probprofit:$(r1.probprofit) min:$(r1.neto) target:$(target) risk:$(r1.risk) daysout:$(bdaysout)");
-    drawres(lms)
+    drawres(lqs)
 
     # DrawUtil.newfig()
     # evrate_max, i_max = findmax(eachindex(res)) do i
@@ -144,7 +150,7 @@ import Trading
 function opentrade(r; minextra=P(0.01))
     # TODO: warn if curp has changed much
     println("Opening trade: neto:$(r.neto)")
-    Trading.open_trade(market(), r.lms, r.neto; pre=false, minextra);
+    Trading.open_trade(market(), r.lqs, r.neto; pre=false, minextra);
 end
 
 function make_ctx_now()
@@ -169,11 +175,11 @@ function findkel(ctx, xpirts::DateTime, oqss, pos_rs, incs; keep=10, use_problup
 
     pos = nothing
     if !isempty(pos_rs)
-        lms = get_pos_lms(pos_rs)
-        segs = LL.toSegments(lms, P.(SH.getBid.(lms)))
+        lqs = get_pos_lqs(pos_rs)
+        segs = LL.toSegments(lqs, P.(SH.getBid.(lqs)))
         risk = riskrat * max(Pricing.calcMarg(prob.center, segs))
         kel, evret, ev, probprofit = calckel(kelly_buffer[Threads.threadid()], prob, risk, segs)
-        pos = kv(;lms=nc(lms), segs=nc(segs), risk, kel, evret, ev, probprofit, count=length(pos_rs))
+        pos = kv(;lqs=nc(lqs), segs=nc(segs), risk, kel, evret, ev, probprofit, count=length(pos_rs))
     end
 
     ctx2 = kv(;ctx.ts, ctx.date, ctx.curp, prob, riskrat, xpirts, kelly_buffer, pos)
@@ -196,16 +202,16 @@ struct LegQuoteSized
     quantity::Float64
 end
 
-# function get_pos_lms(pos)
-#     # sort!(collect(Iterators.flatten(map(r -> r.lms, pos))); by=SH.getStrike)
-#     v = sort!(collect(Iterators.flatten(map(r -> r.r1.lms, pos))); by=SH.getStrike)
-#     return v
-#     # len = length(v)
-#     # MAX_LEN[] = max(MAX_LEN[], len)
-#     # res = SVector{len}(v)
-#     # return res
-# end
-# # const MAX_LEN = Ref(0)
+function get_pos_lqs(pos)
+    # sort!(collect(Iterators.flatten(map(r -> r.lms, pos))); by=SH.getStrike)
+    v = sort!(collect(Iterators.flatten(map(r -> r.r1.lqs, pos))); by=SH.getStrike)
+    return v
+    # len = length(v)
+    # MAX_LEN[] = max(MAX_LEN[], len)
+    # res = SVector{len}(v)
+    # return res
+end
+# const MAX_LEN = Ref(0)
 
 # findkel(f_xpir_to_oqss, ctx, xpirs::Coll{Date}, incs; keep=100) = findkel(f_xpir_to_oqss, ctx, Calendars.getMarketClose.(xpirs), incs)
 # function findkel(f_xpir_to_oqss, ctx, xpirtss::Coll{DateTime}, incs; keep=100, use_problup=true)
@@ -320,7 +326,55 @@ end
 # end
 
 function check!(ress, ctx, lqs)::Nothing
-    
+    cfg = config()
+    netos = P.(SH.getBid.(lqs))
+    segs = LL.toSegments(lqs, netos)
+    LL.canprofit(segs) || return
+    commit = max(Pricing.calcMarg(ctx.prob.center, segs))
+    cfg.commit_min < commit < cfg.commit_max || return
+    # commit *= ctx.riskrat
+
+    thid = Threads.threadid()
+    kel, evret, ev, probprofit = calckel(ctx.kelly_buffer[thid], ctx.prob, commit, segs)
+    (isfinite(kel) && kel > cfg.kel_min) || return
+    probprofit >= cfg.probprofit_min || return
+    evrate = calcevrate(evret, ctx.xpirts, ctx.date)
+    evrate > cfg.evrate_min || return
+
+    try
+        pos = ctx.pos
+        pos_count = 0
+        all = nothing
+        if !isnothing(pos)
+            pos_count = pos.count
+            all_lqs = sort!(vcat(pos.lqs, lqs...); by=SH.getStrike)
+            all_segs = LL.toSegments(all_lqs, P.(SH.getBid.(all_lqs)))
+            marg = Pricing.calcMarg(ctx.prob.center, all_segs)
+            all_risk = ctx.riskrat * max(marg)
+            if all_risk > cfg.all_risk_max
+                # global kriskhigh = (;marg, all_risk, lqs, pos_lqs=pos.lqs, all_lqs, all_segs)
+                # @show all_risk
+                return
+            end
+            all_kel, all_evret, all_ev, all_probprofit = calckel(ctx.kelly_buffer[thid], ctx.prob, all_risk, all_segs)
+            if !isnan(all_evret) && (all_evret <= pos.evret) # || all_probprofit <= pos.probprofit)
+                return
+            end
+            all_evrate = calcevrate(evret, ctx.xpirts, ctx.date)
+            all = kv(;evrate=all_evrate, kel=all_kel, evret=all_evret, ev=all_ev, probprofit=all_probprofit)
+        end
+
+        # probprofit = Between.calcprobprofit(ctx.prob, segs)
+        cnt = 1 + (pos_count + numtradestoxpir(ctx.ts, ctx.xpirts))
+        balrat = 1 / cnt
+        # TODO: filter out ones that have a lot of outcome too close to zero
+        push!(ress[thid], Result(kv(;all, evrate, balrat, kel, ev, evret, probprofit, commit, ctx.xpirts, lqs=nc(lqs), netos=netos=nc(netos), neto=sum(netos))))
+    catch e
+        # global kcheck = kv(;ctx, lms=nc(lms), segs, netos)
+        rethrow(e)
+    end
+    return
+
 end
 
 function checkold!(ress, ctx, lms)::Nothing
@@ -385,7 +439,7 @@ function checkold!(ress, ctx, lms)::Nothing
             # end
             balrat = 1 / cnt
             # TODO: filter out ones that have a lot of outcome too close to zero
-            push!(ress[thid], Result(kv(;all, evrate, balrat, kel, ev, evret, probprofit, risk, ctx.xpirts, lms=lms=nc(lms), netos=netos=nc(netos), neto=sum(netos))))
+            push!(ress[thid], Result(kv(;all, evrate, balrat, kel, ev, evret, probprofit, risk, ctx.xpirts, lms=nc(lms), netos=netos=nc(netos), neto=sum(netos))))
         # end
     catch e
         # global kcheck = kv(;ctx, lms=nc(lms), segs, netos)
@@ -471,6 +525,7 @@ end
 
 # getxmin(prob::KdeProb2) = prob.src.extents[1].mn
 # getxmax(prob::KdeProb2) = prob.src.extents[1].mx
+#endregion kde
 
 import DrawUtil
 DrawUtil.drawprob(prob::KdeProb2; kws...) = DrawUtil.drawdist!(DrawUtil.getAxis(;newFig=true), prob.center, prob.xs.xs, probdispvals(prob); kws...)

@@ -452,4 +452,10 @@ end
 #     @turbo v ./= k
 # end
 
+import StructArrays
+function maparray(f, v)
+    sa = StructArrays.collect_structarray(f(x) for x in v)
+    return StructArrays.components(sa)
+end
+
 end

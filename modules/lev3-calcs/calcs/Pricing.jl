@@ -275,20 +275,20 @@ tup_sum((x1,x2,x3,x4)::NTuple{4,T}) where T = x1 + x2 + x3 + x4
 #     return side1 == Side.long ? Sides(width, 0.0) : Sides(0.0, width)
 # end
 
-# import LineTypes:Segments
-# function calcMarg(center, segs::Segments)::Sides{Float64}
-#     min_short = 0.0
-#     min_long = 0.0
-#     for point in segs.points
-#         y = point.y
-#         if point.x < center && y < min_short
-#             min_short = y
-#         elseif point.x > center && y < min_long
-#             min_long = y
-#         end
-#     end
-#     return Sides(-min_short, -min_long)
-# end
+import LineTypes:Segments
+function calcMarg(center, segs::Segments)::Sides{Float64}
+    min_short = 0.0
+    min_long = 0.0
+    for point in segs.points
+        y = point.y
+        if point.x < center && y < min_short
+            min_short = y
+        elseif point.x > center && y < min_long
+            min_long = y
+        end
+    end
+    return Sides(-min_short, -min_long)
+end
 
 # function calcMaxProfit(segs)::Float64
 #     return maximum(segs) do seg

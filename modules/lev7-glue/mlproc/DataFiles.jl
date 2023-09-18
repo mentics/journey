@@ -324,14 +324,28 @@ logdot(x) = log.(x)
 # calc_vol(extrin, tex) = extrin ./ sqrt(tex)
 calc_extrindt(extrin, tex) = extrin ./ tex
 calc_extrindt(extrin_c::Real, extrin_p::Real, tex::Real) = mid(extrin_c, extrin_p) / tex
-calc_vol(extrindts) = log.(extrindts)
+function calc_vol(extrindts)
+    map(extrindts) do x
+        y = log(x)
+        isfinite(y) || error("Non finite vol ", x)
+        return y
+    end
+end
 
 function calc_vol(curp::Real, tex::Real, oqs, ts)
+    global kcalc_vol_args = (;curp ,tex, oqs, ts)
+    isempty(oqs) && error("empty oqs")
     oqs_call = filter(isCall, oqs)
     oqs_put = filter(isPut, oqs)
+    isempty(oqs_call) && error("empty oqs")
+    isempty(oqs_put) && error("empty oqs")
+
     xtrin_call = calc_xtrin(Style.call, curp, oqs_call, ts)
     xtrin_put = calc_xtrin(Style.put, curp, oqs_put, ts)
-    return calc_vol(calc_extrindt(xtrin_call, xtrin_put, tex))
+    (!ismissing(xtrin_call) && !ismissing(xtrin_put)) || return missing
+    extrindt = calc_extrindt(xtrin_call, xtrin_put, tex)
+    @assert isfinite(extrindt) && extrindt > 0 @str xtrin_call xtrin_put
+    return calc_vol(extrindt)
 end
 
 function chains_to_tsx(yms=make_yms())::Nothing
@@ -435,7 +449,11 @@ function calc_xtrin(style, under::Real, strikes, bids, asks, ctx)
 end
 
 function calc_xtrin(style, under::Real, oqs_style, ts)
+    isempty(oqs_style) && error("empty oqs")
     oqs_sorted = first(sort(oqs_style; by=oq -> abs(under - SH.getStrike(oq))), NTM_COUNT)
+    global koqsx = oqs_sorted
+    global kxtrin_args = (;style, under, oqs_style, ts)
+    @assert isnothing(findfirst(oq -> SH.getExpir(oq) != SH.getExpir(oqs_sorted[1]), oqs_sorted))
     ctx = (;ts, xpir=SH.getExpir(first(oqs_style)))
     return calc_xtrin_top(style, under, SH.getStrike.(oqs_sorted), SH.getBid.(oqs_sorted), SH.getAsk.(oqs_sorted), ctx)
 end
@@ -449,7 +467,7 @@ function calc_xtrin_top(style, under::Real, strikes, bids, asks, ctx)
     neg_count = 0
     for i in eachindex(extrins)
         x = extrins[i]
-        if x < 0
+        if x <= 0
             extrins[i] = CZ
             neg_count += 1
             mean_count -= 1
@@ -464,7 +482,7 @@ function calc_xtrin_top(style, under::Real, strikes, bids, asks, ctx)
         @atomic negative_extrin_count2.value += 1
         if neg_count > 2
             # Only expect weird values at open or close
-            if is_ts_normal(ctx.tx)
+            if is_ts_normal(ctx.ts)
                 println("xtrin $(ctx): Found neg extrin not market open/close: $(neg_count) / $(length(strikes))")
                 @show style under strikes bids asks extrins
                 # global kerr = (;style, ts, xpirts, under, extrins, strikes, bids, asks)

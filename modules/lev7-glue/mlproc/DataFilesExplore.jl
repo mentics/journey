@@ -1,7 +1,7 @@
 module DataFilesExplore
 using Dates, DataStructures, DataFrames
 using BaseTypes, SmallTypes, ChainTypes
-using DateUtil, ChainUtil
+using BaseUtil, DateUtil, ChainUtil
 import SH, Pricing, Calendars
 import DataFiles as dat
 import Explore as ore
@@ -74,8 +74,9 @@ function explore(;inds=nothing, yms=dat.make_yms(), skip_existing=true, use_prob
                 0 < bdays(ts, xpir) || continue
                 oqss = ChainUtil.oqssEntry(to_oqs(sdf), curp; minlong=C(0.05), minshort=C(0.05))
 
-                pos = get!(ore.pos_new, XPIR_POS, xpirts)
-                res = ore.findkel(ctx, xpirts, oqss, pos, 1:3; use_problup)
+                # pos = get!(ore.pos_new, XPIR_POS, xpirts)
+                top_xpir = get!(TOP_XPIRTS, xpirts) do; Vector() end
+                res = ore.findkel(ctx, xpirts, oqss, top_xpir, 1:3; use_problup)
                 # isnothing(res) && @goto stop
                 # global kres = res
 
@@ -87,12 +88,11 @@ function explore(;inds=nothing, yms=dat.make_yms(), skip_existing=true, use_prob
                     # showres(tsi_index, ts, sdf, curp, res[end])
                     # showres(tsi_index, ts, sdf, curp, res[1])
                     r1 = res[1]
-                    all = df_calc_pnl(sdf, r1.lms, xpirts) # dat.market_close(SH.getExpir(r1.lms)))
+                    all = df_calc_pnl(sdf, r1.lqs, xpirts) # dat.market_close(SH.getExpir(r1.lms)))
                     # ThreadUtil.runSync(lock_proc) do
                         r = (;ts, curp, r1, all)
-                        # top_xpir = get!(TOP_XPIRTS, xpirts) do; Vector() end
-                        # push!(top_xpir, r)
-                        pos_add(pos, r)
+                        push!(top_xpir, r)
+                        # pos_add(pos, r)
                         push!(rs_ts, r)
                     # end
                 else
@@ -106,8 +106,16 @@ function explore(;inds=nothing, yms=dat.make_yms(), skip_existing=true, use_prob
     # @label stop
 end
 
+function compare_month(y, m)
+    reset()
+    yms = [(y, m)]
+    explore(;yms)
+    drawbal(;newfig=true, kelrat=0.5, close_early=false)
+    drawbal(;newfig=false, kelrat=0.5, close_early=true)
+end
+
 using DictUtil, StatsBase
-function drawbal(kelrat = 1.0, newfig=false)
+function drawbal(; newfig=false, kelrat = 0.5, xpirtss=sort!(collect(keys(TOP_XPIRTS))), close_early=true)
     # all = collect(values(ALL_BEST))
     # global dxpirs = Dict{Date,Vector}()
     # for r in all
@@ -116,7 +124,7 @@ function drawbal(kelrat = 1.0, newfig=false)
     #     # addToKey(d, SH.getExpir(r.r1.lms), r.r1.kel * r.all.pnl_value / r.r1.risk)
     # end
     # xpirs = sort!(collect(keys(dxpirs)))
-    xpirtss = sort!(collect(keys(TOP_XPIRTS)))
+    # xpirtss = sort!(collect(keys(TOP_XPIRTS)))
     global drets = Dict()
     for xpirts in xpirtss
         # rs = d[xpir]
@@ -141,15 +149,23 @@ function drawbal(kelrat = 1.0, newfig=false)
             if r.r1.balrat < 0 || r.r1.balrat > 1
                 println("broken")
             end
-            true
+            # r.r1.probprofit >= .7
             # r.r1.balrat < 1
+            true
         end
         # count = length(rs)
         rets = map(rs) do r
-            if invalid(r.r1.risk) || invalid(r.r1.kel)
-                @show r.r1.risk r.all.pnl_value r.r1.kel
+            if invalid(r.r1.commit) || invalid(r.r1.kel)
+                @show r.r1.commit r.all.pnl_value r.r1.kel
+                error("invalid commit")
             end
-            r.r1.balrat * r.r1.kel * r.all.pnl_value / r.r1.risk
+            pnl = if close_early
+                close = find_close(r)
+                isnothing(close) ? r.all.pnl_value : close.pnl
+            else
+                r.all.pnl_value
+            end
+            r.r1.balrat * r.r1.kel * pnl / r.r1.commit
         end
         # drets[xpir] = sum(rets) * kelrat / count
         drets[xpirts] = isempty(rets) ? 0.0 : sum(rets) * kelrat
@@ -171,8 +187,8 @@ end
 
 invalid(x) = !isfinite(x) || x < 0
 
-function updown()
-    all = get_all()
+function updown(all=get_all())
+    # all = get_all()
     tot_count = length(all)
     # sort!(all; by=r -> )
     up = filter(r -> r.all.pnl_value >= 0, all)
@@ -188,12 +204,12 @@ using StatsBase
 function stats(rs, tot_count)
     count = length(rs)
     println("count/total: $(r4(count / tot_count))")
-    styles = countmap([SH.getStyle.(r.r1.lms) for r in rs])
-    display(styles)
+    styles = countmap([SH.getStyle.(r.r1.lqs) for r in rs])
+    print("styles: "); display(styles)
     bdays_out = countmap([bdout(r) for r in rs])
-    display(bdays_out)
+    print("bdays_out: "); display(bdays_out)
     neto_sign = countmap([sign(r.r1.neto) for r in rs])
-    display(neto_sign)
+    print("neto_sign: "); display(neto_sign)
     kel = quantile(map(r -> r.r1.kel, rs))
     @show kel
     evret = quantile(map(r -> r.r1.evret, rs))
@@ -202,13 +218,13 @@ function stats(rs, tot_count)
     @show evrate
     probprofit = quantile(map(r -> r.r1.probprofit, rs))
     @show probprofit
-    risk = quantile(map(r -> r.r1.risk, rs))
-    @show risk
+    commit = quantile(map(r -> r.r1.commit, rs))
+    @show commit
     # TODO: look for how many cases of isolated losses, vs. all for that expiration
     return
 end
 
-bdout(r) = bdays(r.ts, SH.getExpir(r.r1.lms))
+bdout(r) = bdays(r.ts, SH.getExpir(r.r1.lqs))
 
 get_all() = collect(Iterators.flatten(values(TOP_XPIRTS)))
 
@@ -220,12 +236,17 @@ end
 using LRUCache
 const OQS_TS_CACHE = LRUCache.LRU{DateTime, Vector{OptionQuote}}(;maxsize=100)
 function get_oqs(ts::DateTime)
-    return get!(OQS_TS_CACHE, ts) do
-        y, m = dat.get_ym(ts)
-        oqs_df = dat.oqs_df(y, m)
-        return to_oqs(filter(:ts => ts -> ts == ts, oqs_df))
+    oqs = get!(OQS_TS_CACHE, ts) do; load_oqs(ts) end
+    if isempty(oqs)
+        println("WARN: empty oqs in cache")
+        oqs = load_oqs(ts)
+        OQS_TS_CACHE[ts] = oqs
     end
+    return oqs
 end
+load_oqs(ts) = to_oqs(load_oqs_df(ts))
+load_oqs_df(ts::DateTime) = filter(:ts => t -> t == ts, dat.oqs_df(dat.get_ym(ts)...))
+
 
 makeprob(ts, lms) = makeprob(ts, SH.getExpir(lms))
 makeprob(ts::DateTime, xpir::Date) = makeprob(ts, dat.market_close(xpir))
@@ -233,6 +254,8 @@ function makeprob(ts::DateTime, xpirts::DateTime)
     kde = pmk.get_kde(ts)
     curp = lurp(ts)
     oqs = get_oqs(ts)
+    xpir = Date(xpirts)
+    oqs = filter(oq -> SH.getExpir(oq) == xpir, oqs)
     return pmk.makeprob(kde, curp, ts, xpirts, oqs)
 end
 
@@ -332,12 +355,12 @@ function showres(tsi_index, ts, sdf, under, r1)
     return lms
 end
 
-function df_calc_pnl(df, lms, xpirts)
-    strikes = SH.getStrike.(lms)
+function df_calc_pnl(df, lqs, xpirts)
+    strikes = SH.getStrike.(lqs)
     rows = dfrow.(Ref(df), xpirts, strikes)
-    neto = sum(dfneto.(rows, lms))
-    netc = sum(dfnetc.(rows, lms))
-    netc_value = sum(dfnetc_value.(rows, lms))
+    neto = sum(dfneto.(rows, lqs))
+    netc = sum(dfnetc_xpir.(rows, lqs))
+    netc_value = sum(dfnetc_xpir_value.(rows, lqs))
     return (;neto, netc, netc_value, pnl=neto + netc, pnl_value=neto + netc_value)
 end
 function dfrow(df, xpirts, strike)
@@ -345,8 +368,9 @@ function dfrow(df, xpirts, strike)
     return only(df[(df.expiration .== xpirts) .& (df.strike .== s),:])
 end
 dfneto(dfrow, lm) = dat.pents_to_c(dfrow[dfsym(SH.getStyle(lm), SH.getSide(lm), Action.open)])
-dfnetc(dfrow, lm) = dat.pents_to_c(dfrow[dfsym_xpir_price(SH.getStyle(lm), SH.toOther(SH.getSide(lm)))])
-dfnetc_value(dfrow, lm) = Int(SH.getSide(lm)) * dat.pents_to_c(dfrow[dfsym_xpir_value(SH.getStyle(lm))])
+dfnetc(dfrow, lm) = dat.pents_to_c(dfrow[dfsym(SH.getStyle(lm), SH.toOther(SH.getSide(lm)), Action.close)])
+dfnetc_xpir(dfrow, lm) = dat.pents_to_c(dfrow[dfsym_xpir_price(SH.getStyle(lm), SH.toOther(SH.getSide(lm)))])
+dfnetc_xpir_value(dfrow, lm) = Int(SH.getSide(lm)) * dat.pents_to_c(dfrow[dfsym_xpir_value(SH.getStyle(lm))])
 
 dfsym(style, side, action) = Symbol("$(style)_$(side)_$(SH.toCode(action))")
 dfsym_xpir_price(style, side) = Symbol("$(style)_xpir_price_$(side)")
@@ -362,5 +386,68 @@ function to_oq_pair(row)
     return OptionQuote(oc, qc, OptionMetaTypes.MetaZero), OptionQuote(op, qp, OptionMetaTypes.MetaZero)
 end
 #endregion Local
+
+#region CheckClosing
+using CollUtil
+import Kelly
+import LinesLeg as LL
+
+function find_close(r)
+    tss = filter(:ts => ts -> r.ts < ts < r.r1.xpirts, dat.ts_df()).ts
+    evrate_orig = r.r1.evrate
+    for close in (calc_close(r, ts) for ts in tss)
+        # TODO: evrate has kel in it? so this comparison isn't quite right.
+        # TODO: Maybe give some lenience based on proximity to xpir?
+        if close.rate >= evrate_orig || (isSomething(close.kel) && isnan(close.kel.kel))
+            return close
+        end
+    end
+    return nothing
+end
+
+function calc_close(r, ts)
+    try
+        dfoqs = dat.oqs_df(year(ts), month(ts))
+        lqs = r.r1.lqs
+        strikes = dat.topents.(SH.getStrike.(lqs))
+        df = filter(:ts => t -> t == ts, dfoqs)
+        rows = [only(df[(df.expiration .== r.r1.xpirts) .& (df.strike .== s),:]) for s in strikes]
+        # rows = dfrow.(Ref(df), xpirts, strikes)
+        # rows = filter([:ts, :expiration, :strike] => filter_txs(ts, r.r1.xpirts, strikes), dfoqs)
+        # netc = sum(dfnetc.(eachrow(rows), lqs))
+        netc = sum(dfnetc.(rows, lqs))
+        pnl = r.r1.neto + netc
+        rate = DateUtil.timult(Date(ts), Date(r.r1.xpirts)) * pnl / r.r1.commit
+        kel = calc_kel(r, ts)
+        return (;ts, netc, pnl, rate, kel)
+    catch e
+        global kcalc_close = (;r, ts)
+        rethrow(e)
+    end
+end
+filter_txs(ts0, xpirts0, strikes0) = (ts, xpirts, strike) -> ts == ts0 && xpirts == xpirts0 && strike in strikes0
+
+function calc_kel(r, ts)
+    prob = makeprob(ts, r.r1.xpirts)
+    isSomething(prob) || return missing
+    buf = Kelly.make_buf()
+    segs = LL.toSegments(r.r1.lqs, r.r1.netos)
+    return ore.calckel(buf, prob, r.r1.commit, segs)
+end
+#endregion CheckClosing
+
+function check_r(r)
+    buf = Kelly.make_buf()
+    segs = LL.toSegments(r.r1.lqs, r.r1.netos)
+    df = filter(:ts => ts -> r.ts < ts < DateTime(Date(r.r1.xpirts)) && dat.is_ts_normal(ts), dat.ts_df())
+    # (;kel, evret, ev, probprofit)
+    res = CollUtil.maparray(df.ts) do ts
+        prob = makeprob(ts, r.r1.xpirts)
+        return ore.calckel(buf, prob, r.r1.commit, segs)
+    end
+    insertcols!(df, pairs(res)...)
+    transform!(df, :under => (x -> dat.pents_to_c.(x)) => :under)
+    # return DataFrame((;tss, calcs...))
+end
 
 end
