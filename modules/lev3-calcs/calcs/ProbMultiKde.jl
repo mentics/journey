@@ -228,6 +228,7 @@ dist_euc(c1::CoordF, c2::NTuple{3,<:Real}) = (c1.ret * c2[1])^2 + (c1.tex * c2[2
 # binwidth is hardcoded to 10th of a percent
 
 using LRUCache
+# TODO: make it 50000
 const PROB_CACHE3 = LRUCache.LRU{Tuple{DateTime,DateTime},Union{Missing,KdeProb2}}(;maxsize=2000)
 
 # TODO: get oqs inside the get! to avoid getting it when hit cache

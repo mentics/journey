@@ -26,11 +26,12 @@ config() = (;
     adjustprices = C(-0.01),
     kelprobadjust = 0.1,
     commit_min = 0.14,
-    commit_max = 6.0,
-    probprofit_min = 0.71,
-    kel_min = 0.4,
-    evrate_min = 1.0,
-    all_risk_max = 8.4
+    commit_max = 55.0,
+    probprofit_min = 0.94,
+    kel_min = 0.2,
+    evrate_min = 0.5,
+    all_risk_max = 16.2,
+    max_spread = 4.1
 )
 
 #region LookForBestKelly
@@ -184,9 +185,10 @@ function findkel(ctx, xpirts::DateTime, oqss, pos_rs, incs; keep=10, use_problup
 
     ctx2 = kv(;ctx.ts, ctx.date, ctx.curp, prob, riskrat, xpirts, kelly_buffer, pos)
     use_problup && ( ProbLup4[xpirts] = prob )
-    1 in incs && findkel1!(ress, ctx2, oqss) && error("stop")
+    # 1 in incs && findkel1!(ress, ctx2, oqss) && error("stop")
     2 in incs && findkel2!(ress, ctx2, oqss) && error("stop")
     3 in incs && findkel3!(ress, ctx2, oqss) && error("stop")
+    4 in incs && findkel4!(ress, ctx2, oqss) && error("stop")
 
     # println("Finished searching")
     res = merge(ress, keep)
@@ -272,11 +274,11 @@ end
 
 import GenCands
 function findkel2!(ress, ctx, oqss)::Bool
-    stop = GenCands.paraSpreads(oqss.call, 4, alltrue) do thid, lms
+    stop = GenCands.paraSpreads(oqss.call, config().max_spread, alltrue) do thid, lms
         check!(ress, ctx, lms)
     end
     !stop || return stop
-    stop = GenCands.paraSpreads(oqss.put, 4, alltrue) do thid, lms
+    stop = GenCands.paraSpreads(oqss.put, config().max_spread, alltrue) do thid, lms
         check!(ress, ctx, lms)
     end
     return stop
@@ -284,32 +286,50 @@ end
 
 function findkel3!(ress, ctx, oqss)::Bool
     # count = zeros(Int, Threads.nthreads())
-    stop = GenCands.paraSpreads(oqss.call, 4, alltrue) do thid, lms
+    stop = GenCands.paraSpreads(oqss.call, config().max_spread, alltrue) do thid, lms
         for oq in oqss.call.long
-            lms2 = sortuple(SH.getStrike, lms..., make_leg(oq, Side.long))
-            check!(ress, ctx, lms2)
+            strike = getStrike(oq)
+            strike1 = lms[1]
+            if (strike < strike1 && strike1 - strike <= config().max_gap) ||
+                    (strike > strike2 && strike - strike2 <= config().max_gap)
+                lms2 = sortuple(SH.getStrike, lms..., make_leg(oq, Side.long))
+                check!(ress, ctx, lms2)
+            end
         end
         yield()
         # count[thid] += length(oqss.call.long)
         for oq in oqss.put.long
-            lms2 = sortuple(SH.getStrike, lms..., make_leg(oq, Side.long))
-            check!(ress, ctx, lms2)
+            if (strike < strike1 && strike1 - strike <= config().max_gap) ||
+                    (strike > strike2 && strike - strike2 <= config().max_gap)
+                lms2 = sortuple(SH.getStrike, lms..., make_leg(oq, Side.long))
+                check!(ress, ctx, lms2)
+            end
         end
         # count[thid] += length(oqss.put.long)
         yield()
         return true
     end
     !stop || return stop
-    stop = GenCands.paraSpreads(oqss.put, 4, alltrue) do thid, lms
+    stop = GenCands.paraSpreads(oqss.put, config().max_spread, alltrue) do thid, lms
         for oq in oqss.call.long
-            lms2 = sortuple(SH.getStrike, lms..., make_leg(oq, Side.long))
-            check!(ress, ctx, lms2)
+            strike = getStrike(oq)
+            strike1 = lms[1]
+            if (strike < strike1 && strike1 - strike <= config().max_gap) ||
+                    (strike > strike2 && strike - strike2 <= config().max_gap)
+                lms2 = sortuple(SH.getStrike, lms..., make_leg(oq, Side.long))
+                check!(ress, ctx, lms2)
+            end
         end
         # count[thid] += length(oqss.call.long)
         yield()
         for oq in oqss.put.long
-            lms2 = sortuple(SH.getStrike, lms..., make_leg(oq, Side.long))
-            check!(ress, ctx, lms2)
+            strike = getStrike(oq)
+            strike1 = lms[1]
+            if (strike < strike1 && strike1 - strike <= config().max_gap) ||
+                    (strike > strike2 && strike - strike2 <= config().max_gap)
+                lms2 = sortuple(SH.getStrike, lms..., make_leg(oq, Side.long))
+                check!(ress, ctx, lms2)
+            end
         end
         # count[thid] += length(oqss.put.long)
         yield()
@@ -317,6 +337,37 @@ function findkel3!(ress, ctx, oqss)::Bool
     end
     # println("Searched $(sum(count)) permutations")
     return stop
+end
+
+function findkel4!(ress, ctx, oqss)::Bool
+    maxspread = config().max_spread
+    maxgap = config().max_gap
+    for left1 in eachindex(oqss.call.long)[1:end-3]
+        indmax = lastindex(oqss.call.long)
+        oq1 = oqss[left1]
+        for left2 in 1:maxspread
+            left2 <= indmax || continue
+            oq2 = oqss[left2]
+            for right1 in 0:maxgap
+                right1 <= indmax || continue
+                oq3 = oqss[right1]
+                for right2 in 1:maxspread
+                    right2 <= indmax || continue
+                    oq4 = oqss[right2]
+                    lqs = (make_leg(oq1, Side.long))
+                    check!(ress, ctx, ())
+                end
+            end
+        end
+    end
+        strike = getStrike(oq)
+        strike1 = lms[1]
+        if (strike < strike1 && strike1 - strike <= config().max_gap) ||
+                (strike > strike2 && strike - strike2 <= config().max_gap)
+        end
+    end
+
+    return false
 end
 
 # function testcheck(res, ctx, lms2)

@@ -149,7 +149,7 @@ function drawbal(; newfig=false, kelrat = 0.5, xpirtss=sort!(collect(keys(TOP_XP
             if r.r1.balrat < 0 || r.r1.balrat > 1
                 println("broken")
             end
-            # r.r1.probprofit >= .7
+            # r.r1.probprofit >= .95
             # r.r1.balrat < 1
             true
         end
@@ -210,6 +210,9 @@ function stats(rs, tot_count)
     print("bdays_out: "); display(bdays_out)
     neto_sign = countmap([sign(r.r1.neto) for r in rs])
     print("neto_sign: "); display(neto_sign)
+    spread_width = countmap([Pricing.get_spread_width(r.r1.lqs) for r in rs])
+    print("spread_width: "); display(spread_width)
+
     kel = quantile(map(r -> r.r1.kel, rs))
     @show kel
     evret = quantile(map(r -> r.r1.evret, rs))
@@ -336,7 +339,7 @@ function reset()
 end
 const TOP_TS = SortedDict{DateTime,Vector}()
 const TOP_XPIRTS = SortedDict{DateTime,Vector}()
-const XPIR_POS = Dict{DateTime,Any}()
+# const XPIR_POS = Dict{DateTime,Any}()
 const lock_proc = ReentrantLock()
 
 function showres(tsi_index, ts, sdf, under, r1)

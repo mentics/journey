@@ -135,6 +135,20 @@ end
 #     return -neto
 # end
 @inline minqty(lq1, lq2) = min(getQuantity(lq1), getQuantity(lq2))
+
+get_spread_width(lqs) = get_spread_width(tuple(lqs...))
+get_spread_width(lqs::Tuple{<:LegLike}) = 0
+get_spread_width(lqs::NTuple{2,<:LegLike}) = abs(getStrike(lqs[1]) - getStrike(lqs[2]))
+
+function get_spread_width(lqs::NTuple{3,<:LegLike})
+    ind_short = tup_find(getSide, Side.short, lqs)
+    # @show ind_short
+    ind_short == 3 && return getStrike(lqs[3]) - getStrike(lqs[2])
+    ind_short == 1 && return getStrike(lqs[2]) - getStrike(lqs[1])
+    width32 = getStrike(lqs[3]) - getStrike(lqs[2])
+    width21 = getStrike(lqs[2]) - getStrike(lqs[1])
+    return min(width32, width21)
+end
 #endregion CalcRisk
 
 function tup_find(f, y, tup::NTuple{3,T})::Int where T
