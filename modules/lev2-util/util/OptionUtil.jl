@@ -19,24 +19,36 @@ using SH, BaseTypes, SmallTypes, OptionQuoteTypes
 # #     return max(.0, m1) - max(0., m2) # TODO: always using 25%, should consider other improvs?
 # # end
 
-# function calcExtrin(oq::OptionQuote, curp::Real)::Tuple{Currency,Currency,Currency}
-function calc_extrin(oq::OptionQuote, curp::Real)::Tuple{Currency,Currency}
-    bid = getBid(oq)
-    ask = getAsk(oq)
-    s = getStrike(oq)
-    dist = abs(curp - s)
-    # return !xor(Style.call == getStyle(oq), s >= curp) ?
-    #         (bid, ask, max(0., (bid + ask)/2)) : (bid - dist, ask - dist, max(0., (bid + ask)/2 - dist))
-    return !xor(Style.call == getStyle(oq), s >= curp) ?
-            (bid, ask) : (bid - dist, ask - dist)
-    # if Style.call == getStyle(oq)
-    #     return s > curp ? (bid, ask, max(0., (bid + ask)/2)) : (bid - dist, ask - dist, max(0., (bid - dist + ask - dist))/2)
-    # else
-    #     return s < curp ? (bid, ask, max(0., (bid + ask)/2)) : (bid - dist, ask - dist, max(0., (bid - dist + ask - dist))/2)
-    # end
+# # function calcExtrin(oq::OptionQuote, curp::Real)::Tuple{Currency,Currency,Currency}
+# function calc_extrin(oq::OptionQuote, curp::Real)::Tuple{Currency,Currency}
+#     bid = getBid(oq)
+#     ask = getAsk(oq)
+#     s = getStrike(oq)
+#     dist = abs(curp - s)
+#     # return !xor(Style.call == getStyle(oq), s >= curp) ?
+#     #         (bid, ask, max(0., (bid + ask)/2)) : (bid - dist, ask - dist, max(0., (bid + ask)/2 - dist))
+#     return !xor(Style.call == getStyle(oq), s >= curp) ?
+#             (bid, ask) : (bid - dist, ask - dist)
+#     # if Style.call == getStyle(oq)
+#     #     return s > curp ? (bid, ask, max(0., (bid + ask)/2)) : (bid - dist, ask - dist, max(0., (bid - dist + ask - dist))/2)
+#     # else
+#     #     return s < curp ? (bid, ask, max(0., (bid + ask)/2)) : (bid - dist, ask - dist, max(0., (bid - dist + ask - dist))/2)
+#     # end
+# end
+
+calc_extrin(oq::OptionQuote, curp::Real)::Tuple{Currency,Currency} = calc_extrin(getStyle(oq), getStrike(oq), getBid(oq), getAsk(oq), curp)
+
+import LegQuoteTypes
+function calc_extrin(lq::LegQuoteTypes.LegQuote, curp::Real)::Tuple{Currency,Currency}
+    q = LegQuoteTypes.getOrigQuote(lq)
+    bid = getBid(q)
+    ask = getAsk(q)
+    @assert bid > 0
+    @assert ask > 0
+    calc_extrin(getStyle(lq), getStrike(lq), bid, ask, curp)
 end
 
-function calc_extrin(style::Style.T, curp::Real, strike::Currency, bid::Currency, ask::Currency)::Tuple{Currency,Currency}
+function calc_extrin(style::Style.T, strike::Currency, bid::Currency, ask::Currency, curp::Real)::Tuple{Currency,Currency}
     dist = abs(curp - strike)
     return xor(Style.call == style, strike >= curp) ?
                 (bid - dist, ask - dist) : (bid, ask)

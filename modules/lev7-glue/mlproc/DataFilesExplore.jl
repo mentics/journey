@@ -72,31 +72,32 @@ function explore(;inds=nothing, yms=dat.make_yms(), skip_existing=true, use_prob
                 xpir = Date(xpirts)
                 # 0 < bdays(ts, xpir) <= 8 || continue
                 0 < bdays(ts, xpir) || continue
-                oqss = ChainUtil.oqssEntry(to_oqs(sdf), curp; minlong=C(0.05), minshort=C(0.05))
+                oqs = to_oqs(sdf)
+                oqss = ChainUtil.oqssEntry(oqs, curp; minlong=C(0.03), minshort=C(0.03))
 
                 # pos = get!(ore.pos_new, XPIR_POS, xpirts)
                 top_xpir = get!(TOP_XPIRTS, xpirts) do; Vector() end
-                res = ore.findkel(ctx, xpirts, oqss, top_xpir, 1:3; use_problup)
+                res = ore.findkel(ctx, xpirts, oqs, oqss, top_xpir, 1:4; use_problup)
                 # isnothing(res) && @goto stop
                 # global kres = res
 
                 if !isempty(res) # && res[1].evrate > 1e-4
-                    expres = 10
-                    if length(res) < expres
-                        println("$(ts) -> $(xpirts): Found $(length(res)) < $(expres) results")
-                    end
+                    # expres = 10
+                    # if length(res) < expres
+                    #     println("$(ts) -> $(xpirts): Found $(length(res)) < $(expres) results")
+                    # end
                     # showres(tsi_index, ts, sdf, curp, res[end])
                     # showres(tsi_index, ts, sdf, curp, res[1])
                     r1 = res[1]
-                    all = df_calc_pnl(sdf, r1.lqs, xpirts) # dat.market_close(SH.getExpir(r1.lms)))
+                    result = df_calc_pnl(sdf, r1.lqs, xpirts) # dat.market_close(SH.getExpir(r1.lms)))
                     # ThreadUtil.runSync(lock_proc) do
-                        r = (;ts, curp, r1, all)
+                        r = (;ts, curp, r1, result)
                         push!(top_xpir, r)
                         # pos_add(pos, r)
                         push!(rs_ts, r)
                     # end
                 else
-                    println("$(ts): No results for $(xpirts)")
+                    # println("$(ts): No results for $(xpirts)")
                 end
             end
             TOP_TS[ts] = rs_ts
@@ -125,7 +126,7 @@ function drawbal(; newfig=false, kelrat = 0.5, xpirtss=sort!(collect(keys(TOP_XP
     # end
     # xpirs = sort!(collect(keys(dxpirs)))
     # xpirtss = sort!(collect(keys(TOP_XPIRTS)))
-    global drets = Dict()
+    drets = Dict()
     for xpirts in xpirtss
         # rs = d[xpir]
         # balcommitted = CZ
@@ -156,14 +157,14 @@ function drawbal(; newfig=false, kelrat = 0.5, xpirtss=sort!(collect(keys(TOP_XP
         # count = length(rs)
         rets = map(rs) do r
             if invalid(r.r1.commit) || invalid(r.r1.kel)
-                @show r.r1.commit r.all.pnl_value r.r1.kel
+                @show r.r1.commit r.result.pnl_value r.r1.kel
                 error("invalid commit")
             end
             pnl = if close_early
                 close = find_close(r)
-                isnothing(close) ? r.all.pnl_value : close.pnl
+                isnothing(close) ? r.result.pnl_value : close.pnl
             else
-                r.all.pnl_value
+                r.result.pnl_value
             end
             r.r1.balrat * r.r1.kel * pnl / r.r1.commit
         end
@@ -178,6 +179,9 @@ function drawbal(; newfig=false, kelrat = 0.5, xpirtss=sort!(collect(keys(TOP_XP
     rets = map(x -> sum(drets[x]), xpirtss)
     # DrawUtil.draw(:scatter, xpirs, rets)
     acc = accumulate((a,x) -> (x+1)*a, rets; init=100)
+    global kdrets = drets
+    global krets = rets
+    global kacc = acc
     if newfig
         DrawUtil.draw(:scatter, xpirtss, acc)
     else
@@ -191,8 +195,8 @@ function updown(all=get_all())
     # all = get_all()
     tot_count = length(all)
     # sort!(all; by=r -> )
-    up = filter(r -> r.all.pnl_value >= 0, all)
-    down = filter(r -> r.all.pnl_value < 0, all)
+    up = filter(r -> r.result.pnl_value >= 0, all)
+    down = filter(r -> r.result.pnl_value < 0, all)
     println("up:")
     stats(up, tot_count)
     println("down:")
@@ -213,6 +217,10 @@ function stats(rs, tot_count)
     spread_width = countmap([Pricing.get_spread_width(r.r1.lqs) for r in rs])
     print("spread_width: "); display(spread_width)
 
+    if isempty(rs)
+        println("no data")
+        return
+    end
     kel = quantile(map(r -> r.r1.kel, rs))
     @show kel
     evret = quantile(map(r -> r.r1.evret, rs))
@@ -364,18 +372,30 @@ function df_calc_pnl(df, lqs, xpirts)
     neto = sum(dfneto.(rows, lqs))
     netc = sum(dfnetc_xpir.(rows, lqs))
     netc_value = sum(dfnetc_xpir_value.(rows, lqs))
-    return (;neto, netc, netc_value, pnl=neto + netc, pnl_value=neto + netc_value)
+    curp = dat.pents_to_c(dat.lup_under(xpirts))
+    return (;neto, netc, netc_value, pnl=neto + netc, pnl_value=neto + netc_value, curp)
 end
 function dfrow(df, xpirts, strike)
     s = dat.topents(strike)
     return only(df[(df.expiration .== xpirts) .& (df.strike .== s),:])
 end
-dfneto(dfrow, lm) = dat.pents_to_c(dfrow[dfsym(SH.getStyle(lm), SH.getSide(lm), Action.open)])
-dfnetc(dfrow, lm) = dat.pents_to_c(dfrow[dfsym(SH.getStyle(lm), SH.toOther(SH.getSide(lm)), Action.close)])
+# dfneto(dfrow, lm) = dat.pents_to_c(dfrow[dfsym(SH.getStyle(lm), SH.getSide(lm), Action.open)])
+# dfnetc(dfrow, lm) = dat.pents_to_c(dfrow[dfsym(SH.getStyle(lm), SH.toOther(SH.getSide(lm)), Action.close)])
+
+function dfneto(dfrow, lm)
+    dir = Int(SH.getSide(lm)) * Int(Action.open)
+    return -dir * dat.pents_to_c(dfrow[dfsym_bidask(SH.getStyle(lm), dir)])
+end
+function dfnetc(dfrow, lm)
+    dir = Int(SH.toOther(SH.getSide(lm))) * Int(Action.close)
+    return -dir * dat.pents_to_c(dfrow[dfsym_bidask(SH.getStyle(lm), dir)])
+end
+
 dfnetc_xpir(dfrow, lm) = dat.pents_to_c(dfrow[dfsym_xpir_price(SH.getStyle(lm), SH.toOther(SH.getSide(lm)))])
 dfnetc_xpir_value(dfrow, lm) = Int(SH.getSide(lm)) * dat.pents_to_c(dfrow[dfsym_xpir_value(SH.getStyle(lm))])
 
-dfsym(style, side, action) = Symbol("$(style)_$(side)_$(SH.toCode(action))")
+# dfsym(style, side, action) = Symbol("$(style)_$(side)_$(SH.toCode(action))")
+dfsym_bidask(style, dir) = Symbol("$(style)_$(dir == 1 ? "ask" : "bid")")
 dfsym_xpir_price(style, side) = Symbol("$(style)_xpir_price_$(side)")
 dfsym_xpir_value(style) = Symbol("$(style)_xpir_value")
 

@@ -39,8 +39,8 @@ LL.toSegmentsWithZeros(lms::NTuple{N,LegQuote}) where N = LL.toSegmentsWithZeros
 LL.toSections(lms::NTuple{N,LegQuote}) where N = LL.toSections(lms, map(P ∘ Pricing.price, lms))
 # SH.toDraw(lms::NTuple{N,LegLike}; mn=100.0, mx=600.0) where N = collect(LL.toLineTuples(LL.toSegments(lms); mn, mx)) # collect because Makie can't handle tuples of coords
 # SH.toDraw(lms::Vector{<:LegLike}; kws...) = SH.toDraw(Tuple(lms); kws...)
-SH.toDraw(lms::Coll{N,<:LegLike}; mn=100.0, mx=600.0) where N = collect(LL.toLineTuples(LL.toSegments(lms); mn, mx)) # collect because Makie can't handle tuples of coords
-SH.toDraw(lms::Coll{N,<:LegLike}, netos; mn=100.0, mx=600.0) where N = collect(LL.toLineTuples(LL.toSegments(lms, netos); mn, mx)) # collect because Makie can't handle tuples of coords
+SH.toDraw(lms::CollT{<:LegLike}; mn=100.0, mx=600.0) = collect(LL.toLineTuples(LL.toSegments(lms); mn, mx)) # collect because Makie can't handle tuples of coords
+SH.toDraw(lms::CollT{<:LegLike}, netos; mn=100.0, mx=600.0) = collect(LL.toLineTuples(LL.toSegments(lms, netos); mn, mx)) # collect because Makie can't handle tuples of coords
 # SH.toDraw(lms::NTuple{N,LegQuote}) where N = collect(LL.toLineTuples(LL.toSegmentsWithZeros(lms))) # collect because Makie can't handle tuples of coords
 # SH.toDraw(lms::NTuple{N,LegQuote}) where N = collect(LL.toLineTuples(LL.toSegmentsWithZeros(lms))) # collect because Makie can't handle tuples of coords
 #end

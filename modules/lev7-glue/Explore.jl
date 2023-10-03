@@ -25,13 +25,16 @@ const ProbLup4 = Dict{DateTime,pmk.KdeProb2}()
 config() = (;
     adjustprices = C(-0.01),
     kelprobadjust = 0.1,
-    commit_min = 0.14,
+    commit_min = 0.07,
     commit_max = 55.0,
-    probprofit_min = 0.94,
+    probprofit_min = 0.801,
     kel_min = 0.2,
-    evrate_min = 0.5,
-    all_risk_max = 16.2,
-    max_spread = 4.1
+    evrate_min = 2.01,
+    all_risk_max = 10000.0,
+    max_spread = 8.1,
+    max_gap = 12.1,
+    maxcondormiddle = 12.1,
+    annual_min = 8.01,
 )
 
 #region LookForBestKelly
@@ -70,7 +73,7 @@ function Base.isless(a::Result, b::Result)
     # end
 end
 function to_val(x)
-    x1 = isnothing(x.r.all) ? x.r.evrate : x.r.all.evrate
+    x1 = isnothing(x.r.forpos) ? x.r.evrate : x.r.forpos.evrate
     return isnan(x1) ? -Inf : x1
 end
 
@@ -154,23 +157,37 @@ function opentrade(r; minextra=P(0.01))
     Trading.open_trade(market(), r.lqs, r.neto; pre=false, minextra);
 end
 
-function make_ctx_now()
+function make_ctx_now(; keep=2)
     mkt = market()
     ts = mkt.tsMarket
     curp = mkt.curp
     kde = pmk.get_kde(ts)
-    (;ts, date=Date(ts), curp, kde)
+    # ress = [Keeper{Result}(keep) for _ in 1:Threads.nthreads()]
+    # kelly_bufs = [Kelly.make_buf() for _ in 1:Threads.nthreads()]
+    # (;ts, date=Date(ts), curp, kde, keep, ress, kelly_bufs)
+    return make_ctx(ts, kde, curp; keep)
 end
-make_ctx(ts, kde, curp) = (;ts, date=Date(ts), kde, curp)
-
-function findkel(ctx, xpirts::DateTime, oqss, pos_rs, incs; keep=10, use_problup=true)
-    use_problup && empty!(ProbLup4)
-    # println("Finding kel for curp: $(ctx.curp)")
+function make_ctx(ts, kde, curp; keep=2)
     ress = [Keeper{Result}(keep) for _ in 1:Threads.nthreads()]
-    kelly_buffer = [Kelly.make_buf() for _ in 1:Threads.nthreads()]
+    kelly_bufs = [Kelly.make_buf() for _ in 1:Threads.nthreads()]
+    return (;ts, date=Date(ts), kde, curp, keep, ress, kelly_bufs)
+end
+
+function reset_ctx(ctx)
+    empty!.(ctx.ress)
+    @assert isempty(ctx.ress[1])
+    @assert isempty(ctx.ress[2])
+    @assert isempty(ctx.ress[4])
+    @assert isempty(ctx.ress[end])
+end
+
+function findkel(ctx, xpirts::DateTime, oqs, oqss, pos_rs, incs; use_problup=true)
+    use_problup && empty!(ProbLup4)
+    reset_ctx(ctx)
+    ress = ctx.ress
 
     # TODO: messy concating these after they were just separated
-    oqs = vcat(oqss.call.long, oqss.put.long)
+    # oqs = vcat(oqss.call.long, oqss.put.long)
     prob = pmk.makeprob(ctx.kde, ctx.curp, ctx.ts, xpirts, oqs)
     riskrat = calcriskrat(ctx.ts, xpirts)
 
@@ -179,11 +196,11 @@ function findkel(ctx, xpirts::DateTime, oqss, pos_rs, incs; keep=10, use_problup
         lqs = get_pos_lqs(pos_rs)
         segs = LL.toSegments(lqs, P.(SH.getBid.(lqs)))
         risk = riskrat * max(Pricing.calcMarg(prob.center, segs))
-        kel, evret, ev, probprofit = calckel(kelly_buffer[Threads.threadid()], prob, risk, segs)
+        kel, evret, ev, probprofit = calckel(ctx.kelly_bufs[Threads.threadid()], prob, risk, segs)
         pos = kv(;lqs=nc(lqs), segs=nc(segs), risk, kel, evret, ev, probprofit, count=length(pos_rs))
     end
 
-    ctx2 = kv(;ctx.ts, ctx.date, ctx.curp, prob, riskrat, xpirts, kelly_buffer, pos)
+    ctx2 = kv(;ctx.ts, ctx.date, ctx.curp, prob, riskrat, xpirts, ctx.kelly_bufs, pos)
     use_problup && ( ProbLup4[xpirts] = prob )
     # 1 in incs && findkel1!(ress, ctx2, oqss) && error("stop")
     2 in incs && findkel2!(ress, ctx2, oqss) && error("stop")
@@ -191,22 +208,24 @@ function findkel(ctx, xpirts::DateTime, oqss, pos_rs, incs; keep=10, use_problup
     4 in incs && findkel4!(ress, ctx2, oqss) && error("stop")
 
     # println("Finished searching")
-    res = merge(ress, keep)
+    res = merge(ress, ctx.keep)
     return vec(res)
 end
 
-pos_new() = Dict()
-function pos_add(pos, r)
-end
+# pos_new() = Dict()
+# function pos_add(pos, r)
+# end
 
-struct LegQuoteSized
-    lq::LegQuote
-    quantity::Float64
-end
+# struct LegQuoteSized
+#     lq::LegQuote
+#     quantity::Float64
+# end
 
 function get_pos_lqs(pos)
     # sort!(collect(Iterators.flatten(map(r -> r.lms, pos))); by=SH.getStrike)
     v = sort!(collect(Iterators.flatten(map(r -> r.r1.lqs, pos))); by=SH.getStrike)
+    # xpir = SH.getExpir(v[1])
+    # @assert isnothing(findfirst(x -> SH.getExpir(x) != xpir, v))
     return v
     # len = length(v)
     # MAX_LEN[] = max(MAX_LEN[], len)
@@ -287,9 +306,10 @@ end
 function findkel3!(ress, ctx, oqss)::Bool
     # count = zeros(Int, Threads.nthreads())
     stop = GenCands.paraSpreads(oqss.call, config().max_spread, alltrue) do thid, lms
+        strike1 = SH.getStrike(lms[1])
+        strike2 = SH.getStrike(lms[end])
         for oq in oqss.call.long
-            strike = getStrike(oq)
-            strike1 = lms[1]
+            strike = SH.getStrike(oq)
             if (strike < strike1 && strike1 - strike <= config().max_gap) ||
                     (strike > strike2 && strike - strike2 <= config().max_gap)
                 lms2 = sortuple(SH.getStrike, lms..., make_leg(oq, Side.long))
@@ -299,6 +319,7 @@ function findkel3!(ress, ctx, oqss)::Bool
         yield()
         # count[thid] += length(oqss.call.long)
         for oq in oqss.put.long
+            strike = SH.getStrike(oq)
             if (strike < strike1 && strike1 - strike <= config().max_gap) ||
                     (strike > strike2 && strike - strike2 <= config().max_gap)
                 lms2 = sortuple(SH.getStrike, lms..., make_leg(oq, Side.long))
@@ -311,9 +332,10 @@ function findkel3!(ress, ctx, oqss)::Bool
     end
     !stop || return stop
     stop = GenCands.paraSpreads(oqss.put, config().max_spread, alltrue) do thid, lms
+        strike1 = SH.getStrike(lms[1])
+        strike2 = SH.getStrike(lms[end])
         for oq in oqss.call.long
-            strike = getStrike(oq)
-            strike1 = lms[1]
+            strike = SH.getStrike(oq)
             if (strike < strike1 && strike1 - strike <= config().max_gap) ||
                     (strike > strike2 && strike - strike2 <= config().max_gap)
                 lms2 = sortuple(SH.getStrike, lms..., make_leg(oq, Side.long))
@@ -323,8 +345,7 @@ function findkel3!(ress, ctx, oqss)::Bool
         # count[thid] += length(oqss.call.long)
         yield()
         for oq in oqss.put.long
-            strike = getStrike(oq)
-            strike1 = lms[1]
+            strike = SH.getStrike(oq)
             if (strike < strike1 && strike1 - strike <= config().max_gap) ||
                     (strike > strike2 && strike - strike2 <= config().max_gap)
                 lms2 = sortuple(SH.getStrike, lms..., make_leg(oq, Side.long))
@@ -340,34 +361,39 @@ function findkel3!(ress, ctx, oqss)::Bool
 end
 
 function findkel4!(ress, ctx, oqss)::Bool
+    kel4!(ress, ctx, Side.long, oqss.call.long, oqss.call.short)
+    kel4!(ress, ctx, Side.short, oqss.call.short, oqss.call.long)
+    return false
+end
+
+function kel4!(ress, ctx, side1, oqs1, oqs2)
+    side2 = SH.toOther(side1)
     maxspread = config().max_spread
-    maxgap = config().max_gap
-    for left1 in eachindex(oqss.call.long)[1:end-3]
-        indmax = lastindex(oqss.call.long)
-        oq1 = oqss[left1]
-        for left2 in 1:maxspread
-            left2 <= indmax || continue
-            oq2 = oqss[left2]
-            for right1 in 0:maxgap
-                right1 <= indmax || continue
-                oq3 = oqss[right1]
-                for right2 in 1:maxspread
-                    right2 <= indmax || continue
-                    oq4 = oqss[right2]
-                    lqs = (make_leg(oq1, Side.long))
-                    check!(ress, ctx, ())
+    maxcondormiddle = config().maxcondormiddle
+    for left1 in 1:(lastindex(oqs1)-1)
+        oqL1 = oqs1[left1]
+        strikeL1 = SH.getStrike(oqL1)
+        for left2 in eachindex(oqs2)
+            oqL2 = oqs2[left2]
+            strikeL2 = SH.getStrike(oqL2)
+            strikeL2 > strikeL1 || continue
+            (strikeL2 - strikeL1) <= maxspread || break
+            for right1 in left2:lastindex(oqs2)
+                oqR1 = oqs2[right1]
+                strikeR1 = SH.getStrike(oqR1)
+                (strikeR1 - strikeL2) <= maxcondormiddle || break
+                for right2 in (left1+1):lastindex(oqs1)
+                    oqR2 = oqs1[right2]
+                    strikeR2 = SH.getStrike(oqR2)
+                    strikeR2 >= strikeR1 || continue
+                    (strikeR2 - strikeR1) <= maxspread || break
+                    lqs = (make_leg(oqL1, side1), make_leg(oqL2, side2), make_leg(oqR1, side2), make_leg(oqR2, side1))
+                    check!(ress, ctx, lqs)
+                    yield()
                 end
             end
         end
     end
-        strike = getStrike(oq)
-        strike1 = lms[1]
-        if (strike < strike1 && strike1 - strike <= config().max_gap) ||
-                (strike > strike2 && strike - strike2 <= config().max_gap)
-        end
-    end
-
-    return false
 end
 
 # function testcheck(res, ctx, lms2)
@@ -386,16 +412,18 @@ function check!(ress, ctx, lqs)::Nothing
     # commit *= ctx.riskrat
 
     thid = Threads.threadid()
-    kel, evret, ev, probprofit = calckel(ctx.kelly_buffer[thid], ctx.prob, commit, segs)
+    kel, evret, ev, probprofit = calckel(ctx.kelly_bufs[thid], ctx.prob, commit, segs)
     (isfinite(kel) && kel > cfg.kel_min) || return
     probprofit >= cfg.probprofit_min || return
-    evrate = calcevrate(evret, ctx.xpirts, ctx.date)
+    # evrate = calcevrate(evret, ctx.xpirts, ctx.date)
+    timult = DateUtil.timult(ctx.date, ctx.xpirts)
+    evrate = evret * timult
     evrate > cfg.evrate_min || return
 
     try
         pos = ctx.pos
         pos_count = 0
-        all = nothing
+        forpos = nothing
         if !isnothing(pos)
             pos_count = pos.count
             all_lqs = sort!(vcat(pos.lqs, lqs...); by=SH.getStrike)
@@ -407,25 +435,64 @@ function check!(ress, ctx, lqs)::Nothing
                 # @show all_risk
                 return
             end
-            all_kel, all_evret, all_ev, all_probprofit = calckel(ctx.kelly_buffer[thid], ctx.prob, all_risk, all_segs)
+            all_kel, all_evret, all_ev, all_probprofit = calckel(ctx.kelly_bufs[thid], ctx.prob, all_risk, all_segs)
             if !isnan(all_evret) && (all_evret <= pos.evret) # || all_probprofit <= pos.probprofit)
                 return
             end
             all_evrate = calcevrate(evret, ctx.xpirts, ctx.date)
-            all = kv(;evrate=all_evrate, kel=all_kel, evret=all_evret, ev=all_ev, probprofit=all_probprofit)
+            forpos = kv(;evrate=all_evrate, kel=all_kel, evret=all_evret, ev=all_ev, probprofit=all_probprofit, risk=all_risk)
         end
 
         # probprofit = Between.calcprobprofit(ctx.prob, segs)
         cnt = 1 + (pos_count + numtradestoxpir(ctx.ts, ctx.xpirts))
         balrat = 1 / cnt
         # TODO: filter out ones that have a lot of outcome too close to zero
-        push!(ress[thid], Result(kv(;all, evrate, balrat, kel, ev, evret, probprofit, commit, ctx.xpirts, lqs=nc(lqs), netos=netos=nc(netos), neto=sum(netos))))
+        annual = calc_iter_ret(ctx.prob, segs, commit, timult)
+        if annual < config().annual_min
+            # println("WARN: annual return $(annual) too low, evrate:$(evrate)")
+            return
+        end
+        push!(ress[thid], Result(kv(;forpos, evrate, balrat, kel, ev, evret, probprofit, commit, annual, ctx.xpirts, lqs=nc(lqs), netos=netos=nc(netos), neto=sum(netos))))
     catch e
-        # global kcheck = kv(;ctx, lms=nc(lms), segs, netos)
+        global kcheck = kv(;ctx, lqs=nc(lqs), segs, netos)
         rethrow(e)
     end
     return
+end
 
+import Lines
+function calc_iter_ret(prob, lqs; balrat = 0.5)
+    xpir = SH.getExpir(lqs)
+    netos = P.(SH.getBid.(lqs))
+    segs = LL.toSegments(lqs, netos)
+    timult = DateUtil.timult(prob.ts, xpir)
+    commit = max(Pricing.calcMarg(prob.center, segs))
+    return calc_iter_ret(prob, segs, commit, timult; balrat)
+end
+function calc_iter_ret(prob, segs, commit, timult; balrat = 0.5)
+    len = length(prob.xs.xs)
+    s = 1.0
+    for i in 1:len
+        x = prob.xs.xs[i]
+        y = Lines.atsegs(segs, x * prob.center)
+        o = y / commit
+        p = prob.prob_mass[i]
+        @assert -commit <= y @str commit x y o p balrat
+        # p *= o >= 0.0 ? 1.0 - probadjust : 1.0 + probadjust
+        # o > 0 && (probprofit += p)
+        #
+
+        change = 1.0 + balrat * o
+        if change < 0
+            @show change x y o p balrat
+        end
+        news = change^(p*timult)
+        # if o < 0
+        #     @show s news change x y o p
+        # end
+        s *= news
+    end
+    return s
 end
 
 function checkold!(ress, ctx, lms)::Nothing

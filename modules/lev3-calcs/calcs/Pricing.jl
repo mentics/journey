@@ -149,6 +149,13 @@ function get_spread_width(lqs::NTuple{3,<:LegLike})
     width21 = getStrike(lqs[2]) - getStrike(lqs[1])
     return min(width32, width21)
 end
+
+# Assumes normal condor and not interleaved long/short
+function get_spread_width(lqs::NTuple{4,<:LegLike})
+    left = get_spread_width((lqs[1], lqs[2]))
+    right = get_spread_width((lqs[3], lqs[4]))
+    return max(left, right)
+end
 #endregion CalcRisk
 
 function tup_find(f, y, tup::NTuple{3,T})::Int where T
@@ -290,11 +297,23 @@ tup_sum((x1,x2,x3,x4)::NTuple{4,T}) where T = x1 + x2 + x3 + x4
 # end
 
 import LineTypes:Segments
+import Lines:atsegs
 function calcMarg(center, segs::Segments)::Sides{Float64}
     min_short = 0.0
     min_long = 0.0
+    # i = 0
     for point in segs.points
+        # i += 1
         y = point.y
+        if point.x == center
+            # slopeleft = segs.slopes[i]
+            # sloperight = segs.slopes[i+1]
+            if atsegs(segs, center * 0.5) < 0
+                y >= min_short || (min_short = y)
+            else
+                y >= min_long || (min_long = y)
+            end
+        end
         if point.x < center && y < min_short
             min_short = y
         elseif point.x > center && y < min_long

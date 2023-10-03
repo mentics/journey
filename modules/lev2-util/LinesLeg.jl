@@ -46,7 +46,9 @@ import Lines:Seg3,DirRight,DirLeft
     return getStyle(leg) == Style.call ? seg3Call(strike, side, qty, neto) : seg3Put(strike, side, qty, neto)
 end
 
-function toSegments(legs::Tuple{<:LegLike}, netos::Tuple{PT})
+# toSegments(legs::CollT{<:LegLike}, netos::CollT{Currency}) = toSegments(tuple(legs...), tuple(netos...))
+# function toSegments(legs::Tuple{<:LegLike}, netos::Tuple{PT})
+function toSegments(legs::CollT{<:LegLike}, netos::CollT{PT})
     segs = toSeg3.(legs, netos)
     return combine(segs)
 end

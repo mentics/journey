@@ -88,4 +88,7 @@ SH.getAsk(lm::LegQuote) = getAsk(lm.quot)
 #     )
 # end
 
+getOrigQuote(lq::LegQuoteOpen) = Side.short == getSide(lq) ? getQuote(lq) : QuoteTypes.invert(getQuote(lq))
+getOrigQuote(lq::LegQuoteClose) = Side.long == getSide(lq) ? getQuote(lq) : QuoteTypes.invert(getQuote(lq))
+
 end

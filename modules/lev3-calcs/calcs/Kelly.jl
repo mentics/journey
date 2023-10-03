@@ -133,6 +133,7 @@ function calckel(buf, prob, commit, segs, probadjust)::NamedTuple{(:kel, :evret,
 
     # buf.po ./= prob_tot
     # buf.p ./= prob_tot
+    # TODO: probably not necessary anymore because prob is normalized, except because of probadjust
     @turbo for i in 1:len
         buf.po[i] /= prob_tot
         buf.p[i] /= prob_tot
@@ -164,9 +165,9 @@ function calckel(buf, prob, commit, segs, probadjust)::NamedTuple{(:kel, :evret,
     # end
     kel > 0.0 || return (;kel=NaN, evret=NaN, ev, probprofit=0.0)
     evret = kel * ev # calcevret(kel, buf, len)
+    # global kretcurve = retcurve(buf, len)
     return (;kel, evret, ev, probprofit)
 end
-
 
 
 # function calckel_old(buf::Buf, prob, commit::Real, segsWithZeros; probadjust=0.0)
