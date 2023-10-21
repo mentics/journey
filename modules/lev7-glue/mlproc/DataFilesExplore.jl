@@ -13,7 +13,9 @@ using OutputUtil
 # TODO: because selling at xpir is lossy, punish the outcomes harshly for that section
 
 #region Public
-function explore(;inds=nothing, yms=dat.make_yms(), skip_existing=true, use_problup=false)
+const EMPTY_VECTOR = Vector()
+
+function explore(;inds=nothing, yms=dat.make_yms(), skip_existing=true, use_problup=false, use_pos=true, xpir_inds=1:2)
     ts_min = dat.estimate_min_ts() + Month(1)
     y_min, m_min = year(ts_min), month(ts_min)
     filter!(yms) do (y, m)
@@ -67,7 +69,7 @@ function explore(;inds=nothing, yms=dat.make_yms(), skip_existing=true, use_prob
 
             sdf_xpir = groupby(sdf_ts, :expiration)
 
-            for sdf in sdf_xpir[1:3]
+            for sdf in sdf_xpir[xpir_inds]
                 xpirts = sdf.expiration[1]
                 xpir = Date(xpirts)
                 # 0 < bdays(ts, xpir) <= 8 || continue
@@ -77,7 +79,8 @@ function explore(;inds=nothing, yms=dat.make_yms(), skip_existing=true, use_prob
 
                 # pos = get!(ore.pos_new, XPIR_POS, xpirts)
                 top_xpir = get!(TOP_XPIRTS, xpirts) do; Vector() end
-                res = ore.findkel(ctx, xpirts, oqs, oqss, top_xpir, 1:4; use_problup)
+                pos = use_pos ? top_xpir : EMPTY_VECTOR
+                res = ore.findkel(ctx, xpirts, oqs, oqss, pos, 1:4; use_problup)
                 # isnothing(res) && @goto stop
                 # global kres = res
 
@@ -155,19 +158,7 @@ function drawbal(; newfig=false, kelrat = 0.5, xpirtss=sort!(collect(keys(TOP_XP
             true
         end
         # count = length(rs)
-        rets = map(rs) do r
-            if invalid(r.r1.commit) || invalid(r.r1.kel)
-                @show r.r1.commit r.result.pnl_value r.r1.kel
-                error("invalid commit")
-            end
-            pnl = if close_early
-                close = find_close(r)
-                isnothing(close) ? r.result.pnl_value : close.pnl
-            else
-                r.result.pnl_value
-            end
-            r.r1.balrat * r.r1.kel * pnl / r.r1.commit
-        end
+        rets = calc_rets(rs; close_early)
         # drets[xpir] = sum(rets) * kelrat / count
         drets[xpirts] = isempty(rets) ? 0.0 : sum(rets) * kelrat
     end
@@ -186,6 +177,24 @@ function drawbal(; newfig=false, kelrat = 0.5, xpirtss=sort!(collect(keys(TOP_XP
         DrawUtil.draw(:scatter, xpirtss, acc)
     else
         DrawUtil.draw!(:scatter, xpirtss, acc; label="$(DateUtil.nowz())")
+    end
+end
+
+function calc_rets(rs; close_early=true)
+    return map(rs) do r
+        if invalid(r.r1.commit) || invalid(r.r1.kel)
+            @show r.r1.commit r.result.pnl_value r.r1.kel
+            error("invalid commit")
+        end
+        pnl = if close_early
+            close = find_close(r)
+            isnothing(close) ? r.result.pnl_value : close.pnl
+        else
+            r.result.pnl_value
+        end
+        @assert pnl > (-r.r1.commit - 0.0001) @str "pnl less than -commit" pnl r.r1.commit
+        # return (r.r1.balrat * r.r1.kel * pnl / r.r1.commit, pnl)
+        return r.r1.balrat * r.r1.kel * pnl / r.r1.commit
     end
 end
 
@@ -387,8 +396,13 @@ function dfneto(dfrow, lm)
     return -dir * dat.pents_to_c(dfrow[dfsym_bidask(SH.getStyle(lm), dir)])
 end
 function dfnetc(dfrow, lm)
-    dir = Int(SH.toOther(SH.getSide(lm))) * Int(Action.close)
-    return -dir * dat.pents_to_c(dfrow[dfsym_bidask(SH.getStyle(lm), dir)])
+    # dir = Int(SH.toOther(SH.getSide(lm))) * Int(Action.close)
+    dir = Int(SH.getSide(lm)) * Int(Action.close)
+    bidask_col = dfsym_bidask(SH.getStyle(lm), dir)
+    bidask = dfrow[bidask_col]
+    res = -dir * dat.pents_to_c(bidask)
+    # @show dir bidask_col bidask res
+    return res
 end
 
 dfnetc_xpir(dfrow, lm) = dat.pents_to_c(dfrow[dfsym_xpir_price(SH.getStyle(lm), SH.toOther(SH.getSide(lm)))])
@@ -416,12 +430,14 @@ import Kelly
 import LinesLeg as LL
 
 function find_close(r)
-    tss = filter(:ts => ts -> r.ts < ts < r.r1.xpirts, dat.ts_df()).ts
+    # tss = filter(:ts => ts -> r.ts < ts < r.r1.xpirts, dat.ts_df()).ts
+    # Can't close same day as open
+    tss = filter(:ts => ts -> Date(ts) > Date(r.ts) && ts < r.r1.xpirts, dat.ts_df()).ts
     evrate_orig = r.r1.evrate
     for close in (calc_close(r, ts) for ts in tss)
         # TODO: evrate has kel in it? so this comparison isn't quite right.
         # TODO: Maybe give some lenience based on proximity to xpir?
-        if close.rate >= evrate_orig || (isSomething(close.kel) && isnan(close.kel.kel))
+        if !isnothing(close) && (close.rate >= evrate_orig || (isSomething(close.kel) && isnan(close.kel.kel)))
             return close
         end
     end
@@ -429,6 +445,7 @@ function find_close(r)
 end
 
 function calc_close(r, ts)
+    no_worse_than = -r.r1.commit # r.result.pnl_value
     try
         dfoqs = dat.oqs_df(year(ts), month(ts))
         lqs = r.r1.lqs
@@ -440,6 +457,9 @@ function calc_close(r, ts)
         # netc = sum(dfnetc.(eachrow(rows), lqs))
         netc = sum(dfnetc.(rows, lqs))
         pnl = r.r1.neto + netc
+        if pnl < no_worse_than
+            return nothing
+        end
         rate = DateUtil.timult(Date(ts), Date(r.r1.xpirts)) * pnl / r.r1.commit
         kel = calc_kel(r, ts)
         return (;ts, netc, pnl, rate, kel)

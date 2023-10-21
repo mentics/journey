@@ -13,7 +13,7 @@ import OptionUtil, CollUtil
 #region Pricing
 price_open(x) = price(Action.open, x)
 
-function price(action::Action.T, legs::Coll{<:LegLike})
+function price(action::Action.T, legs::CollT{<:LegLike})
     psum = CZ
     for leg in legs
         p = price(action, leg)

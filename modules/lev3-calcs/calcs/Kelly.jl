@@ -164,6 +164,9 @@ function calckel(buf, prob, commit, segs, probadjust)::NamedTuple{(:kel, :evret,
     #     return s
     # end
     kel > 0.0 || return (;kel=NaN, evret=NaN, ev, probprofit=0.0)
+    if kel > 1.0
+        kel = 1.0
+    end
     evret = kel * ev # calcevret(kel, buf, len)
     # global kretcurve = retcurve(buf, len)
     return (;kel, evret, ev, probprofit)

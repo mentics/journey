@@ -49,6 +49,7 @@ end
 # toSegments(legs::CollT{<:LegLike}, netos::CollT{Currency}) = toSegments(tuple(legs...), tuple(netos...))
 # function toSegments(legs::Tuple{<:LegLike}, netos::Tuple{PT})
 function toSegments(legs::CollT{<:LegLike}, netos::CollT{PT})
+    # @assert issorted(legs; by=getStrike)
     segs = toSeg3.(legs, netos)
     return combine(segs)
 end
@@ -73,12 +74,6 @@ end
 #     segs = toSeg3.(legs, netos)
 #     return Lines.combine(segs)
 # end
-
-function toSegments(legs::CollT{T}, netos::CollT{PT}) where {T<:LegLike}
-    # @assert issorted(legs; by=getStrike)
-    segs = toSeg3.(legs, netos)
-    return Lines.combine(segs)
-end
 
 (slopeprofit(s::Segments)) = s.slopes[1] < 0 || s.slopes[end] > 0
 canprofit(s::Segments) = slopeprofit(s) || !isnothing(findfirst(p -> p.y > 0, s.points))

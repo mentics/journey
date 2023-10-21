@@ -12,7 +12,7 @@ using BaseUtil, DateUtil
 export draw, draw!
 
 draw!(type::Symbol, args...; kws...)::Axis = draw(type, args...; newFig=false, kws...)
-draw(type::Symbol, args...; kws...)::Axis = _draw(type, args...; kws...)
+draw(type::Symbol, args...; kws...) = _draw(type, args...; kws...)
 
 # dtformat="yyyy.mm.dd.HHMMss"
 function draw(type::Symbol, points::AbstractVector{<:Tuple{DateLike,T}}; kws...)::Axis where T
@@ -45,12 +45,20 @@ function drawWithDates(type::Symbol, left, right, args...; dtformat="mm/dd/yyyy"
     return ax
 end
 
-function _draw(type::Symbol, args...; kws...)::Axis
-    f = getproperty(Makie, Symbol(string(type) * '!'))
-    ax = getAxis(; kws...)
-    f(ax, args...; delete(NamedTuple(kws), :axis)...)
-    afterDraw(;kws...)
-    return ax
+function _draw(type::Symbol, args...; axis=nothing, kws...)
+    if isnothing(axis)
+        f = getproperty(Makie, Symbol(string(type) * '!'))
+        ax = getAxis(; kws...)
+        # f(ax, args...; delete(NamedTuple(kws), :axis)...)
+        f(ax, args...; kws...)
+        afterDraw(;kws...)
+        return ax
+    else
+        f = getproperty(Makie, Symbol(string(type)))
+        p = f(args...; kws...)
+        afterDraw(;kws...)
+        return p
+    end
 end
 
 dtFromValue(val) = DateTime(Dates.UTM(val))
@@ -175,9 +183,9 @@ end
 
 makeFig() = Figure(;resolution = (1200, 1000))
 
-function getAxis(args...; axis=nothing, kws...)::Axis
+function getAxis(args...; use_axis=nothing, kws...)::Axis
     fig = getFig(args...; kws...)
-    ax = @coal axis current_axis() Axis(fig[1,1])
+    ax = @coal use_axis current_axis() Axis(fig[1,1])
     return ax
 end
 

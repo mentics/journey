@@ -23,19 +23,34 @@ const ProbLup4 = Dict{DateTime,pmk.KdeProb2}()
 # ))
 
 config() = (;
-    adjustprices = C(-0.01),
-    kelprobadjust = 0.1,
+    adjustprices = C(-0.0),
+    kelprobadjust = 0.0,
     commit_min = 0.07,
-    commit_max = 55.0,
-    probprofit_min = 0.801,
-    kel_min = 0.2,
-    evrate_min = 2.01,
+    commit_max = 4.01,
+    probprofit_min = 0.84,
+    kel_min = 0.5,
+    evrate_min = 4.01,
     all_risk_max = 10000.0,
-    max_spread = 8.1,
-    max_gap = 12.1,
-    maxcondormiddle = 12.1,
+    max_spread = 4.1,
+    max_gap = 4.1,
+    maxcondormiddle = 4.1,
     annual_min = 8.01,
 )
+
+# config() = (;
+#     adjustprices = C(-0.0),
+#     kelprobadjust = 0.1,
+#     commit_min = 0.07,
+#     commit_max = 16.01,
+#     probprofit_min = 0.94,
+#     kel_min = 0.1,
+#     evrate_min = 4.01,
+#     all_risk_max = 10000.0,
+#     max_spread = 8.1,
+#     max_gap = 16.1,
+#     maxcondormiddle = 16.1,
+#     annual_min = 8.01,
+# )
 
 #region LookForBestKelly
 using SmallTypes, LegQuoteTypes
@@ -54,8 +69,8 @@ end
 # Base.isless(a::Result{T}, b::Result{T}) where T = a.r.evrate < b.r.evrate
 # Base.isless(a::Result, b::Result) = a.r.evrate < b.r.evrate
 function Base.isless(a::Result, b::Result)
-    av = to_val(a)
-    bv = to_val(b)
+    av = to_val_kel(a)
+    bv = to_val_kel(b)
     return av < bv
     # isnothing(a.r.all) && return a.r.evrate < b.r.evrate
     # if isnan(a.r.all.evrate)
@@ -72,9 +87,17 @@ function Base.isless(a::Result, b::Result)
     #     return
     # end
 end
-function to_val(x)
+function to_val_evrate(x)
     x1 = isnothing(x.r.forpos) ? x.r.evrate : x.r.forpos.evrate
     return isnan(x1) ? -Inf : x1
+end
+function to_val_prob(x)
+    p = x.r.probprofit
+    return isfinite(p) ? p : -Inf
+end
+function to_val_kel(x)
+    p = x.r.kel
+    return isfinite(p) ? p : -Inf
 end
 
 Base.vec(keeper::Keeper{Result}) = map(x -> x.r, keeper.store)
@@ -361,29 +384,40 @@ function findkel3!(ress, ctx, oqss)::Bool
 end
 
 function findkel4!(ress, ctx, oqss)::Bool
-    kel4!(ress, ctx, Side.long, oqss.call.long, oqss.call.short)
-    kel4!(ress, ctx, Side.short, oqss.call.short, oqss.call.long)
+    kel4!(ress, ctx, Side.long, oqss.call.long, oqss.call.short, oqss.call.short, oqss.call.long)
+    kel4!(ress, ctx, Side.short, oqss.call.short, oqss.call.long, oqss.call.long, oqss.call.short)
+
+    kel4!(ress, ctx, Side.long, oqss.put.long, oqss.put.short, oqss.put.short, oqss.put.long)
+    kel4!(ress, ctx, Side.short, oqss.put.short, oqss.put.long, oqss.put.long, oqss.put.short)
+
+    kel4!(ress, ctx, Side.long, oqss.call.long, oqss.call.short, oqss.put.short, oqss.put.long)
+    kel4!(ress, ctx, Side.short, oqss.call.short, oqss.call.long, oqss.put.long, oqss.put.short)
+
+    kel4!(ress, ctx, Side.short, oqss.put.long, oqss.put.short, oqss.call.short, oqss.call.long)
+    kel4!(ress, ctx, Side.long, oqss.put.short, oqss.put.long, oqss.call.long, oqss.call.short)
+
     return false
 end
 
-function kel4!(ress, ctx, side1, oqs1, oqs2)
+function kel4!(ress, ctx, side1, oqsL1, oqsL2, oqsR1, oqsR2)
     side2 = SH.toOther(side1)
     maxspread = config().max_spread
     maxcondormiddle = config().maxcondormiddle
-    for left1 in 1:(lastindex(oqs1)-1)
-        oqL1 = oqs1[left1]
+    for left1 in 1:(lastindex(oqsL1)-1)
+        oqL1 = oqsL1[left1]
         strikeL1 = SH.getStrike(oqL1)
-        for left2 in eachindex(oqs2)
-            oqL2 = oqs2[left2]
+        for left2 in eachindex(oqsL2)
+            oqL2 = oqsL2[left2]
             strikeL2 = SH.getStrike(oqL2)
             strikeL2 > strikeL1 || continue
             (strikeL2 - strikeL1) <= maxspread || break
-            for right1 in left2:lastindex(oqs2)
-                oqR1 = oqs2[right1]
+            for right1 in left2:lastindex(oqsR1)
+                oqR1 = oqsR1[right1]
                 strikeR1 = SH.getStrike(oqR1)
+                strikeR1 >= strikeL2 || continue
                 (strikeR1 - strikeL2) <= maxcondormiddle || break
-                for right2 in (left1+1):lastindex(oqs1)
-                    oqR2 = oqs1[right2]
+                for right2 in (left1+1):lastindex(oqsR2)
+                    oqR2 = oqsR2[right2]
                     strikeR2 = SH.getStrike(oqR2)
                     strikeR2 >= strikeR1 || continue
                     (strikeR2 - strikeR1) <= maxspread || break
@@ -444,8 +478,9 @@ function check!(ress, ctx, lqs)::Nothing
         end
 
         # probprofit = Between.calcprobprofit(ctx.prob, segs)
-        cnt = 1 + (pos_count + numtradestoxpir(ctx.ts, ctx.xpirts))
-        balrat = 1 / cnt
+        # cnt = 1 + (pos_count + numtradestoxpir(ctx.ts, ctx.xpirts))
+        # balrat = 1 / cnt
+        balrat = 1 / (19 * 3) # 19 / day * 3 days
         # TODO: filter out ones that have a lot of outcome too close to zero
         annual = calc_iter_ret(ctx.prob, segs, commit, timult)
         if annual < config().annual_min
