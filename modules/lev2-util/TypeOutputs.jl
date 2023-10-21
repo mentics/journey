@@ -36,7 +36,11 @@ Base.show(io::IO, ::Type{LegQuoteTypes.Close}) = print(io, "Close")
 #endregion Legs
 
 #region Collections
-function Base.show(io::IO, lms::NTuple{N,LegQuoteTypes.LegQuote{T}}) where {N,T}
+Base.show(io::IO, lms::NTuple{1,LegQuoteTypes.LegQuote{T}}) where {T} = show_legs(io, lms)
+Base.show(io::IO, lms::NTuple{2,LegQuoteTypes.LegQuote{T}}) where {T} = show_legs(io, lms)
+Base.show(io::IO, lms::NTuple{3,LegQuoteTypes.LegQuote{T}}) where {T} = show_legs(io, lms)
+Base.show(io::IO, lms::NTuple{4,LegQuoteTypes.LegQuote{T}}) where {T} = show_legs(io, lms)
+function show_legs(io, lms)
     if N == 0
         println(io, "ODD EMPTY TUPLE")
         return

@@ -11,7 +11,7 @@ using BaseUtil, DateUtil
 #region Public
 export draw, draw!
 
-draw!(type::Symbol, args...; kws...)::Axis = draw(type, args...; newFig=false, kws...)
+draw!(type::Symbol, args...; kws...) = draw(type, args...; newFig=false, kws...)
 draw(type::Symbol, args...; kws...) = _draw(type, args...; kws...)
 
 # dtformat="yyyy.mm.dd.HHMMss"
@@ -55,7 +55,8 @@ function _draw(type::Symbol, args...; axis=nothing, kws...)
         return ax
     else
         f = getproperty(Makie, Symbol(string(type)))
-        p = f(args...; kws...)
+        println("Calling `$(f)` with kws `$(kws)`")
+        p = f(args...; axis, kws...)
         afterDraw(;kws...)
         return p
     end
@@ -183,7 +184,7 @@ end
 
 makeFig() = Figure(;resolution = (1200, 1000))
 
-function getAxis(args...; use_axis=nothing, kws...)::Axis
+function getAxis(args...; use_axis=nothing, kws...)
     fig = getFig(args...; kws...)
     ax = @coal use_axis current_axis() Axis(fig[1,1])
     return ax
