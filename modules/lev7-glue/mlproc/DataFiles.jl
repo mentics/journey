@@ -380,6 +380,10 @@ function proc_tsx(y, m, tsindex)
     return df
 end
 
+# TODO: Consider for xtrindt:
+# transform!(tsx, [:extrin, :tex] => ((x, t) -> x ./ sqrt.(t) ) => :extrindtsq)
+# transform!(tsx, [:extrin, :ts, :expiration] => ( (x, ts, xpirts) -> x ./ sqrt.( Dates.value.(xpirts .- ts) / (1000*60*60*24) ) ) => :extrincalsq)
+
 function chains_to_tsx!(dfro, tsindex, fntm)
     df = filter([:ts, :expiration] => filter_xpirs, dfro)
     # df.strikedist = abs.(df.under .- df.strike)

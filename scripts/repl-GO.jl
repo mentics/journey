@@ -11,3 +11,8 @@ import VectorCalcUtil as vcu
 import DataFilesExplore as dfe
 
 # using DataFrames
+
+import Flux:gpu
+import ProbML as ml
+
+# ml.setup()

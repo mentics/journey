@@ -228,8 +228,7 @@ dist_euc(c1::CoordF, c2::NTuple{3,<:Real}) = (c1.ret * c2[1])^2 + (c1.tex * c2[2
 # binwidth is hardcoded to 10th of a percent
 
 using LRUCache
-# TODO: make it 50000
-const PROB_CACHE3 = LRUCache.LRU{Tuple{DateTime,DateTime},Union{Missing,KdeProb2}}(;maxsize=2000)
+const PROB_CACHE3 = LRUCache.LRU{Tuple{DateTime,DateTime},Union{Missing,KdeProb2}}(;maxsize=50000)
 
 # TODO: get oqs inside the get! to avoid getting it when hit cache
 function makeprob(kde::SimpleKde, curp, ts::DateTime, xpirts::DateTime, oqs; binwidth=1e-3, k=(0.001, 0.01, 0.01))
@@ -550,6 +549,9 @@ end
 
 @inline inside1(c::CoordF, x::NTuple{3,Float64}, k)::Float64 = exp(-(c.ret - x[1])^2/k[1]) + exp(-(c.tex - x[2])^2/k[2]) + exp(-(c.vol - x[3])^2/k[3])
 # @inline inside1(c::CoordF, x::NTuple{3,Float64}, k)::Float64 = exp(-(c.ret - x[1])^2/k[1]) * exp(-(c.tex - x[2])^2/k[2]) * exp(-(c.vol - x[3])^2/k[3])
+@inline kerk(c, x, k) = exp.(-dot(x .- c) ./ k)
+@inline dot(v) = return v .* v
+
 
 
 # @inline inside1(c::CoordF, x::NTuple{3,Float64})::Float64 = exp(-(c.ret - x[1])^2) + exp(-(c.tex - x[2])^2) + exp(-(c.vol - x[3])^2)
