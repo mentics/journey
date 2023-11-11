@@ -20,9 +20,36 @@ using Memoization, ThreadSafeDicts
 # TODO: can remove this after rebuilding from CSV where I added the filter.
 filter_bday(df) = filter(:ts => ts -> DateUtil.isBusDay(Date(ts)), df)
 
-ts_df() = filter_bday(DataFrame(ts_table(); copycols=false))
+ts_df() = loading_currency!(filter_bday(DataFrame(ts_table(); copycols=false)), :under)
+ts_allperiods_df(;period=Minute(30)) = loading_currency!(DataFrame(ts_allperiods_table(;period); copycols=false), :under)
+
 tsx_df() = filter_bday(DataFrame(tsx_table(); copycols=false))
+
+vix_df() = loading_currency!(DataFrame(vix_table(); copycols=false), :open, :high, :low, :close)
+vix_alldates_df(;period=Minute(30)) = loading_currency!(DataFrame(vix_alldates_table(); copycols=false), :open, :high, :low, :close)
+
 # oq_df() = DataFrame(oq_table(); copycols=false)
+
+function loading_currency!(df, cols...)
+    for col in cols
+        df[!,col] = pents_to_c.(df[!,col])
+    end
+    return df
+end
+
+function saving_currency!(df, cols...)
+    for col in cols
+        df[!,col] = topents.(df[!,col])
+    end
+    return df
+end
+
+function convert_cols!(f, df, cols...)
+    for col in cols
+        df[!,col] = f.(df[!,col])
+    end
+    return df
+end
 
 function tsx_for_prob(ts::DateTime, len::Int)
     df = get_tsx_for_prob()
@@ -68,7 +95,7 @@ const TS_MAX2 = DateTime("2023-06-30T20:00:00")
 #region Loaders
 
 #region Paths
-basepath() = joinpath("C:\\", "data", "db")
+basepath() = Sys.iswindows() ? joinpath("D:\\", "data", "db") : "/home/jshellman/data/db/market"
 baseincoming() = joinpath(basepath(), "incoming", "optionsdx")
 path_chains() = joinpath(basepath(), "market", "spy", "chains")
 path_calls(y, m) = joinpath(path_chains(), "calls", "calls-$(datestr(y, m)).arrow")
@@ -81,9 +108,13 @@ path_oqs() = joinpath(basepath(), "market", "spy", "oqs")
 path_oqs(y, m) = joinpath(path_oqs(), "oq-$(datestr(y, m)).arrow")
 
 path_ts() = joinpath(basepath(), "market", "spy", "ts.arrow")
+path_ts_allperiods(;period=Minute(30)) = joinpath(basepath(), "market", "spy", "ts-$(Dates.value(period)).arrow")
 path_xpir() = joinpath(basepath(), "market", "spy", "xpir.arrow")
 path_tsx() = joinpath(basepath(), "market", "spy", "tsx.arrow")
 path_oq() = joinpath(basepath(), "market", "spy", "oq.arrow")
+
+path_vix() = joinpath(basepath(), "market", "vix", "vix.arrow")
+path_vix_alldates() = joinpath(basepath(), "market", "vix", "vix_alldates.arrow")
 #endregion
 
 #region Tables
@@ -97,6 +128,9 @@ oqs_table(y, m) = Arrow.Table(path_oqs(y, m))
 oqs_df_load(y, m) = filter_bday(DataFrame(oqs_table(y, m); copycols=false))
 
 ts_table() = Arrow.Table(path_ts())
+ts_allperiods_table(;period=Minute(30)) = Arrow.Table(path_ts_allperiods(;period))
+vix_table() = Arrow.Table(path_vix())
+vix_alldates_table() = Arrow.Table(path_vix_alldates())
 xpir_table() = Arrow.Table(path_xpir())
 tsx_table() = Arrow.Table(path_tsx())
 oq_table() = Arrow.Table(path_oq())
@@ -622,14 +656,16 @@ end
 
 fixcolname(col) = occursin('[', col) ? lowercase(strip(col)[2:end-1]) : col
 
+totimestamp(x::Int) = unix2datetime(x)
 tofloat(x::Float64) = Float32(x)
 tofloat(x::AbstractString) = isempty(strip(x)) ? missing : tofloat_(x)
 tofloat_(x) = parse(Float32, x)
 topents(x::Float64) = round(Int32, x * 1000)
 topents(x::AbstractString) = isempty(strip(x)) ? missing : topents(parse(Float64, x))
-totimestamp(x::Int) = unix2datetime(x)
 topents(x::Currency) = Int32(x * 1000)
+topents(x::Missing) = x
 pents_to_c(x::Int32) = C(x / 1000)
+pents_to_c(x::Missing) = x
 
 # [QUOTE_UNIXTIME], [QUOTE_READTIME], [QUOTE_DATE], [QUOTE_TIME_HOURS], [UNDERLYING_LAST], [EXPIRE_DATE], [EXPIRE_UNIX], [DTE], [C_DELTA], [C_GAMMA], [C_VEGA], [C_THETA], [C_RHO], [C_IV], [C_VOLUME], [C_LAST], [C_SIZE], [C_BID], [C_ASK], [STRIKE], [P_BID], [P_ASK], [P_SIZE], [P_LAST], [P_DELTA], [P_GAMMA], [P_VEGA], [P_THETA], [P_RHO], [P_IV], [P_VOLUME], [STRIKE_DISTANCE], [STRIKE_DISTANCE_PCT]
 COLS_DROP = ["quote_readtime", "quote_date", "quote_time_hours", "expire_date", "dte", "strike_distance", "strike_distance_pct"]
@@ -822,7 +858,40 @@ function ts_day_last(date::Date)
     end
     return get(TSS, date, missing)
 end
+
+function save(path, df)
+    mkpath(dirname(path))
+    Arrow.write(path, df)
+end
 #endregion Misc
+
+#region Vix
+import TradierData as TD
+function make_vix_alldates()
+    vix_raw = TD.tradierHistQuotes("daily", Date("2010-01-01"), Date("2023-07-01"), "VIX")
+    vix_raw_df = DataFrame(vix_raw)
+    vix_df = select(vix_raw_df, :date => (ds -> Date.(ds)) => :date, :open, :high, :low, :close)
+    saving_currency!(vix_df, :open, :high, :low, :close)
+    save(path_vix(), vix_df)
+    dates_df = DataFrame(:date => collect(DateUtil.all_weekdays()))
+    vix_alldates_df = sort!(leftjoin(dates_df, vix_df, on=:date), [:date])
+    save(path_vix_alldates(), vix_alldates_df)
+    return vix_alldates_df
+end
+
+function make_ts_allperiods(;period=Minute(30))
+    tsdf = ts_df()
+    times_df = DataFrame(:ts => DateUtil.all_weekday_ts(;period))
+    # filter out rows for other times
+    inner = innerjoin(tsdf, times_df; on = :ts)
+    # Add missing rows for times
+    df = leftjoin(times_df, inner; on = :ts)
+    sort!(df, [:ts])
+    saving_currency!(df, :under)
+    save(path_ts_allperiods(;period), df)
+    return df
+end
+#endregion
 
 #region Old
 # function update(df, path)

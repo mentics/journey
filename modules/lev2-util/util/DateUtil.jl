@@ -31,8 +31,9 @@ export daysinquarter # , daysinyear
 
 #region ConstAndTypes
 # TimeZones.build()
-export LOCALZONE
+export LOCALZONE, MARKET_TZ
 const LOCALZONE = localzone()
+const MARKET_TZ = tz"America/New_York"
 
 export DateLike
 const DateLike = Union{Date,Dates.AbstractDateTime}
@@ -115,7 +116,6 @@ end
 const DF_SHORT = dateformat"mm-dd"
 const DF_SHORT_YEAR = dateformat"yy-mm-dd"
 const DTF_SHORT = dateformat"mm-dd HH:MM:SS Z"
-const MARKET_TZ = tz"America/New_York"
 #endregion
 
 ###############################
@@ -198,5 +198,21 @@ end
 
 daysinquarter(d)::UInt16 = ( q1 = Dates.firstdayofquarter(d) ; (q1 + Dates.Month(3) - q1).value )
 # daysinyear(d)::UInt16 = ( q1 = Dates.firstdayofquarter(d) ; (q1 + Dates.Month(3) - q1).value )
+
+function all_weekdays(;date_from=Date(2010,1,1), date_to=Date(2023,7,1))
+    return Iterators.filter(d -> Dates.dayofweek(d) <= 5, date_from:Day(1):date_to)
+end
+
+function all_weekday_ts(;date_from=Date(2010,1,1), date_to=Date(2023,7,1), time_from=Time(10, 0), time_to=Time(15,30), period=Minute(30), zone=MARKET_TZ)
+    res = DateTime[]
+    for date in all_weekdays(;date_from, date_to)
+        append!(res, [fromMarketTZ(date, t) for t in time_from:period:time_to])
+    end
+    return res
+end
+
+function week_start_market(ts; time=Time(10,0))
+    DateUtil.fromMarketTZ(Date(Dates.firstdayofweek(ts)), time)
+end
 
 end

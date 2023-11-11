@@ -1,5 +1,15 @@
-CLOV 1 @ 3
-FSR 1 @ 9
+use repl-GO.jl
+
+Working with ProbML.jl
+data is from import DataFiles as dat
+
+
+yms = [(2020, i) for i in 1:1]
+dfe.explore(;yms, use_pos=false)
+dfe.drawbal(;newfig=false, close_early=true);
+
+
+---------------------------
 
 MLUtils.oversample: use this for dealing with imbalanced data: we don't have many "rate is never positive" in the Trade4Data, so this might help.
 Also, maybe oversample on ones that StratButter usually fails on?

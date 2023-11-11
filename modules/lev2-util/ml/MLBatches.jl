@@ -27,16 +27,6 @@ function make_batch_par(f, datalen, batch_len, ind, args...; variation=0)
     return stack(f(lfsrfori(lfsr, i)[1], args...) for i in ind:min(ind+batch_len-1, datalen))
 end
 
-@inline function lfsrfori(A, x)
-    # Iterate until we reach a result that is within the correct range.
-    while true
-        x = MaxLFSR.step(A, x)
-
-        # Otherwise, perform a length check and exit.
-        (x <= length(A)) && return x
-    end
-end
-
 #=
 Returns a Vector of Arrays (or whatever is returned by modify_batch) with size = (size(data)..., batch_len)
 Batches across the last dim.

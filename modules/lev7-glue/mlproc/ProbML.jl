@@ -4,41 +4,104 @@ using CudaUtil
 using DrawUtil
 using Dates
 
-import Distributions as D
-
-import SliceMap as SM
-
 CUDA.allowscalar(false)
-# dev(x) = cpu(x)
 dev(x) = gpu(x)
 
-struct ModelWithExtra{L,D}
-    layers::L
-    extra::D
+hypers() = (;
+    learning_rate = 1e-3,
+    activation_func = swish,
+    init_func = Flux.glorot_uniform, #Flux.rand32,
+    batch_size = 2^8, # 2^16,
+    obs_count = 200000,
+    num_bins = 200,
+    ret_min = -0.15,
+    ret_max = 0.15,
+    k = 0.0001
+)
+
+function calc_loss(model, x, y)
+    # (;yhat) = run_model(model, x)
+    # l = Flux.Losses.crossentropy(yhat, y; dims=1, agg=sum)
+    # return l
+
+    # (;penalty_neg, penalty_norm) = penalties(yhat_raw)
+    # l = Flux.Losses.mae(yhat, y)
+
+    l = Flux.Losses.logitcrossentropy(model(x), y; dims=1)
+    return l
+
+    # return l + penalty_neg + penalty_norm
+
+    # # return Flux.Losses.logitcrossentropy(yhat, y)
+    # (;penalty_neg, penalty_norm) = penalties(yhat_raw)
+    # l = Flux.Losses.logitcrossentropy(yhat, y)
+    # @show penalty_neg penalty_norm l
+    # return l + penalty_neg + penalty_norm
 end
-Flux.@functor ModelWithExtra
 
-(m::ModelWithExtra)(x) = m.layers(x)
+cap(x) = x < 0 ? zero(x) : x
 
-function make_model(width)
+function run_model(model, x)
+    yhat_raw = model(x)
+    # yhat2 = cap.(yhat_raw)
+    # yhat = yhat2 ./ sum(yhat2)
+
+    # yhat = yhat_raw
+    yhat = Flux.softmax(yhat_raw; dims=1)
+    # yhat = Flux.softmax(abs.(yhat_raw); dims=1)
+    return (;yhat, yhat_raw)
+end
+
+function penalties(yhat_raw)
+    sz = size(yhat_raw, 2)
+    # println(size(yhat_raw)) : (200, 1024)
+    penalty_neg = sum(abs.(yhat_raw) .- yhat_raw) / sz
+    penalty_norm = sum(abs.(1.0 .- sum(yhat_raw; dims=1))) / sz
+    return (;penalty_neg, penalty_norm)
+end
+
+function make_model(input_width, output_width)
+    width = input_width
     mult = 16
     h1 = mult * width
     h2 = 2 * mult * width
     h3 = 8 * mult * width
     h4 = mult * width
-    # TODO: what about a prob per predictor? Then wouldn't have to multiply those together?
-    act = swish
-    out = 1 # prob for coords
-    d1 = Dense(width => h1, act; bias=true) # TODO: try bias?
-    d2 = Dense(h1 => h2, act; bias=false)
+
+    (;init_func) = hypers()
+    activation_func = swish
+
+    d1 = Dense(input_width => h1, activation_func; init=init_func, bias=true)
+
+    d2 = Dense(h1 => h2, activation_func; init=init_func, bias=false)
+    d3 = Dense(h2 => h3, activation_func; init=init_func, bias=false)
+    d4 = Dense(h3 => h4, activation_func; init=init_func, bias=false)
+    skip = SkipConnection(Chain(d2, d3, d4), +)
+
+    d5 = Dense(h4 => output_width, activation_func; init=init_func, bias=false)
+
+    mcpu = Chain(d1, skip, d5)
+    println("Created model with param count: ", sum(length, Flux.params(mcpu)))
+    return mcpu
+end
+
+function make_model_dense(input_width, output_width)
+    width = input_width
+    mult = 16
+    h1 = mult * width
+    h2 = 2 * mult * width
+    h3 = 8 * mult * width
+    h4 = mult * width
+
+    (;activation_func, init_func) = hypers()
+
+    d1 = Dense(input_width => h1, activation_func; init=init_func, bias=true) # TODO: try bias?
+    d2 = Dense(h1 => h2, activation_func; init=init_func, bias=false)
     # dr1 = Dropout(0.05)
-    d3 = Dense(h2 => h3, act; bias=false)
-    d4 = Dense(h3 => h4, act; bias=false)
-    d5 = Dense(h4 => out, act; bias=false)
-    # mcpu = Chain(d1, d2, dr1, d3, d4, d5)
-    # kernel_params = Dense(width => width; bias=false)
-    kernel_params = fill(0.001, width)
-    mcpu = ModelWithExtra(Chain(d1, d2, d3, d4, d5), kernel_params)
+    d3 = Dense(h2 => h3, activation_func; init=init_func, bias=false)
+    d4 = Dense(h3 => h4, activation_func; init=init_func, bias=false)
+    d5 = Dense(h4 => output_width, activation_func; init=init_func, bias=false)
+    mcpu = Chain(d1, d2, d3, d4, d5)
     println("Created model with param count: ", sum(length, Flux.params(mcpu)))
     return mcpu
 end
@@ -51,24 +114,20 @@ end
 
 function train(model, opt_state, get_batch; iters=10, start_batch=1)
     last_save = now(UTC)
+    (;batch_size) = hypers()
+    loss_prev = calc_base_loss(model, get_batch)
     for epoch in 1:iters
-        loss_base = calc_base_loss(model, get_batch)
-        println("Base loss for epoch $(epoch): $(loss_base)")
         loss_sum = 0.0
         i = start_batch
-        batch = get_batch(i, model.extra)
+        batch = get_batch(i)
         while !isnothing(batch)
             (;x, y) = batch
-            # @assert x isa CuArray
-            # @assert y isa CuArray
-            loss, grads = Flux.withgradient(m -> calc_loss(m, x, y), model)
-            # loss, grads = Flux.withgradient((model, x, y) -> sum(x .* model.extra), model, x, y)
-            loss /= size(x)[end] * loss_base # Divide by batch size and initial loss
+            loss_batch, grads = Flux.withgradient(m -> calc_loss(m, x, y), model)
+            loss = loss_batch / batch_size
             loss_sum += loss
             Flux.update!(opt_state, model, grads[1])
-            println("Train loss batch #$(i): $(loss)")
+            # println("Train loss batch #$(i): $(loss) from $(loss_raw)")
             yield()
-            # println("k: ", model.extra)
             # if (i % 10) == 0
             #     yhat = model(x)
             #     if sum(abs, yhat) < 0.1 * (seqlen - 2)
@@ -77,10 +136,11 @@ function train(model, opt_state, get_batch; iters=10, start_batch=1)
             #     end
             # end
             i += 1
-            batch = get_batch(i, model.extra)
+            batch = get_batch(i)
         end
-        loss = loss_sum / (i-1)
-        println("Average train loss epoch #$(epoch): $(loss) from $(loss_sum) and $(i-1)")
+        loss_epoch = loss_sum / (i-1)
+        println("After $(i-1) batches, epoch $(epoch) average loss is $(loss_epoch) which is $(loss_epoch / loss_prev) * loss_prev")
+        loss_prev = loss_epoch
         if (now(UTC) - last_save) >= Minute(30)
             # last_save = now(UTC)
             # checkpoint_save()
@@ -89,214 +149,126 @@ function train(model, opt_state, get_batch; iters=10, start_batch=1)
     end
 end
 
-#region Test TSX
+#region TSX
 function setup()
-    (;get_batch, width, obs, k) = make_data()
-    model = make_model(width) |> dev
-    opt = AdamW(1e-3)
+    (;get_batch, input_width, output_width, obs, ys) = make_data()
+    model = make_model(input_width, output_width) |> dev
+    opt = AdamW(hypers().learning_rate)
     opt_state = Flux.setup(opt, model) |> dev
     loss_untrained = calc_base_loss(model, get_batch)
-    global kall = (;model, opt, opt_state, get_batch, loss_untrained, obs, k)
+    global kall = (;model, opt, opt_state, get_batch, loss_untrained, obs, ys)
 end
 
 function calc_base_loss(model, get_batch)
     count = 10
     loss = 0.0
     for i in 1:count
-        loss += calc_loss(model, get_batch(-1, model.extra)...) |> cpu
+        loss += calc_loss(model, get_batch(-1)...)
     end
     loss /= count
+    loss /= hypers().batch_size
     return loss
 end
 
-# ret is coord; tex, vol are predictors
-import ProbMultiKde as pmk
+import DataFiles as dat
+import DataFrames as DF
 function make_data(; ts=DateTime("2020-01-03T21:00:00"))
-    kde = pmk.get_kde(ts)
-    batchsize = 64
-    # obs = reduce(hcat, [[ob.ret, ob.tex, ob.vol] for ob in kde.obs[1:2*batchsize]])
-    obs = reduce(hcat, [[ob.ret, ob.tex, ob.vol] for ob in kde.obs])
-    obs_cols = collect(eachcol(obs))
-    width = size(obs_cols[1], 1)
-    k = fill(0.001, 3)
-    # numcoords = 1
-    # numpreds = 2
-    # width = numcoords + numpreds
-    # m = Matrix{Float32}(undef, width, batchsize)
-    grid_len = 64
-    xbuf = Matrix{Float32}(undef, width, grid_len * batchsize)
-    ybuf = Matrix{Float32}(undef, 1, size(xbuf, 2))
-    function get_batch(batchi, k_model)
-        if batchi == -1
-            batchi = rand(1:div(length(obs_cols), grid_len))
+    (;obs_count, batch_size) = hypers()
+    tsx = dat.get_tsx_for_prob()
+    obs = collect(Matrix(DF.select(tsx, :tex => (x -> x ./ 1000) => :tex, [:extrin, :tex] => ((x, t) -> x ./ sqrt.(t) / 0.05) => :vol)[1:obs_count,:])')
+    ys = tsx.ret[1:obs_count] .- 1.0
+    output_width = hypers().num_bins
+    # obs_cols = collect(eachcol(obs))
+    input_width = size(obs, 1)
+    batch_index_max = div(obs_count, batch_size) # - batch_size
+    xbuf = Matrix{Float32}(undef, input_width, batch_size)
+    ybuf = Matrix{Float32}(undef, output_width, batch_size)
+    function get_batch(batch_index)
+        if batch_index == -1
+            batch_index = rand(1:batch_index_max)
         end
-        # println("getting batch $(batchi)")
-        batchi <= (size(obs, 2) - batchsize) || return nothing
-        for i in 1:batchsize
-            # ((batchi - 1) * batchsize + 1):(batchi * batchsize)
-            ob = obs_cols[(batchi - 1) * batchsize + i]
-            make_grid(xbuf, (i - 1) * grid_len, grid_len, ob)
+        batch_index <= batch_index_max || return nothing
+        start_index = (batch_index - 1) * batch_size
+        for i in 1:batch_size
+            ind = start_index + i
+            xbuf[:,i] = obs[:,ind]
+            ybuf[:,i] = calc_y(ys[ind])
         end
         x = xbuf |> dev
-        kernel_batch3(ybuf, xbuf, k, obs_cols)
-        y = ybuf |> dev
+        # y = Flux.onehotbatch(getindex.(vec(argmax(ybuf; dims=1)), 1), 1:200) |> dev
+        y = calc_ybatch(ybuf) |> dev
+        # y = ybuf |> dev
         return (;x, y)
     end
-    return (;get_batch, width, obs=obs_cols, k)
+    return (;get_batch, input_width, output_width, obs, ys)
 end
 
-function make_grid(m, ind_offset, grid_len, coord)
-    width = size(coord, 1)
-    grid_width = 1.0 / (grid_len + 1)
-    grid = [i * grid_width for i in 1:grid_len]
-    #  collect(grid_width:grid_width:(1.0 - grid_width))
-    ad = mod(coord[1], grid_width)
-    # @show grid_width coord ad
-    # @show ind_offset eachindex(grid)
-    for i in eachindex(grid)
-        g = grid[i]
-        dist = abs(g - coord[1]) / 4
-        m[:, ind_offset + i] = [g + ad, (coord[2:end] .+ (dist .* randoff(width-1, dist)))...]
+import VectorCalcUtil:normalize!,normalize
+calc_y(y) = normalize!(kernel.(y, bins()))
+calc_ybatch(y) = Flux.onehotbatch(getindex.(vec(argmax(y; dims=1)), 1), axes(y, 1))
+
+function kernel(y, bin)
+    k = hypers().k
+    dy = bin - y
+    if y * bin > 0
+        return exp(-(dy^2) / k)
+    else
+        # Opposite sides, lower k
+        return exp(-(dy^2) / (k / 10))
     end
-    return m
 end
+#endregion TSX
 
-randoff(width, off) = rand(width) .* off .- (off/2)
-
-# function make_kernel(sigmas)
-#     # norm = D.MvNormal(zeros(length(sigmas)), sigmas)
-#     return function(actual, x)
-#         # D.pdf(norm, x .- actual)
-#         pmk.kerk(actual, x, sigmas)
-#     end
-# end
-
-# @inline function direct_kernel(actual, x, k)
-#     @assert size(actual) == (3,)
-#     @assert size(x) == (3,)
-#     @assert size(k) == (3,)
-#     return sum(exp.(-elmult(x .- actual) ./ k))
-# end
-
-# function xtobs(m, k, obs)
-#     prod(SM.mapcols(m) do x
-#         sum(SM.mapcols(obs) do ob
-#             diffed_kernel(x .- ob, k)
-#         end; dims=2) ./ size(obs,2)
-#     end; dims=1)
-# end
-
-# function kernel_batch(m, k, obs)
-#     m2 = stack(map(eachcol(m)) do x
-#         SM.mapcols(obs) do ob
-#             -((x .- ob).^2)
-#         end
-#     end)
-#     k1 = k .+ 0.01
-#     k2 = k1.^2 ./ sum(k1)
-#     m3 = exp.(m2 ./ k2)
-#     m4 = dropdims(sum(m3; dims=2); dims=2) ./ size(obs, 2)
-#     if any(!isfinite, k2 |> cpu)
-#         error("k bad stuff")
-#     end
-#     if any(!isfinite, m4 |> cpu)
-#         error("m bad stuff")
-#     end
-#     if any(iszero, k2 |> cpu) #  || any(iszero, m4 |> cpu)
-#         error("zero stuff")
-#     end
-#     m5 = prod(m4; dims=1) # this gives scalar index error when k goes bad (inf or nan?)
-#     # sum(m4; dims=1)
-#     return m5
-# end
-
-@inline function diffed_kernel(dx, k)
-    # @assert size(dx) == (3,)
-    # @assert size(k) == (3,)
-    return exp.(-(dx.^2) ./ k)
-end
-
-@inline function kernel1(dx, k)
-    return exp(-(dx^2) / k)
-end
-
-@inline prod3(x) = x[1] * x[2] * x[3]
-@inline kern(dx, k) = prod3(diffed_kernel(dx, k))
-
-@inline dist2(c, x) = (x[1] - c[1])^2 + (x[2] - c[2])^2 + (x[3] - c[3])^2
-@inline dist2(c, x1, x2, x3) = (x1 - c[1])^2 + (x2 - c[2])^2 + (x3 - c[3])^2
-# function kernel_batch2(m, k, obs_v)
-#     global kkargs = (;m, k, obs_v)
-#     return mapslices(m; dims=1) do x
-#         (_, ind) = findmin(ob -> dist2(ob, x), obs_v)
-#         kern(x .- obs_v[ind], k)
-#     end
-# end
-
-function kernel_batch3(res, m, k, obs_v)
-    global kkargs = (;res, m, k, obs_v)
-    for i in axes(m, 2)
-        x1 = m[1,i]
-        x2 = m[2,i]
-        x3 = m[3,i]
-        (_, ind) = findmin(ob -> dist2(ob, x1, x2, x3), obs_v)
-        nearest = obs_v[ind]
-        y1 = kernel1(x1 - nearest[1], k[1])
-        y2 = kernel1(x1 - nearest[1], k[2])
-        y3 = kernel1(x1 - nearest[1], k[3])
-        res[i] = y1 * y2 * y3
-    end
-    return
-end
-
-function use_kernel(m, k, obs_v)
-    res = Matrix{Float32}(undef, 1, size(m, 2))
-    kernel_batch3(res, m, k, obs_v)
-    return res
-end
-
+#region Test
 test_calc_loss() = calc_loss(kall.model, kall.get_batch(1)...)
 
-function calc_loss(model, x, y)
-    # global kloss = (;model, x_batch, obs, k, y, yhat)
-    # @show size(x_batch) size(obs)
-    # k = model.extra
-    # @show typeof(y) typeof(yhat)
-    # @show size(y) size(yhat)
-
-    # k = [0.01, 0.01, 0.01] ./ 10
-    # (;y, yhat) = yyhat(model, x, model.extra, obs)
-    yhat = model(x)
-    return Flux.Losses.mse(y, yhat)
-    # return Flux.Losses.mae(y, yhat)
+import DrawUtil
+function test_show_kernel(y)
+    ys = calc_y(y)
+    draw(:barplot, bins(), ys)
 end
 
-@inline function yyhat(model, x_batch, k, obs)
-    return (;y = use_kernel(x_batch |> cpu, k, obs), yhat=model(x_batch |> dev))
+function yyhat(model, x, y)
+    # yhat_raw=model(x |> dev) |> cpu
+    return (;y = calc_ybatch(calc_y(y)), (run_model(model, x |> dev) |> cpu)...)
 end
 
-# function test1(x=kall.get_batch(1).x)
-#     (;y, yhat) = yyhat(kall.model, x, kall.model.extra, kall.obs) |> cpu
-# end
+function test1(ind=1)
+    (;y, yhat, yhat_raw) = yyhat(kall.model, kall.obs[:,ind], kall.ys[ind])
+    println(penalties(yhat_raw))
+    return (;y, yhat, yhat_raw)
+end
 
-function show(preds)
-    preds = vec32(preds)
-    rets = vec32(0.0:0.01:1.0)
-    m = Matrix{Float32}(undef, 3, length(rets))
-    for i in eachindex(rets)
-        m[:,i] = [rets[i], preds...]
+function show(ind)
+    xs = bins()
+    (;y, yhat, yhat_raw) = yyhat(kall.model, kall.obs[:,ind], kall.ys[ind])
+    println(penalties(yhat_raw))
+    draw(:barplot, xs, vec(yhat); label="yhat")
+    # draw!(:barplot, xs, vec(yhat_raw); label="yhat_raw")
+    draw!(:barplot, xs, vec(y); label="y")
+    return (;y, yhat, yhat_raw)
+end
+
+function show_comp(param_ind; other=0.5) # 1 = tex, 2 = vol
+    xs = bins()
+    draw(:vlines, 0.0)
+    for val in 0.1:0.1:0.9
+        x = param_ind == 1 ? [val,other] : [other,val]
+        yhat = run_model(kall.model, x |> dev).yhat |> cpu
+        # yhat = map(x -> -log(x), yhat)
+        draw!(:barplot, xs, vec(yhat); label="yhat-$(val)")
     end
-    (;y, yhat) = yyhat(kall.model, m, kall.k, kall.obs)
-    yhat = yhat |> cpu
-    # heights = cpu(kall.model(dev(m)))
-    draw(:barplot, rets, vec(y); label="y")
-    draw!(:barplot, rets, vec(yhat); label="yhat")
-    return (;y,yhat)
 end
-#endregion Test TSX
+#endregion
 
 #region Util
-vec32(v) = collect(Float32, v)
+function precalc_bins()
+    (;num_bins, ret_min, ret_max) = hypers()
+    bin_width = (ret_max - ret_min) / num_bins
+    return [ret_min + bin_width * i for i in 1:num_bins]
+end
+bins() = BINS2[]
+const BINS2 = Ref(precalc_bins())
 #endregion
 
 end
