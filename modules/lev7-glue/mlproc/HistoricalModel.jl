@@ -107,7 +107,7 @@ function _make_data(cfg)
     lfsr = IndexUtil.lfsr(obs_count)
 
     under_size = (DateUtil.TIMES_PER_WEEK * cfg.data_weeks_count, cfg.batch_size)
-    vix_size = (4 * DAYS_PER_WEEK * cfg.data_weeks_count, cfg.batch_size)
+    vix_size = (4 * DateUtil.DAYS_PER_WEEK * cfg.data_weeks_count, cfg.batch_size)
 
     buf_under_row = Vector{Float32}(undef, under_size[1])
     buf_under_mask_row = Vector{Float32}(undef, under_size[1])
