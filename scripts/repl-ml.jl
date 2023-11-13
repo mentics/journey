@@ -1,23 +1,23 @@
-include("repl-base.jl")
+include("repl-simple.jl")
 
 using Dates
-# import IterTools, NamedTupleTools
-# iter = IterTools
-# ntt = NamedTupleTools
 using BaseTypes, OutputUtil, CudaUtil
 
-using Flux, Transformers
-import MLExplore as mlx
+using Flux
+import MLRun as ml
+import HistoricalModel as hm
 
-import SimpleStore as SS
-import MarketHist
-import Trade4Data as T4
+# import MLExplore as mlx
 
-SS.loadTss()
+# import SimpleStore as SS
+# import MarketHist
+# import Trade4Data as T4
 
-MarketHist.populate_curps()
-MarketHist.populate_vixs()
-SS.make_otoqs()
+# SS.loadTss()
 
-import LyzeT4 as lt4
+# MarketHist.populate_curps()
+# MarketHist.populate_vixs()
+# SS.make_otoqs()
+
+# import LyzeT4 as lt4
 ;
