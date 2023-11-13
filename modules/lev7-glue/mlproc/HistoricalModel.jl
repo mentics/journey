@@ -32,7 +32,7 @@ end
 function config()
     (;data_weeks_count, hidden_width_mult) = structure()
     input_width_under = DateUtil.TIMES_PER_WEEK * data_weeks_count
-    vix_count = DAYS_PER_WEEK * data_weeks_count
+    vix_count = DateUtil.DAYS_PER_WEEK * data_weeks_count
     input_width_vix = vix_count * 4
     input_width = input_width_under + input_width_vix
     hidden_width_under = hidden_width_mult * input_width_under
