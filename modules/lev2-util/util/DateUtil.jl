@@ -72,6 +72,7 @@ timeIn(from::Time, to::Time, in::InterTime)::Second = round(span(intersect(Inter
 
 #region Conversions
 fromMarketTZ(d::Date, t::Time)::DateTime = DateTime(ZonedDateTime(DateTime(d, t), DateUtil.MARKET_TZ), UTC)
+toMarketTZ(ts::DateTime) = ZonedDateTime(ts, MARKET_TZ; from_utc=true)
 # toDateMarket(dt::DateTime)::Date = Date(astimezone(ZonedDateTime(dt, tz"UTC"), MARKET_TZ))
 toDateMarket(ts::DateTime)::Date = Date(ZonedDateTime(ts, MARKET_TZ; from_utc=true))
 # toDateLocal(ts::DateTime)::Date = Date(ZonedDateTime(ts, LOCALZONE; from_utc=true))

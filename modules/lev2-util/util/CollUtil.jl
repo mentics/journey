@@ -4,7 +4,7 @@ using BaseTypes
 export cu
 const cu = @__MODULE__
 
-export concat, find, findFrom, ensureVector, sortExp!, del!, prinsert!
+export concat, find, findFrom, ensureVector, sortExp!, del!, prinsert!, flatvec
 # uniqueSortTuple
 
 simEmpty(m) = similar(m, eltype(m), tupSetLast(size(m), 0))
@@ -247,6 +247,7 @@ end
 
 export flat, flatmap, mapflatmap
 flat(x...) = Iterators.flatten(x)
+flatvec(v) = collect(Iterators.flatten(v))
 flatmap(f, coll) = Iterators.flatten(Iterators.map(f, coll))
 mapflatmap(fout, fin, coll) = Iterators.map(fout, Iterators.flatten(Iterators.map(fin, coll)))
 
