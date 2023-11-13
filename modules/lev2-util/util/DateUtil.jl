@@ -216,4 +216,8 @@ function week_start_market(ts; time=Time(10,0))
     DateUtil.fromMarketTZ(Date(Dates.firstdayofweek(ts)), time)
 end
 
+const TIMES_PER_DAY = 12 # Dates.value(convert(Minute, Time(15, 30) - Time(10,0))) / 30 + 1, +1 to include endpoint
+const DAYS_PER_WEEK = 5
+const TIMES_PER_WEEK = TIMES_PER_DAY * DAYS_PER_WEEK
+
 end

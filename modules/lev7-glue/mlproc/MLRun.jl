@@ -20,7 +20,7 @@ function setup end
 function make_model end
 function make_data end
 function make_loss_func end
-make_opt(mod) = AdamW(mod.config().learning_rate_func(0, 0, 0f0))
+make_opt(mod, loss_untrained) = AdamW(mod.config().learning_rate_func(1, 1, loss_untrained))
 run_model(mod, model, batch) = model(batch)
 
 function reset(mod)
@@ -28,11 +28,11 @@ function reset(mod)
     println("Created model with param count: ", sum(length, Flux.params(model)))
     (;get_batch, batch_size, batch_count) = make_data(mod)
     calc_loss = make_loss_func(mod)
-    opt = make_opt(mod)
-    opt_state = Flux.setup(opt, model) |> dev
     base_loss = () -> calc_base_loss(model, calc_loss, get_batch, batch_count)
     loss_untrained = base_loss()
     learning_rate = mod.config().learning_rate_func
+    opt = make_opt(mod, loss_untrained)
+    opt_state = Flux.setup(opt, model) |> dev
     global kall = (;model, opt, opt_state, get_batch, loss_untrained, calc_loss, base_loss, batch_count, batch_size, learning_rate)
     return
 end

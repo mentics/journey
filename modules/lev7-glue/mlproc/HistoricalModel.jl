@@ -6,9 +6,47 @@ import DateUtil, IndexUtil
 import DataFiles as dat
 import MLRun
 
-const TIMES_PER_DAY2 = 12 # Dates.value(convert(Minute, Time(15, 30) - Time(10,0))) / 30 + 1, +1 to include endpoint
-const DAYS_PER_WEEK = 5
-const TIMES_PER_WEEK2 = TIMES_PER_DAY2 * DAYS_PER_WEEK
+#region Config
+structure() = (;
+    data_weeks_count = 4,
+    encoded_width = 64,
+    block_count = 4,
+    layers_per_block = 4,
+    hidden_width_mult = 4,
+    activation = NNlib.swish,
+    # skip_layer = true,
+    batch_size = 1024,
+    use_bias = false,
+)
+hypers() = (;
+    learning_rate_func = learning_rate,
+)
+
+# lr_const(_...) = 1e-3
+function learning_rate(epoch, loss_prev, loss)
+    lr = 1e-3 / (1 + epoch)
+    println("Updating learning rate: $(lr)")
+    return lr
+end
+
+function config()
+    (;data_weeks_count, hidden_width_mult) = structure()
+    input_width_under = DateUtil.TIMES_PER_WEEK * data_weeks_count
+    vix_count = DAYS_PER_WEEK * data_weeks_count
+    input_width_vix = vix_count * 4
+    input_width = input_width_under + input_width_vix
+    hidden_width_under = hidden_width_mult * input_width_under
+    hidden_width_vix = hidden_width_mult * input_width_vix
+    hidden_width = hidden_width_mult * input_width
+    return (;
+        structure()...,
+        hypers()...,
+        vix_count,
+        input_width_under, input_width_vix, input_width,
+        hidden_width_under, hidden_width_vix, hidden_width,
+    )
+end
+#endregion Config
 
 #region MLRun Interface
 MLRun.make_data(mod::typeof(@__MODULE__)) = _make_data(mod.config())
@@ -37,49 +75,6 @@ MLRun.make_loss_func(mod::typeof(@__MODULE__)) = function(model, batch)
 end
 #endregion MLRun Interface
 
-#region Config
-structure() = (;
-    data_weeks_count = 8,
-    encoded_width = 256,
-    block_count = 2,
-    layers_per_block = 4,
-    hidden_width_mult = 2,
-    activation = NNlib.swish,
-    # skip_layer = true,
-    batch_size = 64,
-    use_bias = false,
-)
-
-# lr_const(_...) = 1e-3
-function learning_rate(epoch, loss_prev, loss)
-    lr = 1e-3 / (1 + epoch)
-    println("Updating learning rate: $(lr)")
-    return lr
-end
-
-hypers() = (;
-    learning_rate_func = learning_rate,
-)
-
-function config()
-    (;data_weeks_count, hidden_width_mult) = structure()
-    input_width_under = TIMES_PER_WEEK2 * data_weeks_count
-    vix_count = DAYS_PER_WEEK * data_weeks_count
-    input_width_vix = vix_count * 4
-    input_width = input_width_under + input_width_vix
-    hidden_width_under = hidden_width_mult * input_width_under
-    hidden_width_vix = hidden_width_mult * input_width_vix
-    hidden_width = hidden_width_mult * input_width
-    return (;
-        structure()...,
-        hypers()...,
-        vix_count,
-        input_width_under, input_width_vix, input_width,
-        hidden_width_under, hidden_width_vix, hidden_width,
-    )
-end
-#endregion Config
-
 #region Types
 struct SplitLayer{L,W}
     layers::L
@@ -98,7 +93,7 @@ end
 to_float_mz(x) = ismissing(x) ? 0f0 : Float32(x)
 
 function _make_data(cfg)
-    skip_back_count = TIMES_PER_WEEK2 * cfg.data_weeks_count
+    skip_back_count = DateUtil.TIMES_PER_WEEK * cfg.data_weeks_count
 
     df_under = dat.ts_allperiods_df()
     obs_ts = filter(:under => !ismissing, dat.ts_allperiods_df()).ts[skip_back_count:end]
@@ -111,7 +106,7 @@ function _make_data(cfg)
 
     lfsr = IndexUtil.lfsr(obs_count)
 
-    under_size = (TIMES_PER_WEEK2 * cfg.data_weeks_count, cfg.batch_size)
+    under_size = (DateUtil.TIMES_PER_WEEK * cfg.data_weeks_count, cfg.batch_size)
     vix_size = (4 * DAYS_PER_WEEK * cfg.data_weeks_count, cfg.batch_size)
 
     buf_under_row = Vector{Float32}(undef, under_size[1])
@@ -135,7 +130,7 @@ function _make_data(cfg)
 
             ts_start = DateUtil.week_start_market(date - Week(cfg.data_weeks_count - 1))
             inds = get_inds_under(cfg, df_under, date, ts_start)
-            @assert Week(7) <= round(ts - df_under.ts[inds[1]], Week) <= Week(8)
+            @assert Week(cfg.data_weeks_count-1) <= round(ts - df_under.ts[inds[1]], Week) <= Week(cfg.data_weeks_count)
 
             make_row_under!(buf_under_row, buf_under_mask_row, df_under, inds, targeti)
             make_row_vix!(buf_vix_row, buf_vix_mask_row, df_vix, Date(ts_start), date)
@@ -162,16 +157,17 @@ function get_times_under(cfg, date)
     date_to = lastdayofweek(date) - Day(2)
     times = DateUtil.all_weekday_ts(; date_from, date_to)
     global ktimes = times
-    @assert round(times[end] - times[1], Day) == Day(7*7+4)
-    # daylight savings time makes it in range
-    @assert 76650-60 <= Dates.value(convert(Minute, times[end] - times[1])) <= 76650+60 "$(Dates.value(convert(Minute, times[end] - times[1])))"
+    @assert round(times[end] - times[1], Day) == Day((cfg.data_weeks_count - 1) * 7 + 4)
+    # daylight savings time makes it a range
+    base = (cfg.data_weeks_count - 1) * Dates.value(convert(Minute, Week(1))) + 6090
+    @assert base-60 <= Dates.value(convert(Minute, times[end] - times[1])) <= base+60 "$(Dates.value(convert(Minute, times[end] - times[1])))"
     return times
 end
 
 function get_inds_under(cfg, df, date, ts_start)
     ind_start = searchsortedfirst(df.ts, ts_start)
-    ind_end = ind_start + cfg.data_weeks_count * TIMES_PER_WEEK2 - 1
-    # @assert (ind_end - ind_start) + 1 == TIMES_PER_WEEK2 * cfg.data_weeks_count
+    ind_end = ind_start + cfg.data_weeks_count * DateUtil.TIMES_PER_WEEK - 1
+    # @assert (ind_end - ind_start) + 1 == DateUtil.TIMES_PER_WEEK * cfg.data_weeks_count
     inds = ind_start:ind_end
     # asserts
     times = get_times_under(cfg, date)
@@ -187,7 +183,7 @@ function make_row_under!(buf, buf_mask, df, inds, targeti)
     @assert cur != 0f0
     bufi = 1
     for dfi in inds
-        @assert -TIMES_PER_WEEK2 <= (targeti - inds[1]) < size(buf, 1) "assert i:$(i): $(-TIMES_PER_WEEK2) <= $(targeti) - $(ind) ($(targeti - ind)) < $(size(buf, 1))"
+        @assert -DateUtil.TIMES_PER_WEEK <= (targeti - inds[1]) < size(buf, 1) "assert i:$(i): $(-DateUtil.TIMES_PER_WEEK) <= $(targeti) - $(ind) ($(targeti - ind)) < $(size(buf, 1))"
         x = df.under[dfi]
         if dfi > targeti || x <= 0f0
             # println("skipping $(dfi) > $(targeti) || $(x) <= 0f0")
@@ -221,7 +217,7 @@ end
 #     ind_start = searchsortedfirst(df.ts, ts_start)
 #     for i in axes(buf, 1)
 #         ind = ind_start + i - 1
-#         @assert -TIMES_PER_WEEK2 <= (targeti - ind) < size(buf, 1) "assert i:$(i): $(-TIMES_PER_WEEK2) <= $(targeti) - $(ind) ($(targeti - ind)) < $(size(buf, 1))"
+#         @assert -DateUtil.TIMES_PER_WEEK <= (targeti - ind) < size(buf, 1) "assert i:$(i): $(-DateUtil.TIMES_PER_WEEK) <= $(targeti) - $(ind) ($(targeti - ind)) < $(size(buf, 1))"
 #         x = df.under[ind]
 #         if ind > targeti || x <= 0f0
 #             println("skipping $(ind) > $(targeti) || $(x) <= 0f0")
