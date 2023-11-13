@@ -13,6 +13,7 @@ import DataFilesExplore as dfe
 # using DataFrames
 
 import Flux:gpu
-import ProbML as ml
+import MLRun as ml
+import HistoricalModel as hm
 
 # ml.setup()

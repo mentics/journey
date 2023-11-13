@@ -95,7 +95,7 @@ const TS_MAX2 = DateTime("2023-06-30T20:00:00")
 #region Loaders
 
 #region Paths
-basepath() = Sys.iswindows() ? joinpath("D:\\", "data", "db") : "/home/jshellman/data/db/market"
+basepath() = Sys.iswindows() ? joinpath("D:\\", "data", "db") : "/home/jshellman/data/db"
 baseincoming() = joinpath(basepath(), "incoming", "optionsdx")
 path_chains() = joinpath(basepath(), "market", "spy", "chains")
 path_calls(y, m) = joinpath(path_chains(), "calls", "calls-$(datestr(y, m)).arrow")

@@ -11,10 +11,6 @@ const DAYS_PER_WEEK = 5
 const TIMES_PER_WEEK2 = TIMES_PER_DAY2 * DAYS_PER_WEEK
 
 #region MLRun Interface
-function config_all end
-
-# MLRun.make_data(m::typeof(@__MODULE__)) = println("it worked! $(m)")
-
 MLRun.make_data(mod::typeof(@__MODULE__)) = _make_data(mod.config())
 
 function MLRun.make_model(mod::typeof(@__MODULE__))
