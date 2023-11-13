@@ -46,7 +46,8 @@ structure() = (;
     hidden_width_mult = 2,
     activation = NNlib.swish,
     # skip_layer = true,
-    batch_size = 512,
+    batch_size = 64,
+    use_bias = false,
 )
 
 # lr_const(_...) = 1e-3
@@ -277,12 +278,12 @@ function make_row_vix!(buf, buf_mask, df, date_from, date_before)
 end
 
 function model_encoder(cfg)
-    input_under = Dense(cfg.input_width_under => cfg.hidden_width_under; bias=true)
-    input_vix = Dense(cfg.input_width_vix => cfg.hidden_width_vix; bias=true)
+    input_under = Dense(cfg.input_width_under => cfg.hidden_width_under; bias=cfg.use_bias)
+    input_vix = Dense(cfg.input_width_vix => cfg.hidden_width_vix; bias=cfg.use_bias)
     layer_input = Parallel(vcat; input_under, input_vix)
     through_width = cfg.hidden_width_under + cfg.hidden_width_vix
     blocks = [SkipConnection(make_block(cfg, through_width, cfg.hidden_width, cfg.layers_per_block), +) for _ in 1:cfg.block_count]
-    layer_output = Dense(through_width => cfg.encoded_width)
+    layer_output = Dense(through_width => cfg.encoded_width; bias=false)
     return Chain(;encoder_input=layer_input, encoder_blocks=Chain(blocks...), encoder_output=layer_output)
 end
 
@@ -300,8 +301,8 @@ function model_decoder(cfg)
     through_width = cfg.hidden_width_under + cfg.hidden_width_vix
     layer_input = Dense(cfg.encoded_width => through_width, cfg.activation; bias=false)
     blocks = [SkipConnection(make_block(cfg, through_width, cfg.hidden_width, cfg.layers_per_block), +) for _ in 1:cfg.block_count]
-    output_under = Dense(cfg.hidden_width_under => cfg.input_width_under; bias=true)
-    output_vix = Dense(cfg.hidden_width_vix => cfg.input_width_vix; bias=true)
+    output_under = Dense(cfg.hidden_width_under => cfg.input_width_under; bias=cfg.use_bias)
+    output_vix = Dense(cfg.hidden_width_vix => cfg.input_width_vix; bias=cfg.use_bias)
     layer_output = SplitLayer((output_under, output_vix), cfg.hidden_width_under)
     # layer_output = in -> (output_under(in[1:cfg.hidden_width_under,:]), output_vix(in[cfg.hidden_width_under+1:cfg.hidden_width]))
     return Chain(decoder_input=layer_input, decoder_blocks=Chain(blocks...), decoder_output=layer_output)

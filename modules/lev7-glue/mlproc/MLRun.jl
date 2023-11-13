@@ -47,6 +47,7 @@ function run(mod; epochs=10, fold_count=5)
 end
 
 function train(model, opt_state, get_batch, calc_loss, base_loss, cv, learning_rate; epochs=10)
+    MAX_OUTPUT_PERIOD = Second(4)
     println("Training beginning...")
     last_save = now(UTC)
     loss_prev = base_loss()
@@ -56,6 +57,7 @@ function train(model, opt_state, get_batch, calc_loss, base_loss, cv, learning_r
         loss_sum = 0.0
         i = 0
         for foldi in axes(cv.folds, 1)
+            output_time = now(UTC)
             cv_inds = IndexUtil.inds_for_fold(cv, foldi)
             bi = 1
             for batchi in cv_inds.train
@@ -67,7 +69,10 @@ function train(model, opt_state, get_batch, calc_loss, base_loss, cv, learning_r
                 push!(losses, (epoch, foldi, batchi, loss))
                 yield()
                 Flux.update!(opt_state, model, grads[1])
-                println("epoch: $(epoch), fold: $(foldi), batch: $(bi) / $(length(cv_inds.train)) ($(batchi)) - Training loss $(loss)")
+                if now(UTC) - output_time > MAX_OUTPUT_PERIOD
+                    println("epoch: $(epoch), fold: $(foldi), batch: $(bi) / $(length(cv_inds.train)) ($(batchi)) - Training loss $(loss)")
+                    output_time = now(UTC)
+                end
                 bi += 1
             end
 
@@ -77,6 +82,7 @@ function train(model, opt_state, get_batch, calc_loss, base_loss, cv, learning_r
                 loss_validation += calc_loss(model, batch)
             end
             loss_validation /= size(cv_inds.validation, 1)
+
             println("Epoch $(epoch), fold $(foldi) - Validation loss #$(i): $(loss_validation)")
         end
         loss_epoch = loss_sum / i
