@@ -22,18 +22,19 @@ function make_data end
 function make_loss_func end
 make_opt(mod, loss_untrained) = AdamW(mod.config().learning_rate_func(1, 1, loss_untrained))
 run_model(mod, model, batch) = model(batch)
+run_encode(mod, model, batch) = model.layers.encoder(batch)
 
 function reset(mod)
     model = make_model(mod) |> dev
     println("Created model with param count: ", sum(length, Flux.params(model)))
-    (;get_batch, batch_size, batch_count) = make_data(mod)
+    (;get_batch, batch_size, batch_count, get_inds, obs_count) = make_data(mod)
     calc_loss = make_loss_func(mod)
     base_loss = () -> calc_base_loss(model, calc_loss, get_batch, batch_count)
     loss_untrained = base_loss()
     learning_rate = mod.config().learning_rate_func
     opt = make_opt(mod, loss_untrained)
     opt_state = Flux.setup(opt, model) |> dev
-    global kall = (;model, opt, opt_state, get_batch, loss_untrained, calc_loss, base_loss, batch_count, batch_size, learning_rate)
+    global kall = (;model, opt, opt_state, get_batch, get_inds, obs_count, loss_untrained, calc_loss, base_loss, batch_count, batch_size, learning_rate)
     return
 end
 
@@ -106,6 +107,18 @@ function calc_base_loss(model, calc_loss, get_batch, batch_count)
     return loss
 end
 
+using JLD2
+function save(path)
+    model_state = Flux.state(cpu(kall.model))
+    opt_state = cpu(kall.opt_state)
+    jldsave(path; model_state, opt_state)
+end
+function load(path)
+    model_state, opt_state = JLD2.load(path, "model_state", "opt_state")
+    Flux.loadmodel!(kall.model, model_state)
+    Flux.loadmodel!(kall.opt_state, opt_state)
+end
+
 function check(mod, batchi)
     batch = kall.get_batch(0, batchi) |> dev
     yhat = run_model(mod, kall.model, batch)
@@ -116,6 +129,18 @@ function check(mod, batchi)
     #       print("$(under[i,j]),")
     #     end
     #   end
+end
+
+function latent_space(mod)
+    # return run_encode(mod, kall.model, kall.get_batch(0, 1) |> dev)
+    data = mapreduce(hcat, 1:kall.batch_count) do batchi
+        batch = kall.get_batch(0, batchi) |> dev
+        return run_encode(mod, kall.model, batch) |> cpu
+    end
+    inds = mapreduce(vcat, 1:kall.batch_count) do batchi
+        kall.get_inds(0, batchi)
+    end
+    return (;data, inds)
 end
 
 end
