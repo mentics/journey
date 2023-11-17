@@ -25,8 +25,8 @@ function most_recently_modified(dir)
     return first(sort!(filter!(isfile, readdir(dir; sort=false, join=true)); rev=true, by=mtime))
 end
 
-const ROOT = normpath("/")
-default_path_shared() = Sys.iswindows() ? joinpath("Z:", ROOT, "journey") : joinpath(ROOT, "shared", "journey")
+const ROOT_SHARED = Sys.iswindows() ? abspath("S:") : abspath("/shared")
+root_shared() = joinpath(ROOT_SHARED, "journey")
 
 function writeStr(path::AStr, str::AStr)
     open(path, "w") do io

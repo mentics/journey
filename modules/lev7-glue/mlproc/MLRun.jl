@@ -1,7 +1,8 @@
 module MLRun
 using Dates
 using CUDA
-import Flux:Flux,cpu,gpu,AdamW
+import Flux:Flux,cpu,gpu
+import Optimisers:Lion
 using DateUtil, FileUtil, IndexUtil
 
 CUDA.allowscalar(false)
@@ -14,13 +15,13 @@ hypers()
 make_data(type instance)
 make_model(type instance)
 make_loss_func(type instance)
-make_opt(type instance) # default is AdamW
+make_opt(type instance) # default is Lion
 =#
 function setup end
 function make_model end
 function make_data end
 function make_loss_func end
-make_opt(learning_rate_func, loss_untrained) = AdamW(learning_rate_func(1, 1, loss_untrained))
+make_opt(learning_rate_func, loss_untrained) = Lion(learning_rate_func(0, 0f0, loss_untrained))
 
 function reset(mod)
     model = mod.make_model() |> dev
@@ -106,7 +107,7 @@ function calc_base_loss(model, calc_loss, get_batch, batch_count)
     return loss
 end
 
-path_default_base() = joinpath(FileUtil.default_path_shared(), "mlrun")
+path_default_base() = joinpath(FileUtil.root_shared(), "mlrun")
 path_default_base(mod) = joinpath(path_default_base(), string(mod))
 
 using JLD2
