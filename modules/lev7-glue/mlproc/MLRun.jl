@@ -2,7 +2,7 @@ module MLRun
 using Dates
 using CUDA
 import Flux:Flux,cpu,gpu,AdamW
-using IndexUtil
+using DateUtil, FileUtil, IndexUtil
 
 CUDA.allowscalar(false)
 dev(x) = gpu(x) # gpu(x)
@@ -112,10 +112,11 @@ path_default_base(mod) = joinpath(path_default_base(), string(mod))
 using JLD2
 function save(path_base=path_default_base(kall.mod))
     mkpath(path_base)
-    path = joinpath(path_base, "$(mod)-$(DateUtil.file_ts()).jld2")
+    path = joinpath(path_base, "$(kall.mod)-$(DateUtil.file_ts()).jld2")
     model_state = Flux.state(cpu(kall.model))
     opt_state = cpu(kall.opt_state)
     jldsave(path; model_state, opt_state)
+    println("Saved model and opt_state to $(path)")
 end
 function load(path=path_default_base(kall.mod))
     if isdir(path)
@@ -125,6 +126,7 @@ function load(path=path_default_base(kall.mod))
     model_state, opt_state = JLD2.load(path, "model_state", "opt_state")
     Flux.loadmodel!(kall.model, model_state)
     Flux.loadmodel!(kall.opt_state, opt_state)
+    println("Loaded model and opt_state from $(path)")
 end
 
 function check(mod, batchi)

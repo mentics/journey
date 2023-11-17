@@ -22,7 +22,7 @@ writeJson(path, o) = open(path, "w") do io; JSON3.pretty(io, o; allow_inf=true) 
 
 function most_recently_modified(dir)
     # sort!(readdir("/data/tmp"; sort=false, join=true); rev=true, by=mtime)
-    return first(Iterators.sort(filter(isfile, readdir(dir; sort=false, join=true)); rev=true, by=mtime))
+    return first(sort!(filter!(isfile, readdir(dir; sort=false, join=true)); rev=true, by=mtime))
 end
 
 const ROOT = normpath("/")
