@@ -20,19 +20,17 @@ function setup end
 function make_model end
 function make_data end
 function make_loss_func end
-make_opt(mod, loss_untrained) = AdamW(mod.config().learning_rate_func(1, 1, loss_untrained))
-run_model(mod, model, batch) = model(batch)
-run_encode(mod, model, batch) = model.layers.encoder(batch)
+make_opt(learning_rate_func, loss_untrained) = AdamW(learning_rate_func(1, 1, loss_untrained))
 
 function reset(mod)
-    model = make_model(mod) |> dev
+    model = mod.make_model() |> dev
     println("Created model with param count: ", sum(length, Flux.params(model)))
-    (;get_batch, batch_size, batch_count, get_inds, obs_count) = make_data(mod)
-    calc_loss = make_loss_func(mod)
+    (;get_batch, batch_size, batch_count, get_inds, obs_count) = mod.make_data()
+    calc_loss = mod.make_loss_func()
     base_loss = () -> calc_base_loss(model, calc_loss, get_batch, batch_count)
     loss_untrained = base_loss()
-    learning_rate = mod.config().learning_rate_func
-    opt = make_opt(mod, loss_untrained)
+    learning_rate = mod.learning_rate_func
+    opt = isdefined(mod, :make_opt) ? mod.make_opt(loss_untrained) : make_opt(learning_rate, loss_untrained)
     opt_state = Flux.setup(opt, model) |> dev
     global kall = (;model, opt, opt_state, get_batch, get_inds, obs_count, loss_untrained, calc_loss, base_loss, batch_count, batch_size, learning_rate)
     return
@@ -132,10 +130,10 @@ function check(mod, batchi)
 end
 
 function latent_space(mod)
-    # return run_encode(mod, kall.model, kall.get_batch(0, 1) |> dev)
+    # return mod.run_encode(kall.model, kall.get_batch(0, 1) |> dev)
     data = mapreduce(hcat, 1:kall.batch_count) do batchi
         batch = kall.get_batch(0, batchi) |> dev
-        return run_encode(mod, kall.model, batch) |> cpu
+        return mod.run_encode(kall.model, batch) |> cpu
     end
     inds = mapreduce(vcat, 1:kall.batch_count) do batchi
         kall.get_inds(0, batchi)

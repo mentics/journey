@@ -4,33 +4,30 @@ using Flux, MLUtils, CUDA
 import NNlib
 import DateUtil, IndexUtil
 import DataFiles as dat
-import MLRun
+using ModelUtil, TrainUtil
+
+function trained_model()
+    return
+end
 
 #region Config
-structure() = (;
+model_hypers() = (;
     data_weeks_count = 4,
     encoded_width = 64,
     block_count = 4,
     layers_per_block = 4,
     hidden_width_mult = 4,
     activation = NNlib.swish,
-    # skip_layer = true,
-    batch_size = 1024,
     use_bias = false,
-)
-hypers() = (;
-    learning_rate_func = learning_rate,
+    # skip_layer = true,
 )
 
-# lr_const(_...) = 1e-3
-function learning_rate(epoch, loss_prev, loss)
-    lr = 1e-3 / (1 + epoch)
-    println("Updating learning rate: $(lr)")
-    return lr
-end
+train_hypers() = (;
+    batch_size = 1024,
+)
 
 function config()
-    (;data_weeks_count, hidden_width_mult) = structure()
+    (;data_weeks_count, hidden_width_mult) = model_hypers()
     input_width_under = DateUtil.TIMES_PER_WEEK * data_weeks_count
     vix_count = DateUtil.DAYS_PER_WEEK * data_weeks_count
     input_width_vix = vix_count * 4
@@ -39,8 +36,8 @@ function config()
     hidden_width_vix = hidden_width_mult * input_width_vix
     hidden_width = hidden_width_mult * input_width
     return (;
-        structure()...,
-        hypers()...,
+        model_hypers()...,
+        train_hypers()...,
         vix_count,
         input_width_under, input_width_vix, input_width,
         hidden_width_under, hidden_width_vix, hidden_width,
@@ -49,14 +46,16 @@ end
 #endregion Config
 
 #region MLRun Interface
-MLRun.make_data(mod::typeof(@__MODULE__)) = _make_data(mod.config())
+make_data() = _make_data(config())
 
-function MLRun.make_model(mod::typeof(@__MODULE__))
-    cfg = mod.config()
+function make_model()
+    cfg = config()
     return Chain(; encoder=model_encoder(cfg), decoder=model_decoder(cfg))
 end
 
-function MLRun.run_model(mod::typeof(@__MODULE__), model, batch)
+learning_rate_func = TrainUtil.learning_rate_linear_decay()
+
+function run_model(model, batch)
     (;under, under_mask, vix, vix_mask) = batch
     (yhat_under_raw, yhat_vix_raw) = model((under, vix))
     yhat_under = yhat_under_raw .* under_mask
@@ -64,14 +63,14 @@ function MLRun.run_model(mod::typeof(@__MODULE__), model, batch)
     return (yhat_under, yhat_vix)
 end
 
-function MLRun.run_encode(mod::typeof(@__MODULE__), model, batch)
+function run_encode(model, batch)
     # It's expected that the input is already masked, so no need to multiple it by the mask
     (;under, vix) = batch
     return model.layers.encoder((under, vix))
 end
 
-MLRun.make_loss_func(mod::typeof(@__MODULE__)) = function(model, batch)
-    (yhat_under, yhat_vix) = MLRun.run_model(mod, model, batch)
+make_loss_func() = function(model, batch)
+    (yhat_under, yhat_vix) = run_model(model, batch)
 
     # l = Flux.mse(yhat_under, under) + Flux.mse(yhat_vix, vix)
     (;under, vix) = batch
@@ -80,21 +79,6 @@ MLRun.make_loss_func(mod::typeof(@__MODULE__)) = function(model, batch)
     return l
 end
 #endregion MLRun Interface
-
-#region Types
-struct SplitLayer{L,W}
-    layers::L
-    split::W
-end
-Flux.@functor SplitLayer
-
-function (m::SplitLayer)(x)
-    return (
-        m.layers[1](x[1:m.split,:]),
-        m.layers[2](x[(m.split+1):end,:])
-    )
-end
-#endregion
 
 to_float_mz(x) = ismissing(x) ? 0f0 : Float32(x)
 
@@ -131,7 +115,7 @@ function _make_data(cfg)
     obs_count = size(dfs.obs, 1)
     batch_count = (obs_count - cfg.input_width_under) ÷ cfg.batch_size
     lfsr = IndexUtil.lfsr(obs_count)
-    sizes = sizes(cfg)
+    sizes = data_sizes(cfg)
 
     bufs_row = make_bufs_row(sizes)
     under = Array{Float32, 2}(undef, sizes.under...)
@@ -171,7 +155,7 @@ function _make_data(cfg)
     return (;get_batch, batch_count, cfg.batch_size, get_inds, obs_count)
 end
 
-sizes(cfg) = (;
+data_sizes(cfg) = (;
     under = (DateUtil.TIMES_PER_WEEK * cfg.data_weeks_count, cfg.batch_size),
     vix = (4 * DateUtil.DAYS_PER_WEEK * cfg.data_weeks_count, cfg.batch_size)
 )
