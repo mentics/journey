@@ -911,4 +911,8 @@ end
 # end
 #endregion
 
+#region Util
+missing_to_zero_float(x) = ismissing(x) ? 0f0 : Float32(x)
+#endregion
+
 end

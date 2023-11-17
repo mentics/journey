@@ -4,6 +4,7 @@ using Flux, MLUtils, CUDA
 import NNlib
 import DateUtil, IndexUtil
 import DataFiles as dat
+import DataFiles:missing_to_zero_float
 using ModelUtil, TrainUtil
 
 function trained_model()
@@ -80,8 +81,6 @@ make_loss_func() = function(model, batch)
 end
 #endregion MLRun Interface
 
-to_float_mz(x) = ismissing(x) ? 0f0 : Float32(x)
-
 const CACHE_DF_UNDER2 = Ref{DataFrame}()
 const CACHE_DF_VIX2 = Ref{DataFrame}()
 const CACHE_OBS = Ref{Vector{DateTime}}()
@@ -90,11 +89,11 @@ function get_data()
     cfg = config()
     if !isassigned(CACHE_OBS)
         under = dat.ts_allperiods_df()
-        dat.convert_cols!(to_float_mz, under, :under)
+        dat.convert_cols!(missing_to_zero_float, under, :under)
         CACHE_DF_UNDER2[] = under
 
         vix = dat.vix_alldates_df()
-        dat.convert_cols!(to_float_mz, vix, :open, :high, :low, :close)
+        dat.convert_cols!(missing_to_zero_float, vix, :open, :high, :low, :close)
         CACHE_DF_VIX2[] = vix
 
         skip_back_count = DateUtil.TIMES_PER_WEEK * cfg.data_weeks_count + 1 # +1 for the current ts

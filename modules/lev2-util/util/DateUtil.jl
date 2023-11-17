@@ -220,4 +220,6 @@ const TIMES_PER_DAY = 12 # Dates.value(convert(Minute, Time(15, 30) - Time(10,0)
 const DAYS_PER_WEEK = 5
 const TIMES_PER_WEEK = TIMES_PER_DAY * DAYS_PER_WEEK
 
+file_ts(ts=now(UTC)) = Dates.format(now(UTC),"yyyymmdd-HHmmSS")
+
 end

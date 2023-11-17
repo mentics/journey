@@ -29,10 +29,11 @@ function reset(mod)
     calc_loss = mod.make_loss_func()
     base_loss = () -> calc_base_loss(model, calc_loss, get_batch, batch_count)
     loss_untrained = base_loss()
+    println("Loss untrained: $(loss_untrained)")
     learning_rate = mod.learning_rate_func
     opt = isdefined(mod, :make_opt) ? mod.make_opt(loss_untrained) : make_opt(learning_rate, loss_untrained)
     opt_state = Flux.setup(opt, model) |> dev
-    global kall = (;model, opt, opt_state, get_batch, get_inds, obs_count, loss_untrained, calc_loss, base_loss, batch_count, batch_size, learning_rate)
+    global kall = (;mod, model, opt, opt_state, get_batch, get_inds, obs_count, loss_untrained, calc_loss, base_loss, batch_count, batch_size, learning_rate)
     return
 end
 
@@ -105,13 +106,22 @@ function calc_base_loss(model, calc_loss, get_batch, batch_count)
     return loss
 end
 
+path_default_base() = joinpath(FileUtil.default_path_shared(), "mlrun")
+path_default_base(mod) = joinpath(path_default_base(), string(mod))
+
 using JLD2
-function save(path)
+function save(path_base=path_default_base(kall.mod))
+    mkpath(path_base)
+    path = joinpath(path_base, "$(mod)-$(DateUtil.file_ts()).jld2")
     model_state = Flux.state(cpu(kall.model))
     opt_state = cpu(kall.opt_state)
     jldsave(path; model_state, opt_state)
 end
-function load(path)
+function load(path=path_default_base(kall.mod))
+    if isdir(path)
+        path = FileUtil.most_recently_modified(path)
+        @assert !isnothing(path) "no files in path $(path)"
+    end
     model_state, opt_state = JLD2.load(path, "model_state", "opt_state")
     Flux.loadmodel!(kall.model, model_state)
     Flux.loadmodel!(kall.opt_state, opt_state)
