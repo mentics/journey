@@ -83,7 +83,7 @@ function mlrun()
         run_model = batch -> run_model(training_model, batch),
         infer = batch -> run_encode(inference_model, batch),
         batches,
-        get_learning_rate = TrainUtil.lr_cycle_decay(),
+        get_learning_rate = TrainUtil.learning_rate_linear_decay(), # TrainUtil.lr_cycle_decay(),
         get_loss = calc_loss,
     )
     return state
