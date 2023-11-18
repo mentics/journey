@@ -14,12 +14,12 @@ end
 
 #region Config
 model_hypers() = (;
-    version = "latent24mult1block1drop1z",
+    version = "latent24mult2block2drop2z",
     data_weeks_count = 5,
     encoded_width = 24,
-    block_count = 1,
+    block_count = 2,
     layers_per_block = 2,
-    hidden_width_mult = 1,
+    hidden_width_mult = 2,
     activation = NNlib.swish,
     use_bias = false,
     # skip_layer = true,
@@ -488,7 +488,7 @@ function model_encoder(cfg)
     blocks1_count = floor(Int, cfg.block_count / 2)
     blocks2_count = cfg.block_count - blocks1_count
     blocks1 = [SkipConnection(make_block(cfg, through_width, cfg.hidden_width, cfg.layers_per_block), +) for _ in 1:blocks1_count]
-    dropout = Dropout(0.1)
+    dropout = Dropout(0.2)
     blocks2 = [SkipConnection(make_block(cfg, through_width, cfg.hidden_width, cfg.layers_per_block), +) for _ in 1:blocks2_count]
 
     layer_output = Dense(through_width => cfg.encoded_width; bias=false)
