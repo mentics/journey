@@ -102,7 +102,7 @@ function get_data()
         dat.convert_cols!(missing_to_zero_float, vix, :open, :high, :low, :close)
         CACHE_DF_VIX2[] = vix
 
-        bad_dates = vix.date[findall(iszero, dfs.vix.close)]
+        bad_dates = vix.date[findall(iszero, vix.close)]
 
         skip_back_count = DateUtil.TIMES_PER_WEEK * cfg.data_weeks_count + 1 # +1 for the current ts
         # obs_ts = filter(:under => !ismissing, df_ts).ts[skip_back_count:end]
