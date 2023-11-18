@@ -14,19 +14,19 @@ end
 
 #region Config
 model_hypers() = (;
-    version = "latent32mult2drop1zp",
+    version = "latent24mult1block1drop1z",
     data_weeks_count = 5,
-    encoded_width = 32,
-    block_count = 2,
+    encoded_width = 24,
+    block_count = 1,
     layers_per_block = 2,
-    hidden_width_mult = 2,
+    hidden_width_mult = 1,
     activation = NNlib.swish,
     use_bias = false,
     # skip_layer = true,
 )
 
 train_hypers() = (;
-    batch_size = 128,
+    batch_size = 64,
 )
 
 function config()
