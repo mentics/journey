@@ -14,9 +14,9 @@ end
 
 #region Config
 model_hypers() = (;
-    version = "latent64mult2drop1zp",
+    version = "latent32mult2drop1zp",
     data_weeks_count = 5,
-    encoded_width = 64,
+    encoded_width = 32,
     block_count = 2,
     layers_per_block = 2,
     hidden_width_mult = 2,
