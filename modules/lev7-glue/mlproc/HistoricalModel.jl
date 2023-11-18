@@ -156,7 +156,7 @@ function _make_data(cfg)
 
     # if preload...
     println("Making all batches...")
-    batches = [make_batch(0, i) for i in 1:batch_count]
+    batches = [map(copy, make_batch(0, i)) for i in 1:batch_count]
     println(" done.")
     get_batch = (epochi, batchi) -> (batches[batchi] |> gpu)
     return (;get_batch, batch_count, cfg.batch_size, get_inds, obs_count)
