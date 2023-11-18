@@ -26,7 +26,7 @@ model_hypers() = (;
 )
 
 train_hypers() = (;
-    batch_size = 1024,
+    batch_size = 128,
 )
 
 function config()
