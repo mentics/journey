@@ -7,22 +7,35 @@ using DateUtil, CollUtil, IndexUtil
 import DataFiles as dat
 import DataFiles:missing_to_zero_float
 using ModelUtil, TrainUtil
+using MLRun
 
-function trained_model()
-    return
+VERSION = "latent32mult2block1drop2z"
+
+# For inference and combined training
+function save_encoder(version=VERSION)
+
+end
+function load_encoder(version=VERSION)
+    model = make_model()
+    Flux.loadmodel!(kall.model, model_state)
+
+    load()
+    return (;run=run_encode(), model)
 end
 
 #region Config
-model_hypers() = (;
-    version = "latent24mult2block2drop2z",
+data_params() = (;
+)
+
+model_params() = (;
     data_weeks_count = 5,
-    encoded_width = 24,
-    block_count = 2,
+    encoded_width = 32,
+    block_count = 1,
     layers_per_block = 2,
     hidden_width_mult = 2,
+    dropout = 0.2f0,
     activation = NNlib.swish,
     use_bias = false,
-    # skip_layer = true,
 )
 
 train_hypers() = (;
@@ -30,7 +43,7 @@ train_hypers() = (;
 )
 
 function config()
-    (;data_weeks_count, hidden_width_mult, encoded_width) = model_hypers()
+    (;data_weeks_count, hidden_width_mult, encoded_width) = model_params()
     input_width_under = DateUtil.TIMES_PER_WEEK * data_weeks_count
     vix_count = DateUtil.DAYS_PER_WEEK * data_weeks_count
     input_width_vix = vix_count * 4
@@ -41,7 +54,9 @@ function config()
     hidden_width = hidden_width_mult * input_width
     encoded_with_meta = encoded_width + 4
     return (;
-        model_hypers()...,
+        VERSION,
+        data_params()...,
+        model_params()...,
         train_hypers()...,
         vix_count,
         input_width_under, input_width_vix,
@@ -54,15 +69,28 @@ end
 #endregion Config
 
 #region MLRun Interface
-make_data() = _make_data(config())
-
-function make_model()
-    cfg = config()
-    return Chain(; encoder=model_encoder(cfg), decoder=model_decoder(cfg))
+function mlrun()
+    # (;get_batch, batch_count, cfg.batch_size, get_inds, obs_count)
+    (;get_batch, batch_count) = make_data()
+    inference_model = model_encoder() |> gpu
+    training_model = Chain(; encoder=inference_model, decoder=model_decoder()) |> gpu
+    batches = Batches(;get=get_batch, count=batch_count)
+    global state = Trainee3(;
+        name=string(@__MODULE__),
+        version=VERSION,
+        training_model,
+        inference_model,
+        run_model = batch -> run_model(training_model, batch),
+        infer = batch -> run_encode(inference_model, batch),
+        batches,
+        get_learning_rate = TrainUtil.lr_cycle_decay(),
+        get_loss = calc_loss,
+    )
+    return state
 end
+#endregion MLRun Interface
 
-learning_rate_func = TrainUtil.learning_rate_linear_decay()
-
+#region mlrun impl
 function run_model(model, batch)
     encoded = run_encode(model, batch)
     decoded = run_decode(model, encoded)
@@ -96,7 +124,7 @@ function run_decode(model, encoded)
     )
 end
 
-make_loss_func() = function(model, batch)
+function calc_loss(model, batch)
     decoded = run_model(model, batch)
     # l = Flux.mae(decoded.under.v, under) + Flux.mae(decoded.vix.v, vix)
     l = Flux.mse(decoded.under.v, batch.under.v) + Flux.mae(decoded.vix.v, batch.vix.v)
@@ -104,11 +132,9 @@ make_loss_func() = function(model, batch)
     return l
 end
 
-# to_draw_x(batch, ind) = batch.under[1:end-2,ind]
-# to_draw_yh(yhat, ind) = yhat[1][1:end-2,ind]
 to_draw_x(batch, ind) = batch.under.v[1:end,ind]
 to_draw_yh(yhat, ind) = yhat.under.v[1:end,ind]
-#endregion MLRun Interface
+#endregion mlrun impl
 
 const CACHE_DF_UNDER2 = Ref{DataFrame}()
 const CACHE_DF_VIX2 = Ref{DataFrame}()
@@ -125,11 +151,12 @@ function get_data()
         dat.convert_cols!(missing_to_zero_float, vix, :open, :high, :low, :close)
         CACHE_DF_VIX2[] = vix
 
-        bad_dates = vix.date[findall(iszero, vix.close)]
+        bad_dates = vix.date[findall(iszero, vix.open)] # open or close?
 
         skip_back_count = DateUtil.TIMES_PER_WEEK * cfg.data_weeks_count + 1 # +1 for the current ts
         # obs_ts = filter(:under => !ismissing, df_ts).ts[skip_back_count:end]
-        obs = filter(:under => !iszero, under).ts[skip_back_count:end]
+        # obs = filter(:under => !iszero, under).ts[skip_back_count:end]
+        obs = filter!(ts -> Date(ts) in bad_dates, filter(:under => !iszero, under).ts[skip_back_count:end])
         CACHE_OBS[] = obs
     end
     return (;
@@ -139,7 +166,8 @@ function get_data()
     )
 end
 
-function _make_data(cfg)
+function make_data()
+    cfg = config()
     dfs = get_data()
 
     obs_count = size(dfs.obs, 1)
@@ -189,8 +217,9 @@ function _make_data(cfg)
     # batches = [map(copy, make_batch(0, i)) for i in 1:batch_count]
     batches = [deepcopy(make_batch(0, i)) for i in 1:batch_count]
     println(" done.")
-    get_batch = (epochi, batchi) -> (batches[batchi] |> gpu)
-    return (;get_batch, batch_count, cfg.batch_size, get_inds, obs_count)
+    get_batch = (epochi, ibatch) -> batches[ibatch] |> gpu
+    # return (;get_batch, batch_count, cfg.batch_size, get_inds, obs_count)
+    return (;get_batch, batch_count)
 end
 
 data_sizes(cfg) = (;
@@ -479,7 +508,8 @@ end
 #     return Chain(;decoder_input=layer_input, decinner1, decinner2, decoder_output=layer_output)
 # end
 
-function model_encoder(cfg)
+function model_encoder()
+    cfg = config()
     input_under = Dense(cfg.input_width_under + cfg.input_width_meta => cfg.hidden_width_under; bias=cfg.use_bias)
     input_vix = Dense(cfg.input_width_vix + cfg.input_width_meta => cfg.hidden_width_vix; bias=cfg.use_bias)
     layer_input = Parallel(vcat; input_under, input_vix)
@@ -488,14 +518,15 @@ function model_encoder(cfg)
     blocks1_count = floor(Int, cfg.block_count / 2)
     blocks2_count = cfg.block_count - blocks1_count
     blocks1 = [SkipConnection(make_block(cfg, through_width, cfg.hidden_width, cfg.layers_per_block), +) for _ in 1:blocks1_count]
-    dropout = Dropout(0.2)
+    dropout = Dropout(cfg.dropout)
     blocks2 = [SkipConnection(make_block(cfg, through_width, cfg.hidden_width, cfg.layers_per_block), +) for _ in 1:blocks2_count]
 
     layer_output = Dense(through_width => cfg.encoded_width; bias=false)
     return Chain(;encoder_input=layer_input, encoder_blocks=Chain(blocks1..., dropout, blocks2...), encoder_output=layer_output)
 end
 
-function model_decoder(cfg)
+function model_decoder()
+    cfg = config()
     through_width = cfg.hidden_width_under + cfg.hidden_width_vix
     layer_input = Dense(cfg.encoded_with_meta => through_width, cfg.activation; bias=false)
 

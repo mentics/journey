@@ -1,7 +1,8 @@
 module MLRun
+import Base:@kwdef
 using Dates
 using CUDA
-import Flux:Flux,cpu,gpu
+import Flux:Flux,cpu,gpu,throttle
 import Optimisers:AdamW
 using DateUtil, FileUtil, IndexUtil
 
@@ -17,96 +18,121 @@ make_model(type instance)
 make_loss_func(type instance)
 make_opt(type instance) # default is Lion
 =#
-function setup end
-function make_model end
-function make_data end
-function make_loss_func end
-make_opt(learning_rate_func, loss_untrained) = AdamW(learning_rate_func(0, 0f0, loss_untrained))
+# function setup end
+# function make_model end
+# function make_data end
+# function make_loss_func end
+# make_opt(learning_rate_func, loss_untrained) = AdamW(learning_rate_func(0, 0f0, loss_untrained))
 
-function reset(mod, version=mod.config().version)
-    model = mod.make_model() |> dev
-    println("Created model with param count: ", sum(length, Flux.params(model)))
-    (;get_batch, batch_size, batch_count, get_inds, obs_count) = mod.make_data()
-    calc_loss = mod.make_loss_func()
-    base_loss = () -> calc_base_loss(model, calc_loss, get_batch, batch_count)
+export Batches
+@kwdef struct Batches
+    get
+    count
+end
+
+export Trainee3
+@kwdef struct Trainee3
+    name
+    version
+    training_model
+    inference_model
+    run_model
+    infer
+    batches::Batches
+    get_learning_rate
+    get_loss
+end
+
+@kwdef struct Training3
+    trainee::Trainee3
+    opt
+    opt_state
+    metrics
+    params
+end
+
+function setup(trainee::Trainee3)
+    model = trainee.training_model |> dev
+    println("Model has param count: ", sum(length, Flux.params(model)))
+
+    base_loss = () -> calc_base_loss(model, trainee.get_loss, trainee.batches.get, trainee.batches.count)
     loss_untrained = base_loss()
     println("Loss untrained: $(loss_untrained)")
-    learning_rate = mod.learning_rate_func
-    opt = isdefined(mod, :make_opt) ? mod.make_opt(loss_untrained) : make_opt(learning_rate, loss_untrained)
+    metrics = Dict{Symbol,Any}(:loss_untrained => loss_untrained)
+
+    opt = AdamW(trainee.get_learning_rate(1))
     opt_state = Flux.setup(opt, model) |> dev
-    global kall = (;mod, version, model, opt, opt_state, get_batch, get_inds, obs_count, loss_untrained, calc_loss, base_loss, batch_count, batch_size, learning_rate)
-    return
+
+    params = Dict{Symbol,Any}()
+
+    training = Training3(;
+        trainee,
+        opt,
+        opt_state,
+        metrics,
+        params,
+    )
+    # (;mod, version, model, opt, opt_state, get_batch, get_inds, obs_count, loss_untrained, calc_loss, base_loss, batch_count, batch_size, learning_rate)
+    return training
 end
 
-function run(mod; epochs=10, fold_count=5)
-    isdefined(@__MODULE__, :kall) || reset(mod)
-    cv = IndexUtil.cv_folds(kall.batch_count, fold_count)
-    global kcv = cv
-    train(kall.model, kall.opt_state, kall.get_batch, kall.calc_loss, kall.base_loss, cv, kall.learning_rate; epochs)
-    # holdout
-    # test()
-    # visualize result?
+function run(training::Training3; epochs=1000, fold_count=5)
+    cv = IndexUtil.cv_folds(training.trainee.batches.count, fold_count)
+    training.params[:cv] = cv
+    train(training; epochs)
 end
 
-function batch_loss(ibatch)
-    return kall.calc_loss(kall.model, kall.get_batch(0, ibatch))
-end
-
-function check_holdout()
-    for ibatch in kcv.holdout
-        loss = kall.calc_loss(kall.model, kall.get_batch(0, ibatch))
-        println("Loss for holdout batch $(ibatch): $(loss)")
-    end
-end
-
-function train(model, opt_state, get_batch, calc_loss, base_loss, cv, learning_rate; epochs=10)
-    MAX_OUTPUT_PERIOD = Second(4)
+function train(training; epochs=1000)
     println("Training beginning...")
-    last_save = now(UTC)
-    loss_prev = base_loss()
-    losses = []
-    global klosses = losses
+    trainee = training.trainee
+    cv = training.params[:cv]
+    model = trainee.training_model
+    batches = trainee.batches
+
+    loss_prev = 1.0
+    epoch_losses = Float32[]
+    training.metrics[:epoch_losses] = epoch_losses
+    print_status = throttle(4; leading=false) do status
+        println(status)
+        # println("epoch: $(epoch), fold: $(ifold), batch: $(batches_fold_count) / $(length(cv_inds.train)) ($(ibatch)) - Training loss $(loss)")
+    end
+
     for epoch in 1:epochs
-        loss_sum = 0.0
-        i = 0
-        for foldi in axes(cv.folds, 1)
-            output_time = now(UTC)
-            cv_inds = IndexUtil.inds_for_fold(cv, foldi)
-            bi = 1
-            for batchi in cv_inds.train
-                batch = get_batch(epoch, batchi) |> dev
-                # loss_batch, grads = Flux.withgradient(m -> calc_loss(m, batch), model)
-                loss, grads = Flux.withgradient(calc_loss, model, batch)
-                loss_sum += loss
-                i += 1
-                push!(losses, (epoch, foldi, batchi, loss))
+        loss_epoch_sum = 0.0
+        batches_epoch_count = 0
+        for ifold in axes(cv.folds, 1)
+            cv_inds = IndexUtil.inds_for_fold(cv, ifold)
+            batches_fold_count = 0
+            for ibatch in cv_inds.train
+                batch = batches.get(epoch, ibatch) |> dev
+                loss, grads = Flux.withgradient(trainee.get_loss, model, batch)
+                loss_epoch_sum += loss
                 yield()
-                Flux.update!(opt_state, model, grads[1])
-                if now(UTC) - output_time > MAX_OUTPUT_PERIOD
-                    println("epoch: $(epoch), fold: $(foldi), batch: $(bi) / $(length(cv_inds.train)) ($(batchi)) - Training loss $(loss)")
-                    output_time = now(UTC)
-                end
-                bi += 1
+                Flux.update!(training.opt_state, model, grads[1])
+
+                batches_fold_count += 1
+                batches_epoch_count += 1
+
+                print_status("  update - epoch: $(epoch), fold: $(ifold), batch: $(batches_fold_count) / $(length(cv_inds.train)) ($(ibatch)) - Training loss $(loss)")
             end
 
             loss_validation = 0f0
-            for batchi in cv_inds.validation
-                batch = get_batch(epoch, batchi) |> dev
-                loss_validation += calc_loss(model, batch)
+            for ibatch in cv_inds.validation
+                batch = batches.get(epoch, ibatch) |> dev
+                loss_validation += trainee.get_loss(model, batch)
             end
             loss_validation /= size(cv_inds.validation, 1)
 
-            println("Epoch $(epoch), fold $(foldi) - Validation loss #$(i): $(loss_validation)")
+            println("Epoch $(epoch), fold $(ifold) - Validation loss #$(batches_epoch_count): $(loss_validation)")
         end
-        loss_epoch = loss_sum / i
+        loss_epoch = loss_epoch_sum / batches_epoch_count
+        push!(epoch_losses, loss_epoch)
+
         println("Epoch $(epoch) - Average loss $(loss_epoch) which is $(loss_epoch / loss_prev) * loss_prev")
-        Flux.Optimisers.adjust!(opt_state, learning_rate(epoch, loss_prev, loss_epoch))
-        loss_prev = loss_epoch
-        if (now(UTC) - last_save) >= Minute(30)
-            save()
-            last_save = now(UTC)
-        end
-        check_holdout()
+        Flux.Optimisers.adjust!(training.opt_state, trainee.get_learning_rate(epoch))
+
+        throttle(30 * 60; leading=false) do; save(training) end
+        check_holdout(training)
     end
 end
 
@@ -121,36 +147,39 @@ function calc_base_loss(model, calc_loss, get_batch, batch_count)
 end
 
 path_default_base() = joinpath(FileUtil.root_shared(), "mlrun")
-path_default_base(mod) = joinpath(path_default_base(), string(mod))
+path_default_base(mod_name) = joinpath(path_default_base(), mod_name)
 
 using JLD2
-function save(version=kall.version, path_base=path_default_base(kall.mod))
+function save(training, path_base=path_default_base(training.trainee.name))
+    trainee = training.trainee
     mkpath(path_base)
-    path = joinpath(path_base, "$(kall.mod)-$(version)-$(DateUtil.file_ts()).jld2")
+    path = joinpath(path_base, "$(trainee.name)-$(trainee.version)-$(DateUtil.file_ts()).jld2")
     print("Saving model and opt_state to $(path)...")
     start = time()
-    model_state = Flux.state(cpu(kall.model))
-    opt_state = cpu(kall.opt_state)
+    model_state = Flux.state(cpu(trainee.training_model))
+    opt_state = cpu(training.opt_state)
     jldsave(path; model_state, opt_state)
     stop = time()
-    println(" done in $(stop-start) seconds.")
+    println(" done in $(stop - start) seconds.")
 end
-function load(version=kall.version, path=path_default_base(kall.mod))
+
+function load(training, path=path_default_base(training.trainee.name))
+    trainee = training.trainee
     if isdir(path)
-        path = FileUtil.most_recently_modified(path; matching=version)
+        path = FileUtil.most_recently_modified(path; matching=trainee.version)
         @assert !isnothing(path) "no files in path $(path)"
     end
     model_state, opt_state = JLD2.load(path, "model_state", "opt_state")
-    Flux.loadmodel!(kall.model, model_state)
-    Flux.loadmodel!(kall.opt_state, opt_state)
+    Flux.loadmodel!(trainee.training_model, model_state)
+    Flux.loadmodel!(training.opt_state, opt_state)
     println("Loaded model and opt_state from $(path)")
 end
 
 import DrawUtil:draw,draw!
-function check(mod, batchi)
-    batch = kall.get_batch(0, batchi)
-    yhat = mod.run_model(kall.model, batch) |> cpu
-    batch = batch |> cpu
+function check(trainee, batchi)
+    gbatch = trainee.batches.get(0, batchi)
+    yhat = trainee.run_model(gbatch) |> cpu
+    batch = gbatch |> cpu
     x = mod.to_draw_x(batch, 1)
     yh = mod.to_draw_yh(yhat, 1)
     draw(:scatter, x; label="x")
@@ -174,6 +203,15 @@ function latent_space(mod)
         kall.get_inds(0, batchi)
     end
     return (;data, inds)
+end
+
+test_batch_loss(trainee, ibatch) = trainee.get_loss(trainee.model, trainee.batches.get(0, ibatch))
+
+function check_holdout(training)
+    for ibatch in training.params[:cv].holdout
+        loss = training.trainee.get_loss(training.trainee.training_model, training.trainee.batches.get(1, ibatch))
+        println("Loss for holdout batch $(ibatch): $(loss)")
+    end
 end
 
 end

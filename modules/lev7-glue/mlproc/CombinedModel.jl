@@ -1,7 +1,13 @@
 module CombinedModule
 
+import HistoricalModel
+
 #region Config
-model_hypers() = (;
+data_params() = (;
+)
+
+model_params() = (;
+    historical_model_version = HistoricalModel.VERSION,
 )
 
 train_hypers() = (;
@@ -11,7 +17,9 @@ train_hypers() = (;
 
 function config()
     return (;
-        model_hypers()...,
+        VERSION,
+        data_params()...,
+        model_params()...,
         train_hypers()...,
     )
 end
