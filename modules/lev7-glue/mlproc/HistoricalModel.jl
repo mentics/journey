@@ -252,7 +252,7 @@ function wrap_row!(bufs, f, args...)
     # global kwrap_row = (;bufs, f, args)
     views = (;v=(@view bufs.v[1:end-2]), mask=(@view bufs.mask[1:end-2]))
     f(views, args...)
-    @assert views.v[1] == 12341234 string(views.v[1])
+    bufs_orig = (;v=copy(bufs.v), mask=copy(bufs.mask))
 
     if iszero(views.v)
         throw("what!")
@@ -262,15 +262,27 @@ function wrap_row!(bufs, f, args...)
     end
 
     μ, σ = mean_and_std(filter(!iszero, views.v))
-    zscore!(views[1], 0f0, σ)
+    @assert -2f0 < μ < 60f0 "-2f0 < μ ($(μ)) < 60f0"
+    @assert 0.001f0 < σ < 32f0 "0.001f0 < σ ($(σ)) < 32f0" # TODO: too low? check which date this is for?
+    zscore!(views.v, μ, σ)
+    mask_count = count(iszero, views.mask)
+    views.v .*= views.mask
     bufs.v[end-1] = μ
     bufs.v[end] = σ
     bufs.mask[end-1] = 1f0
     bufs.mask[end] = 1f0
-    if !are_all_finite(bufs.v)
-        error("stop")
-    end
     @assert are_all_finite(bufs.v)
+    # @assert count(iszero, bufs.v) == count(iszero, bufs.mask) "$(f) count(iszero, bufs.v) == count(iszero, bufs.mask): $(count(iszero, bufs.v)) == $(count(iszero, bufs.mask)) ; $(mask_count)"
+    if count(iszero, bufs.v) != count(iszero, bufs.mask)
+        vz = findall(iszero, bufs.v)
+        mz = findall(iszero, bufs.mask)
+        inds = setdiff(vz, mz)
+        for ind in inds
+            if bufs_orig.v[ind] != μ
+                @show ind bufs_orig.v[ind] μ
+            end
+        end
+    end
 end
 
 function make_row_under!(bufs, df, inds, cur_ind)
@@ -278,7 +290,7 @@ function make_row_under!(bufs, df, inds, cur_ind)
     buf, buf_mask = bufs.v, bufs.mask
 
     cur = df.under[cur_ind]
-    @assert cur != 0f0
+    @assert 50f0 < cur < 1000f0
     i_buf = 1
     for i_df in inds
         @assert -DateUtil.TIMES_PER_WEEK <= ((cur_ind-1) - inds[1]) < size(buf, 1) "assert i:$(i_df): $(-DateUtil.TIMES_PER_WEEK) <= $(cur_ind) - $(ind) ($(cur_ind - ind)) < $(size(buf, 1))"
@@ -303,7 +315,6 @@ function make_row_under!(bufs, df, inds, cur_ind)
         println("ERROR: row all zeros")
         global krowunder = (;buf, buf_mask, df, inds, cur_ind, cur)
     end
-    buf[1] = 12341234
 end
 
 
@@ -347,6 +358,7 @@ function make_row_vix!(bufs, df, from_date, cur_date)
     ind_start = searchsortedfirst(df.date, from_date)
     cur_ind = searchsortedfirst(df.date, cur_date)
     cur_row = df[cur_ind,:]
+    @assert 2f0 < cur_row.open < 100f0
     for i in 0:(size(buf, 1) ÷ 4 - 1)
         ind = ind_start + i
         open = df.open[ind]
@@ -360,14 +372,23 @@ function make_row_vix!(bufs, df, from_date, cur_date)
             buf_mask[i*4+3] = 0f0
             buf_mask[i*4+4] = 0f0
         else
-            buf[i*4+1] = cur_row.open / open
-            buf[i*4+2] = cur_row.high / df.high[ind]
-            buf[i*4+3] = cur_row.low / df.low[ind]
-            buf[i*4+4] = cur_row.close / df.close[ind]
+            # buf[i*4+1] = cur_row.open / open
+            # buf[i*4+2] = cur_row.high / df.high[ind]
+            # buf[i*4+3] = cur_row.low / df.low[ind]
+            # buf[i*4+4] = cur_row.close / df.close[ind]
+            buf[i*4+1] = open
+            buf[i*4+2] = df.high[ind]
+            buf[i*4+3] = df.low[ind]
+            buf[i*4+4] = df.close[ind]
+            @assert !iszero(df.close[ind])
+            @assert all(!iszero, buf[(i*4+1):(i*4+4)]) "all(iszero, buf[(i*4+1):(i*4+4)]): $(buf[(i*4+1):(i*4+4)])"
             buf_mask[i*4+1] = 1f0
             buf_mask[i*4+2] = 1f0
             buf_mask[i*4+3] = 1f0
             buf_mask[i*4+4] = 1f0
+            # if i*4+4 == 64
+            #     @show i (i*4+4) buf[i*4+4] buf_mask[i*4+4]
+            # end
         end
     end
     if !isnothing(findfirst(!isfinite, buf))
@@ -379,7 +400,6 @@ function make_row_vix!(bufs, df, from_date, cur_date)
     if iszero(buf) || iszero(buf_mask)
         error("vix ERROR: row all zeros for date: $(cur_date)")
     end
-    buf[1] = 12341234
 end
 
 # function model_encoder(cfg)

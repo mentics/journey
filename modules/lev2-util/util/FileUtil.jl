@@ -20,9 +20,9 @@ writeJson(path, d::Dict) = open(path, "w") do io; JSON3.pretty(io, d; allow_inf=
 writeJson(path, o) = open(path, "w") do io; JSON3.pretty(io, o; allow_inf=true) end
 #endregion
 
-function most_recently_modified(dir)
+function most_recently_modified(dir; matching=nothing)
     # sort!(readdir("/data/tmp"; sort=false, join=true); rev=true, by=mtime)
-    return first(sort!(filter!(isfile, readdir(dir; sort=false, join=true)); rev=true, by=mtime))
+    return first(sort!(filter!(x -> isfile(x) && (isnothing(matching) || occursin(matching, x)), readdir(dir; sort=false, join=true)); rev=true, by=mtime))
 end
 
 const ROOT_SHARED = Sys.iswindows() ? abspath("S:") : abspath("/shared")

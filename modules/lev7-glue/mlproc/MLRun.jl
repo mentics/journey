@@ -119,9 +119,9 @@ function save(path_base=path_default_base(kall.mod); detail="orig")
     jldsave(path; model_state, opt_state)
     println("Saved model and opt_state to $(path)")
 end
-function load(path=path_default_base(kall.mod))
+function load(path=path_default_base(kall.mod); detail=nothing)
     if isdir(path)
-        path = FileUtil.most_recently_modified(path)
+        path = FileUtil.most_recently_modified(path; matching=detail)
         @assert !isnothing(path) "no files in path $(path)"
     end
     model_state, opt_state = JLD2.load(path, "model_state", "opt_state")
@@ -132,8 +132,8 @@ end
 
 function check(mod, batchi)
     batch = kall.get_batch(0, batchi) |> dev
-    yhat = run_model(mod, kall.model, batch)
-    return (;batch, yhat)
+    yhat = mod.run_model(kall.model, batch)
+    return (;batch, yhat) |> cpu
 
     # for i in axes(under, 1), j in axes(under, 2)
     #     if under[i,j] != 0f0
