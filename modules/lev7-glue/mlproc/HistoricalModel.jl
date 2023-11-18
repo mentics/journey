@@ -438,20 +438,34 @@ function model_encoder(cfg)
     input_vix = Dense(cfg.input_width_vix => cfg.hidden_width_vix; bias=cfg.use_bias)
     layer_input = Parallel(vcat; input_under, input_vix)
     through_width = cfg.hidden_width_under + cfg.hidden_width_vix
-    blocks = [SkipConnection(make_block(cfg, through_width, cfg.hidden_width, cfg.layers_per_block), +) for _ in 1:cfg.block_count]
+
+    blocks1_count = floor(Int, cfg.block_count / 2)
+    blocks2_count = cfg.block_count - blocks1_count
+    blocks1 = [SkipConnection(make_block(cfg, through_width, cfg.hidden_width, cfg.layers_per_block), +) for _ in 1:blocks1_count]
+    dropout = Dropout(0.1)
+    blocks2 = [SkipConnection(make_block(cfg, through_width, cfg.hidden_width, cfg.layers_per_block), +) for _ in 1:blocks2_count]
+
     layer_output = Dense(through_width => cfg.encoded_width; bias=false)
-    return Chain(;encoder_input=layer_input, encoder_blocks=Chain(blocks...), encoder_output=layer_output)
+    return Chain(;encoder_input=layer_input, encoder_blocks=Chain(blocks1..., dropout, blocks2...), encoder_output=layer_output)
 end
 
 function model_decoder(cfg)
     through_width = cfg.hidden_width_under + cfg.hidden_width_vix
     layer_input = Dense(cfg.encoded_width => through_width, cfg.activation; bias=false)
-    blocks = [SkipConnection(make_block(cfg, through_width, cfg.hidden_width, cfg.layers_per_block), +) for _ in 1:cfg.block_count]
+
+    # blocks = [SkipConnection(make_block(cfg, through_width, cfg.hidden_width, cfg.layers_per_block), +) for _ in 1:cfg.block_count]
+
+    blocks1_count = floor(Int, cfg.block_count / 2)
+    blocks2_count = cfg.block_count - blocks1_count
+    blocks1 = [SkipConnection(make_block(cfg, through_width, cfg.hidden_width, cfg.layers_per_block), +) for _ in 1:blocks1_count]
+    # dropout = Dropout(0.1)
+    blocks2 = [SkipConnection(make_block(cfg, through_width, cfg.hidden_width, cfg.layers_per_block), +) for _ in 1:blocks2_count]
+
     output_under = Dense(cfg.hidden_width_under => cfg.input_width_under; bias=cfg.use_bias)
     output_vix = Dense(cfg.hidden_width_vix => cfg.input_width_vix; bias=cfg.use_bias)
     layer_output = SplitLayer((output_under, output_vix), cfg.hidden_width_under)
     # layer_output = in -> (output_under(in[1:cfg.hidden_width_under,:]), output_vix(in[cfg.hidden_width_under+1:cfg.hidden_width]))
-    return Chain(decoder_input=layer_input, decoder_blocks=Chain(blocks...), decoder_output=layer_output)
+    return Chain(decoder_input=layer_input, decoder_blocks=Chain(blocks1..., blocks2...), decoder_output=layer_output)
 end
 
 function make_block(cfg, through_width, hidden_width, num_layers)
