@@ -2,7 +2,7 @@ module MLRun
 using Dates
 using CUDA
 import Flux:Flux,cpu,gpu
-import Optimisers:Lion
+import Optimisers:AdamW
 using DateUtil, FileUtil, IndexUtil
 
 CUDA.allowscalar(false)
@@ -21,7 +21,7 @@ function setup end
 function make_model end
 function make_data end
 function make_loss_func end
-make_opt(learning_rate_func, loss_untrained) = Lion(learning_rate_func(0, 0f0, loss_untrained))
+make_opt(learning_rate_func, loss_untrained) = AdamW(learning_rate_func(0, 0f0, loss_untrained))
 
 function reset(mod)
     model = mod.make_model() |> dev
