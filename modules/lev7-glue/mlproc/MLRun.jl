@@ -130,8 +130,8 @@ function train(training; epochs=1000)
 
         println("Epoch $(epoch) - Average loss $(loss_epoch) which is $(loss_epoch / loss_prev) * loss_prev")
 
-        Flux.Optimisers.adjust!(training.opt_state, rate)
         rate = trainee.get_learning_rate(epoch)
+        Flux.Optimisers.adjust!(training.opt_state, rate)
         println("Updated learning rate to $(rate)")
 
         throttle(30 * 60; leading=false) do; save(training) end
