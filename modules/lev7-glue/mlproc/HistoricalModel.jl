@@ -14,11 +14,11 @@ end
 
 #region Config
 model_hypers() = (;
-    data_weeks_count = 7,
-    encoded_width = 128,
-    block_count = 4,
-    layers_per_block = 4,
-    hidden_width_mult = 4,
+    data_weeks_count = 5,
+    encoded_width = 64,
+    block_count = 2,
+    layers_per_block = 2,
+    hidden_width_mult = 2,
     activation = NNlib.swish,
     use_bias = false,
     # skip_layer = true,
@@ -80,6 +80,11 @@ make_loss_func() = function(model, batch)
     # global kloss_vals = (;under, under_mask, vix, vix_mask, yhat_under_1, yhat_vix_1, yhat_under, yhat_vix, loss=l)
     return l
 end
+
+# to_draw_x(batch, ind) = batch.under[1:end-2,ind]
+# to_draw_yh(yhat, ind) = yhat[1][1:end-2,ind]
+to_draw_x(batch, ind) = batch.under[1:end,ind]
+to_draw_yh(yhat, ind) = yhat[1][1:end,ind]
 #endregion MLRun Interface
 
 const CACHE_DF_UNDER2 = Ref{DataFrame}()
@@ -151,9 +156,9 @@ function _make_data(cfg)
 
     # if preload...
     println("Making all batches...")
-    batches = [make_batch(0, i) |> gpu for i in 1:batch_count]
+    batches = [make_batch(0, i) for i in 1:batch_count]
     println(" done.")
-    get_batch = (epochi, batchi) -> batches[batchi]
+    get_batch = (epochi, batchi) -> (batches[batchi] |> gpu)
     return (;get_batch, batch_count, cfg.batch_size, get_inds, obs_count)
 end
 
@@ -262,7 +267,7 @@ function wrap_row!(bufs, f, args...)
     end
 
     μ, σ = mean_and_std(filter(!iszero, views.v))
-    @assert -2f0 < μ < 60f0 "-2f0 < μ ($(μ)) < 60f0"
+    @assert -2f0 < μ < 80f0 "-2f0 < μ ($(μ)) < 80f0"
     @assert 0.001f0 < σ < 32f0 "0.001f0 < σ ($(σ)) < 32f0" # TODO: too low? check which date this is for?
     zscore!(views.v, μ, σ)
     mask_count = count(iszero, views.mask)

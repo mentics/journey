@@ -23,7 +23,7 @@ function make_data end
 function make_loss_func end
 make_opt(learning_rate_func, loss_untrained) = AdamW(learning_rate_func(0, 0f0, loss_untrained))
 
-function reset(mod)
+function reset(mod, version)
     model = mod.make_model() |> dev
     println("Created model with param count: ", sum(length, Flux.params(model)))
     (;get_batch, batch_size, batch_count, get_inds, obs_count) = mod.make_data()
@@ -34,17 +34,29 @@ function reset(mod)
     learning_rate = mod.learning_rate_func
     opt = isdefined(mod, :make_opt) ? mod.make_opt(loss_untrained) : make_opt(learning_rate, loss_untrained)
     opt_state = Flux.setup(opt, model) |> dev
-    global kall = (;mod, model, opt, opt_state, get_batch, get_inds, obs_count, loss_untrained, calc_loss, base_loss, batch_count, batch_size, learning_rate)
+    global kall = (;mod, version, model, opt, opt_state, get_batch, get_inds, obs_count, loss_untrained, calc_loss, base_loss, batch_count, batch_size, learning_rate)
     return
 end
 
 function run(mod; epochs=10, fold_count=5)
     isdefined(@__MODULE__, :kall) || reset(mod)
     cv = IndexUtil.cv_folds(kall.batch_count, fold_count)
+    global kcv = cv
     train(kall.model, kall.opt_state, kall.get_batch, kall.calc_loss, kall.base_loss, cv, kall.learning_rate; epochs)
     # holdout
     # test()
     # visualize result?
+end
+
+function batch_loss(ibatch)
+    return kall.calc_loss(kall.model, kall.get_batch(0, ibatch))
+end
+
+function check_holdout()
+    for ibatch in kcv.holdout
+        loss = kall.calc_loss(kall.model, kall.get_batch(0, ibatch))
+        println("Loss for holdout batch $(ibatch): $(loss)")
+    end
 end
 
 function train(model, opt_state, get_batch, calc_loss, base_loss, cv, learning_rate; epochs=10)
@@ -91,9 +103,10 @@ function train(model, opt_state, get_batch, calc_loss, base_loss, cv, learning_r
         Flux.Optimisers.adjust!(opt_state, learning_rate(epoch, loss_prev, loss_epoch))
         loss_prev = loss_epoch
         if (now(UTC) - last_save) >= Minute(30)
-            # last_save = now(UTC)
-            # checkpoint_save()
+            save(kall.version)
+            last_save = now(UTC)
         end
+        check_holdout()
     end
 end
 
@@ -111,17 +124,20 @@ path_default_base() = joinpath(FileUtil.root_shared(), "mlrun")
 path_default_base(mod) = joinpath(path_default_base(), string(mod))
 
 using JLD2
-function save(path_base=path_default_base(kall.mod); detail="orig")
+function save(version, path_base=path_default_base(kall.mod))
     mkpath(path_base)
-    path = joinpath(path_base, "$(kall.mod)-$(detail)-$(DateUtil.file_ts()).jld2")
+    path = joinpath(path_base, "$(kall.mod)-$(version)-$(DateUtil.file_ts()).jld2")
+    print("Saving model and opt_state to $(path)...")
+    start = time()
     model_state = Flux.state(cpu(kall.model))
     opt_state = cpu(kall.opt_state)
     jldsave(path; model_state, opt_state)
-    println("Saved model and opt_state to $(path)")
+    stop = time()
+    println(" done in $(stop-start) seconds.")
 end
-function load(path=path_default_base(kall.mod); detail=nothing)
+function load(version, path=path_default_base(kall.mod))
     if isdir(path)
-        path = FileUtil.most_recently_modified(path; matching=detail)
+        path = FileUtil.most_recently_modified(path; matching=version)
         @assert !isnothing(path) "no files in path $(path)"
     end
     model_state, opt_state = JLD2.load(path, "model_state", "opt_state")
@@ -130,10 +146,16 @@ function load(path=path_default_base(kall.mod); detail=nothing)
     println("Loaded model and opt_state from $(path)")
 end
 
+import DrawUtil:draw,draw!
 function check(mod, batchi)
-    batch = kall.get_batch(0, batchi) |> dev
-    yhat = mod.run_model(kall.model, batch)
-    return (;batch, yhat) |> cpu
+    batch = kall.get_batch(0, batchi)
+    yhat = mod.run_model(kall.model, batch) |> cpu
+    batch = batch |> cpu
+    x = mod.to_draw_x(batch, 1)
+    yh = mod.to_draw_yh(yhat, 1)
+    draw(:scatter, x; label="x")
+    draw!(:scatter, yh; label="yh")
+    return (;batch, yhat)
 
     # for i in axes(under, 1), j in axes(under, 2)
     #     if under[i,j] != 0f0
