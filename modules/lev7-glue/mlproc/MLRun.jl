@@ -111,9 +111,9 @@ path_default_base() = joinpath(FileUtil.root_shared(), "mlrun")
 path_default_base(mod) = joinpath(path_default_base(), string(mod))
 
 using JLD2
-function save(path_base=path_default_base(kall.mod))
+function save(path_base=path_default_base(kall.mod); detail="orig")
     mkpath(path_base)
-    path = joinpath(path_base, "$(kall.mod)-$(DateUtil.file_ts()).jld2")
+    path = joinpath(path_base, "$(kall.mod)-$(detail)-$(DateUtil.file_ts()).jld2")
     model_state = Flux.state(cpu(kall.model))
     opt_state = cpu(kall.opt_state)
     jldsave(path; model_state, opt_state)

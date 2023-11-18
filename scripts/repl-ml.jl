@@ -4,6 +4,7 @@ using Dates
 using BaseTypes, OutputUtil, CudaUtil
 
 using Flux
+import DataFiles as dat
 import MLRun as ml
 import HistoricalModel as hm
 

@@ -459,4 +459,7 @@ function maparray(f, v)
     return StructArrays.components(sa)
 end
 
+export are_all_finite
+are_all_finite(x::CollT) = isnothing(findfirst(!isfinite, x))
+
 end

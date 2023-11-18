@@ -1,8 +1,9 @@
 module HistoricalModel
 using Dates, DataFrames
+using StatsBase
 using Flux, MLUtils, CUDA
 import NNlib
-import DateUtil, IndexUtil
+using DateUtil, CollUtil, IndexUtil
 import DataFiles as dat
 import DataFiles:missing_to_zero_float
 using ModelUtil, TrainUtil
@@ -13,8 +14,8 @@ end
 
 #region Config
 model_hypers() = (;
-    data_weeks_count = 4,
-    encoded_width = 64,
+    data_weeks_count = 7,
+    encoded_width = 128,
     block_count = 4,
     layers_per_block = 4,
     hidden_width_mult = 4,
@@ -29,9 +30,9 @@ train_hypers() = (;
 
 function config()
     (;data_weeks_count, hidden_width_mult) = model_hypers()
-    input_width_under = DateUtil.TIMES_PER_WEEK * data_weeks_count
+    input_width_under = 2 + DateUtil.TIMES_PER_WEEK * data_weeks_count
     vix_count = DateUtil.DAYS_PER_WEEK * data_weeks_count
-    input_width_vix = vix_count * 4
+    input_width_vix = 2 + vix_count * 4
     input_width = input_width_under + input_width_vix
     hidden_width_under = hidden_width_mult * input_width_under
     hidden_width_vix = hidden_width_mult * input_width_vix
@@ -96,6 +97,8 @@ function get_data()
         dat.convert_cols!(missing_to_zero_float, vix, :open, :high, :low, :close)
         CACHE_DF_VIX2[] = vix
 
+        bad_dates = vix.date[findall(iszero, dfs.vix.close)]
+
         skip_back_count = DateUtil.TIMES_PER_WEEK * cfg.data_weeks_count + 1 # +1 for the current ts
         # obs_ts = filter(:under => !ismissing, df_ts).ts[skip_back_count:end]
         obs = filter(:under => !iszero, under).ts[skip_back_count:end]
@@ -130,10 +133,10 @@ function _make_data(cfg)
 
             make_seq!(bufs_row, dfs, ind)
 
-            under[:,i] .= bufs_row.under
-            under_mask[:,i] .= bufs_row.under_mask
-            vix[:,i] .= bufs_row.vix
-            vix_mask[:,i] .= bufs_row.vix_mask
+            under[:,i] .= bufs_row.under.v
+            under_mask[:,i] .= bufs_row.under.mask
+            vix[:,i] .= bufs_row.vix.v
+            vix_mask[:,i] .= bufs_row.vix.mask
         end
 
         return (;under, under_mask, vix, vix_mask)
@@ -155,6 +158,11 @@ function _make_data(cfg)
 end
 
 data_sizes(cfg) = (;
+    under = (2 + DateUtil.TIMES_PER_WEEK * cfg.data_weeks_count, cfg.batch_size),
+    vix = (2 + 4 * DateUtil.DAYS_PER_WEEK * cfg.data_weeks_count, cfg.batch_size)
+)
+
+data_sizes_orig(cfg) = (;
     under = (DateUtil.TIMES_PER_WEEK * cfg.data_weeks_count, cfg.batch_size),
     vix = (4 * DateUtil.DAYS_PER_WEEK * cfg.data_weeks_count, cfg.batch_size)
 )
@@ -162,10 +170,8 @@ data_sizes(cfg) = (;
 function make_bufs_row(sizes)
     under_len, vix_len = sizes.under[1], sizes.vix[1]
     return (;
-        under = Vector{Float32}(undef, under_len),
-        under_mask = Vector{Float32}(undef, under_len),
-        vix = Vector{Float32}(undef, vix_len),
-        vix_mask = Vector{Float32}(undef, vix_len)
+        under = (;v = Vector{Float32}(undef, under_len), mask = Vector{Float32}(undef, under_len)),
+        vix = (;v = Vector{Float32}(undef, vix_len), mask = Vector{Float32}(undef, vix_len))
     )
 end
 
@@ -186,15 +192,29 @@ function make_seq!(bufs, dfs, ind)
 
     @assert Week(cfg.data_weeks_count-1) <= round(cur_ts - under.ts[inds[1]], Week) <= Week(cfg.data_weeks_count)
 
-    make_row_under!(bufs, under, inds, cur_ind)
-    make_row_vix!(bufs, vix, Date(from_ts), Date(cur_ts))
+    missing_max = 0.3 * length(inds)
+    missing_count = count(iszero, (@view under.under[inds]))
+    # println("missing: $(missing_count) / $(missing_max)")
+    if missing_count >= missing_max
+        println("missing count $(missing_count) > missing max $(missing_max) for ind $(ind). Returning 0 row")
+        fill!(bufs.under.v, 0.0)
+        fill!(bufs.under.mask, 0.0)
+        fill!(bufs.vix.v, 0.0)
+        fill!(bufs.vix.mask, 0.0)
+        return inds
+    end
+
+    # make_row_under!(bufs.under, under, inds, cur_ind)
+    # make_row_vix!(bufs.vix, vix, Date(from_ts), Date(cur_ts))
+    wrap_row!(bufs.under, make_row_under!, under, inds, cur_ind)
+    wrap_row!(bufs.vix, make_row_vix!, vix, Date(from_ts), Date(cur_ts))
     return inds
 end
 
 function test_seq(ind)
     cfg = config()
     dfs = get_data()
-    bufs = make_bufs_row(sizes(cfg))
+    bufs = make_bufs_row(data_sizes(cfg))
     inds = make_seq!(bufs, dfs, ind)
     tss = dfs.under.ts[inds]
     return (;bufs, inds, tss)
@@ -228,8 +248,34 @@ end
 #     return inds
 # end
 
+function wrap_row!(bufs, f, args...)
+    # global kwrap_row = (;bufs, f, args)
+    views = (;v=(@view bufs.v[1:end-2]), mask=(@view bufs.mask[1:end-2]))
+    f(views, args...)
+    @assert views.v[1] == 12341234 string(views.v[1])
+
+    if iszero(views.v)
+        throw("what!")
+    end
+    if !are_all_finite(views.v)
+        error("f returned bad data")
+    end
+
+    μ, σ = mean_and_std(filter(!iszero, views.v))
+    zscore!(views[1], 0f0, σ)
+    bufs.v[end-1] = μ
+    bufs.v[end] = σ
+    bufs.mask[end-1] = 1f0
+    bufs.mask[end] = 1f0
+    if !are_all_finite(bufs.v)
+        error("stop")
+    end
+    @assert are_all_finite(bufs.v)
+end
+
 function make_row_under!(bufs, df, inds, cur_ind)
-    buf, buf_mask = (;under, under_mask) = bufs
+    # global kmru_args = (;bufs=map(copy, bufs), df, inds, cur_ind)
+    buf, buf_mask = bufs.v, bufs.mask
 
     cur = df.under[cur_ind]
     @assert cur != 0f0
@@ -248,15 +294,16 @@ function make_row_under!(bufs, df, inds, cur_ind)
         end
         i_buf += 1
     end
-    if !isnothing(findfirst(!isfinite, buf))
-        println("ERROR: bad vix data")
+    if any(!isfinite, buf)
+        println("ERROR: bad under data")
         @show buf
         global krowunder = (;buf, buf_mask, df, i, ts_start, ts, ind_start, cur)
     end
-    if isnothing(findfirst(!iszero, buf)) || isnothing(findfirst(!iszero, buf_mask))
+    if iszero(buf) || iszero(buf_mask)
         println("ERROR: row all zeros")
         global krowunder = (;buf, buf_mask, df, inds, cur_ind, cur)
     end
+    buf[1] = 12341234
 end
 
 
@@ -293,15 +340,17 @@ end
 #     end
 # end
 
-function make_row_vix!(bufs, df, date_from, date_lessthan)
-    buf, buf_mask = bufs.vix, bufs.vix_mask
+function make_row_vix!(bufs, df, from_date, cur_date)
+    # global kmake_row_vix_args = (;bufs, df, from_date, cur_date)
+    buf, buf_mask = bufs.v, bufs.mask
 
-    ind_start = searchsortedfirst(df.date, date_from)
-    cur = df[ind_start,:]
+    ind_start = searchsortedfirst(df.date, from_date)
+    cur_ind = searchsortedfirst(df.date, cur_date)
+    cur_row = df[cur_ind,:]
     for i in 0:(size(buf, 1) ÷ 4 - 1)
         ind = ind_start + i
         open = df.open[ind]
-        if ismissing(open) || open <= 0f0 || df.date[ind] >= date_lessthan
+        if ismissing(open) || open <= 0f0 || df.date[ind] >= cur_date
             buf[i*4+1] = 0f0
             buf[i*4+2] = 0f0
             buf[i*4+3] = 0f0
@@ -311,10 +360,10 @@ function make_row_vix!(bufs, df, date_from, date_lessthan)
             buf_mask[i*4+3] = 0f0
             buf_mask[i*4+4] = 0f0
         else
-            buf[i*4+1] = cur.open / open
-            buf[i*4+2] = cur.high / df.high[ind]
-            buf[i*4+3] = cur.low / df.low[ind]
-            buf[i*4+4] = cur.close / df.close[ind]
+            buf[i*4+1] = cur_row.open / open
+            buf[i*4+2] = cur_row.high / df.high[ind]
+            buf[i*4+3] = cur_row.low / df.low[ind]
+            buf[i*4+4] = cur_row.close / df.close[ind]
             buf_mask[i*4+1] = 1f0
             buf_mask[i*4+2] = 1f0
             buf_mask[i*4+3] = 1f0
@@ -322,11 +371,42 @@ function make_row_vix!(bufs, df, date_from, date_lessthan)
         end
     end
     if !isnothing(findfirst(!isfinite, buf))
-        println("ERROR: bad vix data")
-        @show buf
-        global krowvix = buf
+        error("bad vix data")
     end
+    if any(!isfinite, buf)
+        error("bad vix data")
+    end
+    if iszero(buf) || iszero(buf_mask)
+        error("vix ERROR: row all zeros for date: $(cur_date)")
+    end
+    buf[1] = 12341234
 end
+
+# function model_encoder(cfg)
+#     input_under = Dense(cfg.input_width_under => cfg.hidden_width_under; bias=cfg.use_bias)
+#     input_vix = Dense(cfg.input_width_vix => cfg.hidden_width_vix; bias=cfg.use_bias)
+#     layer_input = Parallel(vcat; input_under, input_vix)
+#     through_width = cfg.hidden_width_under + cfg.hidden_width_vix
+
+#     encinner1 = Dense(through_width => 2 * through_width, cfg.activation; bias=false)
+#     encinner2 = Dense(2 * through_width => through_width, cfg.activation; bias=false)
+
+#     layer_output = Dense(through_width => cfg.encoded_width; bias=false)
+#     return Chain(;encoder_input=layer_input, encinner1, encinner2, encoder_output=layer_output)
+# end
+
+# function model_decoder(cfg)
+#     through_width = cfg.hidden_width_under + cfg.hidden_width_vix
+#     layer_input = Dense(cfg.encoded_width => through_width, cfg.activation; bias=false)
+
+#     decinner1 = Dense(through_width => 2 * through_width, cfg.activation; bias=false)
+#     decinner2 = Dense(2 * through_width => through_width, cfg.activation; bias=false)
+
+#     output_under = Dense(cfg.hidden_width_under => cfg.input_width_under; bias=cfg.use_bias)
+#     output_vix = Dense(cfg.hidden_width_vix => cfg.input_width_vix; bias=cfg.use_bias)
+#     layer_output = SplitLayer((output_under, output_vix), cfg.hidden_width_under)
+#     return Chain(;decoder_input=layer_input, decinner1, decinner2, decoder_output=layer_output)
+# end
 
 function model_encoder(cfg)
     input_under = Dense(cfg.input_width_under => cfg.hidden_width_under; bias=cfg.use_bias)
@@ -338,16 +418,6 @@ function model_encoder(cfg)
     return Chain(;encoder_input=layer_input, encoder_blocks=Chain(blocks...), encoder_output=layer_output)
 end
 
-function make_block(cfg, through_width, hidden_width, num_layers)
-    layers = Dense[]
-    push!(layers, Dense(through_width => hidden_width, cfg.activation; bias=false))
-    for _ in 1:(num_layers-2)
-        push!(layers, Dense(hidden_width => hidden_width, cfg.activation; bias=false))
-    end
-    push!(layers, Dense(hidden_width => through_width, cfg.activation; bias=false))
-    return Chain(layers)
-end
-
 function model_decoder(cfg)
     through_width = cfg.hidden_width_under + cfg.hidden_width_vix
     layer_input = Dense(cfg.encoded_width => through_width, cfg.activation; bias=false)
@@ -357,6 +427,16 @@ function model_decoder(cfg)
     layer_output = SplitLayer((output_under, output_vix), cfg.hidden_width_under)
     # layer_output = in -> (output_under(in[1:cfg.hidden_width_under,:]), output_vix(in[cfg.hidden_width_under+1:cfg.hidden_width]))
     return Chain(decoder_input=layer_input, decoder_blocks=Chain(blocks...), decoder_output=layer_output)
+end
+
+function make_block(cfg, through_width, hidden_width, num_layers)
+    layers = Dense[]
+    push!(layers, Dense(through_width => hidden_width, cfg.activation; bias=false))
+    for _ in 1:(num_layers-2)
+        push!(layers, Dense(hidden_width => hidden_width, cfg.activation; bias=false))
+    end
+    push!(layers, Dense(hidden_width => through_width, cfg.activation; bias=false))
+    return Chain(layers)
 end
 
 end
