@@ -140,9 +140,9 @@ const CACHE_DF_UNDER2 = Ref{DataFrame}()
 const CACHE_DF_VIX2 = Ref{DataFrame}()
 const CACHE_OBS = Ref{Vector{DateTime}}()
 
-function get_data()
+function get_data(;reset=false)
     cfg = config()
-    if !isassigned(CACHE_OBS)
+    if reset || !isassigned(CACHE_OBS)
         under = dat.ts_allperiods_df()
         dat.convert_cols!(missing_to_zero_float, under, :under)
         CACHE_DF_UNDER2[] = under
@@ -152,11 +152,12 @@ function get_data()
         CACHE_DF_VIX2[] = vix
 
         bad_dates = vix.date[findall(iszero, vix.open)] # open or close?
+        # println(bad_dates)
 
         skip_back_count = DateUtil.TIMES_PER_WEEK * cfg.data_weeks_count + 1 # +1 for the current ts
         # obs_ts = filter(:under => !ismissing, df_ts).ts[skip_back_count:end]
         # obs = filter(:under => !iszero, under).ts[skip_back_count:end]
-        obs = filter!(ts -> Date(ts) in bad_dates, filter(:under => !iszero, under).ts[skip_back_count:end])
+        obs = filter!(ts -> !(Date(ts) in bad_dates), filter(:under => !iszero, under).ts[skip_back_count:end])
         CACHE_OBS[] = obs
     end
     return (;
