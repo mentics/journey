@@ -14,7 +14,7 @@ end
 
 #region Config
 model_hypers() = (;
-    version = "latent64mult2drop1z",
+    version = "latent64mult2drop1zp",
     data_weeks_count = 5,
     encoded_width = 64,
     block_count = 2,
@@ -30,20 +30,25 @@ train_hypers() = (;
 )
 
 function config()
-    (;data_weeks_count, hidden_width_mult) = model_hypers()
-    input_width_under = 2 + DateUtil.TIMES_PER_WEEK * data_weeks_count
+    (;data_weeks_count, hidden_width_mult, encoded_width) = model_hypers()
+    input_width_under = DateUtil.TIMES_PER_WEEK * data_weeks_count
     vix_count = DateUtil.DAYS_PER_WEEK * data_weeks_count
-    input_width_vix = 2 + vix_count * 4
+    input_width_vix = vix_count * 4
+    input_width_meta = 2
     input_width = input_width_under + input_width_vix
     hidden_width_under = hidden_width_mult * input_width_under
     hidden_width_vix = hidden_width_mult * input_width_vix
     hidden_width = hidden_width_mult * input_width
+    encoded_with_meta = encoded_width + 4
     return (;
         model_hypers()...,
         train_hypers()...,
         vix_count,
-        input_width_under, input_width_vix, input_width,
+        input_width_under, input_width_vix,
+        input_width_meta,
+        # input_width,
         hidden_width_under, hidden_width_vix, hidden_width,
+        encoded_with_meta,
     )
 end
 #endregion Config
@@ -59,33 +64,50 @@ end
 learning_rate_func = TrainUtil.learning_rate_linear_decay()
 
 function run_model(model, batch)
-    (;under, under_mask, vix, vix_mask) = batch
-    (yhat_under_raw, yhat_vix_raw) = model((under, vix))
-    yhat_under = yhat_under_raw .* under_mask
-    yhat_vix = yhat_vix_raw .* vix_mask
-    return (yhat_under, yhat_vix)
+    encoded = run_encode(model, batch)
+    decoded = run_decode(model, encoded)
+    return decoded
+
+    # (;under, under_mask, under_meta, vix, vix_mask, vix_meta) = batch
+    # (yhat_under_raw, yhat_vix_raw) = model((vcat(under, under_meta), vcat(vix, vix_meta)))
+    # yhat_under = vcat(yhat_under_raw .* under_mask, under_meta)
+    # yhat_vix = vcat(yhat_vix_raw .* vix_mask, vix_meta)
+    # return (vcat(yhat_under, under_meta), vcat(yhat_vix, vix_meta))
 end
 
 function run_encode(model, batch)
-    # It's expected that the input is already masked, so no need to multiple it by the mask
-    (;under, vix) = batch
-    return model.layers.encoder((under, vix))
+    # It's expected that the input is already masked, so no need to multiply it by the mask
+    encoded = model.layers.encoder((vcat(batch.under.v, batch.under.meta), vcat(batch.vix.v, batch.vix.meta)))
+    return (;v=encoded, batch)
+        # under=(;batch.under..., v=enc_under),
+        # vix=(;batch.vix..., v=enc_vix)
+        # under=(;v=enc_under, meta=batch.under.meta, mask=batch.under.mask),
+        # vix=(;v=enc_vix, meta=batch.vix.meta, mask=batch.vix.mask)
+    # )
+end
+
+function run_decode(model, encoded)
+    (dec_under_raw, dec_vix_raw) = model.layers.decoder(vcat(encoded.v, encoded.batch.under.meta, encoded.batch.vix.meta))
+    dec_under = dec_under_raw .* encoded.batch.under.mask
+    dec_vix = dec_vix_raw .* encoded.batch.vix.mask
+    return (;
+        under=(;encoded.batch.under..., v=dec_under),
+        vix=(;encoded.batch.vix..., v=dec_vix)
+    )
 end
 
 make_loss_func() = function(model, batch)
-    (yhat_under, yhat_vix) = run_model(model, batch)
-
-    # l = Flux.mse(yhat_under, under) + Flux.mse(yhat_vix, vix)
-    (;under, vix) = batch
-    l = Flux.mae(yhat_under, under) + Flux.mae(yhat_vix, vix)
+    decoded = run_model(model, batch)
+    # l = Flux.mae(decoded.under.v, under) + Flux.mae(decoded.vix.v, vix)
+    l = Flux.mse(decoded.under.v, batch.under.v) + Flux.mae(decoded.vix.v, batch.vix.v)
     # global kloss_vals = (;under, under_mask, vix, vix_mask, yhat_under_1, yhat_vix_1, yhat_under, yhat_vix, loss=l)
     return l
 end
 
 # to_draw_x(batch, ind) = batch.under[1:end-2,ind]
 # to_draw_yh(yhat, ind) = yhat[1][1:end-2,ind]
-to_draw_x(batch, ind) = batch.under[1:end,ind]
-to_draw_yh(yhat, ind) = yhat[1][1:end,ind]
+to_draw_x(batch, ind) = batch.under.v[1:end,ind]
+to_draw_yh(yhat, ind) = yhat.under.v[1:end,ind]
 #endregion MLRun Interface
 
 const CACHE_DF_UNDER2 = Ref{DataFrame}()
@@ -128,8 +150,10 @@ function _make_data(cfg)
     bufs_row = make_bufs_row(sizes)
     under = Array{Float32, 2}(undef, sizes.under...)
     under_mask = Array{Float32, 2}(undef, sizes.under...)
+    under_meta = Array{Float32, 2}(undef, sizes.under_meta...)
     vix = Array{Float32, 2}(undef, sizes.vix...)
     vix_mask = Array{Float32, 2}(undef, sizes.vix...)
+    vix_meta = Array{Float32, 2}(undef, sizes.vix_meta...)
 
     make_batch = function(epochi, batchi)
         # TODO: use random variation instead of epochi?
@@ -141,11 +165,16 @@ function _make_data(cfg)
 
             under[:,i] .= bufs_row.under.v
             under_mask[:,i] .= bufs_row.under.mask
+            under_meta[:,i] .= bufs_row.under.meta
             vix[:,i] .= bufs_row.vix.v
             vix_mask[:,i] .= bufs_row.vix.mask
+            vix_meta[:,i] .= bufs_row.vix.meta
         end
 
-        return (;under, under_mask, vix, vix_mask)
+        return (;
+            under = (;v=under, mask=under_mask, meta=under_meta),
+            vix = (;v=vix, mask=vix_mask, meta=vix_meta)
+        )
     end
 
     get_inds = function(epochi, batchi)
@@ -157,15 +186,18 @@ function _make_data(cfg)
 
     # if preload...
     println("Making all batches...")
-    batches = [map(copy, make_batch(0, i)) for i in 1:batch_count]
+    # batches = [map(copy, make_batch(0, i)) for i in 1:batch_count]
+    batches = [deepcopy(make_batch(0, i)) for i in 1:batch_count]
     println(" done.")
     get_batch = (epochi, batchi) -> (batches[batchi] |> gpu)
     return (;get_batch, batch_count, cfg.batch_size, get_inds, obs_count)
 end
 
 data_sizes(cfg) = (;
-    under = (2 + DateUtil.TIMES_PER_WEEK * cfg.data_weeks_count, cfg.batch_size),
-    vix = (2 + 4 * DateUtil.DAYS_PER_WEEK * cfg.data_weeks_count, cfg.batch_size)
+    under = (DateUtil.TIMES_PER_WEEK * cfg.data_weeks_count, cfg.batch_size),
+    under_meta = (2, cfg.batch_size),
+    vix = (4 * DateUtil.DAYS_PER_WEEK * cfg.data_weeks_count, cfg.batch_size),
+    vix_meta = (2, cfg.batch_size)
 )
 
 data_sizes_orig(cfg) = (;
@@ -174,10 +206,18 @@ data_sizes_orig(cfg) = (;
 )
 
 function make_bufs_row(sizes)
-    under_len, vix_len = sizes.under[1], sizes.vix[1]
+    under_len, under_meta_len, vix_len, vix_meta_len = sizes.under[1], sizes.under_meta[1], sizes.vix[1], sizes.vix_meta[1]
     return (;
-        under = (;v = Vector{Float32}(undef, under_len), mask = Vector{Float32}(undef, under_len)),
-        vix = (;v = Vector{Float32}(undef, vix_len), mask = Vector{Float32}(undef, vix_len))
+        under = (;
+            v = Vector{Float32}(undef, under_len),
+            mask = Vector{Float32}(undef, under_len),
+            meta = Vector{Float32}(undef, under_meta_len)
+        ),
+        vix = (;
+            v = Vector{Float32}(undef, vix_len),
+            mask = Vector{Float32}(undef, vix_len),
+            meta = Vector{Float32}(undef, vix_meta_len)
+        )
     )
 end
 
@@ -205,8 +245,10 @@ function make_seq!(bufs, dfs, ind)
         println("missing count $(missing_count) > missing max $(missing_max) for ind $(ind). Returning 0 row")
         fill!(bufs.under.v, 0.0)
         fill!(bufs.under.mask, 0.0)
+        fill!(bufs.under.meta, 0.0)
         fill!(bufs.vix.v, 0.0)
         fill!(bufs.vix.mask, 0.0)
+        fill!(bufs.vix.meta, 0.0)
         return inds
     end
 
@@ -256,27 +298,29 @@ end
 
 function wrap_row!(bufs, f, args...)
     # global kwrap_row = (;bufs, f, args)
-    views = (;v=(@view bufs.v[1:end-2]), mask=(@view bufs.mask[1:end-2]))
-    f(views, args...)
+    # views = (;v=(@view bufs.v[1:end-2]), mask=(@view bufs.mask[1:end-2]))
+    f(bufs, args...)
     bufs_orig = (;v=copy(bufs.v), mask=copy(bufs.mask))
 
-    if iszero(views.v)
+    if iszero(bufs.v)
         throw("what!")
     end
-    if !are_all_finite(views.v)
+    if !are_all_finite(bufs.v)
         error("f returned bad data")
     end
 
-    μ, σ = mean_and_std(filter(!iszero, views.v))
+    μ, σ = mean_and_std(filter(!iszero, bufs.v))
     @assert -2f0 < μ < 80f0 "-2f0 < μ ($(μ)) < 80f0"
     @assert 0.001f0 < σ < 32f0 "0.001f0 < σ ($(σ)) < 32f0" # TODO: too low? check which date this is for?
-    zscore!(views.v, μ, σ)
-    mask_count = count(iszero, views.mask)
-    views.v .*= views.mask
-    bufs.v[end-1] = μ
-    bufs.v[end] = σ
-    bufs.mask[end-1] = 1f0
-    bufs.mask[end] = 1f0
+    zscore!(bufs.v, μ, σ)
+    # mask_count = count(iszero, views.mask)
+    bufs.v .*= bufs.mask
+    bufs.meta[1] = μ
+    bufs.meta[2] = σ
+    # bufs.v[end-1] = μ
+    # bufs.v[end] = σ
+    # bufs.mask[end-1] = 1f0
+    # bufs.mask[end] = 1f0
     @assert are_all_finite(bufs.v)
     # @assert count(iszero, bufs.v) == count(iszero, bufs.mask) "$(f) count(iszero, bufs.v) == count(iszero, bufs.mask): $(count(iszero, bufs.v)) == $(count(iszero, bufs.mask)) ; $(mask_count)"
     if count(iszero, bufs.v) != count(iszero, bufs.mask)
@@ -285,7 +329,8 @@ function wrap_row!(bufs, f, args...)
         inds = setdiff(vz, mz)
         for ind in inds
             if bufs_orig.v[ind] != μ
-                @show ind bufs_orig.v[ind] μ
+                println("found zero that wasn't mean")
+                @show ind bufs.v[ind] bufs_orig.v[ind] μ
             end
         end
     end
@@ -435,8 +480,8 @@ end
 # end
 
 function model_encoder(cfg)
-    input_under = Dense(cfg.input_width_under => cfg.hidden_width_under; bias=cfg.use_bias)
-    input_vix = Dense(cfg.input_width_vix => cfg.hidden_width_vix; bias=cfg.use_bias)
+    input_under = Dense(cfg.input_width_under + cfg.input_width_meta => cfg.hidden_width_under; bias=cfg.use_bias)
+    input_vix = Dense(cfg.input_width_vix + cfg.input_width_meta => cfg.hidden_width_vix; bias=cfg.use_bias)
     layer_input = Parallel(vcat; input_under, input_vix)
     through_width = cfg.hidden_width_under + cfg.hidden_width_vix
 
@@ -452,7 +497,7 @@ end
 
 function model_decoder(cfg)
     through_width = cfg.hidden_width_under + cfg.hidden_width_vix
-    layer_input = Dense(cfg.encoded_width => through_width, cfg.activation; bias=false)
+    layer_input = Dense(cfg.encoded_with_meta => through_width, cfg.activation; bias=false)
 
     # blocks = [SkipConnection(make_block(cfg, through_width, cfg.hidden_width, cfg.layers_per_block), +) for _ in 1:cfg.block_count]
 
