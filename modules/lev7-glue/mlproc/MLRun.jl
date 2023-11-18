@@ -23,7 +23,7 @@ function make_data end
 function make_loss_func end
 make_opt(learning_rate_func, loss_untrained) = AdamW(learning_rate_func(0, 0f0, loss_untrained))
 
-function reset(mod, version)
+function reset(mod, version=mod.config().version)
     model = mod.make_model() |> dev
     println("Created model with param count: ", sum(length, Flux.params(model)))
     (;get_batch, batch_size, batch_count, get_inds, obs_count) = mod.make_data()
@@ -103,7 +103,7 @@ function train(model, opt_state, get_batch, calc_loss, base_loss, cv, learning_r
         Flux.Optimisers.adjust!(opt_state, learning_rate(epoch, loss_prev, loss_epoch))
         loss_prev = loss_epoch
         if (now(UTC) - last_save) >= Minute(30)
-            save(kall.version)
+            save()
             last_save = now(UTC)
         end
         check_holdout()
@@ -124,7 +124,7 @@ path_default_base() = joinpath(FileUtil.root_shared(), "mlrun")
 path_default_base(mod) = joinpath(path_default_base(), string(mod))
 
 using JLD2
-function save(version, path_base=path_default_base(kall.mod))
+function save(version=kall.version, path_base=path_default_base(kall.mod))
     mkpath(path_base)
     path = joinpath(path_base, "$(kall.mod)-$(version)-$(DateUtil.file_ts()).jld2")
     print("Saving model and opt_state to $(path)...")
@@ -135,7 +135,7 @@ function save(version, path_base=path_default_base(kall.mod))
     stop = time()
     println(" done in $(stop-start) seconds.")
 end
-function load(version, path=path_default_base(kall.mod))
+function load(version=kall.version, path=path_default_base(kall.mod))
     if isdir(path)
         path = FileUtil.most_recently_modified(path; matching=version)
         @assert !isnothing(path) "no files in path $(path)"

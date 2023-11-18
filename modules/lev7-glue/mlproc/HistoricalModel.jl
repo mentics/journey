@@ -14,6 +14,7 @@ end
 
 #region Config
 model_hypers() = (;
+    version = "latent64mult2drop1z",
     data_weeks_count = 5,
     encoded_width = 64,
     block_count = 2,
