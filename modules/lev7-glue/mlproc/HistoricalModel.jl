@@ -9,7 +9,7 @@ import DataFiles:missing_to_zero_float
 using ModelUtil, TrainUtil
 using MLRun
 
-VERSION = "latent32mult2block1drop2z"
+VERSION = "latent32mult2block1drop4z"
 
 # For inference and combined training
 function save_encoder(version=VERSION)
@@ -39,7 +39,7 @@ model_params() = (;
 )
 
 train_hypers() = (;
-    batch_size = 64,
+    batch_size = 32,
 )
 
 function config()
