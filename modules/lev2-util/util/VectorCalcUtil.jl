@@ -58,4 +58,13 @@ function smooth!(v::AVec{Float64}, cnt::Int=10)::AVec{Float64}
     return v
 end
 
+function interleave!(out, rows)
+    row_count = length(rows)
+    for (irow, row) in enumerate(rows)
+        for (i, x) in enumerate(row)
+            out[(i - 1) * row_count + irow] = x
+        end
+    end
+end
+
 end

@@ -26,15 +26,39 @@ end
 #endregion Config
 
 #region MLRun Interface
-make_data() = _make_data(mod.config())
+function mlrun()
+    inference_model = training_model = make_model()
+    run = x -> run_model(training_model, x)
 
-function make_model()
-    cfg = mod.config()
-
-    return Chain(; encoder=model_encoder(cfg), decoder=model_decoder(cfg))
+    global state = Trainee4(;
+        name=NAME,
+        version=VERSION,
+        training_model,
+        inference_model,
+        run_model = run,
+        infer = run,
+        batches = make_data(),
+        get_learning_rate = TrainUtil.learning_rate_linear_decay(), # TrainUtil.lr_cycle_decay(),
+        get_loss = calc_loss,
+        mod = @__MODULE__
+    )
+    return state
 end
 
+to_draw_x(batch, ind) = batch.under.v[1:end,ind]
+to_draw_yh(yhat, ind) = yhat.under.v[1:end,ind]
+#endregion MLRun Interface
+
+#region mlrun impl
+function make_model()
+    cfg = mod.config()
+    return Chain(; ...)
+end
+
+# TODO: get_batch has to return (;hist=(;v, meta_under, meta_vix), ts=(;...), etc...)
+
 function run_model(model, batch)
+    model(batch.x)
     hist = run_encode(model, batch)
     (;under, under_mask, vix, vix_mask) = batch
     (yhat_under_raw, yhat_vix_raw) = model((under, vix))
@@ -43,22 +67,17 @@ function run_model(model, batch)
     return (yhat_under, yhat_vix)
 end
 
-function run_encode(model, batch)
-    # It's expected that the input is already masked, so no need to multiply it by the mask
-    (;under, vix) = batch
-    return model.layers.encoder((under, vix))
-end
-
-MLRun.make_loss_func(mod::typeof(@__MODULE__)) = function(model, batch)
-    (yhat_under, yhat_vix) = MLRun.run_model(mod, model, batch)
-
-    # l = Flux.mse(yhat_under, under) + Flux.mse(yhat_vix, vix)
-    (;under, vix) = batch
-    l = Flux.mae(yhat_under, under) + Flux.mae(yhat_vix, vix)
-    # global kloss_vals = (;under, under_mask, vix, vix_mask, yhat_under_1, yhat_vix_1, yhat_under, yhat_vix, loss=l)
-    return l
+calc_loss(model, batch)
+    return Flux.Losses.logitcrossentropy(run_model(model, batch.x), batch.y; dims=1)
 end
 #endregion MLRun Interface
 
+function setup_data()
+    # Combine the following features:
+    #   - Encode time stamp
+    #   - MarketDur until expiration MarketDurUtil/Types
+    #   - tsx: tex?, extrin, extrindt, vol
+    #   - HistoricalModel
+end
 
 end

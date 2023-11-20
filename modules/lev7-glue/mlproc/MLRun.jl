@@ -4,7 +4,7 @@ using Dates
 using CUDA
 import Flux:Flux,cpu,gpu,throttle
 import Optimisers:AdamW
-using DateUtil, FileUtil, IndexUtil
+using DateUtil, IndexUtil, ModelUtil
 
 CUDA.allowscalar(false)
 dev(x) = gpu(x) # gpu(x)
@@ -30,8 +30,8 @@ export Batches
     count
 end
 
-export Trainee3
-@kwdef struct Trainee3
+export Trainee4
+@kwdef struct Trainee4
     name
     version
     training_model
@@ -41,17 +41,18 @@ export Trainee3
     batches::Batches
     get_learning_rate
     get_loss
+    mod
 end
 
-@kwdef struct Training3
-    trainee::Trainee3
+@kwdef struct Training4
+    trainee::Trainee4
     opt
     opt_state
     metrics
     params
 end
 
-function setup(trainee::Trainee3)
+function setup(trainee::Trainee4)
     model = trainee.training_model |> dev
     println("Model has param count: ", sum(length, Flux.params(model)))
 
@@ -65,7 +66,7 @@ function setup(trainee::Trainee3)
 
     params = Dict{Symbol,Any}()
 
-    training = Training3(;
+    training = Training4(;
         trainee,
         opt,
         opt_state,
@@ -76,7 +77,7 @@ function setup(trainee::Trainee3)
     return training
 end
 
-function run(training::Training3; epochs=1000, fold_count=5)
+function run(training::Training4; epochs=1000, fold_count=5)
     cv = IndexUtil.cv_folds(training.trainee.batches.count, fold_count)
     training.params[:cv] = cv
     train(training; epochs)
@@ -136,7 +137,7 @@ function train(training; epochs=1000)
         Flux.Optimisers.adjust!(training.opt_state, rate)
         println("Updated learning rate to $(rate)")
 
-        throttle(30 * 60; leading=false) do; save(training) end
+        throttle(30 * 60; leading=false) do; ModelUtil.save(training) end
     end
 end
 
@@ -150,42 +151,13 @@ function calc_base_loss(model, calc_loss, get_batch, batch_count)
     return loss
 end
 
-path_default_base() = joinpath(FileUtil.root_shared(), "mlrun")
-path_default_base(mod_name) = joinpath(path_default_base(), mod_name)
-
-using JLD2
-function save(training, path_base=path_default_base(training.trainee.name))
-    trainee = training.trainee
-    mkpath(path_base)
-    path = joinpath(path_base, "$(trainee.name)-$(trainee.version)-$(DateUtil.file_ts()).jld2")
-    print("Saving model and opt_state to $(path)...")
-    start = time()
-    model_state = Flux.state(cpu(trainee.training_model))
-    opt_state = cpu(training.opt_state)
-    jldsave(path; model_state, opt_state)
-    stop = time()
-    println(" done in $(stop - start) seconds.")
-end
-
-function load(training, path=path_default_base(training.trainee.name))
-    trainee = training.trainee
-    if isdir(path)
-        path = FileUtil.most_recently_modified(path; matching=trainee.version)
-        @assert !isnothing(path) "no files in path $(path)"
-    end
-    model_state, opt_state = JLD2.load(path, "model_state", "opt_state")
-    Flux.loadmodel!(trainee.training_model, model_state)
-    Flux.loadmodel!(training.opt_state, opt_state)
-    println("Loaded model and opt_state from $(path)")
-end
-
 import DrawUtil:draw,draw!
 function check(trainee, batchi)
     gbatch = trainee.batches.get(0, batchi)
     yhat = trainee.run_model(gbatch) |> cpu
     batch = gbatch |> cpu
-    x = mod.to_draw_x(batch, 1)
-    yh = mod.to_draw_yh(yhat, 1)
+    x = trainee.mod.to_draw_x(batch, 2)
+    yh = trainee.mod.to_draw_yh(yhat, 2)
     draw(:scatter, x; label="x")
     draw!(:scatter, yh; label="yh")
     return (;batch, yhat)

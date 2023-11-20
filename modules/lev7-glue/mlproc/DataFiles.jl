@@ -891,6 +891,10 @@ function make_ts_allperiods(;period=Minute(30))
     save(path_ts_allperiods(;period), df)
     return df
 end
+
+function valid_ts_for_seq()
+
+end
 #endregion
 
 #region Old

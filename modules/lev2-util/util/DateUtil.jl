@@ -204,7 +204,7 @@ function all_weekdays(;date_from=Date(2010,1,1), date_to=Date(2023,7,1))
     return Iterators.filter(d -> Dates.dayofweek(d) <= 5, date_from:Day(1):date_to)
 end
 
-function all_weekday_ts(;date_from=Date(2010,1,1), date_to=Date(2023,7,1), time_from=Time(10, 0), time_to=Time(15,30), period=Minute(30), zone=MARKET_TZ)
+function all_weekday_ts(;date_from=Date(2010,1,1), date_to=Date(2023,7,1), time_from=Time(10, 0), time_to=Time(15,30), period=Minute(30))
     res = DateTime[]
     for date in all_weekdays(;date_from, date_to)
         append!(res, [fromMarketTZ(date, t) for t in time_from:period:time_to])
@@ -212,9 +212,33 @@ function all_weekday_ts(;date_from=Date(2010,1,1), date_to=Date(2023,7,1), time_
     return res
 end
 
-function week_start_market(ts; time=Time(10,0))
-    DateUtil.fromMarketTZ(Date(Dates.firstdayofweek(ts)), time)
+function week_first_ts(ts; time_from=Time(10,0))
+    DateUtil.fromMarketTZ(Date(Dates.firstdayofweek(ts)), time_from)
 end
+
+function week_last_ts(ts; time=Time(15,30))
+    DateUtil.fromMarketTZ(Date(Dates.lastdayofweek(ts) - Day(2)), time)
+end
+
+function week_prev_ts(ts; time_from=Time(10,0), time_to=Time(15,30), period=Minute(30))
+    if ts <= week_first_ts(ts)
+        return week_last_ts(ts - Week(1))
+    else
+        if toTimeMarket(ts) <= time_from
+            # It can't be first day of week or else we would have hit conditional above.
+            return fromMarketTZ(Date(ts) - Day(1), time_to)
+        else
+            return ts - period
+        end
+    end
+end
+
+# function get_weeks_tss(last_ts, weeks_count)
+#     last_date = Date(last_ts)
+#     date_from = Dates.firstdayofweek(last_date) - Week(weeks_count - 1)
+#     date_to = Dates.lastdayofweek(last_date)
+#     return DateUtil.all_weekday_ts(;date_from, date_to)
+# end
 
 const TIMES_PER_DAY = 12 # Dates.value(convert(Minute, Time(15, 30) - Time(10,0))) / 30 + 1, +1 to include endpoint
 const DAYS_PER_WEEK = 5

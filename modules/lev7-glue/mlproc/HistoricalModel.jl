@@ -3,24 +3,25 @@ using Dates, DataFrames
 using StatsBase
 using Flux, MLUtils, CUDA
 import NNlib
+# using FLoops, FoldsThreads
 using DateUtil, CollUtil, IndexUtil
 import DataFiles as dat
 import DataFiles:missing_to_zero_float
 using ModelUtil, TrainUtil
 using MLRun
+import VectorCalcUtil as vcu
 
+NAME = string(@__MODULE__)
 VERSION = "latent32mult2block1drop4z"
 
 # For inference and combined training
-function save_encoder(version=VERSION)
-
-end
-function load_encoder(version=VERSION)
-    model = make_model()
-    Flux.loadmodel!(kall.model, model_state)
-
-    load()
-    return (;run=run_encode(), model)
+function load_inference()
+    inference_model = model_encoder() |> gpu
+    ModelUtil.load_inference(NAME, VERSION, inference_model)
+    return (;
+        model = inference_model,
+        run = batch -> run_encoder(inference_model, batch),
+    )
 end
 
 #region Config
@@ -40,6 +41,7 @@ model_params() = (;
 
 train_hypers() = (;
     batch_size = 32,
+    holdout = 0.1,
 )
 
 function config()
@@ -54,7 +56,6 @@ function config()
     hidden_width = hidden_width_mult * input_width
     encoded_with_meta = encoded_width + 4
     return (;
-        VERSION,
         data_params()...,
         model_params()...,
         train_hypers()...,
@@ -70,30 +71,36 @@ end
 
 #region MLRun Interface
 function mlrun()
-    # (;get_batch, batch_count, cfg.batch_size, get_inds, obs_count)
     (;get_batch, batch_count) = make_data()
+    batches = Batches(;get=get_batch, count=batch_count)
     inference_model = model_encoder() |> gpu
     training_model = Chain(; encoder=inference_model, decoder=model_decoder()) |> gpu
-    batches = Batches(;get=get_batch, count=batch_count)
-    global state = Trainee3(;
-        name=string(@__MODULE__),
+
+    global state = Trainee4(;
+        name=NAME,
         version=VERSION,
         training_model,
         inference_model,
-        run_model = batch -> run_model(training_model, batch),
-        infer = batch -> run_encode(inference_model, batch),
+        run_model = batch -> autoencoder(training_model, batch),
+        infer = batch -> run_encoder(inference_model, batch),
         batches,
         get_learning_rate = TrainUtil.learning_rate_linear_decay(), # TrainUtil.lr_cycle_decay(),
         get_loss = calc_loss,
+        mod = @__MODULE__
     )
     return state
 end
+
+to_draw_x(batch, ind) = batch.under.v[1:end,ind]
+to_draw_yh(yhat, ind) = yhat.under[1:end,ind]
+# to_draw_x(batch, ind) = batch.vix.v[1:end,ind]
+# to_draw_yh(yhat, ind) = yhat.vix[1:end,ind]
 #endregion MLRun Interface
 
 #region mlrun impl
-function run_model(model, batch)
-    encoded = run_encode(model, batch)
-    decoded = run_decode(model, encoded)
+function autoencoder(model, batch)
+    encoded = run_encoder(model.layers.encoder, batch)
+    decoded = run_decoder(model.layers.decoder, encoded, batch)
     return decoded
 
     # (;under, under_mask, under_meta, vix, vix_mask, vix_meta) = batch
@@ -103,37 +110,26 @@ function run_model(model, batch)
     # return (vcat(yhat_under, under_meta), vcat(yhat_vix, vix_meta))
 end
 
-function run_encode(model, batch)
+function run_encoder(encoder, batch)
     # It's expected that the input is already masked, so no need to multiply it by the mask
-    encoded = model.layers.encoder((vcat(batch.under.v, batch.under.meta), vcat(batch.vix.v, batch.vix.meta)))
-    return (;v=encoded, batch)
-        # under=(;batch.under..., v=enc_under),
-        # vix=(;batch.vix..., v=enc_vix)
-        # under=(;v=enc_under, meta=batch.under.meta, mask=batch.under.mask),
-        # vix=(;v=enc_vix, meta=batch.vix.meta, mask=batch.vix.mask)
-    # )
+    v = encoder((vcat(batch.under.v, batch.under.meta), vcat(batch.vix.v, batch.vix.meta)))
+    return (;v, meta_under=batch.under.meta, meta_vix=batch.vix.meta)
 end
 
-function run_decode(model, encoded)
-    (dec_under_raw, dec_vix_raw) = model.layers.decoder(vcat(encoded.v, encoded.batch.under.meta, encoded.batch.vix.meta))
-    dec_under = dec_under_raw .* encoded.batch.under.mask
-    dec_vix = dec_vix_raw .* encoded.batch.vix.mask
-    return (;
-        under=(;encoded.batch.under..., v=dec_under),
-        vix=(;encoded.batch.vix..., v=dec_vix)
-    )
+function run_decoder(decoder, encoded, batch)
+    (dec_under_raw, dec_vix_raw) = decoder(vcat(encoded.v, encoded.meta_under, encoded.meta_vix))
+    under = dec_under_raw .* batch.under.mask
+    vix = dec_vix_raw .* batch.vix.mask
+    return (;under, vix)
 end
 
 function calc_loss(model, batch)
-    decoded = run_model(model, batch)
+    (;under, vix) = autoencoder(model, batch)
     # l = Flux.mae(decoded.under.v, under) + Flux.mae(decoded.vix.v, vix)
-    l = Flux.mse(decoded.under.v, batch.under.v) + Flux.mae(decoded.vix.v, batch.vix.v)
+    l = Flux.mse(under, batch.under.v) + Flux.mae(vix, batch.vix.v)
     # global kloss_vals = (;under, under_mask, vix, vix_mask, yhat_under_1, yhat_vix_1, yhat_under, yhat_vix, loss=l)
     return l
 end
-
-to_draw_x(batch, ind) = batch.under.v[1:end,ind]
-to_draw_yh(yhat, ind) = yhat.under.v[1:end,ind]
 #endregion mlrun impl
 
 const CACHE_DF_UNDER2 = Ref{DataFrame}()
@@ -167,348 +163,237 @@ function get_data(;reset=false)
     )
 end
 
+# @kwdef struct HistoricalInput
+#     v::Vector{Float32}
+#     meta::Vector{Float32}
+#     mask::BitVector
+# end
+
+# @kwdef struct HistoricalEncoded
+#     v::Vector{Float32}
+#     meta_under::Vector{Float32}
+#     meta_vix::Vector{Float32}
+# end
+
+function make_data_input()
+    under = make_data_under()
+    vix = make_data_vix()
+    valid_dates = Set(vix.date)
+    filter!(:ts => ts -> Date(ts) in valid_dates, under)
+    # transform(under,
+    #     :ts => (ts -> Date.(ts)) => :date,
+    #     :v -> :under_v
+    # )
+    # under[!,:date] = Date.(under[!,:ts])
+    len_before = length(under.ts)
+    combined = select(under, :ts, :v => :under_v, :meta => :under_meta, :mask => :under_mask, :ts => (ts -> Date.(ts)) => :date)
+    leftjoin!(combined, vix; on=:date)
+    dropmissing!(combined; disallowmissing=true) # fix column types to not have union missing
+    @assert length(combined.ts) == len_before
+    rename!(combined, :v => :vix_v, :meta => :vix_meta, :mask => :vix_mask)
+    select!(combined, Not(:date))
+
+    # [(;ts=p.first, v=p.second.v, meta=p.second.meta, mask=p.second.mask) for p in pairs(under)]
+    dat.save(PATH, combined)
+    return combined
+end
+
+PATH = "data/HistoricalModel-input.arrow"
+
+
+INPUT_CACHE = nothing
+import Arrow
+function load_data_input()
+    if isnothing(INPUT_CACHE)
+        global INPUT_CACHE = Arrow.Table(PATH)
+    end
+    return INPUT_CACHE
+end
+
+import Random
 function make_data()
     cfg = config()
-    dfs = get_data()
-
-    obs_count = size(dfs.obs, 1)
-    batch_count = (obs_count - cfg.input_width_under) ÷ cfg.batch_size
-    lfsr = IndexUtil.lfsr(obs_count)
-    sizes = data_sizes(cfg)
-
-    bufs_row = make_bufs_row(sizes)
-    under = Array{Float32, 2}(undef, sizes.under...)
-    under_mask = Array{Float32, 2}(undef, sizes.under...)
-    under_meta = Array{Float32, 2}(undef, sizes.under_meta...)
-    vix = Array{Float32, 2}(undef, sizes.vix...)
-    vix_mask = Array{Float32, 2}(undef, sizes.vix...)
-    vix_meta = Array{Float32, 2}(undef, sizes.vix_meta...)
-
-    make_batch = function(epochi, batchi)
-        # TODO: use random variation instead of epochi?
-        starti = epochi + batchi * cfg.batch_size
-        for i in 1:cfg.batch_size
-            ind = IndexUtil.lfsr_next(lfsr, starti + i)
-
-            make_seq!(bufs_row, dfs, ind)
-
-            under[:,i] .= bufs_row.under.v
-            under_mask[:,i] .= bufs_row.under.mask
-            under_meta[:,i] .= bufs_row.under.meta
-            vix[:,i] .= bufs_row.vix.v
-            vix_mask[:,i] .= bufs_row.vix.mask
-            vix_meta[:,i] .= bufs_row.vix.meta
-        end
-
+    input = load_data_input()
+    # obs_count = size(input.ts, 1)
+    # holdout_count = floor(Int, obs_count * cfg.holdout)
+    # train_count = obs_count - holdout_count
+    # batch_count = train_count ÷ cfg.batch_size
+    # all_inds = Random.randperm(obs_count)
+    # inds_train = all_inds[1:(end - holdout_count)]
+    # inds_holdout = all_inds[(end - holdout_count + 1):end]
+    # inds_batches = batch_inds(inds_train, cfg.batch_size, batch_count)
+    (;batch_count, inds_batches, inds_holdout) = IndexUtil.inds_for_batches(size(input.ts, 1), cfg.batch_size, cfg.holdout)
+    # TODO: write directly to CuArray's?
+    get_batch = function(iepoch, ibatch)
+        inds = inds_batches[ibatch]
         return (;
-            under = (;v=under, mask=under_mask, meta=under_meta),
-            vix = (;v=vix, mask=vix_mask, meta=vix_meta)
-        )
-    end
+            under = (;v=reduce(hcat, input.under_v[inds]), meta=reduce(hcat, input.under_meta[inds]), mask=reduce(hcat, input.under_mask[inds])),
+            vix = (;v=reduce(hcat, input.vix_v[inds]), meta=reduce(hcat, input.vix_meta[inds]), mask=reduce(hcat, input.vix_mask[inds])),
+        ) |> gpu
 
-    get_inds = function(epochi, batchi)
-        starti = epochi + batchi * cfg.batch_size
-        return map(1:cfg.batch_size) do i
-            IndexUtil.lfsr_next(lfsr, starti + i)
-        end
+        # vw = @view input[inds_batches[ibatch],:]
+        # return (;
+        #     under = (;v=reduce(hcat, vw.under_v), meta=reduce(hcat, vw.under_meta), mask=reduce(hcat, vw.under_mask)),
+        #     vix = (;v=reduce(hcat, vw.vix_v), meta=reduce(hcat, vw.vix_meta), mask=reduce(hcat, vw.vix_mask)),
+        # )
     end
-
-    # if preload...
-    println("Making all batches...")
-    # batches = [map(copy, make_batch(0, i)) for i in 1:batch_count]
-    batches = [deepcopy(make_batch(0, i)) for i in 1:batch_count]
-    println(" done.")
-    get_batch = (epochi, ibatch) -> batches[ibatch] |> gpu
-    # return (;get_batch, batch_count, cfg.batch_size, get_inds, obs_count)
-    return (;get_batch, batch_count)
+    return (;get_batch, batch_count, inds_holdout)
 end
 
-data_sizes(cfg) = (;
-    under = (DateUtil.TIMES_PER_WEEK * cfg.data_weeks_count, cfg.batch_size),
-    under_meta = (2, cfg.batch_size),
-    vix = (4 * DateUtil.DAYS_PER_WEEK * cfg.data_weeks_count, cfg.batch_size),
-    vix_meta = (2, cfg.batch_size)
-)
-
-data_sizes_orig(cfg) = (;
-    under = (DateUtil.TIMES_PER_WEEK * cfg.data_weeks_count, cfg.batch_size),
-    vix = (4 * DateUtil.DAYS_PER_WEEK * cfg.data_weeks_count, cfg.batch_size)
-)
-
-function make_bufs_row(sizes)
-    under_len, under_meta_len, vix_len, vix_meta_len = sizes.under[1], sizes.under_meta[1], sizes.vix[1], sizes.vix_meta[1]
-    return (;
-        under = (;
-            v = Vector{Float32}(undef, under_len),
-            mask = Vector{Float32}(undef, under_len),
-            meta = Vector{Float32}(undef, under_meta_len)
-        ),
-        vix = (;
-            v = Vector{Float32}(undef, vix_len),
-            mask = Vector{Float32}(undef, vix_len),
-            meta = Vector{Float32}(undef, vix_meta_len)
-        )
-    )
-end
-
-function make_seq!(bufs, dfs, ind)
+function make_data_under()
     cfg = config()
-    (;under, vix, obs) = dfs
-    cur_ts = obs[ind]
-    cur_ind = searchsortedfirst(under.ts, cur_ts)
-    to_ind = cur_ind - 1
-    to_ts = under.ts[to_ind]
-    # to_date = Date(to_ts)
+    weeks_count = cfg.data_weeks_count
 
-    from_ts = DateUtil.week_start_market(to_ts - Week(cfg.data_weeks_count - 1))
-    from_ind = searchsortedfirst(under.ts, from_ts)
-    end_ind = from_ind + cfg.data_weeks_count * DateUtil.TIMES_PER_WEEK - 1
+    under = dat.ts_allperiods_df()
+    unders = replace(under.under, missing => 0f0)
+    # res = Dict{DateTime,DataMetaMask2}()
+    # sizehint!(res, 40000)
+    res = DataFrame(ts = DateTime[], v = Vector{Float32}[], meta=Vector{Float32}[], mask=BitVector[])
 
-    inds = from_ind:end_ind
+    len = DateUtil.TIMES_PER_WEEK * weeks_count
+    skip_back_count = len + 1 # +1 for the current ts
+    # tss = under.ts[skip_back_count:end]
+    inds = skip_back_count:length(under.ts)
+    # prev_ts = DateTime(0)
+    # ex = WorkStealingEx()
+    # @floop ex for ind in inds
+    # @floop for ind in inds
+    for ind in inds
+        cur_under = unders[ind]
+        if iszero(cur_under)
+            # println("skipping due to 0 cur $(ind)")
+            continue
+        end
+        # !iszero(cur_under) || continue
+        cur_ts = under.ts[ind]
+        # @assert cur_ts > prev_ts
 
-    @assert Week(cfg.data_weeks_count-1) <= round(cur_ts - under.ts[inds[1]], Week) <= Week(cfg.data_weeks_count)
+        include_ind = ind - 1
+        if iszero(unders[include_ind])
+            # TODO: maybe not skip these? these will skip the first ts after holidays
+            # println("skipping due to 0 include_ind $(include_ind)")
+            continue
+        end
+        include_ts = under.ts[include_ind]
+        from_ts = DateUtil.week_first_ts(include_ts - Week(weeks_count - 1))
+        from_ind = searchsortedfirst(under.ts, from_ts)
+        # to_ts = DateUtil.week_last_ts(include_ts)
+        # to_ind = searchsortedfirst(under.ts, to_ts)
+        include_inds = from_ind:include_ind
 
-    missing_max = 0.3 * length(inds)
-    missing_count = count(iszero, (@view under.under[inds]))
-    # println("missing: $(missing_count) / $(missing_max)")
-    if missing_count >= missing_max
-        println("missing count $(missing_count) > missing max $(missing_max) for ind $(ind). Returning 0 row")
-        fill!(bufs.under.v, 0.0)
-        fill!(bufs.under.mask, 0.0)
-        fill!(bufs.under.meta, 0.0)
-        fill!(bufs.vix.v, 0.0)
-        fill!(bufs.vix.mask, 0.0)
-        fill!(bufs.vix.meta, 0.0)
-        return inds
+        # weeks_tss = DateUtil.get_weeks_tss(ts, weeks_count)
+        # inds = inds_for_sorted(under.ts, weeks_tss[1], weeks_tss[end])
+        # include_ts = DateUtil.prev_weekday_ts(ts)
+        # @assert under.ts[inds] == weeks_tss
+        @assert length(include_inds) <= len
+
+        vw = @view unders[include_inds]
+        !too_many_zeros(vw) || continue
+
+        v = fill(0f0, len)
+        v[axes(vw, 1)] .= vw
+        mask = (!iszero).(v)
+        @assert typeof(mask) == BitVector
+        v .= cur_under ./ v .* mask
+
+        μ, σ = mean_and_std(filter(!iszero, v))
+        @assert -2f0 < μ < 2f0 "-2f0 < μ ($(μ)) < 2f0"
+        @assert 0.001f0 < σ < 1f0 "0.01f0 < σ ($(σ)) < 1f0"
+        zscore!(v, μ, σ)
+        v .*= mask # restore 0's for missing
+
+        @assert iszero(@view v[(length(include_inds) + 1):end])
+        @assert findlast(!iszero, v) > (len - DateUtil.TIMES_PER_WEEK) # shouldn't have a full week of zeros trailing
+
+        # res[cur_ts] = DataMetaMask2(v, [μ, σ], mask)
+        push!(res, (;ts = cur_ts, v, meta=[μ, σ], mask))
+
+        # p = cur_ts => DataMetaMask2(v, [μ, σ], mask)
+        # @reduce(res = vcat(Pair{DateTime,DataMetaMask2}[], p))
+
+
+        # @reduce(res = push!(Dict{DateTime,DataMetaMask2}(), p))
+        # @reduce(res = push!(Dict{DateTime,DataMetaMask2}(), cur_ts => DataMetaMask2(v, [μ, σ], mask)))
+        # @reduce() do (res = Dict{DateTime,DataMetaMask2}(); p)
+        #     # res[cur_ts] = DataMetaMask2(v, [μ, σ], mask)
+        #     res[p.first] = p.second
+        #     # push!(res, p)
+        # end
+
+        # prev_ts = cur_ts
     end
 
-    # make_row_under!(bufs.under, under, inds, cur_ind)
-    # make_row_vix!(bufs.vix, vix, Date(from_ts), Date(cur_ts))
-    wrap_row!(bufs.under, make_row_under!, under, inds, cur_ind)
-    wrap_row!(bufs.vix, make_row_vix!, vix, Date(from_ts), Date(cur_ts))
-    return inds
+    # return Dict(res)
+    return res
 end
 
-function test_seq(ind)
+function make_data_vix()
     cfg = config()
-    dfs = get_data()
-    bufs = make_bufs_row(data_sizes(cfg))
-    inds = make_seq!(bufs, dfs, ind)
-    tss = dfs.under.ts[inds]
-    return (;bufs, inds, tss)
-end
+    weeks_count = cfg.data_weeks_count
 
-# function times_for_date_to(cfg, date_to)
-#     date_from = firstdayofweek(date_to) - Week(cfg.data_weeks_count - 1)
-#     date_to = lastdayofweek(date_to) - Day(2)
-#     times = DateUtil.all_weekday_ts(; date_from, date_to)
-
-#     global ktimes = times
-#     @assert round(times[end] - times[1], Day) == Day((cfg.data_weeks_count - 1) * 7 + 4)
-#     # daylight savings time makes it a range
-#     base = (cfg.data_weeks_count - 1) * Dates.value(convert(Minute, Week(1))) + 6090
-#     @assert base-60 <= Dates.value(convert(Minute, times[end] - times[1])) <= base+60 "$(Dates.value(convert(Minute, times[end] - times[1])))"
-
-#     return times
-# end
-
-# function get_inds_under(cfg, df, date, ts_start)
-#     ind_start = searchsortedfirst(df.ts, ts_start)
-#     ind_end = ind_start + cfg.data_weeks_count * DateUtil.TIMES_PER_WEEK - 1
-#     # @assert (ind_end - ind_start) + 1 == DateUtil.TIMES_PER_WEEK * cfg.data_weeks_count
-#     inds = ind_start:ind_end
-#     # asserts
-#     times = times_for_date_to(cfg, date)
-#     if df.ts[inds] != times
-#         global kget_inds_under = (;cfg, df, date, ts_start, inds, times, dfts=df.ts[inds])
-#         error("times didn't match")
-#     end
-#     return inds
-# end
-
-function wrap_row!(bufs, f, args...)
-    # global kwrap_row = (;bufs, f, args)
-    # views = (;v=(@view bufs.v[1:end-2]), mask=(@view bufs.mask[1:end-2]))
-    f(bufs, args...)
-    bufs_orig = (;v=copy(bufs.v), mask=copy(bufs.mask))
-
-    if iszero(bufs.v)
-        throw("what!")
+    vix = dat.vix_alldates_df()
+    vixs = map(names(vix)[2:end]) do colname
+        replace(vix[!,colname], missing => 0f0)
     end
-    if !are_all_finite(bufs.v)
-        error("f returned bad data")
-    end
+    # res = Dict{Date,DataMetaMask2}()
+    # sizehint!(res, 4000)
+    res = DataFrame(date = Date[], v = Vector{Float32}[], meta=Vector{Float32}[], mask=BitVector[])
 
-    μ, σ = mean_and_std(filter(!iszero, bufs.v))
-    @assert -2f0 < μ < 80f0 "-2f0 < μ ($(μ)) < 80f0"
-    @assert 0.001f0 < σ < 32f0 "0.001f0 < σ ($(σ)) < 32f0" # TODO: too low? check which date this is for?
-    zscore!(bufs.v, μ, σ)
-    # mask_count = count(iszero, views.mask)
-    bufs.v .*= bufs.mask
-    bufs.meta[1] = μ
-    bufs.meta[2] = σ
-    # bufs.v[end-1] = μ
-    # bufs.v[end] = σ
-    # bufs.mask[end-1] = 1f0
-    # bufs.mask[end] = 1f0
-    @assert are_all_finite(bufs.v)
-    # @assert count(iszero, bufs.v) == count(iszero, bufs.mask) "$(f) count(iszero, bufs.v) == count(iszero, bufs.mask): $(count(iszero, bufs.v)) == $(count(iszero, bufs.mask)) ; $(mask_count)"
-    if count(iszero, bufs.v) != count(iszero, bufs.mask)
-        vz = findall(iszero, bufs.v)
-        mz = findall(iszero, bufs.mask)
-        inds = setdiff(vz, mz)
-        for ind in inds
-            if bufs_orig.v[ind] != μ
-                println("found zero that wasn't mean")
-                @show ind bufs.v[ind] bufs_orig.v[ind] μ
-            end
+    len = 5 * weeks_count
+    skip_back_count = len + 1 # +1 for the current date
+    inds = skip_back_count:length(vix.date)
+    prev_date = Date(0)
+    # ex = WorkStealingEx()
+    # @floop ex for ind in inds
+    for ind in inds
+        if is_any_zero(vixs, ind)
+            # println("skipping due to 0 cur $(ind)")
+            continue
         end
-    end
-end
+        # !iszero(cur_under) || continue
+        cur_date = vix.date[ind]
+        @assert cur_date > prev_date
 
-function make_row_under!(bufs, df, inds, cur_ind)
-    # global kmru_args = (;bufs=map(copy, bufs), df, inds, cur_ind)
-    buf, buf_mask = bufs.v, bufs.mask
-
-    cur = df.under[cur_ind]
-    @assert 50f0 < cur < 1000f0
-    i_buf = 1
-    for i_df in inds
-        @assert -DateUtil.TIMES_PER_WEEK <= ((cur_ind-1) - inds[1]) < size(buf, 1) "assert i:$(i_df): $(-DateUtil.TIMES_PER_WEEK) <= $(cur_ind) - $(ind) ($(cur_ind - ind)) < $(size(buf, 1))"
-        x = df.under[i_df]
-        if i_df >= cur_ind || x <= 0f0
-            # println("skipping $(dfi) > $(targeti) || $(x) <= 0f0")
-            buf[i_buf] = 0f0
-            buf_mask[i_buf] = 0f0
-        else
-            buf[i_buf] = cur / x - 1f0
-            buf_mask[i_buf] = 1f0
-            # @show cur x buf[i_buf] i_df i_buf cur_ind inds
+        include_ind = ind - 1
+        if is_any_zero(vixs, include_ind)
+            # TODO: maybe not skip these? these will skip the first ts after holidays
+            # println("skipping due to 0 include_ind $(include_ind)")
+            continue
         end
-        i_buf += 1
+        include_date = vix.date[include_ind]
+        from_date = Dates.firstdayofweek(include_date - Week(weeks_count - 1))
+        from_ind = searchsortedfirst(vix.date, from_date)
+        include_inds = from_ind:include_ind
+        row_len = length(include_inds)
+        @assert row_len <= len
+
+        vws = [(@view v[include_inds]) for v in vixs]
+        !any(too_many_zeros, vws) || continue
+
+        v = fill(0f0, 4 * len)
+        global kv = (;v, vws, include_inds)
+        vcu.interleave!(v, vws)
+        mask = (!iszero).(v)
+        @assert typeof(mask) == BitVector
+        # v .= cur_under ./ v .* mask
+
+        μ, σ = mean_and_std(filter(!iszero, v))
+        @assert 1f0 < μ < 100f0 "1f0 < μ ($(μ)) < 100f0"
+        @assert 0.1f0 < σ < 30f0 "0.1f0 < σ ($(σ)) < 30f0" # TODO: check what's that high
+        zscore!(v, μ, σ)
+        v .*= mask # restore 0's for missing
+
+        @assert iszero(@view v[(4 * length(include_inds) + 1):end])
+        @assert findlast(!iszero, v) > 4 * (len - DateUtil.TIMES_PER_WEEK) # shouldn't have a full week of zeros trailing
+        # res[cur_date] = DataMetaMask2(v, [μ, σ], mask)
+        push!(res, (;date = cur_date, v, meta = [μ, σ], mask))
+        prev_date = cur_date
     end
-    if any(!isfinite, buf)
-        println("ERROR: bad under data")
-        @show buf
-        global krowunder = (;buf, buf_mask, df, i, ts_start, ts, ind_start, cur)
-    end
-    if iszero(buf) || iszero(buf_mask)
-        println("ERROR: row all zeros")
-        global krowunder = (;buf, buf_mask, df, inds, cur_ind, cur)
-    end
+
+    return res
 end
 
-
-# function make_row_under!(buf, buf_mask, df, targeti, ts_start, ts)
-#     cur = df.under[targeti]
-#     # week_start = Date(Dates.firstdayofweek(ts))
-#     # date_from = week_start - Week(cfg.data_weeks_count - 1)
-#     # date_to = week_start + Day(4)
-#     # tss = DateUtil.all_weekday_ts(;date_from, date_to)
-
-#     ind_start = searchsortedfirst(df.ts, ts_start)
-#     for i in axes(buf, 1)
-#         ind = ind_start + i - 1
-#         @assert -DateUtil.TIMES_PER_WEEK <= (targeti - ind) < size(buf, 1) "assert i:$(i): $(-DateUtil.TIMES_PER_WEEK) <= $(targeti) - $(ind) ($(targeti - ind)) < $(size(buf, 1))"
-#         x = df.under[ind]
-#         if ind > targeti || x <= 0f0
-#             println("skipping $(ind) > $(targeti) || $(x) <= 0f0")
-#             buf[i] = 0f0
-#             buf_mask[i] = 0f0
-#         else
-#             buf[i] = cur / x
-#             buf_mask[i] = 1f0
-#         end
-#     end
-#     if !isnothing(findfirst(!isfinite, buf))
-#         println("ERROR: bad vix data")
-#         @show buf
-#         global krowunder = (;buf, buf_mask, df, i, ts_start, ts, ind_start, cur)
-#     end
-#     if isnothing(findfirst(!iszero, buf)) || isnothing(findfirst(!iszero, buf_mask))
-#         println("ERROR: row all zeros")
-#         # @show buf
-#         global krowunder = (;buf, buf_mask, df, i, ts_start, ts, ind_start, cur)
-#     end
-# end
-
-function make_row_vix!(bufs, df, from_date, cur_date)
-    # global kmake_row_vix_args = (;bufs, df, from_date, cur_date)
-    buf, buf_mask = bufs.v, bufs.mask
-
-    ind_start = searchsortedfirst(df.date, from_date)
-    cur_ind = searchsortedfirst(df.date, cur_date)
-    cur_row = df[cur_ind,:]
-    @assert 2f0 < cur_row.open < 100f0
-    for i in 0:(size(buf, 1) ÷ 4 - 1)
-        ind = ind_start + i
-        open = df.open[ind]
-        if ismissing(open) || open <= 0f0 || df.date[ind] >= cur_date
-            buf[i*4+1] = 0f0
-            buf[i*4+2] = 0f0
-            buf[i*4+3] = 0f0
-            buf[i*4+4] = 0f0
-            buf_mask[i*4+1] = 0f0
-            buf_mask[i*4+2] = 0f0
-            buf_mask[i*4+3] = 0f0
-            buf_mask[i*4+4] = 0f0
-        else
-            # buf[i*4+1] = cur_row.open / open
-            # buf[i*4+2] = cur_row.high / df.high[ind]
-            # buf[i*4+3] = cur_row.low / df.low[ind]
-            # buf[i*4+4] = cur_row.close / df.close[ind]
-            buf[i*4+1] = open
-            buf[i*4+2] = df.high[ind]
-            buf[i*4+3] = df.low[ind]
-            buf[i*4+4] = df.close[ind]
-            @assert !iszero(df.close[ind])
-            @assert all(!iszero, buf[(i*4+1):(i*4+4)]) "all(iszero, buf[(i*4+1):(i*4+4)]): $(buf[(i*4+1):(i*4+4)])"
-            buf_mask[i*4+1] = 1f0
-            buf_mask[i*4+2] = 1f0
-            buf_mask[i*4+3] = 1f0
-            buf_mask[i*4+4] = 1f0
-            # if i*4+4 == 64
-            #     @show i (i*4+4) buf[i*4+4] buf_mask[i*4+4]
-            # end
-        end
-    end
-    if !isnothing(findfirst(!isfinite, buf))
-        error("bad vix data")
-    end
-    if any(!isfinite, buf)
-        error("bad vix data")
-    end
-    if iszero(buf) || iszero(buf_mask)
-        error("vix ERROR: row all zeros for date: $(cur_date)")
-    end
-end
-
-# function model_encoder(cfg)
-#     input_under = Dense(cfg.input_width_under => cfg.hidden_width_under; bias=cfg.use_bias)
-#     input_vix = Dense(cfg.input_width_vix => cfg.hidden_width_vix; bias=cfg.use_bias)
-#     layer_input = Parallel(vcat; input_under, input_vix)
-#     through_width = cfg.hidden_width_under + cfg.hidden_width_vix
-
-#     encinner1 = Dense(through_width => 2 * through_width, cfg.activation; bias=false)
-#     encinner2 = Dense(2 * through_width => through_width, cfg.activation; bias=false)
-
-#     layer_output = Dense(through_width => cfg.encoded_width; bias=false)
-#     return Chain(;encoder_input=layer_input, encinner1, encinner2, encoder_output=layer_output)
-# end
-
-# function model_decoder(cfg)
-#     through_width = cfg.hidden_width_under + cfg.hidden_width_vix
-#     layer_input = Dense(cfg.encoded_width => through_width, cfg.activation; bias=false)
-
-#     decinner1 = Dense(through_width => 2 * through_width, cfg.activation; bias=false)
-#     decinner2 = Dense(2 * through_width => through_width, cfg.activation; bias=false)
-
-#     output_under = Dense(cfg.hidden_width_under => cfg.input_width_under; bias=cfg.use_bias)
-#     output_vix = Dense(cfg.hidden_width_vix => cfg.input_width_vix; bias=cfg.use_bias)
-#     layer_output = SplitLayer((output_under, output_vix), cfg.hidden_width_under)
-#     return Chain(;decoder_input=layer_input, decinner1, decinner2, decoder_output=layer_output)
-# end
-
+#region Model
 function model_encoder()
     cfg = config()
     input_under = Dense(cfg.input_width_under + cfg.input_width_meta => cfg.hidden_width_under; bias=cfg.use_bias)
@@ -555,5 +440,345 @@ function make_block(cfg, through_width, hidden_width, num_layers)
     push!(layers, Dense(hidden_width => through_width, cfg.activation; bias=false))
     return Chain(layers)
 end
+#endregion Model
 
+#region util
+too_many_zeros(v; ratio=0.3) = count(iszero, v) >= (ratio * length(v))
+# too_many_missing(v; ratio=0.3) = count(ismissing, v) >= (ratio * length(v))
+
+is_any_zero(vs, ind) = any(iszero, (v[ind] for v in vs))
+
+# function inds_for_sorted(v, left, right)
+#     ind1 = searchsortedfirst(v, left)
+#     ind2 = searchsortedfirst(v, right)
+#     return ind1:ind2
+# end
+
+# using BenchmarkTools
+# function test()
+#     ca = rand(Float32, 10, 5) |> gpu
+#     v = rand(Float32, 10)
+#     @time cavw = @view ca[:,1]
+#     # Using a view avoided allocations during the copyto
+#     @btime copyto!($cavw, $v)
+# end
+#endregion util
+
+
+
+#region old make data
+# data_sizes(cfg) = (;
+#     under = (DateUtil.TIMES_PER_WEEK * cfg.data_weeks_count, cfg.batch_size),
+#     under_meta = (2, cfg.batch_size),
+#     vix = (4 * DateUtil.DAYS_PER_WEEK * cfg.data_weeks_count, cfg.batch_size),
+#     vix_meta = (2, cfg.batch_size)
+# )
+
+
+# function make_data()
+#     cfg = config()
+#     dfs = get_data()
+
+#     obs_count = size(dfs.obs, 1)
+#     batch_count = (obs_count - cfg.input_width_under) ÷ cfg.batch_size
+#     lfsr = IndexUtil.lfsr(obs_count)
+#     sizes = data_sizes(cfg)
+
+#     bufs_row = make_bufs_row(sizes)
+#     under = Array{Float32, 2}(undef, sizes.under...)
+#     under_mask = Array{Float32, 2}(undef, sizes.under...)
+#     under_meta = Array{Float32, 2}(undef, sizes.under_meta...)
+#     vix = Array{Float32, 2}(undef, sizes.vix...)
+#     vix_mask = Array{Float32, 2}(undef, sizes.vix...)
+#     vix_meta = Array{Float32, 2}(undef, sizes.vix_meta...)
+
+#     make_batch = function(epochi, batchi)
+#         # TODO: use random variation instead of epochi?
+#         starti = epochi + batchi * cfg.batch_size
+#         for i in 1:cfg.batch_size
+#             ind = IndexUtil.lfsr_next(lfsr, starti + i)
+
+#             make_seq!(bufs_row, dfs, ind)
+
+#             under[:,i] .= bufs_row.under.v
+#             under_mask[:,i] .= bufs_row.under.mask
+#             under_meta[:,i] .= bufs_row.under.meta
+#             vix[:,i] .= bufs_row.vix.v
+#             vix_mask[:,i] .= bufs_row.vix.mask
+#             vix_meta[:,i] .= bufs_row.vix.meta
+#         end
+
+#         return (;
+#             under = (;v=under, mask=under_mask, meta=under_meta),
+#             vix = (;v=vix, mask=vix_mask, meta=vix_meta)
+#         )
+#     end
+
+#     get_inds = function(epochi, batchi)
+#         starti = epochi + batchi * cfg.batch_size
+#         return map(1:cfg.batch_size) do i
+#             IndexUtil.lfsr_next(lfsr, starti + i)
+#         end
+#     end
+
+#     # if preload...
+#     println("Making all batches...")
+#     # batches = [map(copy, make_batch(0, i)) for i in 1:batch_count]
+#     batches = [deepcopy(make_batch(0, i)) for i in 1:batch_count]
+#     println(" done.")
+#     get_batch = (epochi, ibatch) -> batches[ibatch] |> gpu
+#     # return (;get_batch, batch_count, cfg.batch_size, get_inds, obs_count)
+#     return (;get_batch, batch_count)
+# end
+
+# function make_bufs_row(sizes)
+#     under_len, under_meta_len, vix_len, vix_meta_len = sizes.under[1], sizes.under_meta[1], sizes.vix[1], sizes.vix_meta[1]
+#     return (;
+#         under = (;
+#             v = Vector{Float32}(undef, under_len),
+#             mask = Vector{Float32}(undef, under_len),
+#             meta = Vector{Float32}(undef, under_meta_len)
+#         ),
+#         vix = (;
+#             v = Vector{Float32}(undef, vix_len),
+#             mask = Vector{Float32}(undef, vix_len),
+#             meta = Vector{Float32}(undef, vix_meta_len)
+#         )
+#     )
+# end
+
+# function make_seq!(bufs, dfs, ind)
+#     cfg = config()
+#     (;under, vix, obs) = dfs
+#     cur_ts = obs[ind]
+#     cur_ind = searchsortedfirst(under.ts, cur_ts)
+#     to_ind = cur_ind - 1
+#     to_ts = under.ts[to_ind]
+#     # to_date = Date(to_ts)
+
+#     from_ts = DateUtil.first_weekday_ts(to_ts - Week(cfg.data_weeks_count - 1))
+#     from_ind = searchsortedfirst(under.ts, from_ts)
+#     end_ind = from_ind + cfg.data_weeks_count * DateUtil.TIMES_PER_WEEK - 1
+
+#     inds = from_ind:end_ind
+
+#     @assert Week(cfg.data_weeks_count-1) <= round(cur_ts - under.ts[inds[1]], Week) <= Week(cfg.data_weeks_count)
+
+#     missing_max = 0.3 * length(inds)
+#     missing_count = count(iszero, (@view under.under[inds]))
+#     # println("missing: $(missing_count) / $(missing_max)")
+#     if missing_count >= missing_max
+#         println("missing count $(missing_count) > missing max $(missing_max) for ind $(ind). Returning 0 row")
+#         fill!(bufs.under.v, 0.0)
+#         fill!(bufs.under.mask, 0.0)
+#         fill!(bufs.under.meta, 0.0)
+#         fill!(bufs.vix.v, 0.0)
+#         fill!(bufs.vix.mask, 0.0)
+#         fill!(bufs.vix.meta, 0.0)
+#         return inds
+#     end
+
+#     # make_row_under!(bufs.under, under, inds, cur_ind)
+#     # make_row_vix!(bufs.vix, vix, Date(from_ts), Date(cur_ts))
+#     wrap_row!(bufs.under, make_row_under!, under, inds, cur_ind)
+#     wrap_row!(bufs.vix, make_row_vix!, vix, Date(from_ts), Date(cur_ts))
+#     return inds
+# end
+
+# function test_seq(ind)
+#     cfg = config()
+#     dfs = get_data()
+#     bufs = make_bufs_row(data_sizes(cfg))
+#     inds = make_seq!(bufs, dfs, ind)
+#     tss = dfs.under.ts[inds]
+#     return (;bufs, inds, tss)
+# end
+
+# function wrap_row!(bufs, f, args...)
+#     # global kwrap_row = (;bufs, f, args)
+#     # views = (;v=(@view bufs.v[1:end-2]), mask=(@view bufs.mask[1:end-2]))
+#     f(bufs, args...)
+#     bufs_orig = (;v=copy(bufs.v), mask=copy(bufs.mask))
+
+#     if iszero(bufs.v)
+#         throw("what!")
+#     end
+#     if !are_all_finite(bufs.v)
+#         error("f returned bad data")
+#     end
+
+#     μ, σ = mean_and_std(filter(!iszero, bufs.v))
+#     @assert -2f0 < μ < 80f0 "-2f0 < μ ($(μ)) < 80f0"
+#     @assert 0.001f0 < σ < 32f0 "0.001f0 < σ ($(σ)) < 32f0" # TODO: too low? check which date this is for?
+#     zscore!(bufs.v, μ, σ)
+#     # mask_count = count(iszero, views.mask)
+#     bufs.v .*= bufs.mask
+#     bufs.meta[1] = μ
+#     bufs.meta[2] = σ
+#     # bufs.v[end-1] = μ
+#     # bufs.v[end] = σ
+#     # bufs.mask[end-1] = 1f0
+#     # bufs.mask[end] = 1f0
+#     @assert are_all_finite(bufs.v)
+#     # @assert count(iszero, bufs.v) == count(iszero, bufs.mask) "$(f) count(iszero, bufs.v) == count(iszero, bufs.mask): $(count(iszero, bufs.v)) == $(count(iszero, bufs.mask)) ; $(mask_count)"
+#     if count(iszero, bufs.v) != count(iszero, bufs.mask)
+#         vz = findall(iszero, bufs.v)
+#         mz = findall(iszero, bufs.mask)
+#         inds = setdiff(vz, mz)
+#         for ind in inds
+#             if bufs_orig.v[ind] != μ
+#                 println("found zero that wasn't mean")
+#                 @show ind bufs.v[ind] bufs_orig.v[ind] μ
+#             end
+#         end
+#     end
+# end
+
+# function make_row_under!(bufs, df, inds, cur_ind)
+#     # global kmru_args = (;bufs=map(copy, bufs), df, inds, cur_ind)
+#     buf, buf_mask = bufs.v, bufs.mask
+
+#     cur = df.under[cur_ind]
+#     @assert 50f0 < cur < 1000f0
+#     i_buf = 1
+#     for i_df in inds
+#         @assert -DateUtil.TIMES_PER_WEEK <= ((cur_ind-1) - inds[1]) < size(buf, 1) "assert i:$(i_df): $(-DateUtil.TIMES_PER_WEEK) <= $(cur_ind) - $(ind) ($(cur_ind - ind)) < $(size(buf, 1))"
+#         x = df.under[i_df]
+#         if i_df >= cur_ind || x <= 0f0
+#             # println("skipping $(dfi) > $(targeti) || $(x) <= 0f0")
+#             buf[i_buf] = 0f0
+#             buf_mask[i_buf] = 0f0
+#         else
+#             buf[i_buf] = cur / x - 1f0
+#             buf_mask[i_buf] = 1f0
+#             # @show cur x buf[i_buf] i_df i_buf cur_ind inds
+#         end
+#         i_buf += 1
+#     end
+#     if any(!isfinite, buf)
+#         println("ERROR: bad under data")
+#         @show buf
+#         global krowunder = (;buf, buf_mask, df, i, ts_start, ts, ind_start, cur)
+#     end
+#     if iszero(buf) || iszero(buf_mask)
+#         println("ERROR: row all zeros")
+#         global krowunder = (;buf, buf_mask, df, inds, cur_ind, cur)
+#     end
+# end
+
+# function make_row_vix!(bufs, df, from_date, cur_date)
+#     # global kmake_row_vix_args = (;bufs, df, from_date, cur_date)
+#     buf, buf_mask = bufs.v, bufs.mask
+
+#     ind_start = searchsortedfirst(df.date, from_date)
+#     cur_ind = searchsortedfirst(df.date, cur_date)
+#     cur_row = df[cur_ind,:]
+#     @assert 2f0 < cur_row.open < 100f0
+#     for i in 0:(size(buf, 1) ÷ 4 - 1)
+#         ind = ind_start + i
+#         open = df.open[ind]
+#         if ismissing(open) || open <= 0f0 || df.date[ind] >= cur_date
+#             buf[i*4+1] = 0f0
+#             buf[i*4+2] = 0f0
+#             buf[i*4+3] = 0f0
+#             buf[i*4+4] = 0f0
+#             buf_mask[i*4+1] = 0f0
+#             buf_mask[i*4+2] = 0f0
+#             buf_mask[i*4+3] = 0f0
+#             buf_mask[i*4+4] = 0f0
+#         else
+#             # buf[i*4+1] = cur_row.open / open
+#             # buf[i*4+2] = cur_row.high / df.high[ind]
+#             # buf[i*4+3] = cur_row.low / df.low[ind]
+#             # buf[i*4+4] = cur_row.close / df.close[ind]
+#             buf[i*4+1] = open
+#             buf[i*4+2] = df.high[ind]
+#             buf[i*4+3] = df.low[ind]
+#             buf[i*4+4] = df.close[ind]
+#             @assert !iszero(df.close[ind])
+#             @assert all(!iszero, buf[(i*4+1):(i*4+4)]) "all(iszero, buf[(i*4+1):(i*4+4)]): $(buf[(i*4+1):(i*4+4)])"
+#             buf_mask[i*4+1] = 1f0
+#             buf_mask[i*4+2] = 1f0
+#             buf_mask[i*4+3] = 1f0
+#             buf_mask[i*4+4] = 1f0
+#             # if i*4+4 == 64
+#             #     @show i (i*4+4) buf[i*4+4] buf_mask[i*4+4]
+#             # end
+#         end
+#     end
+#     if !isnothing(findfirst(!isfinite, buf))
+#         error("bad vix data")
+#     end
+#     if any(!isfinite, buf)
+#         error("bad vix data")
+#     end
+#     if iszero(buf) || iszero(buf_mask)
+#         error("vix ERROR: row all zeros for date: $(cur_date)")
+#     end
+# end
+#endregion old make data
+
+
+#region old old make data
+# function times_for_date_to(cfg, date_to)
+#     date_from = firstdayofweek(date_to) - Week(cfg.data_weeks_count - 1)
+#     date_to = lastdayofweek(date_to) - Day(2)
+#     times = DateUtil.all_weekday_ts(; date_from, date_to)
+
+#     global ktimes = times
+#     @assert round(times[end] - times[1], Day) == Day((cfg.data_weeks_count - 1) * 7 + 4)
+#     # daylight savings time makes it a range
+#     base = (cfg.data_weeks_count - 1) * Dates.value(convert(Minute, Week(1))) + 6090
+#     @assert base-60 <= Dates.value(convert(Minute, times[end] - times[1])) <= base+60 "$(Dates.value(convert(Minute, times[end] - times[1])))"
+
+#     return times
+# end
+
+# function get_inds_under(cfg, df, date, ts_start)
+#     ind_start = searchsortedfirst(df.ts, ts_start)
+#     ind_end = ind_start + cfg.data_weeks_count * DateUtil.TIMES_PER_WEEK - 1
+#     # @assert (ind_end - ind_start) + 1 == DateUtil.TIMES_PER_WEEK * cfg.data_weeks_count
+#     inds = ind_start:ind_end
+#     # asserts
+#     times = times_for_date_to(cfg, date)
+#     if df.ts[inds] != times
+#         global kget_inds_under = (;cfg, df, date, ts_start, inds, times, dfts=df.ts[inds])
+#         error("times didn't match")
+#     end
+#     return inds
+# end
+
+# function make_row_under!(buf, buf_mask, df, targeti, ts_start, ts)
+#     cur = df.under[targeti]
+#     # week_start = Date(Dates.firstdayofweek(ts))
+#     # date_from = week_start - Week(cfg.data_weeks_count - 1)
+#     # date_to = week_start + Day(4)
+#     # tss = DateUtil.all_weekday_ts(;date_from, date_to)
+
+#     ind_start = searchsortedfirst(df.ts, ts_start)
+#     for i in axes(buf, 1)
+#         ind = ind_start + i - 1
+#         @assert -DateUtil.TIMES_PER_WEEK <= (targeti - ind) < size(buf, 1) "assert i:$(i): $(-DateUtil.TIMES_PER_WEEK) <= $(targeti) - $(ind) ($(targeti - ind)) < $(size(buf, 1))"
+#         x = df.under[ind]
+#         if ind > targeti || x <= 0f0
+#             println("skipping $(ind) > $(targeti) || $(x) <= 0f0")
+#             buf[i] = 0f0
+#             buf_mask[i] = 0f0
+#         else
+#             buf[i] = cur / x
+#             buf_mask[i] = 1f0
+#         end
+#     end
+#     if !isnothing(findfirst(!isfinite, buf))
+#         println("ERROR: bad vix data")
+#         @show buf
+#         global krowunder = (;buf, buf_mask, df, i, ts_start, ts, ind_start, cur)
+#     end
+#     if isnothing(findfirst(!iszero, buf)) || isnothing(findfirst(!iszero, buf_mask))
+#         println("ERROR: row all zeros")
+#         # @show buf
+#         global krowunder = (;buf, buf_mask, df, i, ts_start, ts, ind_start, cur)
+#     end
+# end
+#endregion old old
 end

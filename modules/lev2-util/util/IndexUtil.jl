@@ -1,6 +1,7 @@
 module IndexUtil
 using MaxLFSR
 using CollUtil
+import Random
 
 @inline lfsr(maxind) = MaxLFSR.LFSR(maxind)
 
@@ -12,6 +13,21 @@ using CollUtil
         # Otherwise, perform a length check and exit.
         (ind <= length(lfsr)) && return ind
     end
+end
+
+function inds_for_batches(obs_count, batch_size, holdout=0.1)
+    holdout_count = floor(Int, obs_count * holdout)
+    train_count = obs_count - holdout_count
+    batch_count = train_count ÷ batch_size
+    all_inds = Random.randperm(obs_count)
+    inds_train = all_inds[1:(end - holdout_count)]
+    inds_holdout = all_inds[(end - holdout_count + 1):end]
+    inds_batches = batch_inds(inds_train, batch_size, batch_count)
+    return (;batch_count, inds_batches, inds_holdout)
+end
+
+function batch_inds(inds, batch_size, batch_count)
+    return [inds[(1 + (i - 1) * batch_size):(i * batch_size)] for i in 1:batch_count]
 end
 
 function cv_folds(batch_count, k_fold)
