@@ -437,9 +437,9 @@ function model_encoder()
 
     blocks1_count = floor(Int, cfg.block_count / 2)
     blocks2_count = cfg.block_count - blocks1_count
-    blocks1 = [SkipConnection(make_block(cfg, through_width, cfg.hidden_width, cfg.layers_per_block), +) for _ in 1:blocks1_count]
+    blocks1 = [SkipConnection(ModelUtil.make_block(cfg, through_width, cfg.hidden_width, cfg.layers_per_block), +) for _ in 1:blocks1_count]
     dropout = Dropout(cfg.dropout)
-    blocks2 = [SkipConnection(make_block(cfg, through_width, cfg.hidden_width, cfg.layers_per_block), +) for _ in 1:blocks2_count]
+    blocks2 = [SkipConnection(ModelUtil.make_block(cfg, through_width, cfg.hidden_width, cfg.layers_per_block), +) for _ in 1:blocks2_count]
 
     layer_output = Dense(through_width => cfg.encoded_width; bias=false)
     return Chain(;encoder_input=layer_input, encoder_blocks=Chain(blocks1..., dropout, blocks2...), encoder_output=layer_output)
