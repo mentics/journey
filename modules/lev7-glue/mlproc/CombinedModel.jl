@@ -98,7 +98,7 @@ end
 #endregion MLRun Interface
 
 #region Data
-COMBINED_PATH = "data/CombinedModel-input.arrow"
+COMBINED_INPUT_PATH = joinpath(FileUtil.root_shared(), "mlrun", "CombinedModel", "data", "CombinedModel-input.arrow")
 using SearchSortedNearest
 function make_data_input()
     (;bins_count, ret_min, ret_max) = config()
@@ -130,7 +130,7 @@ function make_data_input()
     dropmissing!(df)
 
     @assert len_before == length(df[!,1]) "len_before == length(df[!,1]): $(len_before) == $(length(df[!,1]))"
-    dat.save(COMBINED_PATH, df)
+    dat.save(COMBINED_INPUT_PATH, df)
     return df
 end
 
@@ -139,7 +139,7 @@ dur_to_input(dur) = Float32.(([getfield(dur, nam) for nam in propertynames(dur)]
 COMBINED_INPUT_CACHE = nothing
 function load_input(;refresh=false)
     if refresh || isnothing(COMBINED_INPUT_CACHE)
-        global COMBINED_INPUT_CACHE = Arrow.Table(COMBINED_PATH)
+        global COMBINED_INPUT_CACHE = Arrow.Table(COMBINED_INPUT_PATH)
     end
     return COMBINED_INPUT_CACHE
 end
