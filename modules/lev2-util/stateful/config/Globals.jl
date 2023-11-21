@@ -43,7 +43,8 @@ function __init__()
     end
 end
 
-dirData() = "G:/My Drive/sync/data/market"
+# TODO: combine with FileUtil root
+dirData() = Sys.iswindows() ? "G:/My Drive/sync/data/market" : "/shared/journey"
 dirData(sub...) = mkpath(joinpath(dirData(), sub...))
 
 has(k::Symbol) = haskey(cfg, k)
