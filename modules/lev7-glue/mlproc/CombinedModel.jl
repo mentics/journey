@@ -3,7 +3,7 @@ import Tables, Dates
 using DataFrames, Arrow
 using Flux, MLUtils, CUDA
 import HistoricalModel as hm
-using IndexUtil, TrainUtil, ModelUtil
+using IndexUtil, TrainUtil, ModelUtil, FileUtil
 using MLRun
 import Calendars as cal
 import DataFiles as dat

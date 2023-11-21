@@ -7,7 +7,7 @@ import NNlib
 using DateUtil, CollUtil, IndexUtil
 import DataFiles as dat
 import DataFiles:missing_to_zero_float
-using ModelUtil, TrainUtil
+using ModelUtil, TrainUtil, FileUtil
 using MLRun
 import VectorCalcUtil as vcu
 
@@ -30,7 +30,7 @@ function load_inference(version=MOD_VERSION)
 end
 
 ENCODED_CACHE = nothing
-ENCODED_PATH = "data/HistoricalModel-encoded.arrow"
+ENCODED_PATH = joinpath(FileUtil.root_shared(), "mlrun", "HistoricalModel", "data", "HistoricalModel-encoded.arrow")
 function load_data_encoded()
     if isnothing(ENCODED_CACHE)
         global ENCODED_CACHE = Arrow.Table(ENCODED_PATH)
@@ -226,17 +226,17 @@ function make_data_input()
     select!(combined, Not(:date))
 
     # [(;ts=p.first, v=p.second.v, meta=p.second.meta, mask=p.second.mask) for p in pairs(under)]
-    dat.save(PATH, combined)
+    dat.save(INPUT_PATH, combined)
     return combined
 end
 
-PATH = "data/HistoricalModel-input.arrow"
+INPUT_PATH = joinpath(FileUtil.root_shared(), "mlrun", "HistoricalModel", "data", "HistoricalModel-input.arrow")
 
 INPUT_CACHE = nothing
 import Arrow
 function load_data_input()
     if isnothing(INPUT_CACHE)
-        global INPUT_CACHE = Arrow.Table(PATH)
+        global INPUT_CACHE = Arrow.Table(INPUT_PATH)
     end
     return INPUT_CACHE
 end
@@ -264,7 +264,8 @@ function make_data()
         #     vix = (;v=reduce(hcat, vw.vix_v), meta=reduce(hcat, vw.vix_meta), mask=reduce(hcat, vw.vix_mask)),
         # )
     end
-    return Batches2(;get=get_batch, count=batch_count, holdout=inds_holdout)
+    holdout = batch_from_inds(input, inds_holdout)
+    return Batches2(;get=get_batch, count=batch_count, holdout)
 end
 
 function batch_from_inds(input, inds)
