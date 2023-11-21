@@ -96,7 +96,9 @@ function tradierClock()
     return (;isMktOpen, nextMktChange)
 end
 
-function tradierDividends(syms::Coll{<:AStr}=("SPY",))
+# function tradierDividends(syms::Coll{<:AStr}=("SPY",))
+function tradierDividends()
+    syms = ["SPY"]
     raw = tradierGet("https://api.tradier.com/beta/markets/fundamentals/dividends?symbols=$(join(syms, ','))", CallVec(nameof(var"#self#")))
     res = Dict{String,Any}()
     for symd in raw

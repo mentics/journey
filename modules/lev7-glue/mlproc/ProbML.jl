@@ -262,13 +262,8 @@ end
 #endregion
 
 #region Util
-function precalc_bins()
-    (;num_bins, ret_min, ret_max) = hypers()
-    bin_width = (ret_max - ret_min) / num_bins
-    return [ret_min + bin_width * i for i in 1:num_bins]
-end
 bins() = BINS2[]
-const BINS2 = Ref(precalc_bins())
+const BINS2 = Ref(make_bins(( (;num_bins, ret_min, ret_max) = hypers() )...))
 #endregion
 
 end

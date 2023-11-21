@@ -24,35 +24,37 @@ make_opt(type instance) # default is Lion
 # function make_loss_func end
 # make_opt(learning_rate_func, loss_untrained) = AdamW(learning_rate_func(0, 0f0, loss_untrained))
 
-export Batches
-@kwdef struct Batches
+export Batches2
+@kwdef struct Batches2
     get
     count
+    holdout
 end
 
-export Trainee4
-@kwdef struct Trainee4
+export Trainee7
+@kwdef struct Trainee7
     name
     version
     training_model
     inference_model
     run_model
     infer
-    batches::Batches
+    batches::Batches2
     get_learning_rate
     get_loss
     mod
+    cfg
 end
 
-@kwdef struct Training4
-    trainee::Trainee4
+@kwdef struct Training7
+    trainee::Trainee7
     opt
     opt_state
     metrics
     params
 end
 
-function setup(trainee::Trainee4)
+function setup(trainee::Trainee7)
     model = trainee.training_model |> dev
     println("Model has param count: ", sum(length, Flux.params(model)))
 
@@ -66,7 +68,7 @@ function setup(trainee::Trainee4)
 
     params = Dict{Symbol,Any}()
 
-    training = Training4(;
+    training = Training7(;
         trainee,
         opt,
         opt_state,
@@ -77,7 +79,7 @@ function setup(trainee::Trainee4)
     return training
 end
 
-function run(training::Training4; epochs=1000, fold_count=5)
+function run(training::Training7; epochs=1000, fold_count=5)
     cv = IndexUtil.cv_folds(training.trainee.batches.count, fold_count)
     training.params[:cv] = cv
     train(training; epochs)
@@ -184,10 +186,12 @@ end
 test_batch_loss(trainee, ibatch) = trainee.get_loss(trainee.model, trainee.batches.get(0, ibatch))
 
 function check_holdout(training)
-    for ibatch in training.params[:cv].holdout
-        loss = training.trainee.get_loss(training.trainee.training_model, training.trainee.batches.get(1, ibatch))
-        println("Loss for holdout batch $(ibatch): $(loss)")
-    end
+    loss = training.trainee.get_loss(training.trainee.training_model, training.trainee.batches.holdout)
+    println("Loss for holdout: $(loss)")
+    # for ibatch in training.params[:cv].holdout
+    #     loss = training.trainee.get_loss(training.trainee.training_model, training.trainee.batches.get(1, ibatch))
+    #     println("Loss for holdout batch $(ibatch): $(loss)")
+    # end
 end
 
 end

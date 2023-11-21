@@ -1,5 +1,6 @@
 module ModelUtil
-import Flux:Flux,cpu
+using Dates
+using Flux
 import JLD2
 import FileUtil, DateUtil
 
@@ -18,6 +19,35 @@ function (m::SplitLayer)(x)
     )
 end
 
+function make_block(cfg, through_width, hidden_width, num_layers)
+    layers = Dense[]
+    push!(layers, Dense(through_width => hidden_width, cfg.activation; bias=false))
+    for _ in 1:(num_layers-2)
+        push!(layers, Dense(hidden_width => hidden_width, cfg.activation; bias=false))
+    end
+    push!(layers, Dense(hidden_width => through_width, cfg.activation; bias=false))
+    return Chain(layers)
+end
+
+function make_bins(num_bins, left, right)
+    span = right - left
+    return left .+ [span * b for b in 0.0:(1/(num_bins-1)):1.0]
+end
+
+# TODO: consider days until monthly expiration? until dividends?
+# tradierDividends only gives us back since 2014-3-21 for spy
+function to_temporal(ts)
+    date = Date(ts)
+    return (
+        dayofweek(date) / 7,
+        dayofmonth(date) / daysinmonth(date),
+        dayofquarter(date) / DateUtil.daysinquarter(date),
+        dayofyear(date) / daysinyear(date),
+        hour(ts) / 24,
+    )
+end
+
+#region Persistence
 path_default_base() = joinpath(FileUtil.root_shared(), "mlrun")
 path_default_base(mod_name) = joinpath(path_default_base(), mod_name)
 
@@ -66,5 +96,6 @@ function load_inference(name, version, model, path=path_default_base(name))
     Flux.loadmodel!(model, model_state)
     println("Loaded inference model from $(path)")
 end
+#endregion Persistence
 
 end

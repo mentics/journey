@@ -12,17 +12,50 @@ using MLRun
 import VectorCalcUtil as vcu
 
 NAME = string(@__MODULE__)
-VERSION = "latent32mult2block1drop4z"
+MOD_VERSION = "latent32mult2block1drop4z"
 
-# For inference and combined training
-function load_inference()
-    inference_model = model_encoder() |> gpu
-    ModelUtil.load_inference(NAME, VERSION, inference_model)
-    return (;
-        model = inference_model,
-        run = batch -> run_encoder(inference_model, batch),
-    )
+#region Inference and combined training
+CACHE_INFERENCE = nothing
+function load_inference(version=MOD_VERSION)
+    if isnothing(CACHE_INFERENCE)
+        # TODO: cache? versioning?
+        inference_model = model_encoder() |> gpu
+        ModelUtil.load_inference(NAME, MOD_VERSION, inference_model)
+        global CACHE_INFERENCE = (;
+            model = inference_model,
+            run = batch -> run_encoder(inference_model, batch),
+        )
+    end
+    return CACHE_INFERENCE
 end
+
+ENCODED_CACHE = nothing
+ENCODED_PATH = "data/HistoricalModel-encoded.arrow"
+function load_data_encoded()
+    if isnothing(ENCODED_CACHE)
+        global ENCODED_CACHE = Arrow.Table(ENCODED_PATH)
+    end
+    return ENCODED_CACHE
+end
+
+function make_data_encoded()
+    (;model, run) = load_inference()
+    data = load_data_input()
+    @assert unique(data.ts) == data.ts
+    batch_size = config().batch_size
+    width = config().encoded_width + 4
+    df = DataFrame([DateTime[], [Float32[] for _ in 1:width]...], [:ts, [Symbol("c$(i)") for i in 1:width]...])
+    for inds in IndexUtil.batch_inds_all(eachindex(data.ts), batch_size)
+        enc = run(batch_from_inds(data, inds)) |> cpu
+        # m = hcat(data.ts[inds], vcat(v, meta_under, meta_vix)')
+        m = hcat(data.ts[inds], enc')
+        push!.(Ref(df), [m[i,:] for i in 1:size(m, 1)])
+    end
+    @assert unique(df.ts) == df.ts
+    dat.save(ENCODED_PATH, df)
+    return df
+end
+#endregion Inference and combined training
 
 #region Config
 data_params() = (;
@@ -71,21 +104,20 @@ end
 
 #region MLRun Interface
 function mlrun()
-    (;get_batch, batch_count) = make_data()
-    batches = Batches(;get=get_batch, count=batch_count)
     inference_model = model_encoder() |> gpu
     training_model = Chain(; encoder=inference_model, decoder=model_decoder()) |> gpu
 
-    global state = Trainee4(;
+    global state = Trainee7(;
         name=NAME,
-        version=VERSION,
+        version=MOD_VERSION,
         training_model,
         inference_model,
         run_model = batch -> autoencoder(training_model, batch),
         infer = batch -> run_encoder(inference_model, batch),
-        batches,
+        batches = make_data(),
         get_learning_rate = TrainUtil.learning_rate_linear_decay(), # TrainUtil.lr_cycle_decay(),
         get_loss = calc_loss,
+        cfg = config(),
         mod = @__MODULE__
     )
     return state
@@ -113,11 +145,11 @@ end
 function run_encoder(encoder, batch)
     # It's expected that the input is already masked, so no need to multiply it by the mask
     v = encoder((vcat(batch.under.v, batch.under.meta), vcat(batch.vix.v, batch.vix.meta)))
-    return (;v, meta_under=batch.under.meta, meta_vix=batch.vix.meta)
+    return vcat(v, batch.under.meta, batch.vix.meta)
 end
 
 function run_decoder(decoder, encoded, batch)
-    (dec_under_raw, dec_vix_raw) = decoder(vcat(encoded.v, encoded.meta_under, encoded.meta_vix))
+    (dec_under_raw, dec_vix_raw) = decoder(encoded)
     under = dec_under_raw .* batch.under.mask
     vix = dec_vix_raw .* batch.vix.mask
     return (;under, vix)
@@ -200,7 +232,6 @@ end
 
 PATH = "data/HistoricalModel-input.arrow"
 
-
 INPUT_CACHE = nothing
 import Arrow
 function load_data_input()
@@ -210,7 +241,6 @@ function load_data_input()
     return INPUT_CACHE
 end
 
-import Random
 function make_data()
     cfg = config()
     input = load_data_input()
@@ -226,10 +256,7 @@ function make_data()
     # TODO: write directly to CuArray's?
     get_batch = function(iepoch, ibatch)
         inds = inds_batches[ibatch]
-        return (;
-            under = (;v=reduce(hcat, input.under_v[inds]), meta=reduce(hcat, input.under_meta[inds]), mask=reduce(hcat, input.under_mask[inds])),
-            vix = (;v=reduce(hcat, input.vix_v[inds]), meta=reduce(hcat, input.vix_meta[inds]), mask=reduce(hcat, input.vix_mask[inds])),
-        ) |> gpu
+        return batch_from_inds(input, inds)
 
         # vw = @view input[inds_batches[ibatch],:]
         # return (;
@@ -237,7 +264,14 @@ function make_data()
         #     vix = (;v=reduce(hcat, vw.vix_v), meta=reduce(hcat, vw.vix_meta), mask=reduce(hcat, vw.vix_mask)),
         # )
     end
-    return (;get_batch, batch_count, inds_holdout)
+    return Batches2(;get=get_batch, count=batch_count, holdout=inds_holdout)
+end
+
+function batch_from_inds(input, inds)
+    return (;
+        under = (;v=reduce(hcat, input.under_v[inds]), meta=reduce(hcat, input.under_meta[inds]), mask=reduce(hcat, input.under_mask[inds])),
+        vix = (;v=reduce(hcat, input.vix_v[inds]), meta=reduce(hcat, input.vix_meta[inds]), mask=reduce(hcat, input.vix_mask[inds])),
+    ) |> gpu
 end
 
 function make_data_under()
@@ -416,29 +450,19 @@ function model_decoder()
     through_width = cfg.hidden_width_under + cfg.hidden_width_vix
     layer_input = Dense(cfg.encoded_with_meta => through_width, cfg.activation; bias=false)
 
-    # blocks = [SkipConnection(make_block(cfg, through_width, cfg.hidden_width, cfg.layers_per_block), +) for _ in 1:cfg.block_count]
+    # blocks = [SkipConnection(ModelUtil.make_block(cfg, through_width, cfg.hidden_width, cfg.layers_per_block), +) for _ in 1:cfg.block_count]
 
     blocks1_count = floor(Int, cfg.block_count / 2)
     blocks2_count = cfg.block_count - blocks1_count
-    blocks1 = [SkipConnection(make_block(cfg, through_width, cfg.hidden_width, cfg.layers_per_block), +) for _ in 1:blocks1_count]
+    blocks1 = [SkipConnection(ModelUtil.make_block(cfg, through_width, cfg.hidden_width, cfg.layers_per_block), +) for _ in 1:blocks1_count]
     # dropout = Dropout(0.1)
-    blocks2 = [SkipConnection(make_block(cfg, through_width, cfg.hidden_width, cfg.layers_per_block), +) for _ in 1:blocks2_count]
+    blocks2 = [SkipConnection(ModelUtil.make_block(cfg, through_width, cfg.hidden_width, cfg.layers_per_block), +) for _ in 1:blocks2_count]
 
     output_under = Dense(cfg.hidden_width_under => cfg.input_width_under; bias=cfg.use_bias)
     output_vix = Dense(cfg.hidden_width_vix => cfg.input_width_vix; bias=cfg.use_bias)
     layer_output = SplitLayer((output_under, output_vix), cfg.hidden_width_under)
     # layer_output = in -> (output_under(in[1:cfg.hidden_width_under,:]), output_vix(in[cfg.hidden_width_under+1:cfg.hidden_width]))
     return Chain(decoder_input=layer_input, decoder_blocks=Chain(blocks1..., blocks2...), decoder_output=layer_output)
-end
-
-function make_block(cfg, through_width, hidden_width, num_layers)
-    layers = Dense[]
-    push!(layers, Dense(through_width => hidden_width, cfg.activation; bias=false))
-    for _ in 1:(num_layers-2)
-        push!(layers, Dense(hidden_width => hidden_width, cfg.activation; bias=false))
-    end
-    push!(layers, Dense(hidden_width => through_width, cfg.activation; bias=false))
-    return Chain(layers)
 end
 #endregion Model
 

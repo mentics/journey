@@ -26,6 +26,15 @@ function inds_for_batches(obs_count, batch_size, holdout=0.1)
     return (;batch_count, inds_batches, inds_holdout)
 end
 
+function batch_inds_all(inds, batch_size)
+    batch_count = length(inds) ÷ batch_size
+    remaining = inds[(batch_count * batch_size + 1):end]
+    batches = [inds[(1 + (i - 1) * batch_size):(i * batch_size)] for i in 1:batch_count]
+    push!(batches, remaining)
+    @assert length(inds) == sum(length.(batches))
+    return batches
+end
+
 function batch_inds(inds, batch_size, batch_count)
     return [inds[(1 + (i - 1) * batch_size):(i * batch_size)] for i in 1:batch_count]
 end

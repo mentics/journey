@@ -2,7 +2,7 @@
 
 julia_version = "1.9.0"
 manifest_format = "2.0"
-project_hash = "cdaf52b4c63dd09c2875ef478da3b8f66c2fafb0"
+project_hash = "64e84993b5559ffbba26f0b0d7aff1fcc4d3f359"
 
 [[deps.ATK_jll]]
 deps = ["Artifacts", "Glib_jll", "JLLWrappers", "Libdl"]
@@ -2223,6 +2223,11 @@ deps = ["Dates"]
 git-tree-sha1 = "30449ee12237627992a99d5e30ae63e4d78cd24a"
 uuid = "6c6a2e73-6563-6170-7368-637461726353"
 version = "1.2.0"
+
+[[deps.SearchSortedNearest]]
+git-tree-sha1 = "be77f0db06fc823c9422f8be5ea0bfb101f81268"
+uuid = "e8f3a9d7-1e19-435f-864b-2435d14e4e17"
+version = "0.1.1"
 
 [[deps.SentinelArrays]]
 deps = ["Dates", "Random"]
