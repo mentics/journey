@@ -9,7 +9,7 @@ import Calendars as cal
 import DataFiles as dat
 
 NAME = @__MODULE__
-MOD_VERSION = "init"
+MOD_VERSION = "b4l4d2s512"
 
 #region Config
 data_params() = (;
@@ -22,15 +22,15 @@ data_params() = (;
 model_params() = (;
     historical_model_version = HistoricalModel.VERSION,
     activation = NNlib.swish,
-    hidden_width = 2048,
-    block_count = 2,
-    layers_per_block = 2,
+    hidden_width = 512,
+    block_count = 4,
+    layers_per_block = 4,
     dropout = 0.2,
     use_bias = false
 )
 
 train_hypers() = (;
-    batch_size = 64,
+    batch_size = 512,
     holdout = 0.1,
 )
 
@@ -65,8 +65,8 @@ function mlrun()
     return state
 end
 
-to_draw_x(batch, ind) = batch.under.v[1:end,ind]
-to_draw_yh(yhat, ind) = yhat.under.v[1:end,ind]
+to_draw_x(batch, ind) = batch.x[:,ind]
+to_draw_yh(yhat, ind) = softmax(yhat[:,ind])
 #endregion MLRun Interface
 
 #region mlrun impl
