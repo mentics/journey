@@ -164,6 +164,7 @@ function calc_loss(model, batch)
 end
 #endregion mlrun impl
 
+#region Data
 const CACHE_DF_UNDER2 = Ref{DataFrame}()
 const CACHE_DF_VIX2 = Ref{DataFrame}()
 const CACHE_OBS = Ref{Vector{DateTime}}()
@@ -194,18 +195,6 @@ function get_data(;reset=false)
         obs = CACHE_OBS[]
     )
 end
-
-# @kwdef struct HistoricalInput
-#     v::Vector{Float32}
-#     meta::Vector{Float32}
-#     mask::BitVector
-# end
-
-# @kwdef struct HistoricalEncoded
-#     v::Vector{Float32}
-#     meta_under::Vector{Float32}
-#     meta_vix::Vector{Float32}
-# end
 
 function make_data_input()
     under = make_data_under()
@@ -427,6 +416,7 @@ function make_data_vix()
 
     return res
 end
+#endregion Data
 
 #region Model
 function model_encoder()

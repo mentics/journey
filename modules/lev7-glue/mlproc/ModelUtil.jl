@@ -49,11 +49,11 @@ end
 
 #region Persistence
 path_default_base() = joinpath(FileUtil.root_shared(), "mlrun")
-path_default_base(mod_name) = joinpath(path_default_base(), mod_name)
+path_default_base(mod_name) = joinpath(path_default_base(), string(mod_name))
 
 function save(training, path_base=path_default_base(training.trainee.name))
     trainee = training.trainee
-    mkpath(path_base)
+    mkpath(joinpath(path_base, "train"))
     path = joinpath(path_base, "train", "$(trainee.name)-$(trainee.version)-$(DateUtil.file_ts()).jld2")
     print("Saving model and opt_state to $(path)...")
     start = time()

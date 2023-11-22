@@ -9,6 +9,8 @@ using DateUtil, IndexUtil, ModelUtil
 CUDA.allowscalar(false)
 dev(x) = gpu(x) # gpu(x)
 
+# TODO: need to save holdout with training model so we keep that when continuing training
+
 #=
 Typical interface/approach:
 structure()
@@ -183,7 +185,7 @@ function latent_space(mod)
     return (;data, inds)
 end
 
-test_batch_loss(trainee, ibatch) = trainee.get_loss(trainee.model, trainee.batches.get(0, ibatch))
+test_batch_loss(trainee, ibatch) = trainee.get_loss(trainee.training_model, trainee.batches.get(0, ibatch))
 
 function check_holdout(training)
     loss = training.trainee.get_loss(training.trainee.training_model, training.trainee.batches.holdout)
