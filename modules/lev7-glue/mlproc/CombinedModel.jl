@@ -9,7 +9,7 @@ import Calendars as cal
 import DataFiles as dat
 
 NAME = @__MODULE__
-MOD_VERSION = "b4l4d2s512"
+MOD_VERSION = "b4l4d4s32"
 
 #region Config
 data_params() = (;
@@ -25,12 +25,12 @@ model_params() = (;
     hidden_width = 512,
     block_count = 4,
     layers_per_block = 4,
-    dropout = 0.2,
+    dropout = 0.4,
     use_bias = false
 )
 
 train_hypers() = (;
-    batch_size = 512,
+    batch_size = 32,
     holdout = 0.1,
 )
 
