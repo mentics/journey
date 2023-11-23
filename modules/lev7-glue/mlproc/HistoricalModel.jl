@@ -124,6 +124,7 @@ function mlrun()
 end
 
 to_draw_x(batch, ind) = batch.under.v[1:end,ind]
+to_draw_y(batch, ind) = batch.under.v[1:end,ind]
 to_draw_yh(yhat, ind) = yhat.under[1:end,ind]
 # to_draw_x(batch, ind) = batch.vix.v[1:end,ind]
 # to_draw_yh(yhat, ind) = yhat.vix[1:end,ind]

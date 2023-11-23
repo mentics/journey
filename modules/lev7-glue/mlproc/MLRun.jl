@@ -26,37 +26,38 @@ make_opt(type instance) # default is Lion
 # function make_loss_func end
 # make_opt(learning_rate_func, loss_untrained) = AdamW(learning_rate_func(0, 0f0, loss_untrained))
 
-export Batches2
-@kwdef struct Batches2
+export Batches3
+@kwdef struct Batches3
     get
+    single
     count
     holdout
 end
 
-export Trainee7
-@kwdef struct Trainee7
+export Trainee8
+@kwdef struct Trainee8
     name
     version
     training_model
     inference_model
     run_model
     infer
-    batches::Batches2
+    batches::Batches3
     get_learning_rate
     get_loss
     mod
     cfg
 end
 
-@kwdef struct Training7
-    trainee::Trainee7
+@kwdef struct Training8
+    trainee::Trainee8
     opt
     opt_state
     metrics
     params
 end
 
-function setup(trainee::Trainee7)
+function setup(trainee::Trainee8)
     model = trainee.training_model |> dev
     println("Model has param count: ", sum(length, Flux.params(model)))
 
@@ -70,7 +71,7 @@ function setup(trainee::Trainee7)
 
     params = Dict{Symbol,Any}()
 
-    training = Training7(;
+    training = Training8(;
         trainee,
         opt,
         opt_state,
@@ -81,7 +82,7 @@ function setup(trainee::Trainee7)
     return training
 end
 
-function run(training::Training7; epochs=1000, fold_count=5)
+function run(training::Training8; epochs=1000, fold_count=5)
     cv = IndexUtil.cv_folds(training.trainee.batches.count, fold_count)
     training.params[:cv] = cv
     train(training; epochs)
@@ -156,14 +157,42 @@ function calc_base_loss(model, calc_loss, get_batch, batch_count)
 end
 
 import DrawUtil:draw,draw!
+function checki(trainee, inds)
+    draw(:vlines, 0f0)
+    for i in inds
+        gbatch = trainee.batches.single(i) |> gpu
+        yhat = trainee.run_model(gbatch) |> cpu
+        batch = gbatch |> cpu
+
+        # (x, x) = trainee.mod.to_draw_x(batch, 2)
+        (yx, yy) = trainee.mod.to_draw_y(batch, 1)
+        (yhx, yhy) = trainee.mod.to_draw_yh(yhat, 1)
+
+        # draw(:scatter, x; label="x")
+        # draw!(:scatter, yhx, yhy; label="yh")
+        # draw!(:scatter, yx, yy ./ 10; label="y")
+        draw!(:scatter, yhx, yhy)
+        draw!(:scatter, yx, yy ./ 10)
+    end
+    return # (;batch, yhat)
+
+    # for i in axes(under, 1), j in axes(under, 2)
+    #     if under[i,j] != 0f0
+    #       print("$(under[i,j]),")
+    #     end
+    #   end
+end
+
 function check(trainee, batchi)
     gbatch = trainee.batches.get(0, batchi)
     yhat = trainee.run_model(gbatch) |> cpu
     batch = gbatch |> cpu
-    x = trainee.mod.to_draw_x(batch, 2)
-    yh = trainee.mod.to_draw_yh(yhat, 2)
-    draw(:scatter, x; label="x")
-    draw!(:scatter, yh; label="yh")
+    # (x, x) = trainee.mod.to_draw_x(batch, 2)
+    (yx, yy) = trainee.mod.to_draw_y(batch, 2)
+    (yhx, yhy) = trainee.mod.to_draw_yh(yhat, 2)
+    # draw(:scatter, x; label="x")
+    draw(:scatter, yhx, yhy; label="yh")
+    draw!(:scatter, yx, yy; label="y")
     return (;batch, yhat)
 
     # for i in axes(under, 1), j in axes(under, 2)

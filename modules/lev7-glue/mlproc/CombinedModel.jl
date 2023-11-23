@@ -7,9 +7,12 @@ using IndexUtil, TrainUtil, ModelUtil, FileUtil
 using MLRun
 import Calendars as cal
 import DataFiles as dat
+import VectorCalcUtil as vcu
+
+# TODO: what would perfect match loss be?
 
 NAME = @__MODULE__
-MOD_VERSION = "b4l4d4s32"
+MOD_VERSION = "w1024b4l4d1s512"
 
 #region Config
 data_params() = (;
@@ -22,15 +25,15 @@ data_params() = (;
 model_params() = (;
     historical_model_version = HistoricalModel.VERSION,
     activation = NNlib.swish,
-    hidden_width = 512,
+    hidden_width = 1024,
     block_count = 4,
     layers_per_block = 4,
-    dropout = 0.4,
+    dropout = 0.1,
     use_bias = false
 )
 
 train_hypers() = (;
-    batch_size = 32,
+    batch_size = 512,
     holdout = 0.1,
 )
 
@@ -49,7 +52,7 @@ function mlrun()
     inference_model = training_model = make_model() |> gpu
     run = x -> run_model(training_model, x)
 
-    global state = Trainee7(;
+    global state = Trainee8(;
         name=NAME,
         version=MOD_VERSION,
         training_model,
@@ -65,8 +68,9 @@ function mlrun()
     return state
 end
 
-to_draw_x(batch, ind) = batch.x[:,ind]
-to_draw_yh(yhat, ind) = softmax(yhat[:,ind])
+# to_draw_x(batch, ind) = batch.x[:,ind]
+to_draw_y(batch, ind) = (bins(), batch.y[:,ind])
+to_draw_yh(yhat, ind) = (bins(), softmax(yhat[:,ind]))
 #endregion MLRun Interface
 
 #region mlrun impl
@@ -93,7 +97,8 @@ end
 
 function calc_loss(model, batch)
     yhat = run_model(model, batch)
-    return Flux.Losses.logitcrossentropy(yhat, batch.y; dims=1)
+    # return Flux.Losses.logitcrossentropy(yhat, batch.y)
+    return Flux.Losses.crossentropy(vcu.normalize(relu.(yhat)), batch.y)
 end
 #endregion MLRun Interface
 
@@ -101,8 +106,7 @@ end
 COMBINED_INPUT_PATH = joinpath(FileUtil.root_shared(), "mlrun", "CombinedModel", "data", "CombinedModel-input.arrow")
 using SearchSortedNearest
 function make_data_input()
-    (;bins_count, ret_min, ret_max) = config()
-    bins = ModelUtil.make_bins(bins_count, ret_min, ret_max)
+    bins = bins()
 
     # Restrict to ts's for which we have encoded hist data
     hist = hm.load_data_encoded()
@@ -152,10 +156,13 @@ function make_data()
     # TODO: write directly to CuArray's?
     get_batch = function(iepoch, ibatch)
         inds = inds_batches[ibatch]
-        return batch_from_inds(input, inds)
+        batch_from_inds(input, inds)
+    end
+    single = function(ind)
+        batch_from_inds(input, [ind])
     end
     holdout = batch_from_inds(input, inds_holdout)
-    return Batches2(;get=get_batch, count=batch_count, holdout)
+    return Batches3(;get=get_batch, single, count=batch_count, holdout)
 end
 
 function batch_from_inds(input, inds)
@@ -172,5 +179,12 @@ end
 #     return (; hist, temporal, options) |> gpu
 # end
 #endregion Data
+
+#region Util
+function bins()
+    (;bins_count, ret_min, ret_max) = config()
+    ModelUtil.make_bins(bins_count, ret_min, ret_max)
+end
+#endregion Util
 
 end
