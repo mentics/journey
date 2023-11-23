@@ -172,7 +172,8 @@ function checki(trainee, inds)
         # draw!(:scatter, yhx, yhy; label="yh")
         # draw!(:scatter, yx, yy ./ 10; label="y")
         draw!(:scatter, yhx, yhy)
-        draw!(:scatter, yx, yy ./ 10)
+        # draw!(:scatter, yx, yy ./ 10)
+        draw!(:scatter, [yhx[findmax(yhy[:,1])[2]]], [0.1])
     end
     return # (;batch, yhat)
 

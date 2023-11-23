@@ -71,6 +71,7 @@ end
 # to_draw_x(batch, ind) = batch.x[:,ind]
 to_draw_y(batch, ind) = (bins(), batch.y[:,ind])
 to_draw_yh(yhat, ind) = (bins(), softmax(yhat[:,ind]))
+# to_draw_yh(yhat, ind) = (bins(), vcu.normalize(relu(yhat[:,ind])))
 #endregion MLRun Interface
 
 #region mlrun impl
@@ -97,8 +98,8 @@ end
 
 function calc_loss(model, batch)
     yhat = run_model(model, batch)
-    # return Flux.Losses.logitcrossentropy(yhat, batch.y)
-    return Flux.Losses.crossentropy(vcu.normalize(relu.(yhat)), batch.y)
+    return Flux.Losses.logitcrossentropy(yhat, batch.y)
+    # return Flux.Losses.crossentropy(vcu.normalize(relu.(yhat)), batch.y)
 end
 #endregion MLRun Interface
 
