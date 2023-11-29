@@ -96,25 +96,25 @@ const TS_MAX2 = DateTime("2023-06-30T20:00:00")
 #region Loaders
 
 #region Paths
-baseincoming() = joinpath(PATHS.db(), "incoming", "optionsdx")
-path_chains() = joinpath(PATHS.db(), "market", "spy", "chains")
+baseincoming() = joinpath(PATHS.db_old(), "incoming", "optionsdx")
+path_chains() = joinpath(PATHS.db_old(), "market", "spy", "chains")
 path_calls(y, m) = joinpath(path_chains(), "calls", "calls-$(datestr(y, m)).arrow")
 path_puts(y, m) = joinpath(path_chains(), "puts", "puts-$(datestr(y, m)).arrow")
-path_tsxs() = joinpath(PATHS.db(), "market", "spy", "tsxs")
+path_tsxs() = joinpath(PATHS.db_old(), "market", "spy", "tsxs")
 path_tsxs(y, m) = joinpath(path_tsxs(), "tsx-$(datestr(y, m)).arrow")
-path_oqs_pre() = joinpath(PATHS.db(), "market", "spy", "oqs_pre")
+path_oqs_pre() = joinpath(PATHS.db_old(), "market", "spy", "oqs_pre")
 path_oqs_pre(y, m) = joinpath(path_oqs_pre(), "oq-$(datestr(y, m)).arrow")
-path_oqs() = joinpath(PATHS.db(), "market", "spy", "oqs")
+path_oqs() = joinpath(PATHS.db_old(), "market", "spy", "oqs")
 path_oqs(y, m) = joinpath(path_oqs(), "oq-$(datestr(y, m)).arrow")
 
-path_ts() = joinpath(PATHS.db(), "market", "spy", "ts.arrow")
-path_ts_allperiods(;period=Minute(30)) = joinpath(PATHS.db(), "market", "spy", "ts-$(Dates.value(period)).arrow")
-path_xpir() = joinpath(PATHS.db(), "market", "spy", "xpir.arrow")
-path_tsx() = joinpath(PATHS.db(), "market", "spy", "tsx.arrow")
-path_oq() = joinpath(PATHS.db(), "market", "spy", "oq.arrow")
+path_ts() = joinpath(PATHS.db_old(), "market", "spy", "ts.arrow")
+path_ts_allperiods(;period=Minute(30)) = joinpath(PATHS.db_old(), "market", "spy", "ts-$(Dates.value(period)).arrow")
+path_xpir() = joinpath(PATHS.db_old(), "market", "spy", "xpir.arrow")
+path_tsx() = joinpath(PATHS.db_old(), "market", "spy", "tsx.arrow")
+path_oq() = joinpath(PATHS.db_old(), "market", "spy", "oq.arrow")
 
-path_vix() = joinpath(PATHS.db(), "market", "vix", "vix.arrow")
-path_vix_alldates() = joinpath(PATHS.db(), "market", "vix", "vix_alldates.arrow")
+path_vix() = joinpath(PATHS.db_old(), "market", "vix", "vix.arrow")
+path_vix_alldates() = joinpath(PATHS.db_old(), "market", "vix", "vix_alldates.arrow")
 #endregion
 
 #region Tables

@@ -47,7 +47,7 @@ riskyears(from::DateLike, to::DateLike) = durRisk(from, to) / bdaysPerYear()
 durtimult(from::Date, to::Date) = ( dur = durRisk(from, to) ; (dur, bdaysPerYear() / dur) )
 calcRate(from::Date, to::Date, ret, risk)::Float64 = (ret / Float64(risk)) * timult(from, to)
 calcRate(tmult, ret, risk)::Float64 = (ret / Float64(risk)) * tmult
-vixToSdev(vix, bdays) = vix / sqrt(bdaysPerYear() / bdays)
+# vixToSdev(vix, bdays) = vix / sqrt(bdaysPerYear() / bdays)
 
 #region Basic
 const SECOND_ZERO = Second(0)
@@ -80,6 +80,8 @@ toTimeMarket(ts::DateTime)::Time = Time(ZonedDateTime(ts, MARKET_TZ; from_utc=tr
 toTimeLocal(ts::DateTime)::Time = Time(ZonedDateTime(ts, LOCALZONE; from_utc=true))
 to_local(ts::DateTime) = ZonedDateTime(ts, LOCALZONE; from_utc=true)
 to_local(s::Int) = ZonedDateTime(unix2datetime(s), LOCALZONE; from_utc=true)
+market_now()::ZonedDateTime = toMarketTZ(now(UTC))
+market_midnight(date::Date)::DateTime = fromMarketTZ(date, Time(0,0))
 #endregion
 
 #region Parsing
@@ -245,5 +247,12 @@ const DAYS_PER_WEEK = 5
 const TIMES_PER_WEEK = TIMES_PER_DAY * DAYS_PER_WEEK
 
 file_ts(ts=now(UTC)) = Dates.format(now(UTC),"yyyymmdd-HHmmSS")
+
+export asof_daily, age_daily
+asof_daily()::DateTime = market_midnight(Date(market_now()))
+age_daily()::Period = now(UTC) - asof_daily()
+
+const FOREVER2 = Nanosecond(typemax(Int))
+const DATETIME_BEFORE = DateTime(0)
 
 end
