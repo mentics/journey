@@ -7,15 +7,15 @@ import Calendars as cal
 using Paths, FilesJLD2, FilesArrow
 
 #region Expirations and Days
-function xpirs_for_dates(dates)
-    _, date_to_xpir = xpir_dates()
+function get_xpirs_for_dates(dates)
+    _, date_to_xpir = get_xpir_dates()
     dates = filter(date -> haskey(date_to_xpir, date), dates)
     return collect(mapreduce(bulk_push!, dates; init=SortedSet()) do date
         date_to_xpir[date]
     end)
 end
 
-function xpir_dates(sym="SPY"; age=age_daily())
+function get_xpir_dates(sym="SPY"; age=age_daily())
     return cache!(NTuple{2,Dict{Date,Vector{Date}}}, Symbol("expirs-dates-$(sym)"), age) do
         # TODO: refresh occasionally
         load_data(file_expirs(;sym), "xpir_to_date", "date_to_xpir"; age)
@@ -56,7 +56,7 @@ end
 #endregion Expirations and Days
 
 #region Quotes
-function quotes(year, month; sym="SPY")
+function get_quotes(year, month; sym="SPY")
     path = file_quotes(year, month; sym)
     return load_data(path, DataFrame)
 end
@@ -66,7 +66,7 @@ function make_quotes(year, month; sym="SPY")
     date_start = Date(year, month, 1)
     date_end = Dates.lastdayofmonth(date_start)
     # dates = Date(year, month, 1):Dates.lastdayofmonth(date_start)
-    xpirs = xpirs_for_dates(date_start:date_end)
+    xpirs = get_xpirs_for_dates(date_start:date_end)
     start = time()
     df = mapreduce(vcat, xpirs) do xpir
         query_quotes(date_start, min(xpir, date_end), xpir)
@@ -128,7 +128,7 @@ function query_quotes(date_start, date_end, xpir; period=1800000, sym="SPY")
             ask = tick[8]
             ask_size = tick[6]
             ask_condition = tick[7]
-            under = Date(ts) <= DAT_UNDER_LAST_DATE ? dat.lup_under(ts) : under()[ts]
+            under = Date(ts) <= DAT_UNDER_LAST_DATE ? dat.lup_under(ts) : get_under()[ts]
             @assert !ismissing(under) "under missing for $(ts)"
             push!(df, [ts, cal.getMarketClose(handle_sat_xpir(xpir)), under, style, strike / 1000, bid, bid_size, bid_condition, ask, ask_size, ask_condition])
         end
@@ -143,7 +143,7 @@ end
 #endregion Quotes
 
 #region Under
-function under(; sym="SPY", age=age_daily())
+function get_under(; sym="SPY", age=age_daily())
     return cache!(Dict{DateTime,Float32}, Symbol("under-$(sym)"), age) do
         # TODO: refresh occasionally
         load_data(file_under(;sym), "under"; age)
