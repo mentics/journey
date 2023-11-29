@@ -1,4 +1,4 @@
-module MLRun
+module MLTrain
 import Base:@kwdef
 using Dates
 using CUDA

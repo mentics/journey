@@ -4,12 +4,10 @@ using DataFrames, Arrow
 using Flux, MLUtils, CUDA
 import HistoricalModel as hm
 using IndexUtil, TrainUtil, ModelUtil, FileUtil
-using MLRun
+using MLTrain
 import Calendars as cal
 import DataFiles as dat
 import VectorCalcUtil as vcu
-
-# TODO: what would perfect match loss be?
 
 NAME = @__MODULE__
 MOD_VERSION = "w1024b4l4d1s512"
@@ -47,8 +45,8 @@ function config()
 end
 #endregion Config
 
-#region MLRun Interface
-function mlrun()
+#region MLTrain Interface
+function MLTrain()
     inference_model = training_model = make_model() |> gpu
     run = x -> run_model(training_model, x)
 
@@ -72,9 +70,9 @@ end
 to_draw_y(batch, ind) = (bins(), batch.y[:,ind])
 to_draw_yh(yhat, ind) = (bins(), softmax(yhat[:,ind]))
 # to_draw_yh(yhat, ind) = (bins(), vcu.normalize(relu(yhat[:,ind])))
-#endregion MLRun Interface
+#endregion MLTrain Interface
 
-#region mlrun impl
+#region MLTrain impl
 import HistoricalModel
 function make_model()
     cfg = config()
@@ -101,10 +99,10 @@ function calc_loss(model, batch)
     return Flux.Losses.logitcrossentropy(yhat, batch.y)
     # return Flux.Losses.crossentropy(vcu.normalize(relu.(yhat)), batch.y)
 end
-#endregion MLRun Interface
+#endregion MLTrain Interface
 
 #region Data
-COMBINED_INPUT_PATH = joinpath(FileUtil.root_shared(), "mlrun", "CombinedModel", "data", "CombinedModel-input.arrow")
+COMBINED_INPUT_PATH = joinpath(FileUtil.root_shared(), "MLTrain", "CombinedModel", "data", "CombinedModel-input.arrow")
 using SearchSortedNearest
 function make_data_input()
     bins = bins()

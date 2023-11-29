@@ -67,4 +67,43 @@ function interleave!(out, rows)
     end
 end
 
+# function conv(v::AbstractVector{T}, kernel::AbstractVector{T}) where T
+#     vlen = length(v)
+#     klen = length(kernel)
+#     klen2 = klen ÷ 2
+#     # klen2right = klen - klen2
+#     res = Vector{T}(undef, vlen)
+#     for i in eachindex(v)
+#         # inds = i <= klen2 ? ((klen2 - i):(klen - klen2 - 1)) : (-klen2:(klen - klen2 - 1))
+#         left = i <= klen2 ? (i - klen2 + 1) : -klen2
+#         right = (i + klen2) > vlen ? (1 + vlen - (i + klen2)) : klen2
+#         inds = left:right
+#         @show i vlen klen2 inds
+#         res[i] = zero(T)
+#         for offset in inds
+#             iv = i + offset
+#             ik = offset + klen2 + 1
+#             @show offset iv ik
+#             res[i] += v[iv] * kernel[ik]
+#             println("Added to res[$(i)] = $(v[iv]) * $(kernel[ik])")
+#         end
+#     end
+#     return res
+# end
+
+function conv(v::AbstractVector{T}, kernel::AbstractVector{T}) where T
+    vlen = length(v)
+    offset = -length(kernel) ÷ 2 - 1 # -1 for 1-indexing
+    res = Vector{T}(undef, vlen)
+    for i in eachindex(v)
+        res[i] = zero(T)
+        for j in eachindex(kernel)
+            ind = i + j + offset
+            0 < ind <= vlen  || continue
+            res[i] += v[ind] * kernel[j]
+        end
+    end
+    return res
+end
+
 end

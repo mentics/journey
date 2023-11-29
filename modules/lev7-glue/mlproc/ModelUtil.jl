@@ -48,7 +48,7 @@ function to_temporal(ts)
 end
 
 #region Persistence
-path_default_base() = joinpath(FileUtil.root_shared(), "mlrun")
+path_default_base() = joinpath(FileUtil.root_shared(), "MLTrain")
 path_default_base(mod_name) = joinpath(path_default_base(), string(mod_name))
 
 function save(training, path_base=path_default_base(training.trainee.name))

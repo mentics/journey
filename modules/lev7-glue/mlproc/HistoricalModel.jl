@@ -8,7 +8,7 @@ using DateUtil, CollUtil, IndexUtil
 import DataFiles as dat
 import DataFiles:missing_to_zero_float
 using ModelUtil, TrainUtil, FileUtil
-using MLRun
+using MLTrain
 import VectorCalcUtil as vcu
 
 NAME = string(@__MODULE__)
@@ -30,7 +30,7 @@ function load_inference(version=MOD_VERSION)
 end
 
 ENCODED_CACHE = nothing
-ENCODED_PATH = joinpath(FileUtil.root_shared(), "mlrun", "HistoricalModel", "data", "HistoricalModel-encoded.arrow")
+ENCODED_PATH = joinpath(FileUtil.root_shared(), "MLTrain", "HistoricalModel", "data", "HistoricalModel-encoded.arrow")
 function load_data_encoded()
     if isnothing(ENCODED_CACHE)
         global ENCODED_CACHE = Arrow.Table(ENCODED_PATH)
@@ -102,8 +102,8 @@ function config()
 end
 #endregion Config
 
-#region MLRun Interface
-function mlrun()
+#region MLTrain Interface
+function MLTrain()
     inference_model = model_encoder() |> gpu
     training_model = Chain(; encoder=inference_model, decoder=model_decoder()) |> gpu
 
@@ -128,9 +128,9 @@ to_draw_y(batch, ind) = batch.under.v[1:end,ind]
 to_draw_yh(yhat, ind) = yhat.under[1:end,ind]
 # to_draw_x(batch, ind) = batch.vix.v[1:end,ind]
 # to_draw_yh(yhat, ind) = yhat.vix[1:end,ind]
-#endregion MLRun Interface
+#endregion MLTrain Interface
 
-#region mlrun impl
+#region MLTrain impl
 function autoencoder(model, batch)
     encoded = run_encoder(model.layers.encoder, batch)
     decoded = run_decoder(model.layers.decoder, encoded, batch)
@@ -163,7 +163,7 @@ function calc_loss(model, batch)
     # global kloss_vals = (;under, under_mask, vix, vix_mask, yhat_under_1, yhat_vix_1, yhat_under, yhat_vix, loss=l)
     return l
 end
-#endregion mlrun impl
+#endregion MLTrain impl
 
 #region Data
 const CACHE_DF_UNDER2 = Ref{DataFrame}()
@@ -220,7 +220,7 @@ function make_data_input()
     return combined
 end
 
-INPUT_PATH = joinpath(FileUtil.root_shared(), "mlrun", "HistoricalModel", "data", "HistoricalModel-input.arrow")
+INPUT_PATH = joinpath(FileUtil.root_shared(), "MLTrain", "HistoricalModel", "data", "HistoricalModel-input.arrow")
 
 INPUT_CACHE = nothing
 import Arrow

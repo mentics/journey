@@ -49,9 +49,9 @@ end
 Tables.istable(::Type{<:AbstractVector{<:AbstractVector}}) = true
 Tables.rowaccess(::Type{<:AbstractVector{<:AbstractVector}}) = true
 
-Tables.getcolumn(x::AbstractVector, i::Int) = x[i]
-Tables.getcolumn(v::AbstractVector, nm::Symbol) = v[parse(Int, string(nm))]
-Tables.columnnames(v::AbstractVector) = collect(map(x->Symbol(x), 1:length(v)))
+# Tables.getcolumn(x::AbstractVector, i::Int) = x[i]
+# Tables.getcolumn(v::AbstractVector, nm::Symbol) = v[parse(Int, string(nm))]
+# Tables.columnnames(v::AbstractVector) = collect(map(x->Symbol(x), 1:length(v)))
 #endregion
 
 function niceShow(a)
