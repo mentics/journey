@@ -163,6 +163,7 @@ function query_under(;sym="SPY", age=age_daily())
         # end_date = Date(2023,10,2)
         url = "http://localhost:25510/hist/stock/trade?root=$(sym)&start_date=$(str(start_date))&end_date=$(str(end_date))&ivl=1800000"
         # TODO: is it safe to use last trade instead of quote?
+        # TODO: check that all expected ts are covered by comparing with DateUtil.all_weekday_ts
         println("Querying under: $(url)")
         resp = HTTP.get(url, HEADERS_GET[]; retry=false)
         ticks = parseJson(String(resp.body), Dict)["response"]
@@ -191,6 +192,7 @@ format_ym(year, month) = "$(year)-$(lpad(month, 2, '0'))"
 dir_incoming(dirs...; sym="SPY") = PATHS.db("market", "incoming", "thetadata", sym, dirs...)
 file_expirs(;sym="SPY") = joinpath(dir_incoming(;sym), "expirs-$(sym).jld2")
 file_quotes(year, month; sym="SPY") = joinpath(dir_incoming("quotes"; sym), "quotes-$(sym)-$(format_ym(year, month)).arrow")
+file_under(;sym="SPY") = joinpath(dir_incoming("under"; sym), "under-$(sym).jld2")
 
 const EARLIEST_DATE = Date(2012, 6, 1)
 
