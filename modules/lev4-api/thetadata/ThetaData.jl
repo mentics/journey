@@ -156,7 +156,7 @@ function make_under(;sym="SPY")
 end
 
 function query_under(;sym="SPY", age=age_daily())
-    return cache!(Vector{Date}, Symbol("under-$(sym)"), age) do
+    return cache!(Dict{DateTime,Float32}, Symbol("under-$(sym)"), age) do
         start_date = DAT_UNDER_LAST_DATE
         end_date = Date(DateUtil.market_now())
         # start_date = Date(2023,10,2)
