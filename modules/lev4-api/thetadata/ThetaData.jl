@@ -140,10 +140,10 @@ function query_quotes(date_start, date_end, xpir; period=1800000, sym="SPY")
     end
     return df
 end
+#endregion Quotes
 
-const DAT_UNDER_LAST_DATE = Date(2023,6,30)
-
-function under(; age=age_daily())
+#region Under
+function under(; sym="SPY", age=age_daily())
     return cache!(Dict{DateTime,Float32}, Symbol("under-$(sym)"), age) do
         # TODO: refresh occasionally
         load_data(file_under(;sym), "under"; age)
@@ -177,29 +177,21 @@ function query_under(;sym="SPY", age=age_daily())
         return res
     end
 end
-#endregion Quotes
-
-#region Explore and Test
-import DataFiles as dat
-function check_0p_dist(df)
-
-    dat.lup_under(ts)
-end
-#endregion Explore and Test
+#endregion Under
 
 #region Constants and Util
+const DAT_UNDER_LAST_DATE = Date(2023,6,30)
+const EARLIEST_DATE = Date(2012, 6, 1)
+const CT = Float32
+const HEADERS_GET = Ref(Dict("Accept" => "application/json"))
+const DATE_FORMAT = DateFormat("yyyymmdd")
+
 format_ym(year, month) = "$(year)-$(lpad(month, 2, '0'))"
 dir_incoming(dirs...; sym="SPY") = PATHS.db("market", "incoming", "thetadata", sym, dirs...)
 file_expirs(;sym="SPY") = joinpath(dir_incoming(;sym), "expirs-$(sym).jld2")
 file_quotes(year, month; sym="SPY") = joinpath(dir_incoming("quotes"; sym), "quotes-$(sym)-$(format_ym(year, month)).arrow")
 file_under(;sym="SPY") = joinpath(dir_incoming("under"; sym), "under-$(sym).jld2")
 
-const EARLIEST_DATE = Date(2012, 6, 1)
-
-const CT = Float32
-
-const HEADERS_GET = Ref(Dict("Accept" => "application/json"))
-const DATE_FORMAT = DateFormat("yyyymmdd")
 to_date(d) = to_date(string(d))
 to_date(d::AbstractString) = Date(d, DATE_FORMAT)
 function to_time(ms)
@@ -219,5 +211,13 @@ function bulk_push!(v, items)
     return v
 end
 #endregion Constants and Util
+
+#region Explore and Test
+# import DataFiles as dat
+# function check_0p_dist(df)
+
+#     dat.lup_under(ts)
+# end
+#endregion Explore and Test
 
 end
