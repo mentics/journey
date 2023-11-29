@@ -128,7 +128,7 @@ function query_quotes(date_start, date_end, xpir; period=1800000, sym="SPY")
             ask = tick[8]
             ask_size = tick[6]
             ask_condition = tick[7]
-            under = Date(ts) >= DAT_UNDER_LAST_DATE ? dat.lup_under(ts) : under()[ts]
+            under = Date(ts) <= DAT_UNDER_LAST_DATE ? dat.lup_under(ts) : under()[ts]
             @assert !ismissing(under) "under missing for $(ts)"
             push!(df, [ts, cal.getMarketClose(handle_sat_xpir(xpir)), under, style, strike / 1000, bid, bid_size, bid_condition, ask, ask_size, ask_condition])
         end
