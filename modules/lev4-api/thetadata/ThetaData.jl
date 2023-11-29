@@ -22,6 +22,20 @@ function xpir_dates(sym="SPY"; age=age_daily())
     end
 end
 
+function make_xpir_dates(sym="SPY")
+    xpirs = query_xpirs(sym)
+    xpir_to_date = Dict{Date,Vector{Date}}()
+    date_to_xpir = Dict{Date,Vector{Date}}()
+    for xpir in xpirs
+        dates = query_dates_for_xpir(xpir, sym)
+        for date in dates
+            push!(get!(Vector, xpir_to_date, xpir), date)
+            push!(get!(Vector, date_to_xpir, date), xpir)
+        end
+    end
+    save_data(file_expirs(;sym); xpir_to_date, date_to_xpir)
+end
+
 function query_xpirs(sym="SPY"; age=age_daily())
     return cache!(Vector{Date}, Symbol("expirs-$(sym)"), age) do
         url = "http://localhost:25510/v2/list/expirations?root=$(sym)"
@@ -38,20 +52,6 @@ function query_dates_for_xpir(xpir::Date, sym="SPY"; age=age_daily())
         resp = HTTP.get(url, HEADERS_GET[]; retry=false)
         return map(s -> to_date(s), parseJson(String(resp.body), Dict)["response"])
     end
-end
-
-function make_xpir_dates(sym="SPY")
-    xpirs = query_xpirs(sym)
-    xpir_to_date = Dict{Date,Vector{Date}}()
-    date_to_xpir = Dict{Date,Vector{Date}}()
-    for xpir in xpirs
-        dates = query_dates_for_xpir(xpir, sym)
-        for date in dates
-            push!(get!(Vector, xpir_to_date, xpir), date)
-            push!(get!(Vector, date_to_xpir, date), xpir)
-        end
-    end
-    save_data(file_expirs(;sym); xpir_to_date, date_to_xpir)
 end
 #endregion Expirations and Days
 
@@ -128,7 +128,7 @@ function query_quotes(date_start, date_end, xpir; period=1800000, sym="SPY")
             ask = tick[8]
             ask_size = tick[6]
             ask_condition = tick[7]
-            under = dat.lup_under(ts)
+            under = Date(ts) >= DAT_UNDER_LAST_DATE ? dat.lup_under(ts) : under()[ts]
             # @show (ts, xpir, style, strike, bid, ask)
             push!(df, [ts, cal.getMarketClose(handle_sat_xpir(xpir)), under, style, strike / 1000, bid, bid_size, bid_condition, ask, ask_size, ask_condition])
         end
@@ -139,6 +139,42 @@ function query_quotes(date_start, date_end, xpir; period=1800000, sym="SPY")
         println("  created df in $(dur) seconds")
     end
     return df
+end
+
+const DAT_UNDER_LAST_DATE = Date(2023,6,30)
+
+function under(; age=age_daily())
+    return cache!(Dict{DateTime,Float32}, Symbol("under-$(sym)"), age) do
+        # TODO: refresh occasionally
+        load_data(file_under(;sym), "under"; age)
+    end
+end
+
+function make_under(;sym="SPY")
+    under = query_under(;sym)
+    save_data(file_under(;sym); under)
+end
+
+function query_under(;sym="SPY", age=age_daily())
+    return cache!(Vector{Date}, Symbol("under-$(sym)"), age) do
+        start_date = DAT_UNDER_LAST_DATE
+        end_date = Date(DateUtil.market_now())
+        # start_date = Date(2023,10,2)
+        # end_date = Date(2023,10,2)
+        url = "http://localhost:25510/hist/stock/trade?root=$(sym)&start_date=$(str(start_date))&end_date=$(str(end_date))&ivl=1800000"
+        # TODO: is it safe to use last trade instead of quote?
+        println("Querying under: $(url)")
+        resp = HTTP.get(url, HEADERS_GET[]; retry=false)
+        ticks = parseJson(String(resp.body), Dict)["response"]
+        res = Dict{DateTime,Float32}()
+        for tick in ticks
+            @assert tick[1] % (1000 * 60 * 30) == 0 "$(tick[1]) % (1000 * 60 * 30) == 0"
+            ts = DateUtil.fromMarketTZ(to_date(tick[6]), to_time(tick[1]))
+            price = tick[5]
+            res[ts] = price
+        end
+        return res
+    end
 end
 #endregion Quotes
 
