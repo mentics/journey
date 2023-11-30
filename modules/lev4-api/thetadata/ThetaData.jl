@@ -1,6 +1,5 @@
 module ThetaData
 using Dates, HTTP, DataFrames
-import DataStructures:SortedSet
 using DateUtil, DictUtil, Caches
 using SmallTypes
 import Calendars as cal
@@ -8,39 +7,7 @@ import DataFiles as dat
 import CollUtil:push_all!
 using Paths, FilesJLD2, FilesArrow
 
-# TODO: unify under lookup
-
 #region Expirations and Days
-function get_xpirs_for_dates(dates)
-    _, date_to_xpir = get_xpir_dates()
-    dates = filter(date -> haskey(date_to_xpir, date), dates)
-    return collect(mapreduce(push_all!, dates; init=SortedSet()) do date
-        date_to_xpir[date]
-    end)
-end
-
-function get_xpir_dates(sym="SPY"; age=age_daily())
-    return cache!(NTuple{2,Dict{Date,Vector{Date}}}, Symbol("expirs-dates-$(sym)"), age) do
-        # TODO: refresh occasionally
-        load_data(file_expirs(;sym), "xpir_to_date", "date_to_xpir"; age)
-    end
-end
-
-function make_xpir_dates(sym="SPY")
-    xpirs = query_xpirs(sym)
-    filter!(xpir -> xpir < cal.max_date(), xpirs)
-    xpir_to_date = Dict{Date,Vector{Date}}()
-    date_to_xpir = Dict{Date,Vector{Date}}()
-    for xpir in xpirs
-        dates = query_dates_for_xpir(xpir, sym)
-        for date in dates
-            push!(get!(Vector, xpir_to_date, xpir), date)
-            push!(get!(Vector, date_to_xpir, date), xpir)
-        end
-    end
-    save_data(file_expirs(;sym); xpir_to_date, date_to_xpir)
-end
-
 function query_xpirs(sym="SPY"; age=age_daily())
     return cache!(Vector{Date}, Symbol("expirs-$(sym)"), age) do
         url = "http://localhost:25510/v2/list/expirations?root=$(sym)"
@@ -147,55 +114,37 @@ function query_quotes(date_start, date_end, xpir; period=1800000, sym="SPY")
 end
 #endregion Quotes
 
-#region Under
-function get_under(; sym="SPY", age=age_daily())
-    return cache!(Dict{DateTime,Float32}, Symbol("under-$(sym)"), age) do
-        # TODO: refresh occasionally
-        load_data(file_under(;sym), "under"; age)
-    end
-end
-
-function make_under(;sym="SPY")
-    under = query_under(;sym)
-    save_data(file_under(;sym); under)
-end
-
-function query_under(;sym="SPY", age=age_daily())
-    return cache!(Dict{DateTime,Float32}, Symbol("under-$(sym)"), age) do
-        start_date = DAT_UNDER_LAST_DATE
-        end_date = Date(DateUtil.market_now())
-        # start_date = Date(2023,10,2)
-        # end_date = Date(2023,10,2)
+#region Roots
+function query_prices(start_date=EARLIST_SPY_DATE, end_date=Date(DateUtil.market_now());sym="SPY", age=age_daily())
+    return cache!(DataFrame, Symbol("prices-$(sym)"), age) do
         url = "http://localhost:25510/hist/stock/trade?root=$(sym)&start_date=$(str(start_date))&end_date=$(str(end_date))&ivl=1800000"
         # TODO: is it safe to use last trade instead of quote?
         # TODO: check that all expected ts are covered by comparing with DateUtil.all_weekday_ts
         println("Querying under: $(url)")
         resp = HTTP.get(url, HEADERS_GET[]; retry=false)
         ticks = parseJson(String(resp.body), Dict)["response"]
-        res = Dict{DateTime,Float32}()
+        tss = DateTime[]
+        prices = Float32[]
+        # res = Dict{DateTime,Float32}()
         for tick in ticks
             @assert tick[1] % (1000 * 60 * 30) == 0 "$(tick[1]) % (1000 * 60 * 30) == 0"
             ts = DateUtil.fromMarketTZ(to_date(tick[6]), to_time(tick[1]))
             price = tick[5]
-            res[ts] = price
+            # res[ts] = price
+            push!(tss, ts)
+            push!(prices, price)
         end
-        return res
+        return DataFrame([tss, prices], [:ts, :price])
     end
 end
-#endregion Under
+#endregion Roots
 
 #region Constants and Util
-const DAT_UNDER_LAST_DATE = Date(2023,6,30)
+const EARLIST_SPY_DATE = Date(2021-12-26)
 const EARLIEST_DATE = Date(2012, 6, 1)
 const CT = Float32
 const HEADERS_GET = Ref(Dict("Accept" => "application/json"))
 const DATE_FORMAT = DateFormat("yyyymmdd")
-
-format_ym(year, month) = "$(year)-$(lpad(month, 2, '0'))"
-dir_incoming(dirs...; sym="SPY") = PATHS.db("market", "incoming", "thetadata", sym, dirs...)
-file_expirs(;sym="SPY") = joinpath(dir_incoming(;sym), "expirs-$(sym).jld2")
-file_quotes(year, month; sym="SPY") = joinpath(dir_incoming("quotes"; sym), "quotes-$(sym)-$(format_ym(year, month)).arrow")
-file_under(;sym="SPY") = joinpath(dir_incoming("under"; sym), "under-$(sym).jld2")
 
 to_date(d) = to_date(string(d))
 to_date(d::AbstractString) = Date(d, DATE_FORMAT)

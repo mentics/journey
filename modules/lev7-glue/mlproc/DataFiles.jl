@@ -164,7 +164,11 @@ Missing times I ran into:
 2012-10-24 after 2
 under missing for 2013-06-13T14:00:00
 
-Not a bday: 2014-04-18
+under missing for 2014-01-02T20:00:00
+
+under missing for 2014-03-17T15:30:00
+
+under missing for 2014-08-04T14:00:00
 
 Downloaded these from barchart.com
 =#
@@ -185,6 +189,27 @@ CollUtil.push_all!(DATA_EXTRA, [
     DateTime("2012-10-24T20:00:00") => C(141.01),
     ##
     DateTime("2013-06-13T14:00:00") => C(162.01),
+    ##
+    DateTime("2014-01-02T20:00:00") => C(182.76),
+    DateTime("2014-01-02T20:30:00") => C(182.99),
+    DateTime("2014-01-02T21:00:00") => C(182.95),
+    ##
+    DateTime("2014-03-17T15:30:00") => C(185.97),
+    ##
+    DateTime("2014-08-04T13:30:00") => C(192.87),
+    DateTime("2014-08-04T14:00:00") => C(192.96),
+    DateTime("2014-08-04T14:30:00") => C(192.8),
+    DateTime("2014-08-04T15:00:00") => C(192.15),
+    DateTime("2014-08-04T15:30:00") => C(192.71),
+    DateTime("2014-08-04T16:00:00") => C(192.62),
+    DateTime("2014-08-04T16:30:00") => C(192.96),
+    DateTime("2014-08-04T17:00:00") => C(192.95),
+    DateTime("2014-08-04T17:30:00") => C(192.96),
+    DateTime("2014-08-04T18:00:00") => C(193.29),
+    DateTime("2014-08-04T19:30:00") => C(193.31),
+    DateTime("2014-08-04T19:00:00") => C(193.81),
+    DateTime("2014-08-04T20:30:00") => C(194.0),
+    DateTime("2014-08-04T20:00:00") => C(193.88),
 ])
 
 function lup_under(ts::DateTime)
