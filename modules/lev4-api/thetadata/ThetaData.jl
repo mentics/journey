@@ -5,7 +5,7 @@ using DateUtil, DictUtil, Caches
 using SmallTypes
 import Calendars as cal
 import DataFiles as dat
-import CollUtil:bulk_push!
+import CollUtil:push_all!
 using Paths, FilesJLD2, FilesArrow
 
 # TODO: unify under lookup
@@ -14,7 +14,7 @@ using Paths, FilesJLD2, FilesArrow
 function get_xpirs_for_dates(dates)
     _, date_to_xpir = get_xpir_dates()
     dates = filter(date -> haskey(date_to_xpir, date), dates)
-    return collect(mapreduce(CollUtil.bulk_push!, dates; init=SortedSet()) do date
+    return collect(mapreduce(push_all!, dates; init=SortedSet()) do date
         date_to_xpir[date]
     end)
 end

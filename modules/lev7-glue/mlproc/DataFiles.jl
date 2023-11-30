@@ -168,7 +168,7 @@ Not a bday: 2014-04-18
 
 Downloaded these from barchart.com
 =#
-CollUtil.bulk_push!(DATA_EXTRA, [
+CollUtil.push_all!(DATA_EXTRA, [
     # DateTime("2012-10-24T13:30:10") => C(141.93),
     # DateTime("2012-10-24T14:00:00") => C(141.74),
     DateTime("2012-10-24T14:30:00") => C(141.48),

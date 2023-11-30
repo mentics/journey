@@ -462,7 +462,7 @@ end
 export are_all_finite
 are_all_finite(x::CollT) = isnothing(findfirst(!isfinite, x))
 
-function bulk_push!(v, items)
+function push_all!(v, items)
     foreach(items) do item
         push!(v, item)
     end
