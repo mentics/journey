@@ -158,10 +158,41 @@ end
 ts_rows(dftsi, tss) = dftsi.df[getindex.(Ref(dftsi.index), tss),:]
 lup_under(dftsi, tss::Vector{DateTime}) = [lup_under(dftsi, ts) for ts in tss]
 #map(lup_under, Ref(dftsi), tss)
+const DATA_EXTRA = Dict{DateTime,Currency}()
+#=
+Missing times I ran into:
+2012-10-24 after 2
+under missing for 2013-06-13T14:00:00
+
+Not a bday: 2014-04-18
+
+Downloaded these from barchart.com
+=#
+CollUtil.bulk_push!(DATA_EXTRA, [
+    # DateTime("2012-10-24T13:30:10") => C(141.93),
+    # DateTime("2012-10-24T14:00:00") => C(141.74),
+    DateTime("2012-10-24T14:30:00") => C(141.48),
+    DateTime("2012-10-24T15:00:00") => C(141.67),
+    DateTime("2012-10-24T15:30:00") => C(141.59),
+    DateTime("2012-10-24T16:00:00") => C(141.3),
+    DateTime("2012-10-24T16:30:00") => C(141.43),
+    DateTime("2012-10-24T17:00:00") => C(141.66),
+    DateTime("2012-10-24T17:30:00") => C(141.6),
+    DateTime("2012-10-24T18:00:00") => C(141.55),
+    DateTime("2012-10-24T18:30:00") => C(141.66),
+    DateTime("2012-10-24T19:00:00") => C(141.27),
+    DateTime("2012-10-24T19:30:00") => C(141.11),
+    DateTime("2012-10-24T20:00:00") => C(141.01),
+    ##
+    DateTime("2013-06-13T14:00:00") => C(162.01),
+])
+
 function lup_under(ts::DateTime)
-    dftsi = ts_indexed()
-    ind = get(dftsi.index, ts, missing)
-    return ismissing(ind) ? missing : dftsi.df.under[ind]
+    get(DATA_EXTRA, ts) do
+        dftsi = ts_indexed()
+        ind = get(dftsi.index, ts, missing)
+        return ismissing(ind) ? missing : dftsi.df.under[ind]
+    end
 end
 # dftsi.df.under[get.(Ref(dftsi.index), tss, missing)]
 

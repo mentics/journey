@@ -5,6 +5,7 @@ using DateUtil, DictUtil, Caches
 using SmallTypes
 import Calendars as cal
 import DataFiles as dat
+import CollUtil:bulk_push!
 using Paths, FilesJLD2, FilesArrow
 
 # TODO: unify under lookup
@@ -134,7 +135,7 @@ function query_quotes(date_start, date_end, xpir; period=1800000, sym="SPY")
             ask_condition = tick[7]
             under = Date(ts) <= DAT_UNDER_LAST_DATE ? dat.lup_under(ts) : get_under()[ts]
             @assert !ismissing(under) "under missing for $(ts)"
-            push!(df, [ts, cal.getMarketClose(handle_sat_xpir(xpir)), under, style, strike / 1000, bid, bid_size, bid_condition, ask, ask_size, ask_condition])
+            push!(df, [ts, cal.getMarketClose(handle_special_xpirs(xpir)), under, style, strike / 1000, bid, bid_size, bid_condition, ask, ask_size, ask_condition])
         end
     end
     stop = time()
@@ -204,16 +205,11 @@ function to_time(ms)
 end
 str(d::Date) = Dates.format(d, DATE_FORMAT)
 
-handle_sat_xpir(date) = Dates.dayofweek(date) == 6 ? date - Day(1) : date
-# vcatn(df1, df2) = isnothing(df2) ? df1 : vcat(df1, df2)
-
-# TODO: put in util
-function bulk_push!(v, items)
-    foreach(items) do item
-        push!(v, item)
-    end
-    return v
+function handle_special_xpirs(date)
+    # good friday holiday
+    (date == Date(2014,4,18) || Dates.dayofweek(date) == 6) ? date - Day(1) : date
 end
+# vcatn(df1, df2) = isnothing(df2) ? df1 : vcat(df1, df2)
 #endregion Constants and Util
 
 #region Explore and Test
