@@ -91,7 +91,7 @@ Example data:
 http://localhost:25510/v2/bulk_hist/option/quote?root=SPY&exp=20120601&start_date=20120601&end_date=20120601&ivl=1800000
 =#
 using LRUCache
-const HIST_CACHE2 = LRUCache.LRU{String,Union{Nothing,Dict}}(;maxsize=100)
+const HIST_CACHE2 = LRUCache.LRU{String,Union{Nothing,Dict}}(;maxsize=10000)
 function query_quotes(date_start, date_end, xpir; period=1800000, sym="SPY")
     println("Getting quotes for $(date_start) to $(date_end) for xpir=$(xpir)")
 
@@ -206,8 +206,12 @@ end
 str(d::Date) = Dates.format(d, DATE_FORMAT)
 
 function handle_special_xpirs(date)
+    date = Dates.dayofweek(date) == 6 ? date - Day(1) : date
     # good friday holiday
-    (date == Date(2014,4,18) || Dates.dayofweek(date) == 6) ? date - Day(1) : date
+    if date == Date(2014,4,18)
+        date = Date(2014,4,17)
+    end
+    return date
 end
 # vcatn(df1, df2) = isnothing(df2) ? df1 : vcat(df1, df2)
 #endregion Constants and Util
