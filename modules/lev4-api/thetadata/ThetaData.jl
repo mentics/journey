@@ -24,6 +24,7 @@ end
 
 function make_xpir_dates(sym="SPY")
     xpirs = query_xpirs(sym)
+    filter!(xpir -> xpir < cal.max_date(), xpirs)
     xpir_to_date = Dict{Date,Vector{Date}}()
     date_to_xpir = Dict{Date,Vector{Date}}()
     for xpir in xpirs
