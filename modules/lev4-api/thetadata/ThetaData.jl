@@ -4,7 +4,10 @@ import DataStructures:SortedSet
 using DateUtil, DictUtil, Caches
 using SmallTypes
 import Calendars as cal
+import DataFiles as dat
 using Paths, FilesJLD2, FilesArrow
+
+# TODO: unify under lookup
 
 #region Expirations and Days
 function get_xpirs_for_dates(dates)
@@ -214,9 +217,7 @@ end
 #endregion Constants and Util
 
 #region Explore and Test
-# import DataFiles as dat
 # function check_0p_dist(df)
-
 #     dat.lup_under(ts)
 # end
 #endregion Explore and Test
