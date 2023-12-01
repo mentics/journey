@@ -21,7 +21,7 @@ end
 XpirDateDicts() = XpirDateDicts(Dict{Date,Vector{Date}}(), Dict{Date,Vector{Date}}())
 
 #region Standard Api
-function get_xpir_dates(;sym="SPY", age=age_daily())::XpirDateDicts
+function get_xpir_dates(;sym="SPY", age=DateUtil.age_daily())::XpirDateDicts
     return cache!(XpirDateDicts, Symbol("expirs-dates-$(sym)"), age) do
         load_xpir_dates(sym; age)
     end
@@ -64,7 +64,7 @@ end
 #region Local
 file_expirs(;sym="SPY") = joinpath(db_incoming(;sym), "expirs-$(sym).jld2")
 
-load_xpir_dates(sym="SPY"; age=age_daily())::XpirDateDicts = XpirDateDicts(load_data(file_expirs(;sym), "xpir_to_date", "date_to_xpir"; age)...)
+load_xpir_dates(sym="SPY"; age=DateUtil.age_daily())::XpirDateDicts = XpirDateDicts(load_data(file_expirs(;sym), "xpir_to_date", "date_to_xpir"; age)...)
 
 function add_xpir_dates!(xdd::XpirDateDicts, xpir; sym)
     dates = ThetaData.query_dates_for_xpir(xpir, sym)
