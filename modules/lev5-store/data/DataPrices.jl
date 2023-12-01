@@ -16,7 +16,7 @@ function make_prices(;sym="SPY")
     # merge
     df1 = Paths.load_data(path_ts_optionsdx(;sym), DataFrame)
     select!(df1, :ts => remove_10s => :ts, :under => tof32 => :price)
-    filter!(:ts => (ts -> DateUtil.isBusDay(ts) && ts < ThetaData.EARLIST_SPY_DATE), df1)
+    filter!(:ts => (ts -> DateUtil.isBusDay(ts) && ts < ThetaData.EARLIEST_SPY_DATE), df1)
 
     df2 = ThetaData.query_prices(;sym)
     df = vcat(df1, df2)
@@ -40,7 +40,7 @@ tof32(p) = Float32.(p ./ 1000)
 
 #region Local
 path_ts_optionsdx(;sym) = joinpath(Paths.db("market", "incoming", "optionsdx", sym), "ts.arrow")
-file_prices(;sym="SPY") = joinpath(db_incoming("under"; sym), "under-$(sym).jld2")
+file_prices(;sym="SPY") = joinpath(db_incoming("prices"; sym), "prices-$(sym).jld2")
 
 load_prices(;sym, age)::DataFrame = load_data(file_prices(;sym), DataFrame; age)
 

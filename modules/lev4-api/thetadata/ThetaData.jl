@@ -115,7 +115,7 @@ end
 #endregion Quotes
 
 #region Roots
-function query_prices(start_date=EARLIST_SPY_DATE, end_date=Date(DateUtil.market_now());sym="SPY", age=age_daily())
+function query_prices(start_date=EARLIEST_SPY_DATE, end_date=Date(DateUtil.market_now());sym="SPY", age=age_daily())
     return cache!(DataFrame, Symbol("prices-$(sym)"), age) do
         url = "http://localhost:25510/hist/stock/trade?root=$(sym)&start_date=$(str(start_date))&end_date=$(str(end_date))&ivl=1800000"
         # TODO: is it safe to use last trade instead of quote?
@@ -140,7 +140,7 @@ end
 #endregion Roots
 
 #region Constants and Util
-const EARLIST_SPY_DATE = Date(2021-12-26)
+const EARLIEST_SPY_DATE = Date(2021, 12, 26)
 const EARLIEST_DATE = Date(2012, 6, 1)
 const CT = Float32
 const HEADERS_GET = Ref(Dict("Accept" => "application/json"))
