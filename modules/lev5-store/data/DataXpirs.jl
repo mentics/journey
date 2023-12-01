@@ -1,7 +1,7 @@
 module DataXpirs
 using Dates
 import DataStructures:SortedSet
-using ThetaData, Paths, FilesJLD2
+using ThetaData, Paths, FilesJLD2, Caches
 import DateUtil
 import CollUtil:push_all!
 import Calendars as cal
