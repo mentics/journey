@@ -4,7 +4,7 @@ using ThetaData, Paths, FilesArrow
 import DateUtil
 
 #region Standard Api
-function get_prices_all_days(; sym="SPY", age=age_daily())
+function get_prices_all_days(;sym="SPY", age=age_daily())
     return cache!(Dict{DateTime,Float32}, Symbol("under-$(sym)"), age) do
         load_prices(;sym, age)
     end
@@ -29,6 +29,7 @@ end
 
 function update_prices(;sym="SPY")
     df = load_prices(;sym, age=DateUtil.FOREVER2)
+
 end
 
 remove_10s(tss) = map(tss) do ts

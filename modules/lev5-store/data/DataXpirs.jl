@@ -21,13 +21,13 @@ end
 XpirDateDicts() = XpirDateDicts(Dict{Date,Vector{Date}}(), Dict{Date,Vector{Date}}())
 
 #region Standard Api
-function get_xpir_dates(sym="SPY"; age=age_daily())::XpirDateDicts
+function get_xpir_dates(;sym="SPY", age=age_daily())::XpirDateDicts
     return cache!(XpirDateDicts, Symbol("expirs-dates-$(sym)"), age) do
         load_xpir_dates(sym; age)
     end
 end
 
-function make_xpir_dates(sym="SPY")
+function make_xpir_dates(;sym="SPY")
     xpirs = ThetaData.query_xpirs(sym)
     filter!(xpir -> xpir < cal.max_date(), xpirs)
     xdd = XpirDateDicts()
@@ -37,9 +37,9 @@ function make_xpir_dates(sym="SPY")
     save_data(file_expirs(;sym); xpir_to_date, date_to_xpir)
 end
 
-function update_xpir_dates(sym="SPY")
+function update_xpir_dates(;sym="SPY")
     xpirs_from_query = ThetaData.query_xpirs(sym)
-    filter!(xpir -> xpir < cal.max_date(), xpirs)
+    filter!(xpir -> xpir < cal.max_date(), xpirs_from_query)
     xdd = load_xpir_dates(sym; age=DateUtil.FOREVER2)
     xpirs_from_file = keys(xdd.xpir_to_date)
     @assert maximum(xpirs_from_query) >= maximum(xpirs_from_file)
