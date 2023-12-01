@@ -24,7 +24,7 @@ function make_prices(;sym="SPY")
     missing_ts_prices = optionsdx_missing_ts_prices()
     tss = first.(missing_ts_prices)
     prices = Float32.(last.(missing_ts_prices))
-    df3 = DataFrame([tss, prices], [:ts, :prices])
+    df3 = DataFrame([tss, prices], [:ts, :price])
 
     df = vcat(df1, df2, df3)
     sort!(df, [:ts])
