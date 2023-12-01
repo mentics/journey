@@ -1,9 +1,11 @@
 module Paths
 using Dates
 
-export PATHS, save_data, load_data, db_incoming
+export save_data, load_data, db_incoming
 
-module PATHS
+#region Public
+function save_data end
+function load_data end
 
 function db(items...)
     base = Sys.iswindows() ? joinpath("D:\\", "data", "sync", "db") : "/home/jshellman/sync/db"
@@ -14,13 +16,10 @@ function db_old()
     return Sys.iswindows() ? joinpath("D:\\", "data", "db") : "/home/jshellman/data/db"
 end
 
-db_incoming(dirs...; sym) = PATHS.db("market", "incoming", "thetadata", sym, dirs...)
+db_incoming(dirs...; sym) = db("market", "incoming", "thetadata", sym, dirs...)
+#endregion
 
-end
-
-function save_data end
-function load_data end
-
+#region Nearby
 function check_file_mtime(path, age, asof)
     isfile(path) || throw("File not found $(path)")
     mt = unix2datetime(mtime(path))
@@ -29,5 +28,6 @@ function check_file_mtime(path, age, asof)
     a < age || throw("File $(path) too old $(a) > $(age)")
     return
 end
+#endregion
 
 end

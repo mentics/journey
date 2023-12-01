@@ -39,8 +39,8 @@ tof32(p) = Float32.(p ./ 1000)
 #endregion Standard Api
 
 #region Local
-path_ts_optionsdx(;sym) = joinpath(PATHS.db("market", "incoming", "optionsdx", sym), "ts.arrow")
-file_prices(;sym="SPY") = joinpath(dir_incoming("under"; sym), "under-$(sym).jld2")
+path_ts_optionsdx(;sym) = joinpath(Paths.db("market", "incoming", "optionsdx", sym), "ts.arrow")
+file_prices(;sym="SPY") = joinpath(db_incoming("under"; sym), "under-$(sym).jld2")
 
 load_prices(;sym, age)::DataFrame = load_data(file_prices(;sym), DataFrame; age)
 

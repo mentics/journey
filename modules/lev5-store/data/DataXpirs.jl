@@ -43,7 +43,7 @@ function update_xpir_dates(;sym="SPY")
     xdd = load_xpir_dates(sym; age=DateUtil.FOREVER2)
     xpirs_from_file = keys(xdd.xpir_to_date)
     @assert maximum(xpirs_from_query) >= maximum(xpirs_from_file)
-    to_proc = setdiff(xpirs_from_query, xprs_from_file)
+    to_proc = setdiff(xpirs_from_query, xpirs_from_file)
     !isempty(to_proc) || return nothing
     for xpir in to_proc
         add_xpir_dates!(xdd, xpir; sym)
