@@ -102,7 +102,24 @@ function check_ts(tss; ts_to=now(UTC))
         date_from=DATE_START, ts_to,
         time_from=Time(9,30), time_to=Time(16,0))
     # @assert isempty(symdiff(tss, tss_expected))
-    return symdiff(tss, tss_all)
+
+    diff = symdiff(tss, tss_all)
+    exceptions = missing_allowed()
+    filter!(diff) do d
+        !(d in exceptions)
+    end
+end
+
+function missing_allowed()
+    # These might be because day before holiday, short day
+    # TODO: could maybe use Calendars MktTime to filter these out
+    exceptions = ["2020-11-27T19:00:00",
+     "2020-11-27T19:30:00",
+     "2020-11-27T20:00:00",
+     "2020-12-24T19:00:00",
+     "2020-12-24T19:30:00",
+     "2020-12-24T20:00:00"]
+     return DateTime.(exceptions)
 end
 
 # latest_ts(ts) = DateUtil.week_prev_ts(ts; time_from=Time(9,30), time_to=Time(16,0))
