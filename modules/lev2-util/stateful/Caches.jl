@@ -21,6 +21,13 @@ function setCache!(sym::Symbol, val)::Nothing
     return
 end
 
+function clear!(sym::Symbol)::Nothing
+    runSync(Lock) do
+        delete!(Props, sym)
+    end
+    return
+end
+
 #region Local
 # TODO: figure out how to do this better instead of Dict
 const PROP_TYPE = NamedTuple{(:val,:ts),Tuple{Any,DateTime}}
