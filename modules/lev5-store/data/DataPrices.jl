@@ -190,7 +190,8 @@ end
 using DelimitedFiles
 using TimeZones
 function proc_missing()
-    files = filter!(x -> occursin(r"[0-9]{8}.csv", x), readdir("C:/Users/joel/Downloads"; join=true))
+    dir = Paths.db("market", "incoming", "barchart", "odx_missing")
+    files = filter!(x -> occursin(r"[0-9]{8}.csv", x), readdir(dir; join=true))
     ts_all = DateTime[]
     price_all = Float32[]
     for file in files
