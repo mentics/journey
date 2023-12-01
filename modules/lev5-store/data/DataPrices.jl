@@ -28,19 +28,15 @@ function make_prices(;sym="SPY", save_override=false)
     prices = Float32.(last.(missing_ts_prices))
     df3 = DataFrame([tss, prices], [:ts, :price])
 
-    df = vcat(df1, df2, df3)
-    sort!(df, [:ts])
+    df = combnie_dfs(df1, df2, df3)
 
-    @assert size(df, 1) > 10000
-    @assert issorted(df, :ts)
-    @assert allunique(df.ts)
     # @assert maximum(df.ts) == DateUtil.lastTradingDate(now(UTC))
     diff = check_ts(df.ts; ts_to=DateUtil.market_midnight(DateUtil.market_today()))
     if !isempty(diff)
         println("ERROR: not all ts found. Not saved.")
         if save_override
             println("Saving anyway")
-            save_data(file_prices(;sym); df)
+            save_data(file_prices(;sym), df)
         end
         return diff
     end
@@ -50,8 +46,42 @@ function make_prices(;sym="SPY", save_override=false)
 end
 
 function update_prices(;sym="SPY")
-    df = load_prices(;sym, age=DateUtil.FOREVER2)
+    # TODO: deal with that thetadata is 15 minute delayed
+    df1 = load_prices(;sym, age=DateUtil.FOREVER2)
+    ts_last = df1.ts[end]
+    if now(UTC) - ts_last < Minute(30)
+        println("Already up to date: $(ts_last)")
+        return
+    end
+    df2 = ThetaData.query_prices(
+            DateUtil.market_date(ts_last),
+            DateUtil.market_today()
+            ;sym, age=Minute(15))
+    df = combine_dfs(df1, df2)
+    diff = check_ts(df.ts)
+    if !isempty(diff)
+        println("ERROR: not all ts found. Not saved.")
+        return diff
+    end
+    save_data(file_prices(;sym), df)
+    return
+end
+#endregion Standard Api
 
+#region Local
+path_ts_optionsdx(;sym) = joinpath(Paths.db("market", "incoming", "optionsdx", sym), "ts.arrow")
+file_prices(;sym="SPY") = joinpath(db_incoming("prices"; sym), "prices-$(sym).arrow")
+
+load_prices(;sym, age)::DataFrame = load_data(file_prices(;sym), DataFrame; age)
+
+function combine_dfs(dfs...)
+    df = vcat(dfs...)
+    sort!(df, [:ts])
+    unique!(df, [:ts])
+    @assert size(df, 1) > 10000
+    @assert issorted(df, :ts)
+    @assert allunique(df.ts)
+    return df
 end
 
 remove_10s(tss) = map(tss) do ts
@@ -64,13 +94,6 @@ function keep_ts_optionsdx(ts)
         ts < ThetaData.EARLIEST_SPY_DATE &&
         (minute(ts) == 0 || minute(ts) == 30)
 end
-#endregion Standard Api
-
-#region Local
-path_ts_optionsdx(;sym) = joinpath(Paths.db("market", "incoming", "optionsdx", sym), "ts.arrow")
-file_prices(;sym="SPY") = joinpath(db_incoming("prices"; sym), "prices-$(sym).arrow")
-
-load_prices(;sym, age)::DataFrame = load_data(file_prices(;sym), DataFrame; age)
 
 function check_ts(tss; ts_to=now(UTC))
     tss_all = DateUtil.all_bdays_ts(;
@@ -157,6 +180,10 @@ optionsdx_missing_ts_prices() = [
 
 # 2015-01-30T14:30:00
 # 01/30/2015
+function missing_days()
+    df = get_prices()
+    unique(Date.(check_ts(df.ts; ts_to=DateUtil.market_midnight(DateUtil.market_today()))))
+end
 #endregion Fixes
 
 end
