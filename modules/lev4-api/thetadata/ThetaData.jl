@@ -141,7 +141,7 @@ end
 
 #region Constants and Util
 const EARLIEST_SPY_DATE = Date(2021, 12, 26)
-const EARLIEST_DATE = Date(2012, 6, 1)
+const EARLIEST_OPTIONS_DATE = Date(2012, 6, 1)
 const CT = Float32
 const HEADERS_GET = Ref(Dict("Accept" => "application/json"))
 const DATE_FORMAT = DateFormat("yyyymmdd")

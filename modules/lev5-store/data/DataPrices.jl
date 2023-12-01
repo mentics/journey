@@ -4,6 +4,8 @@ using BaseTypes
 using ThetaData, Paths, FilesArrow
 import DateUtil
 
+const DATE_START = ThetaData.EARLIEST_OPTIONS_DATE
+
 #region Standard Api
 function get_prices_all_days(;sym="SPY", age=age_daily())
     return cache!(Dict{DateTime,Float32}, Symbol("under-$(sym)"), age) do
@@ -17,7 +19,7 @@ function make_prices(;sym="SPY")
     # merge
     df1 = Paths.load_data(path_ts_optionsdx(;sym), DataFrame)
     select!(df1, :ts => remove_10s => :ts, :under => tof32 => :price)
-    filter!(:ts => keep_ts, df1)
+    filter!(:ts => keep_ts_optionsdx, df1)
 
     df2 = ThetaData.query_prices(;sym)
 
@@ -47,8 +49,9 @@ remove_10s(tss) = map(tss) do ts
     second(ts) == 0 ? ts : ts - Second(10)
 end
 tof32(p) = Float32.(p ./ 1000)
-function keep_ts(ts)
+function keep_ts_optionsdx(ts)
     return DateUtil.isBusDay(ts) &&
+        ts >= DATE_START &&
         ts < ThetaData.EARLIEST_SPY_DATE &&
         (minute(ts) == 0 || minute(ts) == 30)
 end
@@ -62,14 +65,14 @@ load_prices(;sym, age)::DataFrame = load_data(file_prices(;sym), DataFrame; age)
 
 function check_ts(tss)
     tss_all = DateUtil.all_weekday_ts(;
-        date_from=Date(2010,1,1), date_to=latest_historical_ts(),
+        date_from=DATE_START, date_to=latest_ts(),
         time_from=Time(9,30), time_to=Time(16,0))
     tss_expected = filter!(DateUtil.isbd, tss_all)
     # @assert isempty(symdiff(tss, tss_expected))
     return symdiff(tss, tss_expected)
 end
 
-latest_historical_ts() = ?
+latest_ts() = week_prev_ts(ts; time_from=Time(9,30), time_to=Time(16,0))
 #endregion Local
 
 #region Fixes
