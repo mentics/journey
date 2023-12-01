@@ -64,15 +64,14 @@ file_prices(;sym="SPY") = joinpath(db_incoming("prices"; sym), "prices-$(sym).jl
 load_prices(;sym, age)::DataFrame = load_data(file_prices(;sym), DataFrame; age)
 
 function check_ts(tss)
-    tss_all = DateUtil.all_weekday_ts(;
-        date_from=DATE_START, date_to=latest_ts(),
+    tss_all = DateUtil.all_bdays_ts(;
+        date_from=DATE_START, ts_to=now(UTC),
         time_from=Time(9,30), time_to=Time(16,0))
-    tss_expected = filter!(DateUtil.isbd, tss_all)
     # @assert isempty(symdiff(tss, tss_expected))
-    return symdiff(tss, tss_expected)
+    return symdiff(tss, tss_all)
 end
 
-latest_ts() = week_prev_ts(ts; time_from=Time(9,30), time_to=Time(16,0))
+# latest_ts(ts) = DateUtil.week_prev_ts(ts; time_from=Time(9,30), time_to=Time(16,0))
 #endregion Local
 
 #region Fixes

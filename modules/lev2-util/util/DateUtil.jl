@@ -82,6 +82,7 @@ to_local(s::Int) = ZonedDateTime(unix2datetime(s), LOCALZONE; from_utc=true)
 market_now()::ZonedDateTime = toMarketTZ(now(UTC))
 market_midnight(date::Date)::DateTime = fromMarketTZ(date, Time(0,0))
 market_date(ts::DateTime)::Date = Date(ZonedDateTime(ts, MARKET_TZ; from_utc=true))
+market_date(ts::ZonedDateTime)::Date = Date(astimezone(ts, MARKET_TZ))
 market_today()::Date = Date(market_now())
 toDateMarket(ts::DateTime)::Date = Date(ZonedDateTime(ts, MARKET_TZ; from_utc=true)) # deprecated
 #endregion
@@ -205,15 +206,30 @@ end
 daysinquarter(d)::UInt16 = ( q1 = Dates.firstdayofquarter(d) ; (q1 + Dates.Month(3) - q1).value )
 # daysinyear(d)::UInt16 = ( q1 = Dates.firstdayofquarter(d) ; (q1 + Dates.Month(3) - q1).value )
 
-function all_weekdays(;date_from=Date(2010,1,1), date_to=Date(2023,7,1))
-    return Iterators.filter(d -> Dates.dayofweek(d) <= 5, date_from:Day(1):date_to)
+# function all_weekdays(;date_from=Date(2012,6,1), date_to=market_today())
+#     return Iterators.filter(d -> Dates.dayofweek(d) <= 5, date_from:Day(1):date_to)
+# end
+
+function all_bdays_itr(;date_from=Date(2012,6,1), date_to=market_today())
+    return Iterators.filter(d -> Dates.dayofweek(d) <= 5 && isBusDay(d), date_from:Day(1):date_to)
 end
 
-function all_weekday_ts(;date_from=Date(2010,1,1), date_to=Date(2023,7,1), time_from=Time(10, 0), time_to=Time(15,30), period=Minute(30))
+# function all_weekday_ts(;date_from=Date(2010,1,1), date_to=Date(2023,7,1), time_from=Time(10, 0), time_to=Time(15,30), period=Minute(30))
+#     res = DateTime[]
+#     for date in all_weekdays(;date_from, date_to)
+#         append!(res, [fromMarketTZ(date, t) for t in time_from:period:time_to])
+#     end
+#     return res
+# end
+
+function all_bdays_ts(;date_from=Date(2012,6,1), ts_to=now(UTC), time_from=Time(9, 30), time_to=Time(16,0), period=Minute(30))
     res = DateTime[]
-    for date in all_weekdays(;date_from, date_to)
+    zts_to = toMarketTZ(ts_to)
+    date_to = market_date(zts_to)
+    for date in all_bdays_itr(;date_from, date_to=(date_to - Day(1)))
         append!(res, [fromMarketTZ(date, t) for t in time_from:period:time_to])
     end
+    append!(res, filter!(ts -> ts < ts_to, [fromMarketTZ(date_to, t) for t in time_from:period:time_to]))
     return res
 end
 
