@@ -1,14 +1,14 @@
 module DataPrices
 using Dates, DataFrames
 using BaseTypes
-using ThetaData, Paths, FilesArrow
+using ThetaData, Paths, FilesArrow, Caches
 import DateUtil
 
 const DATE_START = ThetaData.EARLIEST_OPTIONS_DATE
 
 #region Standard Api
-function get_prices_all_days(;sym="SPY", age=age_daily())
-    return cache!(Dict{DateTime,Float32}, Symbol("under-$(sym)"), age) do
+function get_prices(;sym="SPY", age=DateUtil.age_daily())
+    return cache!(DataFrame, Symbol("prices-$(sym)"), age) do
         load_prices(;sym, age)
     end
 end
@@ -34,7 +34,11 @@ function make_prices(;sym="SPY")
     @assert issorted(df, :ts)
     @assert allunique(df.ts)
     # @assert maximum(df.ts) == DateUtil.lastTradingDate(now(UTC))
-    # return check_ts(df.ts)
+    diff = check_ts(df.ts; ts_to=DateUtil.market_midnight())
+    if !isempty(diff)
+        println("ERROR: not all ts found. Not saved.")
+        return diff
+    end
 
     save_data(file_prices(;sym); df)
     return df
@@ -59,13 +63,13 @@ end
 
 #region Local
 path_ts_optionsdx(;sym) = joinpath(Paths.db("market", "incoming", "optionsdx", sym), "ts.arrow")
-file_prices(;sym="SPY") = joinpath(db_incoming("prices"; sym), "prices-$(sym).jld2")
+file_prices(;sym="SPY") = joinpath(db_incoming("prices"; sym), "prices-$(sym).arrow")
 
 load_prices(;sym, age)::DataFrame = load_data(file_prices(;sym), DataFrame; age)
 
-function check_ts(tss)
+function check_ts(tss; ts_to=now(UTC))
     tss_all = DateUtil.all_bdays_ts(;
-        date_from=DATE_START, ts_to=now(UTC),
+        date_from=DATE_START, ts_to,
         time_from=Time(9,30), time_to=Time(16,0))
     # @assert isempty(symdiff(tss, tss_expected))
     return symdiff(tss, tss_all)
