@@ -28,7 +28,7 @@ function make_prices(;sym="SPY", save_override=false)
     prices = Float32.(last.(missing_ts_prices))
     df3 = DataFrame([tss, prices], [:ts, :price])
 
-    df = combnie_dfs(df1, df2, df3)
+    df = combine_dfs(df1, df2, df3)
 
     # @assert maximum(df.ts) == DateUtil.lastTradingDate(now(UTC))
     diff = check_ts(df.ts; ts_to=DateUtil.market_midnight(DateUtil.market_today()))
