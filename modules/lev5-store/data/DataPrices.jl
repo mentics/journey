@@ -34,7 +34,7 @@ function make_prices(;sym="SPY")
     @assert issorted(df, :ts)
     @assert allunique(df.ts)
     # @assert maximum(df.ts) == DateUtil.lastTradingDate(now(UTC))
-    diff = check_ts(df.ts; ts_to=DateUtil.market_midnight())
+    diff = check_ts(df.ts; ts_to=DateUtil.market_midnight(market_now()))
     if !isempty(diff)
         println("ERROR: not all ts found. Not saved.")
         return diff
