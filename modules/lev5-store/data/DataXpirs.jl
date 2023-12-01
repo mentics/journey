@@ -62,11 +62,7 @@ end
 #endregion Extra Api
 
 #region Local
-format_ym(year, month) = "$(year)-$(lpad(month, 2, '0'))"
-dir_incoming(dirs...; sym="SPY") = PATHS.db("market", "incoming", "thetadata", sym, dirs...)
-file_expirs(;sym="SPY") = joinpath(dir_incoming(;sym), "expirs-$(sym).jld2")
-file_quotes(year, month; sym="SPY") = joinpath(dir_incoming("quotes"; sym), "quotes-$(sym)-$(format_ym(year, month)).arrow")
-file_under(;sym="SPY") = joinpath(dir_incoming("under"; sym), "under-$(sym).jld2")
+file_expirs(;sym="SPY") = joinpath(db_incoming(;sym), "expirs-$(sym).jld2")
 
 load_xpir_dates(sym="SPY"; age=age_daily())::XpirDateDicts = XpirDateDicts(load_data(file_expirs(;sym), "xpir_to_date", "date_to_xpir"; age)...)
 

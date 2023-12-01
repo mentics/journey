@@ -1,7 +1,7 @@
 module Paths
 using Dates
 
-export PATHS, save_data, load_data
+export PATHS, save_data, load_data, db_incoming
 
 module PATHS
 
@@ -13,6 +13,8 @@ end
 function db_old()
     return Sys.iswindows() ? joinpath("D:\\", "data", "db") : "/home/jshellman/data/db"
 end
+
+db_incoming(dirs...; sym) = PATHS.db("market", "incoming", "thetadata", sym, dirs...)
 
 end
 

@@ -170,6 +170,10 @@ under missing for 2014-03-17T15:30:00
 
 under missing for 2014-08-04T14:00:00
 
+   under missing for 2015-12-22T18:30:00
+     under missing for 2016-03-31T18:00:00
+        under missing for 2016-04-18T14:00:00
+
 Downloaded these from barchart.com
 =#
 CollUtil.push_all!(DATA_EXTRA, [

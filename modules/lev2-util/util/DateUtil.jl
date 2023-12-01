@@ -18,7 +18,7 @@ export SECOND_ZERO, TIME_ZERO, TIME_EOD, DATE_ZERO, DATETIME_ZERO, INTERTIME_ZER
 export DATE_FUTURE
 export InterTime, timeIn
 
-export fromMarketTZ, toDateMarket, toTimeMarket
+export fromMarketTZ, market_date, toTimeMarket
 export fromLocal, toTimeLocal
 export formatLocal
 export nextLocalTime, nextMarketPeriod
@@ -74,7 +74,6 @@ timeIn(from::Time, to::Time, in::InterTime)::Second = round(span(intersect(Inter
 fromMarketTZ(d::Date, t::Time)::DateTime = DateTime(ZonedDateTime(DateTime(d, t), DateUtil.MARKET_TZ), UTC)
 toMarketTZ(ts::DateTime) = ZonedDateTime(ts, MARKET_TZ; from_utc=true)
 # toDateMarket(dt::DateTime)::Date = Date(astimezone(ZonedDateTime(dt, tz"UTC"), MARKET_TZ))
-toDateMarket(ts::DateTime)::Date = Date(ZonedDateTime(ts, MARKET_TZ; from_utc=true))
 # toDateLocal(ts::DateTime)::Date = Date(ZonedDateTime(ts, LOCALZONE; from_utc=true))
 toTimeMarket(ts::DateTime)::Time = Time(ZonedDateTime(ts, MARKET_TZ; from_utc=true))
 toTimeLocal(ts::DateTime)::Time = Time(ZonedDateTime(ts, LOCALZONE; from_utc=true))
@@ -82,6 +81,8 @@ to_local(ts::DateTime) = ZonedDateTime(ts, LOCALZONE; from_utc=true)
 to_local(s::Int) = ZonedDateTime(unix2datetime(s), LOCALZONE; from_utc=true)
 market_now()::ZonedDateTime = toMarketTZ(now(UTC))
 market_midnight(date::Date)::DateTime = fromMarketTZ(date, Time(0,0))
+market_date(ts::DateTime)::Date = Date(ZonedDateTime(ts, MARKET_TZ; from_utc=true))
+toDateMarket(ts::DateTime)::Date = Date(ZonedDateTime(ts, MARKET_TZ; from_utc=true)) # deprecated
 #endregion
 
 #region Parsing
@@ -136,10 +137,11 @@ toDate(z::ZonedDateTime)::Date = Date(astimezone(z, LOCALZONE))
 using Memoization, ThreadSafeDicts
 export isbd
 # TODO: cleanup
-isBusDay(d::Date) = isbd_t(d) # isbday(:USNYSE, d)
-isbd(d::Date) = isbd_t(d)
+isBusDay(d::DateLike) = isbd_t(d) # isbday(:USNYSE, d)
+isbd(d::DateLike) = isbd_t(d)
 # @memoize ThreadSafeDicts.ThreadSafeDict isbd_t(d::DateLike) = isbday(:USNYSE, d)
-@memoize isbd_t(d::DateLike) = isbday(:USNYSE, d)
+isbd_t(d::DateTime) = isbd_t(Date(d))
+@memoize isbd_t(d::Date) = isbday(:USNYSE, d)
 
 bdays(d1::DateLike, d2::DateLike)::Int = bdays_t(d1, d2)
 # @memoize ThreadSafeDicts.ThreadSafeDict bdays_t(d1::DateLike, d2::DateLike)::Int = bdayscount(:USNYSE, Date(d1), Date(d2))
@@ -147,7 +149,7 @@ bdays(d1::DateLike, d2::DateLike)::Int = bdays_t(d1, d2)
 # @memoize bdays(d1::Date, d2::Date)::Int = bdayscount(:USNYSE, d1, d2)
 
 lastTradingDay(d::Date)::Date = tobday(:USNYSE, d; forward=false)
-lastTradingDay(d)::Date = tobday(:USNYSE, Date(d); forward=false)
+lastTradingDay(d::DateTime)::Date = tobday(:USNYSE, market_date(d); forward=false)
 nextTradingDay(d::Date)::Date = tobday(:USNYSE, d; forward=true)
 bdaysBefore(d::Date, n::Int)::Date = advancebdays(:USNYSE, lastTradingDay(d), -n)
 bdaysAfter(d::Date, n::Int)::Date = advancebdays(:USNYSE, lastTradingDay(d), n)
