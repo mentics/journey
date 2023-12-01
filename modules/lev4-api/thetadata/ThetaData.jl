@@ -115,9 +115,10 @@ end
 #endregion Quotes
 
 #region Roots
-function query_prices(start_date=EARLIEST_SPY_DATE, end_date=Date(DateUtil.market_now() - Day(1)); sym="SPY", age=age_daily())
-    return cache!(DataFrame, Symbol("prices-$(sym)"), age) do
-        url = "http://localhost:25510/hist/stock/trade?root=$(sym)&start_date=$(str(start_date))&end_date=$(str(end_date))&ivl=1800000"
+function query_prices(date_start=EARLIEST_SPY_DATE, date_end=Date(DateUtil.market_now() - Day(1)); sym="SPY", age=age_daily(), interval=Minute(30))
+    ivl = Dates.value(Millisecond(interval))
+    return cache!(DataFrame, Symbol("prices-$(sym)-$(str(date_start))-$(str(date_end))-$(ivl)"), age) do
+        url = "http://localhost:25510/hist/stock/trade?root=$(sym)&start_date=$(str(date_start))&end_date=$(str(date_end))&ivl=$(ivl)"
         # TODO: is it safe to use last trade instead of quote?
         # TODO: check that all expected ts are covered by comparing with DateUtil.all_weekday_ts
         println("Querying under: $(url)")
