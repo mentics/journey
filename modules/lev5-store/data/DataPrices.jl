@@ -32,9 +32,9 @@ function make_prices(;sym="SPY")
     @assert issorted(df, :ts)
     @assert allunique(df.ts)
     # @assert maximum(df.ts) == DateUtil.lastTradingDate(now(UTC))
-    return check_ts(df.ts)
+    # return check_ts(df.ts)
 
-    save_data(file_prices(;sym); under)
+    save_data(file_prices(;sym); df)
     return df
 end
 
@@ -62,12 +62,14 @@ load_prices(;sym, age)::DataFrame = load_data(file_prices(;sym), DataFrame; age)
 
 function check_ts(tss)
     tss_all = DateUtil.all_weekday_ts(;
-        date_from=Date(2010,1,1), date_to=DateUtil.market_today(),
+        date_from=Date(2010,1,1), date_to=latest_historical_ts(),
         time_from=Time(9,30), time_to=Time(16,0))
     tss_expected = filter!(DateUtil.isbd, tss_all)
     # @assert isempty(symdiff(tss, tss_expected))
     return symdiff(tss, tss_expected)
 end
+
+latest_historical_ts() = ?
 #endregion Local
 
 #region Fixes
@@ -117,9 +119,9 @@ optionsdx_missing_ts_prices() = [
     DateTime("2014-08-04T17:00:00") => C(192.95),
     DateTime("2014-08-04T17:30:00") => C(192.96),
     DateTime("2014-08-04T18:00:00") => C(193.29),
-    DateTime("2014-08-04T19:30:00") => C(193.31),
+    DateTime("2014-08-04T18:30:00") => C(193.31),
     DateTime("2014-08-04T19:00:00") => C(193.81),
-    DateTime("2014-08-04T20:30:00") => C(194.0),
+    DateTime("2014-08-04T19:30:00") => C(194.0),
     DateTime("2014-08-04T20:00:00") => C(193.88),
     ##
     DateTime("2015-12-22T18:30:00") => C(202.88),
@@ -141,6 +143,9 @@ optionsdx_missing_ts_prices() = [
     DateTime("2016-04-18T19:30:00") => C(209.04),
     DateTime("2016-04-18T20:00:00") => C(209.28),
 ]
+
+# 2015-01-30T14:30:00
+# 01/30/2015
 #endregion Fixes
 
 end
