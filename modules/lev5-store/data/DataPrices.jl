@@ -13,7 +13,7 @@ function get_prices(;sym="SPY", age=DateUtil.age_daily())
     end
 end
 
-function make_prices(;sym="SPY")
+function make_prices(;sym="SPY", save_override=false)
     # get from DataFiles and exceptions
     # query under for since then
     # merge
@@ -37,7 +37,10 @@ function make_prices(;sym="SPY")
     diff = check_ts(df.ts; ts_to=DateUtil.market_midnight(DateUtil.market_today()))
     if !isempty(diff)
         println("ERROR: not all ts found. Not saved.")
-        return diff
+        if save_override
+            save_data(file_prices(;sym); df)
+            return diff
+        end
     end
 
     save_data(file_prices(;sym); df)
