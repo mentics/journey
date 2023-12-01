@@ -27,29 +27,7 @@ function query_dates_for_xpir(xpir::Date, sym="SPY"; age=age_daily())
 end
 #endregion Expirations and Days
 
-#region Quotes
-function get_quotes(year, month; sym="SPY")
-    path = file_quotes(year, month; sym)
-    return load_data(path, DataFrame)
-end
-
-function make_quotes(year, month; sym="SPY")
-    path = file_quotes(year, month; sym)
-    date_start = Date(year, month, 1)
-    date_end = Dates.lastdayofmonth(date_start)
-    # dates = Date(year, month, 1):Dates.lastdayofmonth(date_start)
-    xpirs = get_xpirs_for_dates(date_start:date_end)
-    start = time()
-    df = mapreduce(vcat, xpirs) do xpir
-        query_quotes(date_start, min(xpir, date_end), xpir)
-    end
-    stop = time()
-    println("Completed acquiring data for ($(year), $(month)) in $(stop - start) seconds")
-    sort!(df, [:style, :ts, :expir, :strike])
-    save_data(path, df)
-    return df
-end
-
+#region Options
 #=
 bid_condition/ask_condition enum:
 https://thetadata-api.github.io/thetadata-python/reference/#thetadata.enums.QuoteCondition
@@ -112,9 +90,9 @@ function query_quotes(date_start, date_end, xpir; period=1800000, sym="SPY")
     end
     return df
 end
-#endregion Quotes
+#endregion Options
 
-#region Roots
+#region Prices
 function query_prices(date_start=EARLIEST_SPY_DATE, date_end=Date(DateUtil.market_now() - Day(1)); sym="SPY", age=age_daily(), interval=Minute(30))
     ivl = Dates.value(Millisecond(interval))
     return cache!(DataFrame, Symbol("prices-$(sym)-$(str(date_start))-$(str(date_end))-$(ivl)"), age) do
@@ -138,7 +116,7 @@ function query_prices(date_start=EARLIEST_SPY_DATE, date_end=Date(DateUtil.marke
         return DataFrame([tss, prices], [:ts, :price])
     end
 end
-#endregion Roots
+#endregion Prices
 
 #region Constants and Util
 const EARLIEST_SPY_DATE = Date(2021, 12, 26)
