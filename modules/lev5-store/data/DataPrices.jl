@@ -62,7 +62,7 @@ load_prices(;sym, age)::DataFrame = load_data(file_prices(;sym), DataFrame; age)
 
 function check_ts(tss)
     tss_all = DateUtil.all_weekday_ts(;
-        date_from=Date(2010,1,1), date_to=DateUtil.market_now(),
+        date_from=Date(2010,1,1), date_to=DateUtil.market_today(),
         time_from=Time(9,30), time_to=Time(16,0))
     tss_expected = filter!(DateUtil.isbd, tss_all)
     # @assert isempty(symdiff(tss, tss_expected))

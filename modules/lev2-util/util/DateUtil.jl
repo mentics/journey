@@ -82,6 +82,7 @@ to_local(s::Int) = ZonedDateTime(unix2datetime(s), LOCALZONE; from_utc=true)
 market_now()::ZonedDateTime = toMarketTZ(now(UTC))
 market_midnight(date::Date)::DateTime = fromMarketTZ(date, Time(0,0))
 market_date(ts::DateTime)::Date = Date(ZonedDateTime(ts, MARKET_TZ; from_utc=true))
+market_today()::Date = Date(market_now())
 toDateMarket(ts::DateTime)::Date = Date(ZonedDateTime(ts, MARKET_TZ; from_utc=true)) # deprecated
 #endregion
 
