@@ -12,6 +12,7 @@ function get_prices(;sym="SPY", age=DateUtil.age_daily())
         load_prices(;sym, age)
     end
 end
+clear_prices_cache(;sym="SPY") = Caches.clear!(Symbol("prices-$(sym)"))
 
 function make_prices(;sym="SPY", save_override=false)
     # get from DataFiles and exceptions
@@ -23,10 +24,11 @@ function make_prices(;sym="SPY", save_override=false)
 
     df2 = ThetaData.query_prices(;sym)
 
-    missing_ts_prices = optionsdx_missing_ts_prices()
-    tss = first.(missing_ts_prices)
-    prices = Float32.(last.(missing_ts_prices))
-    df3 = DataFrame([tss, prices], [:ts, :price])
+    df3 = proc_missing()
+    # optionsdx_missing_ts_prices()
+    # tss = first.(missing_ts_prices)
+    # prices = Float32.(last.(missing_ts_prices))
+    # df3 = DataFrame([tss, prices], [:ts, :price])
 
     df = combine_dfs(df1, df2, df3)
 
@@ -119,70 +121,87 @@ under missing for 2016-03-31T18:00:00
 under missing for 2016-04-18T14:00:00
 Downloaded these from barchart.com
 =#
-optionsdx_missing_ts_prices() = [
-    # DateTime("2012-10-24T13:30:10") => C(141.93),
-    # DateTime("2012-10-24T14:00:00") => C(141.74),
-    DateTime("2012-10-24T14:30:00") => C(141.48),
-    DateTime("2012-10-24T15:00:00") => C(141.67),
-    DateTime("2012-10-24T15:30:00") => C(141.59),
-    DateTime("2012-10-24T16:00:00") => C(141.3),
-    DateTime("2012-10-24T16:30:00") => C(141.43),
-    DateTime("2012-10-24T17:00:00") => C(141.66),
-    DateTime("2012-10-24T17:30:00") => C(141.6),
-    DateTime("2012-10-24T18:00:00") => C(141.55),
-    DateTime("2012-10-24T18:30:00") => C(141.66),
-    DateTime("2012-10-24T19:00:00") => C(141.27),
-    DateTime("2012-10-24T19:30:00") => C(141.11),
-    DateTime("2012-10-24T20:00:00") => C(141.01),
-    ##
-    DateTime("2013-06-13T14:00:00") => C(162.01),
-    ##
-    DateTime("2014-01-02T20:00:00") => C(182.76),
-    DateTime("2014-01-02T20:30:00") => C(182.99),
-    DateTime("2014-01-02T21:00:00") => C(182.95),
-    ##
-    DateTime("2014-03-17T15:30:00") => C(185.97),
-    ##
-    DateTime("2014-08-04T13:30:00") => C(192.87),
-    DateTime("2014-08-04T14:00:00") => C(192.96),
-    DateTime("2014-08-04T14:30:00") => C(192.8),
-    DateTime("2014-08-04T15:00:00") => C(192.15),
-    DateTime("2014-08-04T15:30:00") => C(192.71),
-    DateTime("2014-08-04T16:00:00") => C(192.62),
-    DateTime("2014-08-04T16:30:00") => C(192.96),
-    DateTime("2014-08-04T17:00:00") => C(192.95),
-    DateTime("2014-08-04T17:30:00") => C(192.96),
-    DateTime("2014-08-04T18:00:00") => C(193.29),
-    DateTime("2014-08-04T18:30:00") => C(193.31),
-    DateTime("2014-08-04T19:00:00") => C(193.81),
-    DateTime("2014-08-04T19:30:00") => C(194.0),
-    DateTime("2014-08-04T20:00:00") => C(193.88),
-    ##
-    DateTime("2015-12-22T18:30:00") => C(202.88),
-    ##
-    DateTime("2016-03-31T18:00:00") => C(205.82),
-    ##
-    DateTime("2016-04-18T13:30:00") => C(207.14),
-    DateTime("2016-04-18T14:00:00") => C(207.805),
-    DateTime("2016-04-18T14:30:00") => C(208.54),
-    DateTime("2016-04-18T15:00:00") => C(208.65),
-    DateTime("2016-04-18T15:30:00") => C(208.69),
-    DateTime("2016-04-18T16:00:00") => C(208.71),
-    DateTime("2016-04-18T16:30:00") => C(208.9),
-    DateTime("2016-04-18T17:00:00") => C(208.92),
-    DateTime("2016-04-18T17:30:00") => C(208.82),
-    DateTime("2016-04-18T18:00:00") => C(208.95),
-    DateTime("2016-04-18T18:30:00") => C(208.94),
-    DateTime("2016-04-18T19:00:00") => C(209.1),
-    DateTime("2016-04-18T19:30:00") => C(209.04),
-    DateTime("2016-04-18T20:00:00") => C(209.28),
-]
+# optionsdx_missing_ts_prices() = [
+#     # DateTime("2012-10-24T13:30:10") => C(141.93),
+#     # DateTime("2012-10-24T14:00:00") => C(141.74),
+#     DateTime("2012-10-24T14:30:00") => C(141.48),
+#     DateTime("2012-10-24T15:00:00") => C(141.67),
+#     DateTime("2012-10-24T15:30:00") => C(141.59),
+#     DateTime("2012-10-24T16:00:00") => C(141.3),
+#     DateTime("2012-10-24T16:30:00") => C(141.43),
+#     DateTime("2012-10-24T17:00:00") => C(141.66),
+#     DateTime("2012-10-24T17:30:00") => C(141.6),
+#     DateTime("2012-10-24T18:00:00") => C(141.55),
+#     DateTime("2012-10-24T18:30:00") => C(141.66),
+#     DateTime("2012-10-24T19:00:00") => C(141.27),
+#     DateTime("2012-10-24T19:30:00") => C(141.11),
+#     DateTime("2012-10-24T20:00:00") => C(141.01),
+#     ##
+#     DateTime("2013-06-13T14:00:00") => C(162.01),
+#     ##
+#     DateTime("2014-01-02T20:00:00") => C(182.76),
+#     DateTime("2014-01-02T20:30:00") => C(182.99),
+#     DateTime("2014-01-02T21:00:00") => C(182.95),
+#     ##
+#     DateTime("2014-03-17T15:30:00") => C(185.97),
+#     ##
+#     DateTime("2014-08-04T13:30:00") => C(192.87),
+#     DateTime("2014-08-04T14:00:00") => C(192.96),
+#     DateTime("2014-08-04T14:30:00") => C(192.8),
+#     DateTime("2014-08-04T15:00:00") => C(192.15),
+#     DateTime("2014-08-04T15:30:00") => C(192.71),
+#     DateTime("2014-08-04T16:00:00") => C(192.62),
+#     DateTime("2014-08-04T16:30:00") => C(192.96),
+#     DateTime("2014-08-04T17:00:00") => C(192.95),
+#     DateTime("2014-08-04T17:30:00") => C(192.96),
+#     DateTime("2014-08-04T18:00:00") => C(193.29),
+#     DateTime("2014-08-04T18:30:00") => C(193.31),
+#     DateTime("2014-08-04T19:00:00") => C(193.81),
+#     DateTime("2014-08-04T19:30:00") => C(194.0),
+#     DateTime("2014-08-04T20:00:00") => C(193.88),
+#     ##
+#     DateTime("2015-12-22T18:30:00") => C(202.88),
+#     ##
+#     DateTime("2016-03-31T18:00:00") => C(205.82),
+#     ##
+#     DateTime("2016-04-18T13:30:00") => C(207.14),
+#     DateTime("2016-04-18T14:00:00") => C(207.805),
+#     DateTime("2016-04-18T14:30:00") => C(208.54),
+#     DateTime("2016-04-18T15:00:00") => C(208.65),
+#     DateTime("2016-04-18T15:30:00") => C(208.69),
+#     DateTime("2016-04-18T16:00:00") => C(208.71),
+#     DateTime("2016-04-18T16:30:00") => C(208.9),
+#     DateTime("2016-04-18T17:00:00") => C(208.92),
+#     DateTime("2016-04-18T17:30:00") => C(208.82),
+#     DateTime("2016-04-18T18:00:00") => C(208.95),
+#     DateTime("2016-04-18T18:30:00") => C(208.94),
+#     DateTime("2016-04-18T19:00:00") => C(209.1),
+#     DateTime("2016-04-18T19:30:00") => C(209.04),
+#     DateTime("2016-04-18T20:00:00") => C(209.28),
+# ]
 
 # 2015-01-30T14:30:00
 # 01/30/2015
 function missing_days()
     df = get_prices()
     unique(Date.(check_ts(df.ts; ts_to=DateUtil.market_midnight(DateUtil.market_today()))))
+end
+
+using DelimitedFiles
+using TimeZones
+function proc_missing()
+    files = filter!(x -> occursin(r"[0-9]{8}.csv", x), readdir("C:/Users/joel/Downloads"; join=true))
+    ts_all = DateTime[]
+    price_all = Float32[]
+    for file in files
+        m = readdlm(file, ','; header=true)[1][1:end-1,:]
+        tss = reverse!([DateTime(ZonedDateTime(DateTime(s, DateFormat("mm/dd/yyyy HH:MM")), DateUtil.MARKET_TZ), UTC) for s in m[:,1]])
+        append!(ts_all, tss)
+        push!(ts_all, tss[end] + Minute(30))
+        prices = vcat(reverse!(m[:,2]), m[1,5])
+        append!(price_all, prices)
+    end
+    return DataFrame([ts_all, price_all], [:ts, :price])
 end
 #endregion Fixes
 
