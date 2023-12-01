@@ -31,6 +31,7 @@ function make_prices(;sym="SPY", save_override=false)
     df = vcat(df1, df2, df3)
     sort!(df, [:ts])
 
+    @assert size(df, 1) > 10000
     @assert issorted(df, :ts)
     @assert allunique(df.ts)
     # @assert maximum(df.ts) == DateUtil.lastTradingDate(now(UTC))
@@ -38,12 +39,13 @@ function make_prices(;sym="SPY", save_override=false)
     if !isempty(diff)
         println("ERROR: not all ts found. Not saved.")
         if save_override
+            println("Saving anyway")
             save_data(file_prices(;sym); df)
-            return diff
         end
+        return diff
     end
 
-    save_data(file_prices(;sym); df)
+    save_data(file_prices(;sym), df)
     return df
 end
 
