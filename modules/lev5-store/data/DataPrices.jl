@@ -1,20 +1,13 @@
 module DataPrices
 using Dates, DataFrames
 using BaseTypes
-using ThetaData, Paths, FilesArrow, Caches
+using ThetaData, Paths, FilesArrow
 import DateUtil
 
-const DATE_START = ThetaData.EARLIEST_OPTIONS_DATE
+using DataRead, DataCheck
 
 #region Standard Api
-function get_prices(;sym="SPY", age=DateUtil.age_daily())
-    return cache!(DataFrame, Symbol("prices-$(sym)"), age) do
-        load_prices(;sym, age)
-    end
-end
-clear_prices_cache(;sym="SPY") = Caches.clear!(Symbol("prices-$(sym)"))
-
-function make_prices(;sym="SPY", save_override=false)
+function make_prices(;sym="SPY")
     # get from DataFiles and exceptions
     # query under for since then
     # merge
@@ -35,94 +28,54 @@ function make_prices(;sym="SPY", save_override=false)
     # @assert maximum(df.ts) == DateUtil.lastTradingDate(now(UTC))
     diff = check_ts(df.ts; ts_to=DateUtil.market_midnight(DateUtil.market_today()))
     if !isempty(diff)
-        println("ERROR: not all ts found. Not saved.")
-        if save_override
-            println("Saving anyway")
-            save_data(file_prices(;sym), df)
-        end
+        println("ERROR: DataPrices not all ts found. Not saved.")
         return diff
     end
 
-    save_data(file_prices(;sym), df)
+    save_data(DataRead.file_prices(;sym), df)
     return df
 end
 
+import Arrow
 function update_prices(;sym="SPY")
     # TODO: deal with that thetadata is 15 minute delayed
-    df1 = load_prices(;sym, age=DateUtil.FOREVER2)
-    ts_last = df1.ts[end]
-    if now(UTC) - ts_last < Minute(30)
-        println("Already up to date: $(ts_last)")
+    df1 = DataRead.load_prices(;sym, age=DateUtil.FOREVER2)
+    last_ts = df1.ts[end]
+    if now(UTC) - last_ts < Minute(30)
+        println("Prices already up to date: $(last_ts)")
         return
     end
     df2 = ThetaData.query_prices(
-            DateUtil.market_date(ts_last),
+            DateUtil.market_date(last_ts),
             DateUtil.market_today()
             ;sym, age=Minute(15))
+    println("$(size(df2,1)) rows to add")
     df = combine_dfs(df1, df2)
     diff = check_ts(df.ts)
     if !isempty(diff)
-        println("ERROR: not all ts found. Not saved.")
+        println("ERROR: DataPrices not all ts found. Not saved.")
         return diff
     end
-    save_data(file_prices(;sym), df)
+    save_data(DataRead.file_prices(;sym), df; update=true)
     return
 end
 #endregion Standard Api
 
 #region Local
 path_ts_optionsdx(;sym) = joinpath(Paths.db("market", "incoming", "optionsdx", sym), "ts.arrow")
-file_prices(;sym="SPY") = joinpath(db_incoming("prices"; sym), "prices-$(sym).arrow")
-
-load_prices(;sym, age)::DataFrame = load_data(file_prices(;sym), DataFrame; age)
-
-function combine_dfs(dfs...)
-    df = vcat(dfs...)
-    sort!(df, [:ts])
-    unique!(df, [:ts])
-    @assert size(df, 1) > 10000
-    @assert issorted(df, :ts)
-    @assert allunique(df.ts)
-    return df
-end
 
 remove_10s(tss) = map(tss) do ts
     second(ts) == 0 ? ts : ts - Second(10)
 end
 tof32(p) = Float32.(p ./ 1000)
+
+import DataConst:DATE_START
 function keep_ts_optionsdx(ts)
     return DateUtil.isBusDay(ts) &&
         ts >= DATE_START &&
         ts < ThetaData.EARLIEST_SPY_DATE &&
         (minute(ts) == 0 || minute(ts) == 30)
 end
-
-function check_ts(tss; ts_to=now(UTC))
-    tss_all = DateUtil.all_bdays_ts(;
-        date_from=DATE_START, ts_to,
-        time_from=Time(9,30), time_to=Time(16,0))
-    # @assert isempty(symdiff(tss, tss_expected))
-
-    diff = symdiff(tss, tss_all)
-    exceptions = missing_allowed()
-    filter!(diff) do d
-        !(d in exceptions)
-    end
-end
-
-function missing_allowed()
-    # These might be because day before holiday, short day
-    # TODO: could maybe use Calendars MktTime to filter these out
-    exceptions = ["2020-11-27T19:00:00",
-     "2020-11-27T19:30:00",
-     "2020-11-27T20:00:00",
-     "2020-12-24T19:00:00",
-     "2020-12-24T19:30:00",
-     "2020-12-24T20:00:00"]
-     return DateTime.(exceptions)
-end
-
-# latest_ts(ts) = DateUtil.week_prev_ts(ts; time_from=Time(9,30), time_to=Time(16,0))
 #endregion Local
 
 #region Fixes

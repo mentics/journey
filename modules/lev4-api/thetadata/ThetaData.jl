@@ -1,15 +1,12 @@
 module ThetaData
 using Dates, HTTP, DataFrames
 using DateUtil, DictUtil, Caches
-using SmallTypes
 import Calendars as cal
-import DataFiles as dat
 import CollUtil:push_all!
-using Paths, FilesJLD2, FilesArrow
 
 #region Expirations and Days
 function query_xpirs(sym="SPY"; age=age_daily())
-    return cache!(Vector{Date}, Symbol("expirs-$(sym)"), age) do
+    return cache!(Vector{Date}, Symbol("thetadata-expirs-$(sym)"), age) do
         url = "http://localhost:25510/v2/list/expirations?root=$(sym)"
         println("Querying expirs: $(url)")
         resp = HTTP.get(url, HEADERS_GET[]; retry=false)
@@ -18,7 +15,7 @@ function query_xpirs(sym="SPY"; age=age_daily())
 end
 
 function query_dates_for_xpir(xpir::Date, sym="SPY"; age=age_daily())
-    return cache!(Vector{Date}, Symbol("dates-$(sym)-$(xpir)"), age) do
+    return cache!(Vector{Date}, Symbol("thetadata-dates-$(sym)-$(xpir)"), age) do
         url = "http://localhost:25510/v2/list/dates/option/quote?root=$(sym)&exp=$(str(xpir))"
         println("Querying dates for expir: $(url)")
         resp = HTTP.get(url, HEADERS_GET[]; retry=false)
@@ -95,7 +92,7 @@ end
 #region Prices
 function query_prices(date_start=EARLIEST_SPY_DATE, date_end=Date(DateUtil.market_now() - Day(1)); sym="SPY", age=age_daily(), interval=Minute(30))
     ivl = Dates.value(Millisecond(interval))
-    return cache!(DataFrame, Symbol("prices-$(sym)-$(str(date_start))-$(str(date_end))-$(ivl)"), age) do
+    return cache!(DataFrame, Symbol("thetadata-prices-$(sym)-$(str(date_start))-$(str(date_end))-$(ivl)"), age) do
         url = "http://localhost:25510/hist/stock/trade?root=$(sym)&start_date=$(str(date_start))&end_date=$(str(date_end))&ivl=$(ivl)"
         # TODO: is it safe to use last trade instead of quote?
         # TODO: check that all expected ts are covered by comparing with DateUtil.all_weekday_ts
@@ -120,7 +117,6 @@ end
 
 #region Constants and Util
 const EARLIEST_SPY_DATE = Date(2021, 12, 26)
-const EARLIEST_OPTIONS_DATE = Date(2012, 6, 1)
 const CT = Float32
 const HEADERS_GET = Ref(Dict("Accept" => "application/json"))
 const DATE_FORMAT = DateFormat("yyyymmdd")

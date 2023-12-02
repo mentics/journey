@@ -83,7 +83,7 @@ market_now()::ZonedDateTime = toMarketTZ(now(UTC))
 market_midnight(date::Date)::DateTime = fromMarketTZ(date, Time(0,0))
 market_date(ts::DateTime)::Date = Date(ZonedDateTime(ts, MARKET_TZ; from_utc=true))
 market_date(ts::ZonedDateTime)::Date = Date(astimezone(ts, MARKET_TZ))
-market_today()::Date = Date(market_now())
+market_today()::Date = lastTradingDay(market_now())
 toDateMarket(ts::DateTime)::Date = Date(ZonedDateTime(ts, MARKET_TZ; from_utc=true)) # deprecated
 #endregion
 
@@ -142,7 +142,7 @@ export isbd
 isBusDay(d::DateLike) = isbd_t(d) # isbday(:USNYSE, d)
 isbd(d::DateLike) = isbd_t(d)
 # @memoize ThreadSafeDicts.ThreadSafeDict isbd_t(d::DateLike) = isbday(:USNYSE, d)
-isbd_t(d::DateTime) = isbd_t(Date(d))
+isbd_t(d::DateTime) = isbd_t(market_date(d))
 @memoize isbd_t(d::Date) = isbday(:USNYSE, d)
 
 bdays(d1::DateLike, d2::DateLike)::Int = bdays_t(d1, d2)
@@ -151,7 +151,8 @@ bdays(d1::DateLike, d2::DateLike)::Int = bdays_t(d1, d2)
 # @memoize bdays(d1::Date, d2::Date)::Int = bdayscount(:USNYSE, d1, d2)
 
 lastTradingDay(d::Date)::Date = tobday(:USNYSE, d; forward=false)
-lastTradingDay(d::DateTime)::Date = tobday(:USNYSE, market_date(d); forward=false)
+lastTradingDay(ts::DateTime)::Date = tobday(:USNYSE, market_date(ts); forward=false)
+lastTradingDay(zdt::ZonedDateTime)::Date = tobday(:USNYSE, market_date(zdt); forward=false)
 nextTradingDay(d::Date)::Date = tobday(:USNYSE, d; forward=true)
 bdaysBefore(d::Date, n::Int)::Date = advancebdays(:USNYSE, lastTradingDay(d), -n)
 bdaysAfter(d::Date, n::Int)::Date = advancebdays(:USNYSE, lastTradingDay(d), n)
@@ -229,7 +230,9 @@ function all_bdays_ts(;date_from=Date(2012,6,1), ts_to=now(UTC), time_from=Time(
     for date in all_bdays_itr(;date_from, date_to=(date_to - Day(1)))
         append!(res, [fromMarketTZ(date, t) for t in time_from:period:time_to])
     end
-    append!(res, filter!(ts -> ts < ts_to, [fromMarketTZ(date_to, t) for t in time_from:period:time_to]))
+    if (isBusDay(ts_to))
+        append!(res, filter!(ts -> ts < ts_to, [fromMarketTZ(date_to, t) for t in time_from:period:time_to]))
+    end
     return res
 end
 
@@ -273,5 +276,7 @@ age_daily()::Period = now(UTC) - asof_daily()
 
 const FOREVER2 = Nanosecond(typemax(Int))
 const DATETIME_BEFORE = DateTime(0)
+
+# latest_ts(ts) = DateUtil.week_prev_ts(ts; time_from=Time(9,30), time_to=Time(16,0))
 
 end

@@ -6,6 +6,8 @@ import DateUtil
 import CollUtil:push_all!
 import Calendars as cal
 
+using DataRead
+
 #=
 Data modules pattern:
   get_*: data both from files and query recent if necessary
@@ -13,20 +15,7 @@ Data modules pattern:
   update_*: update files with recent historical data
 =#
 
-export XpirDateDicts
-struct XpirDateDicts
-    xpir_to_date::Dict{Date,Vector{Date}}
-    date_to_xpir::Dict{Date,Vector{Date}}
-end
-XpirDateDicts() = XpirDateDicts(Dict{Date,Vector{Date}}(), Dict{Date,Vector{Date}}())
-
 #region Standard Api
-function get_xpir_dates(;sym="SPY", age=DateUtil.age_daily())::XpirDateDicts
-    return cache!(XpirDateDicts, Symbol("expirs-dates-$(sym)"), age) do
-        load_xpir_dates(sym; age)
-    end
-end
-
 function make_xpir_dates(;sym="SPY")
     xpirs = ThetaData.query_xpirs(sym)
     filter!(xpir -> xpir < cal.max_date(), xpirs)
@@ -34,7 +23,7 @@ function make_xpir_dates(;sym="SPY")
     for xpir in xpirs
         add_xpir_dates!(xdd, xpir; sym)
     end
-    save_data(file_expirs(;sym); xpir_to_date, date_to_xpir)
+    save_data(DataRead.file_xpirs(;sym); xpir_to_date, date_to_xpir)
 end
 
 function update_xpir_dates(;sym="SPY")
@@ -48,24 +37,12 @@ function update_xpir_dates(;sym="SPY")
     for xpir in to_proc
         add_xpir_dates!(xdd, xpir; sym)
     end
-    save_data(file_expirs(;sym); xpir_to_date=xdd.xpir_to_date, date_to_xpir=xdd.date_to_xpir)
+    save_data(DataRead.file_xpirs(;sym); xpir_to_date=xdd.xpir_to_date, date_to_xpir=xdd.date_to_xpir)
     return to_proc
 end
 #endregion Standard Api
 
-#region Extra Api
-function get_xpirs_for_dates(dates)
-    xdd = get_xpir_dates()
-    dates = filter(date -> haskey(xdd.date_to_xpir, date), dates)
-    return collect(mapreduce(date -> xdd.date_to_xpir[date], push_all!, dates; init=SortedSet()))
-end
-#endregion Extra Api
-
 #region Local
-file_expirs(;sym="SPY") = joinpath(db_incoming(;sym), "expirs-$(sym).jld2")
-
-load_xpir_dates(sym="SPY"; age=DateUtil.age_daily())::XpirDateDicts = XpirDateDicts(load_data(file_expirs(;sym), "xpir_to_date", "date_to_xpir"; age)...)
-
 function add_xpir_dates!(xdd::XpirDateDicts, xpir; sym)
     dates = ThetaData.query_dates_for_xpir(xpir, sym)
     for date in dates

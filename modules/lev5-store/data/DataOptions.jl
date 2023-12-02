@@ -5,15 +5,10 @@ using ThetaData, Paths, FilesArrow, Caches
 import DateUtil
 import DataXpirs:get_xpirs_for_dates
 
-#region Standard API
-function get_options(year, month; sym="SPY", age=DateUtil.age_daily())
-    return cache!(DataFrame, Symbol("quotes-$(sym)-$(year)-$(month)"), age) do
-        return load_data(file_options(year, month; sym), DataFrame)
-    end
-end
+using DataRead, DataCheck
 
+#region Standard API
 function make_options(year, month; sym="SPY")
-    path = file_options(year, month; sym)
     date_start = Date(year, month, 1)
     date_end = Dates.lastdayofmonth(date_start)
     xpirs = get_xpirs_for_dates(date_start:date_end)
@@ -22,20 +17,29 @@ function make_options(year, month; sym="SPY")
     end
     # println("Completed acquiring data for ($(year), $(month)) in $(stop - start) seconds")
     sort!(df, [:style, :ts, :expir, :strike])
-    save_data(path, df)
+    save_data(DataRead.file_options(year, month; sym), df)
     return df
 end
 
-function update_options(; sym="SPY")
+function update_options(year, month; sym="SPY")
     # TODO: how to make sure that when month passes, previous month is finished?
-    df = load_data(file_options(year, month; sym), DataFrame)
-    last_ts = df.ts[end]
+    df1 = load_data(year, month; sym, age=DateUtil.FOREVER2)
+    last_ts = df1.ts[end]
+    start_date = market_date(last_ts)
+    end_date = Dates.lastdayofmonth(start_date)
+    df2 = ThetaData.query_options(start_date, end_date; sym, age=Minute(15))
+    df = combine_dfs(df1, df2)
+    diff = check_ts(df.ts)
+    if !isempty(diff)
+        println("ERROR: DataOptions not all ts found. Not saved.")
+        return diff
+    end
+    save_data(DataRead.file_options(year, month; sym), df; update=true)
+    return
 end
 #endregion Standard API
 
 #region Local
-format_ym(year, month) = "$(year)-$(lpad(month, 2, '0'))"
-file_options(year, month; sym="SPY") = joinpath(db_incoming("options"; sym), "quotes-$(sym)-$(format_ym(year, month)).arrow")
 #endregion Local
 
 end

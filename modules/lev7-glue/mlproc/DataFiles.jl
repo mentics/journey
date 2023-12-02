@@ -940,19 +940,7 @@ end
 #endregion Misc
 
 #region Vix
-import TradierData as TD
-function make_vix_alldates()
-    vix_raw = TD.tradierHistQuotes("daily", Date("2010-01-01"), Date("2023-07-01"), "VIX")
-    vix_raw_df = DataFrame(vix_raw)
-    vix_df = select(vix_raw_df, :date => (ds -> Date.(ds)) => :date, :open, :high, :low, :close)
-    saving_currency!(vix_df, :open, :high, :low, :close)
-    save(path_vix(), vix_df)
-    dates_df = DataFrame(:date => collect(DateUtil.all_weekdays()))
-    vix_alldates_df = sort!(leftjoin(dates_df, vix_df, on=:date), [:date])
-    save(path_vix_alldates(), vix_alldates_df)
-    return vix_alldates_df
-end
-
+# make_vix_alldates -> DataVix module
 function make_ts_allperiods(;period=Minute(30))
     tsdf = ts_df()
     times_df = DataFrame(:ts => DateUtil.all_weekday_ts(;period))
@@ -964,10 +952,6 @@ function make_ts_allperiods(;period=Minute(30))
     saving_currency!(df, :under)
     save(path_ts_allperiods(;period), df)
     return df
-end
-
-function valid_ts_for_seq()
-
 end
 #endregion
 
