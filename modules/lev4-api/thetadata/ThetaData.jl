@@ -63,7 +63,7 @@ function query_options(date_start, date_end, xpir; period=1800000, sym="SPY")
     end
 
     start = time()
-    df = DataFrame([DateTime[], DateTime[], CT[], Int8[], CT[], CT[], UInt32[], UInt8[], CT[], UInt32[], UInt8[]], [:ts, :expir, :under, :style, :strike, :bid, :bid_size, :bid_condition, :ask, :ask_size, :ask_condition])
+    df = DataFrame([DateTime[], DateTime[], Int8[], CT[], CT[], UInt32[], UInt8[], CT[], UInt32[], UInt8[]], [:ts, :expir, :style, :strike, :bid, :bid_size, :bid_condition, :ask, :ask_size, :ask_condition])
     for d in data["response"]
         info = d["contract"]
         style = Int8(info["right"] == "C" ? 1 : -1)
@@ -78,9 +78,9 @@ function query_options(date_start, date_end, xpir; period=1800000, sym="SPY")
             ask = tick[8]
             ask_size = tick[6]
             ask_condition = tick[7]
-            under = Date(ts) <= DAT_UNDER_LAST_DATE ? dat.lup_under(ts) : get_under()[ts]
-            @assert !ismissing(under) "under missing for $(ts)"
-            push!(df, [ts, cal.getMarketClose(handle_special_xpirs(xpir)), under, style, strike / 1000, bid, bid_size, bid_condition, ask, ask_size, ask_condition])
+            # under = Date(ts) <= DAT_UNDER_LAST_DATE ? dat.lup_under(ts) : get_under()[ts]
+            # @assert !ismissing(under) "under missing for $(ts)"
+            push!(df, [ts, cal.getMarketClose(handle_special_xpirs(xpir)), style, strike / 1000, bid, bid_size, bid_condition, ask, ask_size, ask_condition])
         end
     end
     stop = time()
@@ -99,7 +99,7 @@ function query_prices(date_start=EARLIEST_SPY_DATE, date_end=Date(DateUtil.marke
         url = "http://localhost:25510/hist/stock/trade?root=$(sym)&start_date=$(str(date_start))&end_date=$(str(date_end))&ivl=$(ivl)"
         # TODO: is it safe to use last trade instead of quote?
         # TODO: check that all expected ts are covered by comparing with DateUtil.all_weekday_ts
-        println("Querying under: $(url)")
+        println("Querying prices: $(url)")
         resp = HTTP.get(url, HEADERS_GET[]; retry=false)
         ticks = parseJson(String(resp.body), Dict)["response"]
         tss = DateTime[]
