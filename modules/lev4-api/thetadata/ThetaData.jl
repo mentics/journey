@@ -37,7 +37,7 @@ http://localhost:25510/v2/bulk_hist/option/quote?root=SPY&exp=20120601&start_dat
 =#
 using LRUCache
 const HIST_CACHE2 = LRUCache.LRU{String,Union{Nothing,Dict}}(;maxsize=10000)
-function query_quotes(date_start, date_end, xpir; period=1800000, sym="SPY")
+function query_options(date_start, date_end, xpir; period=1800000, sym="SPY")
     println("Getting quotes for $(date_start) to $(date_end) for xpir=$(xpir)")
 
     url = "http://localhost:25510//v2/bulk_hist/option/quote?exp=$(str(xpir))&start_date=$(str(date_start))&end_date=$(str(date_end))&root=$(sym)&ivl=$(period)"
