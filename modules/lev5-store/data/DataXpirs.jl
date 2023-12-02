@@ -54,10 +54,10 @@ end
 #endregion Standard Api
 
 #region Extra Api
-function get_xpirs_for_dates(dates)::XpirDateDicts
-    _, date_to_xpir = get_xpir_dates()
-    dates = filter(date -> haskey(date_to_xpir, date), dates)
-    return collect(mapreduce(date -> date_to_xpir[date], push_all!, dates; init=SortedSet()))
+function get_xpirs_for_dates(dates)
+    xdd = get_xpir_dates()
+    dates = filter(date -> haskey(xdd.date_to_xpir, date), dates)
+    return collect(mapreduce(date -> xdd.date_to_xpir[date], push_all!, dates; init=SortedSet()))
 end
 #endregion Extra Api
 
