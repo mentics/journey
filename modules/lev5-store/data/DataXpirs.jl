@@ -29,15 +29,21 @@ end
 function update_xpir_dates(;sym="SPY")
     xpirs_from_query = ThetaData.query_xpirs(sym)
     filter!(xpir -> xpir < cal.max_date(), xpirs_from_query)
-    xdd = load_xpir_dates(sym; age=DateUtil.FOREVER2)
+    xdd = DataRead.load_xpir_dates(sym; age=DateUtil.FOREVER2)
     xpirs_from_file = keys(xdd.xpir_to_date)
     @assert maximum(xpirs_from_query) >= maximum(xpirs_from_file)
     to_proc = setdiff(xpirs_from_query, xpirs_from_file)
-    !isempty(to_proc) || return nothing
+    path = DataRead.file_xpirs(;sym)
+    if isempty(to_proc)
+        println("Xpir_dates: no dates found to process")
+        touch(path)
+        return nothing
+    end
     for xpir in to_proc
         add_xpir_dates!(xdd, xpir; sym)
     end
-    save_data(DataRead.file_xpirs(;sym); xpir_to_date=xdd.xpir_to_date, date_to_xpir=xdd.date_to_xpir)
+    println("saving... $(DataRead.file_xpirs(;sym))")
+    save_data(path; xpir_to_date=xdd.xpir_to_date, date_to_xpir=xdd.date_to_xpir)
     return to_proc
 end
 #endregion Standard Api

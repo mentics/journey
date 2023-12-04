@@ -1,5 +1,0 @@
-{
-    "julia.additionalArgs": [
-        // "--sysimage=C:/data/tmp/sysimage-journey.dll"
-    ]
-}
