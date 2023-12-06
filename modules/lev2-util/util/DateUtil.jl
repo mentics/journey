@@ -207,21 +207,25 @@ end
 daysinquarter(d)::UInt16 = ( q1 = Dates.firstdayofquarter(d) ; (q1 + Dates.Month(3) - q1).value )
 # daysinyear(d)::UInt16 = ( q1 = Dates.firstdayofquarter(d) ; (q1 + Dates.Month(3) - q1).value )
 
-# function all_weekdays(;date_from=Date(2012,6,1), date_to=market_today())
-#     return Iterators.filter(d -> Dates.dayofweek(d) <= 5, date_from:Day(1):date_to)
-# end
+const DEFAULT_DATA_START_DATE = Date(2012,6,1)
+first_ts()
+last_ts()
+
+function all_weekdays(;date_from=DEFAULT_DATA_START_DATE, date_to=market_today())
+    return Iterators.filter(d -> Dates.dayofweek(d) <= 5, date_from:Day(1):date_to)
+end
+
+function all_weekday_ts(;date_from=DEFAULT_DATA_START_DATE, date_to=market_today(), time_from=Time(9, 30), time_to=Time(16,00), period=Minute(30))
+    res = DateTime[]
+    for date in all_weekdays(;date_from, date_to)
+        append!(res, [fromMarketTZ(date, t) for t in time_from:period:time_to])
+    end
+    return res
+end
 
 function all_bdays_itr(;date_from=Date(2012,6,1), date_to=market_today())
     return Iterators.filter(d -> Dates.dayofweek(d) <= 5 && isBusDay(d), date_from:Day(1):date_to)
 end
-
-# function all_weekday_ts(;date_from=Date(2010,1,1), date_to=Date(2023,7,1), time_from=Time(10, 0), time_to=Time(15,30), period=Minute(30))
-#     res = DateTime[]
-#     for date in all_weekdays(;date_from, date_to)
-#         append!(res, [fromMarketTZ(date, t) for t in time_from:period:time_to])
-#     end
-#     return res
-# end
 
 function all_bdays_ts(;date_from=Date(2012,6,1), ts_to=now(UTC), time_from=Time(9, 30), time_to=Time(16,0), period=Minute(30))
     res = DateTime[]
@@ -236,15 +240,15 @@ function all_bdays_ts(;date_from=Date(2012,6,1), ts_to=now(UTC), time_from=Time(
     return res
 end
 
-function week_first_ts(ts; time_from=Time(10,0))
+function week_first_ts(ts; time_from=Time(9,30))
     DateUtil.fromMarketTZ(Date(Dates.firstdayofweek(ts)), time_from)
 end
 
-function week_last_ts(ts; time=Time(15,30))
+function week_last_ts(ts; time=Time(16,0))
     DateUtil.fromMarketTZ(Date(Dates.lastdayofweek(ts) - Day(2)), time)
 end
 
-function week_prev_ts(ts; time_from=Time(10,0), time_to=Time(15,30), period=Minute(30))
+function week_prev_ts(ts; time_from=Time(9,30), time_to=Time(16,0), period=Minute(30))
     if ts <= week_first_ts(ts)
         return week_last_ts(ts - Week(1))
     else
@@ -264,7 +268,7 @@ end
 #     return DateUtil.all_weekday_ts(;date_from, date_to)
 # end
 
-const TIMES_PER_DAY = 12 # Dates.value(convert(Minute, Time(15, 30) - Time(10,0))) / 30 + 1, +1 to include endpoint
+const TIMES_PER_DAY = 14 # Dates.value(convert(Minute, Time(16, 0) - Time(9,30))) / 30 + 1, +1 to include endpoint
 const DAYS_PER_WEEK = 5
 const TIMES_PER_WEEK = TIMES_PER_DAY * DAYS_PER_WEEK
 

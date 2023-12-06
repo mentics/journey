@@ -1,41 +1,59 @@
 module HistShapeModel
-using DataRead
+using Dates, DataFrames
+using DateUtil, DataConst, DataRead
 
 params_data() = Dict{Symbol,Any}(
+    :weeks_count => 5,
+    :intraday_period => Minute(30),
 )
 
 #=
+TODO: What's the typical file format for other frameworks for their input data?
+
 make_input acquires all the data it needs from wherever, creates a single dataframe representing the input to the model,
 and saves that in the input area.
 
 Format for input files is an Arrow table with columns:
-    obs key: unique identifier representing the observation (eg. timestamp)
+    obs key: unique identifier representing the observation (eg. :ts for timestamp)
     x: the datastructure for the observation that will be passed into the model for training and inference.
        Typically a vector of predictors, or a tuple of (predictors, meta, mask)
     y: the datastructure that is the expected output of the model for this observation
        Typically a vector of outputs, or a single value
 =#
-TODO: What's the typical file format for other frameworks for their input data?
 
-function make_input(params)
-    weeks_count = params.data_weeks_count
-    df_prices = DataRead.get_prices()
-    df_vix = DataRead.get_vix()
+#=
+For this one:
+:ts,
+=#
 
-    under = dat.ts_allperiods_df()
-    unders = replace(under.under, missing => 0f0)
-    # res = Dict{DateTime,DataMetaMask2}()
-    # sizehint!(res, 40000)
-    res = DataFrame(ts = DateTime[], v = Vector{Float32}[], meta=Vector{Float32}[], mask=BitVector[])
+function make_input_prices(params)
+    df_prices = DataRead.get_prices(;age=Day(10))
+    # There might be holidays, so we have to search for the first time that will have at least weeks_count of data before it
+    searchsortedfirst(df_prices.ts)
+    df_tss_all = DataFrame(:ts => DateUtil.all_weekday_ts(;period=params[:intraday_period]))
+    df = leftjoin(df_tss_all, df_prices; on=:ts)
 
     len = DateUtil.TIMES_PER_WEEK * weeks_count
     skip_back_count = len + 1 # +1 for the current ts
-    # tss = under.ts[skip_back_count:end]
     inds = skip_back_count:length(under.ts)
-    # prev_ts = DateTime(0)
-    # ex = WorkStealingEx()
-    # @floop ex for ind in inds
-    # @floop for ind in inds
+    for ind in inds
+        @view df[(ind-len):ind,:]
+end
+
+function make_input_vix(params)
+end
+
+
+function make_input(params)
+    df_vix = DataRead.get_vix()
+    make_input_prices(params)
+    make_input_vix(params)
+
+
+    under = dat.ts_allperiods_df()
+    unders = replace(under.under, missing => 0f0)
+    res = DataFrame(ts = DateTime[], v = Vector{Float32}[], meta=Vector{Float32}[], mask=BitVector[])
+
     for ind in inds
         cur_under = unders[ind]
         if iszero(cur_under)
@@ -45,6 +63,13 @@ function make_input(params)
         # !iszero(cur_under) || continue
         cur_ts = under.ts[ind]
         # @assert cur_ts > prev_ts
+        skip_back_count = len + 1 # +1 for the current ts
+        # tss = under.ts[skip_back_count:end]
+        inds = skip_back_count:length(under.ts)
+        # prev_ts = DateTime(0)
+        # ex = WorkStealingEx()
+        # @floop ex for ind in inds
+        # @floop for ind in inds
 
         include_ind = ind - 1
         if iszero(unders[include_ind])
