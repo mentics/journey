@@ -23,7 +23,7 @@ function make_xpir_dates(;sym="SPY")
     for xpir in xpirs
         add_xpir_dates!(xdd, xpir; sym)
     end
-    save_data(DataRead.file_xpirs(;sym); xpir_to_date, date_to_xpir)
+    Paths.save_data(DataRead.file_xpirs(;sym); xpir_to_date, date_to_xpir)
 end
 
 function update_xpir_dates(;sym="SPY")
@@ -43,7 +43,7 @@ function update_xpir_dates(;sym="SPY")
         add_xpir_dates!(xdd, xpir; sym)
     end
     println("saving... $(DataRead.file_xpirs(;sym))")
-    save_data(path; xpir_to_date=xdd.xpir_to_date, date_to_xpir=xdd.date_to_xpir)
+    Paths.save_data(path; xpir_to_date=xdd.xpir_to_date, date_to_xpir=xdd.date_to_xpir)
     return to_proc
 end
 #endregion Standard Api

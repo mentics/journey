@@ -32,7 +32,7 @@ function make_prices(;sym="SPY")
         return diff
     end
 
-    save_data(DataRead.file_prices(;sym), df)
+    Paths.save_data(DataRead.file_prices(;sym), df)
     return df
 end
 
@@ -56,7 +56,7 @@ function update_prices(;sym="SPY")
         println("ERROR: DataPrices not all ts found. Not saved.")
         return diff
     end
-    save_data(DataRead.file_prices(;sym), df; update=true)
+    Paths.save_data(DataRead.file_prices(;sym), df; update=true)
     return
 end
 #endregion Standard Api

@@ -17,13 +17,13 @@ function make_options(year, month; sym="SPY")
     end
     # println("Completed acquiring data for ($(year), $(month)) in $(stop - start) seconds")
     sort!(df, [:style, :ts, :expir, :strike])
-    save_data(DataRead.file_options(year, month; sym), df)
+    Paths.save_data(DataRead.file_options(year, month; sym), df)
     return df
 end
 
 function update_options(year, month; sym="SPY")
     # TODO: how to make sure that when month passes, previous month is finished?
-    df1 = load_data(year, month; sym, age=DateUtil.FOREVER2)
+    df1 = Paths.load_data(year, month; sym, age=DateUtil.FOREVER2)
     last_ts = df1.ts[end]
     start_date = market_date(last_ts)
     end_date = Dates.lastdayofmonth(start_date)
@@ -34,7 +34,7 @@ function update_options(year, month; sym="SPY")
         println("ERROR: DataOptions not all ts found. Not saved.")
         return diff
     end
-    save_data(DataRead.file_options(year, month; sym), df; update=true)
+    Paths.save_data(DataRead.file_options(year, month; sym), df; update=true)
     return
 end
 #endregion Standard API
