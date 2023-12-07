@@ -45,6 +45,13 @@ function get_vix(;age=DateUtil.age_daily())
     return Paths.load_data(file_vix(), DataFrame)
 end
 
+#=
+:expir, :style, :strike, :bid, :bid_size, :bid_condition, :ask, :ask_size, :ask_condition
+=#
+function get_options_at_xpirs(; sym="SPY", age=DateUtil.age_daily())
+    return Paths.load_data(file_options_at_xpirs(;sym), DataFrame; age)
+end
+
 #region Local
 file_xpirs(;sym="SPY") = joinpath(Paths.db_incoming(;sym), "expirs-$(sym).jld2")
 load_xpir_dates(sym="SPY"; age=DateUtil.age_daily())::XpirDateDicts = XpirDateDicts(Paths.load_data(file_xpirs(;sym), "xpir_to_date", "date_to_xpir"; age)...)
@@ -57,6 +64,8 @@ file_options(year, month; sym="SPY") = joinpath(Paths.db_incoming("options"; sym
 load_options(year, month; sym, age)::DataFrame = Paths.load_data(file_options(year, month; sym), DataFrame; age)
 
 file_vix() = joinpath(Paths.db("market", "incoming", "tradier", "vix"), "vix-daily.arrow")
+
+file_options_at_xpirs(;sym="SPY") = joinpath(Paths.db_incoming("options_at_xpirs"; sym), "options_at_xpirs.arrow")
 #endregion Local
 
 end

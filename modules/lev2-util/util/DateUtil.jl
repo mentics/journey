@@ -259,6 +259,19 @@ function week_prev_ts(ts; time_from=Time(9,30), time_to=Time(16,0), period=Minut
     end
 end
 
+# function last_close(ts)
+#     close_ts = DateUtil.fromMarketTZ(lastTradingDay(ts), time)
+# end
+
+# function last_ts(ts=now(UTC); time=Time(16,0))
+#     close_ts = DateUtil.fromMarketTZ(lastTradingDay(ts), time)
+#     if ts < close_ts
+#         prev_close(ts)
+#     else
+#         return close_ts
+#     end
+# end
+
 # function get_weeks_tss(last_ts, weeks_count)
 #     last_date = Date(last_ts)
 #     date_from = Dates.firstdayofweek(last_date) - Week(weeks_count - 1)

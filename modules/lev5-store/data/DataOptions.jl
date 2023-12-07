@@ -12,11 +12,14 @@ function make_options(year, month; sym="SPY")
     date_start = Date(year, month, 1)
     date_end = Dates.lastdayofmonth(date_start)
     xpirs = get_xpirs_for_dates(date_start:date_end)
+    @assert issorted(xpirs)
+    @assert allunique(xpirs)
     df = mapreduce(vcat, xpirs) do xpir
         ThetaData.query_options(date_start, min(xpir, date_end), xpir)
     end
     # println("Completed acquiring data for ($(year), $(month)) in $(stop - start) seconds")
     sort!(df, [:style, :ts, :expir, :strike])
+    @assert allunique(df, [:style, :ts, :expir, :strike])
     Paths.save_data(DataRead.file_options(year, month; sym), df)
     return df
 end

@@ -9,10 +9,6 @@ params_data() = (;
     intraday_period = Minute(30),
 )
 
-path_tsx() = joinpath(Paths.db_old(), "market", "spy", "tsx.arrow")
-tsx_table() = Arrow.Table(path_tsx())
-tsx_df() = DataFrame(tsx_table(); copycols=false)
-
 function make_input(params=params_data())
     df_hist, params_hist = load_data_params(Paths.db_encoded(HistShapeData.NAME), DataFrame)
 
