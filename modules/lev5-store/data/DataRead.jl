@@ -46,14 +46,14 @@ function get_vix(;age=DateUtil.age_daily())
 end
 
 #region Local
-file_xpirs(;sym="SPY") = joinpath(db_incoming(;sym), "expirs-$(sym).jld2")
+file_xpirs(;sym="SPY") = joinpath(Paths.db_incoming(;sym), "expirs-$(sym).jld2")
 load_xpir_dates(sym="SPY"; age=DateUtil.age_daily())::XpirDateDicts = XpirDateDicts(load_data(file_xpirs(;sym), "xpir_to_date", "date_to_xpir"; age)...)
 
-file_prices(;sym="SPY") = joinpath(db_incoming("prices"; sym), "prices-$(sym).arrow")
+file_prices(;sym="SPY") = joinpath(Paths.db_incoming("prices"; sym), "prices-$(sym).arrow")
 load_prices(;sym, age, copycols=false)::DataFrame = load_data(file_prices(;sym), DataFrame; age, copycols)
 
 format_ym(year, month) = "$(year)-$(lpad(month, 2, '0'))"
-file_options(year, month; sym="SPY") = joinpath(db_incoming("options"; sym), "quotes-$(sym)-$(format_ym(year, month)).arrow")
+file_options(year, month; sym="SPY") = joinpath(Paths.db_incoming("options"; sym), "quotes-$(sym)-$(format_ym(year, month)).arrow")
 load_options(year, month; sym, age)::DataFrame = load_data(file_options(year, month; sym), DataFrame; age)
 
 file_vix() = joinpath(Paths.db("market", "incoming", "tradier", "vix"), "vix-daily.arrow")
