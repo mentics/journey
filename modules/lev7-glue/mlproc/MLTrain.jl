@@ -1,8 +1,9 @@
 module MLTrain
 import Base:@kwdef
-using Dates
+using Dates, Random
 using CUDA
 import Flux:Flux,cpu,gpu,throttle
+using MLUtils
 import Optimisers:AdamW
 using DateUtil, IndexUtil, ModelUtil
 
@@ -26,74 +27,80 @@ make_opt(type instance) # default is Lion
 # function make_loss_func end
 # make_opt(learning_rate_func, loss_untrained) = AdamW(learning_rate_func(0, 0f0, loss_untrained))
 
-export Batches3
-@kwdef struct Batches3
-    get
-    single
-    count
+export InputData5
+@kwdef struct InputData5
+    data_for_epoch
+    prep_input
     holdout
+    single
 end
 
-export Trainee8
-@kwdef struct Trainee8
+export Trainee10
+@kwdef struct Trainee10
     name
     version
-    training_model
-    inference_model
-    run_model
-    infer
-    batches::Batches3
+    make_model
+    get_inference_model
+    run_train
+    run_infer
+    prep_data
     get_learning_rate
     get_loss
+    params
     mod
-    cfg
 end
 
-@kwdef struct Training8
-    trainee::Trainee8
+@kwdef struct Training12
+    trainee::Trainee10
+    model
     opt
     opt_state
+    data
     metrics
     params
 end
 
-function setup(trainee::Trainee8)
-    model = trainee.training_model |> dev
-    println("Model has param count: ", sum(length, Flux.params(model)))
+params_train() = (;
+    rng_seed = 1,
+    holdout = 0.1,
+    kfolds = 5,
+    batch_size = 512,
+)
 
-    base_loss = () -> calc_base_loss(model, trainee.get_loss, trainee.batches.get, trainee.batches.count)
-    loss_untrained = base_loss()
-    println("Loss untrained: $(loss_untrained)")
-    metrics = Dict{Symbol,Any}(:loss_untrained => loss_untrained)
+function setup(trainee::Trainee10, params=params_train())
+    Random.seed!(Random.default_rng(), params.rng_seed)
+
+    model = trainee.make_model() |> dev
+    println("Model has param count: ", sum(length, Flux.params(model)))
 
     opt = AdamW(trainee.get_learning_rate(1))
     opt_state = Flux.setup(opt, model) |> dev
 
-    params = Dict{Symbol,Any}()
+    data = trainee.prep_data(params)
+    metrics = Dict{Symbol,Any}()
+    metrics[:loss_untrained] = calc_base_loss(model, trainee.get_loss, data, params.batch_size)
+    println("Initial loss: $(metrics[:loss_untrained])")
 
-    training = Training8(;
+    training = Training12(;
         trainee,
+        model,
         opt,
         opt_state,
+        data,
         metrics,
-        params,
+        params = (;data=trainee.params.data, model=trainee.params.model, train=params),
     )
-    # (;mod, version, model, opt, opt_state, get_batch, get_inds, obs_count, loss_untrained, calc_loss, base_loss, batch_count, batch_size, learning_rate)
     return training
 end
 
-function run(training::Training8; epochs=1000, fold_count=5)
-    cv = IndexUtil.cv_folds(training.trainee.batches.count, fold_count)
-    training.params[:cv] = cv
-    train(training; epochs)
-end
-
-function train(training; epochs=1000)
+function train(training::Training12; epochs=1000)
+    Random.seed!(Random.default_rng(), training.params.train.rng_seed)
     println("Training beginning...")
     trainee = training.trainee
-    cv = training.params[:cv]
-    model = trainee.training_model
-    batches = trainee.batches
+    model = training.model
+    metrics = training.metrics
+    params = training.params.train
+    data = training.data
 
     loss_prev = 1.0
     epoch_losses = Float32[]
@@ -106,11 +113,12 @@ function train(training; epochs=1000)
     for epoch in 1:epochs
         loss_epoch_sum = 0.0
         batches_epoch_count = 0
-        for ifold in axes(cv.folds, 1)
-            cv_inds = IndexUtil.inds_for_fold(cv, ifold)
+        for (train_data, cv_data) in kfolds(data.data_for_epoch(); k=params.kfolds)
             batches_fold_count = 0
-            for ibatch in cv_inds.train
-                batch = batches.get(epoch, ibatch) |> dev
+            ifold = 0
+            for obss in eachobs(train_data, batchsize=params.batch_size)
+                ifold += 1
+                batch = data.prep_input(obss) |> dev
                 loss, grads = Flux.withgradient(trainee.get_loss, model, batch)
                 loss_epoch_sum += loss
                 yield()
@@ -119,15 +127,17 @@ function train(training; epochs=1000)
                 batches_fold_count += 1
                 batches_epoch_count += 1
 
-                print_status("  update - epoch: $(epoch), fold: $(ifold), batch: $(batches_fold_count) / $(length(cv_inds.train)) ($(ibatch)) - Training loss $(loss)")
+                print_status("  update - epoch: $(epoch), fold: $(ifold), fold_batches: $(batches_fold_count), epoch_batches: $(batches_epoch_count) - Training loss $(loss)")
             end
 
             loss_validation = 0f0
-            for ibatch in cv_inds.validation
-                batch = batches.get(epoch, ibatch) |> dev
+            count = 0
+            for obss in eachobs(cv_data, batchsize=params.batch_size)
+                count += 1
+                batch = data.prep_input(obss) |> dev
                 loss_validation += trainee.get_loss(model, batch)
             end
-            loss_validation /= size(cv_inds.validation, 1)
+            loss_validation /= count
 
             println("Epoch $(epoch), fold $(ifold) - Validation loss #$(batches_epoch_count): $(loss_validation)")
         end
@@ -136,7 +146,7 @@ function train(training; epochs=1000)
 
         println("Epoch $(epoch) - Average loss $(loss_epoch) which is $(loss_epoch / loss_prev) * loss_prev")
 
-        check_holdout(training)
+        check_holdout(model, trainee, data, params.batch_size)
 
         rate = trainee.get_learning_rate(epoch)
         Flux.Optimisers.adjust!(training.opt_state, rate)
@@ -146,34 +156,44 @@ function train(training; epochs=1000)
     end
 end
 
-function calc_base_loss(model, calc_loss, get_batch, batch_count)
+function batch1(training)
+    return training.data.prep_input(first(eachobs(training.data.data_for_epoch(), batchsize=training.params.train.batch_size)))
+end
+
+function calc_base_loss(model, calc_loss, data, batch_size)
     count = 10
     loss = 0.0
-    for _ in 1:count
-        loss += calc_loss(model, get_batch(0, rand(1:batch_count)) |> dev)
+    for obss in first(eachobs(data.data_for_epoch(); batchsize=batch_size), count)
+        loss += calc_loss(model, data.prep_input(obss) |> dev)
     end
     loss /= count
     return loss
 end
 
 import DrawUtil:draw,draw!
-function checki(trainee, inds)
+function checki(training, inds)
     draw(:vlines, 0f0)
+    trainee = training.trainee
     for i in inds
-        gbatch = trainee.batches.single(i) |> gpu
-        yhat = trainee.run_model(gbatch) |> cpu
+        gbatch = training.data.single(i) |> gpu
+        yhat = trainee.run_train(training.model, gbatch) |> cpu
         batch = gbatch |> cpu
 
-        # (x, x) = trainee.mod.to_draw_x(batch, 2)
-        (yx, yy) = trainee.mod.to_draw_y(batch, 1)
-        (yhx, yhy) = trainee.mod.to_draw_yh(yhat, 1)
+        # # (x, x) = trainee.mod.to_draw_x(batch, 2)
+        # (yx, yy) = trainee.mod.to_draw_y(batch, 1)
+        # (yhx, yhy) = trainee.mod.to_draw_yh(yhat, 1)
 
-        # draw(:scatter, x; label="x")
-        # draw!(:scatter, yhx, yhy; label="yh")
-        # draw!(:scatter, yx, yy ./ 10; label="y")
-        draw!(:scatter, yhx, yhy)
-        # draw!(:scatter, yx, yy ./ 10)
-        draw!(:scatter, [yhx[findmax(yhy[:,1])[2]]], [0.1])
+        yy = trainee.mod.to_draw_y(batch, 1)
+        yhy = trainee.mod.to_draw_yh(yhat, 1)
+        draw!(:scatter, yy)
+        draw!(:scatter, yhy)
+
+        # # draw(:scatter, x; label="x")
+        # # draw!(:scatter, yhx, yhy; label="yh")
+        # # draw!(:scatter, yx, yy ./ 10; label="y")
+        # draw!(:scatter, yhx, yhy)
+        # # draw!(:scatter, yx, yy ./ 10)
+        # draw!(:scatter, [yhx[findmax(yhy[:,1])[2]]], [0.1])
     end
     return # (;batch, yhat)
 
@@ -217,8 +237,15 @@ end
 
 test_batch_loss(trainee, ibatch) = trainee.get_loss(trainee.training_model, trainee.batches.get(0, ibatch))
 
-function check_holdout(training)
-    loss = training.trainee.get_loss(training.trainee.training_model, training.trainee.batches.holdout)
+function check_holdout(model, trainee, data, batch_size)
+    loss = 0.0
+    count = 0
+    for obss in eachobs(data.holdout; batchsize=batch_size)
+        count += 1
+        loss += trainee.get_loss(model, data.prep_input(obss) |> dev)
+    end
+    loss /= count
+
     println("Loss for holdout: $(loss)")
     # for ibatch in training.params[:cv].holdout
     #     loss = training.trainee.get_loss(training.trainee.training_model, training.trainee.batches.get(1, ibatch))

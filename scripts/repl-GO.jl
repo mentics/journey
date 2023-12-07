@@ -17,6 +17,11 @@ include("repl-simple.jl")
 
 # # ml.setup()
 
-using Dates
+using Dates, DataFrames, MLUtils
 using DateUtil
-using DataRead
+using DataRead, Paths, FilesArrow, FilesJLD2
+import HistShapeModel as hsm
+import HistShapeData as hsd
+import MLTrain as ml
+
+using ModelUtil

@@ -2,7 +2,8 @@ module ModelUtil
 using Dates
 using Flux
 import JLD2
-import FileUtil, DateUtil
+import DateUtil
+using Paths, FilesArrow
 
 export SplitLayer
 
@@ -48,53 +49,43 @@ function to_temporal(ts)
 end
 
 #region Persistence
-path_default_base() = joinpath(FileUtil.root_shared(), "MLTrain")
-path_default_base(mod_name) = joinpath(path_default_base(), string(mod_name))
-
-function save(training, path_base=path_default_base(training.trainee.name))
-    trainee = training.trainee
-    mkpath(joinpath(path_base, "train"))
-    path = joinpath(path_base, "train", "$(trainee.name)-$(trainee.version)-$(DateUtil.file_ts()).jld2")
-    print("Saving model and opt_state to $(path)...")
+save_training(training) = save_training(training.trainee.name, training.model, training.opt_state, training.params)
+function save_training(name, model, opt_state, params)
     start = time()
-    model_state = Flux.state(cpu(trainee.training_model))
-    opt_state = cpu(training.opt_state)
-    JLD2.jldsave(path; model_state, opt_state)
+    model_state = Flux.state(cpu(model))
+    opt_state = cpu(opt_state)
+    path = Paths.save_data_params(Paths.db_checkpoint(name), params; suffix=string(DateUtil.file_ts()), model_state, opt_state)
     stop = time()
-    println(" done in $(stop - start) seconds.")
+    println("Saved model, opt_state, and params to $(path) in $(stop - start) seconds")
 end
 
-function load(training, path=path_default_base(training.trainee.name))
-    trainee = training.trainee
-    if isdir(path)
-        path = FileUtil.most_recently_modified(joinpath(path, "train"); matching=trainee.version)
-        @assert !isnothing(path) "Could not find training model file in path $(path)"
-    end
-    model_state, opt_state = JLD2.load(path, "model_state", "opt_state")
-    Flux.loadmodel!(trainee.training_model, model_state)
-    Flux.loadmodel!(training.opt_state, opt_state)
-    println("Loaded model and opt_state from $(path)")
-end
-
-function save_inference(trainee, path_base=path_default_base(trainee.name))
-    mkpath(path_base)
-    path = joinpath(path_base, "infer", "$(trainee.name)-$(trainee.version)-infer-$(DateUtil.file_ts()).jld2")
-    print("Saving inference model to $(path)...")
+load_training(training) = load_training(training.trainee.name, training.model, training.opt_state, training.params)
+function load_training(name, model, in_opt_state, params)
     start = time()
-    model_state = Flux.state(trainee.inference_model |> cpu)
-    JLD2.jldsave(path; model_state)
-    stop = time()
-    println(" done in $(stop - start) seconds.")
-end
-
-function load_inference(name, version, model, path=path_default_base(name))
-    if isdir(path)
-        path = FileUtil.most_recently_modified(joinpath(path, "infer"); matching="$(version)-infer-")
-        @assert !isnothing(path) "Could not find inference model file in path $(path)"
-    end
-    model_state = JLD2.load(path, "model_state")
+    (path, (model_state, opt_state)) = Paths.load_data_params(Paths.db_checkpoint(name), params, "model_state", "opt_state"; latest=true)
     Flux.loadmodel!(model, model_state)
-    println("Loaded inference model from $(path)")
+    Flux.loadmodel!(in_opt_state, opt_state)
+    stop = time()
+    println("Loaded model and opt_state from $(path) in $(stop - start) seconds")
+end
+
+save_infer(training) = save_infer(training.trainee.name, training.trainee.get_inference_model(training.model), training.params)
+function save_infer(name, model, params)
+    start = time()
+    model_state = Flux.state(cpu(model))
+    path = Paths.save_data_params(Paths.db_infer(name), params; suffix=string(DateUtil.file_ts()), model_state)
+    stop = time()
+    print("Saved inference model to $(path) in $(stop - start) seconds.")
+end
+
+load_infer(training) = load_infer(training.trainee.name, training.trainee.get_inference_model(training.model), training.params)
+function load_infer(name, model, params)
+    start = time()
+    (path, model_state) = Paths.load_data_params(Paths.db_infer(name), params, "model_state"; latest=true)
+    global klinfer = (;model, model_state)
+    Flux.loadmodel!(model, model_state)
+    stop = time()
+    println("Loaded inference model from $(path) in $(stop - start) seconds")
 end
 #endregion Persistence
 

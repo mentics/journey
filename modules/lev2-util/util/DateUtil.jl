@@ -208,8 +208,6 @@ daysinquarter(d)::UInt16 = ( q1 = Dates.firstdayofquarter(d) ; (q1 + Dates.Month
 # daysinyear(d)::UInt16 = ( q1 = Dates.firstdayofquarter(d) ; (q1 + Dates.Month(3) - q1).value )
 
 const DEFAULT_DATA_START_DATE = Date(2012,6,1)
-first_ts()
-last_ts()
 
 function all_weekdays(;date_from=DEFAULT_DATA_START_DATE, date_to=market_today())
     return Iterators.filter(d -> Dates.dayofweek(d) <= 5, date_from:Day(1):date_to)
@@ -272,7 +270,7 @@ const TIMES_PER_DAY = 14 # Dates.value(convert(Minute, Time(16, 0) - Time(9,30))
 const DAYS_PER_WEEK = 5
 const TIMES_PER_WEEK = TIMES_PER_DAY * DAYS_PER_WEEK
 
-file_ts(ts=now(UTC)) = Dates.format(now(UTC),"yyyymmdd-HHmmSS")
+file_ts(ts=now(UTC)) = Dates.format(ts,"yyyymmdd-HHMMSS")
 
 export asof_daily, age_daily
 asof_daily()::DateTime = market_midnight(Date(market_now()))
