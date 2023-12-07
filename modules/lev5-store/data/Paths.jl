@@ -30,6 +30,7 @@ db_input(model_name) = db_models(model_name, "input")
 
 db_checkpoint(model_name) = db_models(model_name, "checkpoint")
 db_infer(model_name) = db_models(model_name, "infer")
+db_encoded(model_name) = db_models(model_name, "encoded")
 #endregion
 
 #region Nearby

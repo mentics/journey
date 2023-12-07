@@ -3,7 +3,8 @@ using Dates, StatsBase, DataFrames, Base64
 using Flux, NNlib, MLUtils
 using DateUtil, Paths
 using ModelUtil, TrainUtil, MLTrain
-import HistShape:NAME
+
+const NAME = replace(string(@__MODULE__), "Model" => "")
 
 params_model() = (;
     encoded_width = 32,
@@ -21,7 +22,7 @@ encode_version(num, params) = "$(num)-$(Base64.base64encode(hash(params)))"
 function MLTrain(params=params_model())
     df, params_data = load_data_params(db_input(NAME), DataFrame)
 
-    global state = Trainee10(;
+    global state = Trainee11(;
         name=NAME,
         version=encode_version(1, params),
         make_model = () -> make_model(merge(params, params_data)),
@@ -56,41 +57,23 @@ to_draw_yh(yhat, ind) = yhat.vix[1:end,ind]
 # to_draw_yh(yhat, ind) = yhat.vix[1:end,ind]
 #endregion MLTrain Interface
 
-#region Next
-function get_inference_model(model)
-    return model.layers.encoder
-end
-
-function save_encoded()
-    # (;model, run) = load_inference()
-    # data = load_data_input()
-    # @assert unique(data.ts) == data.ts
-    # batch_size = config().batch_size
-    # width = config().encoded_width + 4
-    # df = DataFrame([DateTime[], [Float32[] for _ in 1:width]...], [:ts, [Symbol("c$(i)") for i in 1:width]...])
-    # for inds in IndexUtil.batch_inds_all(eachindex(data.ts), batch_size)
-    #     enc = run(batch_from_inds(data, inds)) |> cpu
-    #     # m = hcat(data.ts[inds], vcat(v, meta_under, meta_vix)')
-    #     m = hcat(data.ts[inds], enc')
-    #     push!.(Ref(df), [m[i,:] for i in 1:size(m, 1)])
-    # end
-    # @assert unique(df.ts) == df.ts
-    # dat.save(ENCODED_PATH, df)
-    # return df
-end
-
-#endregion Next
-
 #region Data
 function make_data(df, params)
     shuffled = shuffleobs(df) # pre-shuffle so holdout is random
     training, holdout = splitobs(shuffled; at=(1.0 - params.holdout))
-    InputData5(;
+    InputData7(;
+        all_data = df,
         data_for_epoch = () -> shuffleobs(training),
         prep_input,
+        get_input_keys,
         holdout,
         single = (ind -> single(df, ind))
     )
+end
+
+# Can call on input batch after prep_input
+function get_input_keys(batch)
+    return batch.ts
 end
 
 function single(df, ind)
@@ -112,14 +95,6 @@ function prep_input(obss)
     end
     return NamedTuple{Tuple(Symbol.(names(obss)))}(data)
 end
-
-# function test_kfold(obss)
-#     for (train_data, val_data) in kfolds(obss; k=5)
-#         for obs in eachobs(train_data, batchsize=10)
-#             return obs
-#         end
-#     end
-# end
 #endregion Data
 
 #region Run
@@ -211,6 +186,10 @@ function model_decoder(cfg)
     layer_output = SplitLayer((output_under, output_vix), cfg.hidden_width_under)
     # layer_output = in -> (output_under(in[1:cfg.hidden_width_under,:]), output_vix(in[cfg.hidden_width_under+1:cfg.hidden_width]))
     return Chain(decoder_input=layer_input, decoder_blocks=Chain(blocks1..., blocks2...), decoder_output=layer_output)
+end
+
+function get_inference_model(model)
+    return model.layers.encoder
 end
 #endregion Model
 

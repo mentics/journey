@@ -2,7 +2,8 @@ module HistShapeData
 using Dates, DataFrames, StatsBase
 using DateUtil, DataConst, DataRead, Paths, FilesArrow
 import VectorCalcUtil as vcu
-import HistShape:NAME
+
+const NAME = replace(string(@__MODULE__), "Data" => "")
 
 #region Public
 params_data() = (;
@@ -29,8 +30,7 @@ For this one:
 ts, prices_seq, prices_mask, prices_meta, vix_seq, vix_mask, vix_meta
 =#
 
-function make_input()
-    params = params_data()
+function make_input(params=params_data())
     prices = make_input_prices(params)
     vix = make_input_vix(params)
     prices.date = Date.(prices.ts)

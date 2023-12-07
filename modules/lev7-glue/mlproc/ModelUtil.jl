@@ -69,7 +69,7 @@ function load_training(name, model, in_opt_state, params)
     println("Loaded model and opt_state from $(path) in $(stop - start) seconds")
 end
 
-save_infer(training) = save_infer(training.trainee.name, training.trainee.get_inference_model(training.model), training.params)
+save_infer(trainee, model_training) = save_infer(trainee.name, trainee.get_inference_model(model_training), trainee.params)
 function save_infer(name, model, params)
     start = time()
     model_state = Flux.state(cpu(model))
@@ -78,7 +78,7 @@ function save_infer(name, model, params)
     print("Saved inference model to $(path) in $(stop - start) seconds.")
 end
 
-load_infer(training) = load_infer(training.trainee.name, training.trainee.get_inference_model(training.model), training.params)
+load_infer(trainee) = load_infer(trainee.name, trainee.get_inference_model(model_training), trainee.params)
 function load_infer(name, model, params)
     start = time()
     (path, model_state) = Paths.load_data_params(Paths.db_infer(name), params, "model_state"; latest=true)
@@ -86,6 +86,13 @@ function load_infer(name, model, params)
     Flux.loadmodel!(model, model_state)
     stop = time()
     println("Loaded inference model from $(path) in $(stop - start) seconds")
+end
+
+function save_encoded(name, encoded, params)
+    start = time()
+    path = Paths.save_data_params(Paths.db_encoded(name), params)
+    stop = time()
+    print("Saved inference model to $(path) in $(stop - start) seconds.")
 end
 #endregion Persistence
 

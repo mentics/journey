@@ -27,16 +27,18 @@ make_opt(type instance) # default is Lion
 # function make_loss_func end
 # make_opt(learning_rate_func, loss_untrained) = AdamW(learning_rate_func(0, 0f0, loss_untrained))
 
-export InputData5
-@kwdef struct InputData5
+export InputData7
+@kwdef struct InputData7
+    all_data
     data_for_epoch
     prep_input
+    get_input_keys
     holdout
     single
 end
 
-export Trainee10
-@kwdef struct Trainee10
+export Trainee11
+@kwdef struct Trainee11
     name
     version
     make_model
@@ -50,8 +52,8 @@ export Trainee10
     mod
 end
 
-@kwdef struct Training12
-    trainee::Trainee10
+@kwdef struct Training13
+    trainee::Trainee11
     model
     opt
     opt_state
@@ -67,7 +69,7 @@ params_train() = (;
     batch_size = 512,
 )
 
-function setup(trainee::Trainee10, params=params_train())
+function setup(trainee::Trainee11, params=params_train())
     Random.seed!(Random.default_rng(), params.rng_seed)
 
     model = trainee.make_model() |> dev
@@ -81,7 +83,7 @@ function setup(trainee::Trainee10, params=params_train())
     metrics[:loss_untrained] = calc_base_loss(model, trainee.get_loss, data, params.batch_size)
     println("Initial loss: $(metrics[:loss_untrained])")
 
-    training = Training12(;
+    training = Training13(;
         trainee,
         model,
         opt,
@@ -93,7 +95,7 @@ function setup(trainee::Trainee10, params=params_train())
     return training
 end
 
-function train(training::Training12; epochs=1000)
+function train(training::Training13; epochs=1000)
     Random.seed!(Random.default_rng(), training.params.train.rng_seed)
     println("Training beginning...")
     trainee = training.trainee
@@ -152,7 +154,7 @@ function train(training::Training12; epochs=1000)
         Flux.Optimisers.adjust!(training.opt_state, rate)
         println("Updated learning rate to $(rate)")
 
-        throttle(30 * 60; leading=false) do; ModelUtil.save(training) end
+        throttle(5 * 60; leading=false) do; ModelUtil.save_training(training) end
     end
 end
 
@@ -252,5 +254,36 @@ function check_holdout(model, trainee, data, batch_size)
     #     println("Loss for holdout batch $(ibatch): $(loss)")
     # end
 end
+
+#region Infer
+# TODO: maybe in different module
+using DataFrames
+using Paths
+function save_inferred(trainee::Trainee11)
+    model = trainee.get_inference_model(trainee.make_model() |> dev)
+    ModelUtil.load_infer(trainee.name, model, trainee.params)
+    println("Model has param count: ", sum(length, Flux.params(model)))
+
+    pt = params_train()
+    data = trainee.prep_data(pt)
+    df = mapreduce(vcat, eachobs(data.all_data, batchsize=pt.batch_size)) do obss
+        batch = data.prep_input(obss) |> dev
+        inferred = trainee.run_infer(model, batch) |> cpu
+        keys = data.get_input_keys(batch) |> cpu
+        @assert ndims(keys) == 2 # can add support for higher dims if need it someday
+        @assert size(keys)[1] == 1
+        df = DataFrame(permutedims(inferred, (2,1)), :auto)
+        insertcols!(df, 1, :key => vec(keys))
+        return df
+    end
+
+    @assert issorted(df.key)
+    @assert allunique(df.key)
+    @assert size(data.all_data, 1) == size(df, 1)
+    path = Paths.save_data_params(Paths.db_encoded(trainee.name), trainee.params, df)
+    print("Saved encoded data to $(path)")
+    return df
+end
+#endregion Infer
 
 end
