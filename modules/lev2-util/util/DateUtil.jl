@@ -209,6 +209,10 @@ daysinquarter(d)::UInt16 = ( q1 = Dates.firstdayofquarter(d) ; (q1 + Dates.Month
 
 const DEFAULT_DATA_START_DATE = Date(2012,6,1)
 
+function year_months(;start_date=DEFAULT_DATA_START_DATE, end_date=market_today())
+    [(;year=year(d), month=month(d)) for d in start_date:Month(1):end_date]
+end
+
 function all_weekdays(;date_from=DEFAULT_DATA_START_DATE, date_to=market_today())
     return Iterators.filter(d -> Dates.dayofweek(d) <= 5, date_from:Day(1):date_to)
 end

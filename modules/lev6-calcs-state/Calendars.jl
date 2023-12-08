@@ -65,10 +65,10 @@ end
 
 function calcDur(from::DateTime, to::DateTime)::MarketDur
     # TODO: make single call that returns date and time for market tz from DateTime
-    fromDate = toDateMarket(from)
-    fromTime = toTimeMarket(from)
-    toDate = toDateMarket(to)
-    toTime = toTimeMarket(to)
+    fromDate = DateUtil.toDateMarket(from)
+    fromTime = DateUtil.toTimeMarket(from)
+    toDate = DateUtil.toDateMarket(to)
+    toTime = DateUtil.toTimeMarket(to)
     toMt = getMarketTime(toDate)
     if fromDate == toDate
         return calcDurInDay(fromTime, toTime, toMt)

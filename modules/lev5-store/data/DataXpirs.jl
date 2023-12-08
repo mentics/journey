@@ -17,8 +17,7 @@ Data modules pattern:
 
 #region Standard Api
 function make_xpir_dates(;sym="SPY")
-    xpirs = ThetaData.query_xpirs(sym)
-    filter!(xpir -> xpir < cal.max_date(), xpirs)
+    xpirs = filter(xpir -> xpir < cal.max_date(), ThetaData.query_xpirs(sym))
     xdd = XpirDateDicts()
     for xpir in xpirs
         add_xpir_dates!(xdd, xpir; sym)

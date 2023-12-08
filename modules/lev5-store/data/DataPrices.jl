@@ -41,6 +41,7 @@ function update_prices(;sym="SPY")
     # TODO: deal with that thetadata is 15 minute delayed
     df1 = DataRead.load_prices(;sym, age=DateUtil.FOREVER2)
     last_ts = df1.ts[end]
+    @show last_ts
     if now(UTC) - last_ts < Minute(30)
         println("Prices already up to date: $(last_ts)")
         return

@@ -77,7 +77,7 @@ function query_options(date_start, date_end, xpir; period=1800000, sym="SPY")
             ask_condition = tick[7]
             # under = Date(ts) <= DAT_UNDER_LAST_DATE ? dat.lup_under(ts) : get_under()[ts]
             # @assert !ismissing(under) "under missing for $(ts)"
-            push!(df, [ts, cal.getMarketClose(handle_special_xpirs(xpir)), style, strike / 1000, bid, bid_size, bid_condition, ask, ask_size, ask_condition])
+            push!(df, [ts, to_xpirts(xpir), style, strike / 1000, bid, bid_size, bid_condition, ask, ask_size, ask_condition])
         end
     end
     stop = time()
@@ -129,11 +129,21 @@ function to_time(ms)
 end
 str(d::Date) = Dates.format(d, DATE_FORMAT)
 
+function to_xpirts(xpir::Date)
+    return cal.getMarketClose(handle_special_xpirs(xpir))
+end
+
 function handle_special_xpirs(date)
     date = Dates.dayofweek(date) == 6 ? date - Day(1) : date
     # good friday holiday
     if date == Date(2014,4,18)
         date = Date(2014,4,17)
+    end
+    # special holiday for death of someone
+    # TODO: should we do something special for these cases where the duration should be calculated based on
+    # original expiration, but close price should be the day before (or last ts before holiday/expiration)?
+    if date == Date(2018,12,5)
+        date = Date(2018,12,4)
     end
     return date
 end

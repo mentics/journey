@@ -10,6 +10,14 @@ function load_data end
 function save_data_params end
 function load_data_params end
 
+function handle_update(path)
+    if isfile(path) && Sys.iswindows()
+        deldir = joinpath(splitdrive(path)[1], "delete")
+        mkpath(deldir)
+        mv(path, tempname(deldir))
+    end
+end
+
 function db(items...)
     base = Sys.iswindows() ? joinpath("D:\\", "data", "sync", "db") : "/home/jshellman/sync/db"
     return joinpath(base, items...)

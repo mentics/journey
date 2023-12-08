@@ -6,6 +6,8 @@ import DateUtil, PricingBase
 
 using DataRead
 
+# TODO: might need to update this to use DataRead.get_xpirts but not sure... or at least validate between them?
+
 #=
 Data modules pattern:
   get_*: data both from files and query recent if necessary
@@ -15,8 +17,7 @@ Data modules pattern:
 
 #region Standard Api
 function make_options_at_xpirs(;sym="SPY")
-    xpirs = ThetaData.query_xpirs(sym)
-    filter!(xpir -> xpir < DateUtil.market_today(), xpirs)
+    xpirs = filter(xpir -> xpir < DateUtil.market_today(), ThetaData.query_xpirs(sym))
     df = proc(xpirs)
     Paths.save_data(DataRead.file_options_at_xpirs(;sym), df)
     return df

@@ -36,6 +36,9 @@ using SH, BaseTypes, SmallTypes, OptionQuoteTypes
 #     # end
 # end
 
+#=
+commented out to find one used by DataFiles when writing DataTsx
+
 calc_extrin(oq::OptionQuote, curp::Real)::Tuple{Currency,Currency} = calc_extrin(getStyle(oq), getStrike(oq), getBid(oq), getAsk(oq), curp)
 
 import LegQuoteTypes
@@ -63,10 +66,17 @@ function calc_extrin(style, curp::Real, strike::Real, bid::Real, ask::Real)
     s = extrin_sub_dist(style, strike, curp)
     return ((bid + ask) / 2) - (s * abs(strike - curp))
 end
+=#
 
-function calc_extrin(style, curps, strikes, bids, asks)
-    ss = extrin_sub_dist.(style, strikes, curps)
-    return ((bids .+ asks) ./ 2) .- (ss .* abs.(strikes .- curps))
+calc_extrin(style::Integer, curp::Real, strikes, bids, asks) = calc_extrin(Style.T(style), curp, strikes, bids, asks)
+function calc_extrin(style::Style.T, curp::Real, strikes, bids, asks)
+    ss = extrin_sub_dist.(style, strikes, curp)
+    return ((bids .+ asks) ./ 2) .- (ss .* abs.(strikes .- curp))
+end
+calc_extrin(style::Integer, curp::Real, strikes, prices) = calc_extrin(Style.T(style), curp, strikes, prices)
+function calc_extrin(style::Style.T, curp::Real, strikes, prices)
+    ss = extrin_sub_dist.(style, strikes, curp)
+    return prices .- (ss .* abs.(strikes .- curp))
 end
 
 function extrin_call(curp, strike, bid, ask)

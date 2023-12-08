@@ -11,7 +11,7 @@ function combine_dfs(dfs...; keycol=:ts)
     unique!(df, [keycol])
     @assert size(df, 1) > 10000
     @assert issorted(df, keycol)
-    @assert allunique(df[keycol])
+    @assert allunique(df[!,keycol])
     return df
 end
 

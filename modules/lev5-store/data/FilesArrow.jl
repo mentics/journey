@@ -6,9 +6,7 @@ import Paths:Paths,params_hash
 
 function Paths.save_data(path, df::AbstractDataFrame; update=false)
     mkpath(dirname(path))
-    if update
-        mv(path, tempname())
-    end
+    !update || Paths.handle_update(path)
     Arrow.write(path, df)
 end
 
@@ -20,8 +18,8 @@ function Paths.save_data_params(parent_dir, params, df::AbstractDataFrame; updat
     mkpath(dir)
     path_data = joinpath(dir, "data.arrow")
     path_params = joinpath(dir, "params.jld2")
-    if update
-        mv(path_data, tempname())
+    if update && isfile(path_data)
+        Paths.handle_update(path_data)
     end
     JLD2.jldsave(path_params; params)
     Arrow.write(path_data, df)
