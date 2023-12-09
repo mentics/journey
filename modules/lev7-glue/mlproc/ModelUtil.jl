@@ -78,7 +78,7 @@ function save_infer(name, model, params)
     print("Saved inference model to $(path) in $(stop - start) seconds.")
 end
 
-load_infer(trainee) = load_infer(trainee.name, trainee.get_inference_model(model_training), trainee.params)
+load_infer(training) = load_infer(training.trainee.name, training.trainee.get_inference_model(training.model), training.params)
 function load_infer(name, model, params)
     start = time()
     (path, model_state) = Paths.load_data_params(Paths.db_infer(name), params, "model_state"; latest=true)

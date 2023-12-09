@@ -30,11 +30,16 @@ function calc_xtq(ts, xpirts, ts_price, style, strikes, bids, asks)
     xtrins_bids = OptionUtil.calc_extrin(style, ts_price, strikes, bids)
     xtrins_asks = OptionUtil.calc_extrin(style, ts_price, strikes, asks)
     if !_all(>, xtrins_asks, -0.0001)
-        global kxtrins = (;xtrins_bids, xtrins_asks, args=(ts, xpirts, ts_price, style, strikes, bids, asks))
+        global kxtrins = (;xtrins_bids, xtrins_asks, args=(;ts, xpirts, ts_price, style, strikes, bids, asks))
     end
-    @assert _all(>, xtrins_asks, -0.0001)
-    replace!(x -> max(x, zero(x)), xtrins_bids)
-    xtrins = (xtrins_bids .+ xtrins_asks) ./ (2 * ts_price * sqrt(tex))
+    # TODO: I'm allowing negative xtrins because even asks are negative sometimes and... that might be ok to include.
+    # @assert _all(>, xtrins_asks, -0.0001)
+    # replace!(x -> max(x, zero(x)), xtrins_bids)
+    # xtrins = (xtrins_bids .+ xtrins_asks) ./ (2 * ts_price * sqrt(tex))
+    divid = ts_price * sqrt(tex)
+    xtrins = map(xtrins_bids, xtrins_asks) do bid, ask
+        (ask < 0 ? ask : ( (max(zero(bid), bid) + ask) / 2 )) / divid
+    end
     xs = strikes ./ ts_price .- 1
     ps = fit(xs, xtrins).param
     # global kpoly = (;xs, xtrins, ps)
@@ -47,7 +52,8 @@ end
 #region Standard Api
 function make_tsx(;sym="SPY")
     price_lookup = DataRead.price_lookup()
-    df = mapreduce(vcat, DateUtil.year_months()[1:1]) do (year, month)
+    df = mapreduce(vcat, DateUtil.year_months()[5:6]) do (year, month)
+        println("processing $year $month")
         proc(remove_at_xpirts(DataRead.get_options(year, month; sym)), price_lookup)
     end
     # TODO: put this check back in when data available
@@ -81,6 +87,16 @@ end
 function proc(df, price_lookup)
     gdf = groupby(df, [:ts, :expir, :style])
     df = combine(gdf, [:ts,:expir,:style,:strike,:bid,:ask] => calc_tsx_in_df(price_lookup) => [:xtq, :ret])
+    gdf = groupby(df, [:ts, :expir])
+    df = combine(gdf,
+            [:style, :xtq] => split_style => [:xtq_call, :xtq_put],
+            :ret => first => :ret)
+end
+
+function split_style(s, x)
+    @assert s[1] == -1
+    @assert s[2] == 1
+    (;xtq_call=x[1], xtq_put=x[2])
 end
 
 calc_tsx_in_df(price_lookup) = function(tss, xpirtss, styles, strikes, bids, asks)

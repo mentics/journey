@@ -20,28 +20,34 @@ params_data() = (;
 function make_input(params=params_data())
     # Add xtq
     # TODO: fix age when data is loaded ready
-    df = DataRead.get_tsx(; age=DateUtil.FOREVER2)
+    df_tsx = DataRead.get_tsx(; age=DateUtil.FOREVER2)
 
     # Add duration and temporal
-    transform!(df, [:ts, :expir] => make_dur(params.xpirs_within) => [:closed, :pre, :open, :post, :weekend, :holiday])
-    transform!(df, [:ts] => (ts -> broadcast.(Float32, ModelUtil.to_temporal.(ts))) => [:week_day, :month_day, :quarter_day, :year_day, :hour])
+    transform!(df_tsx, [:ts, :expir] => make_dur(params.xpirs_within) => [:closed, :pre, :open, :post, :weekend, :holiday])
+    transform!(df_tsx, [:ts] => (ts -> broadcast.(Float32, ModelUtil.to_temporal.(ts))) => [:week_day, :month_day, :quarter_day, :year_day, :hour])
 
     # Add hist
     df_hist, params_hist = Paths.load_data_params(Paths.db_encoded(HistShapeData.NAME), DataFrame)
-    @show (df.ts == df_hist.key)
+    rename!(df_hist, :key => :ts)
+    params = merge(params, (;hist=params_hist))
+    df = innerjoin(df_tsx, df_hist; on=:ts)
+    # TODO: should match eventually. so change to assert when ready (except for skip_back, need to deal with that)
+    @show (df.ts == df_hist.ts)
 
     # Bin the returns
     bins = make_bins(params)
     transform!(df, :ret => (r -> searchsortednearest.(Ref(bins), r)) => :y_bin)
-    return df
+
+    # TODO: add temporal info for expiration
+    # TODO: add dividend date information
 
     # cleanup
-    select!(df, :y_bin, Not(:y_bin, :ts, :expiration, :ret, :tex, :extrin, :extrindt, :iv_mean, :logret))
+    select!(df, :y_bin, Not(:y_bin))
 
-    # sort!(df, :ts) TODO
-    @assert issorted(df.ts)
-    @assert allunique(df.ts)
-    @assert size(df, 1) == size(df_hist, 1)
+    @assert issorted(df, [:ts, :expir])
+    @assert allunique(df, [:ts, :expir])
+    @assert size(df, 1) == size(df_tsx, 1) "size(df, 1) $(size(df, 1)) == $(size(df_tsx, 1)) size(df_tsx, 1)"
+    # TODO: assert same size for df and df_hist
 
     # save_data(db_input(NAME), params, df)
     return df

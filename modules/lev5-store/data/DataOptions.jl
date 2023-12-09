@@ -18,13 +18,20 @@ function make_options(year, month; sym="SPY")
     xpirs = filter(xpir -> xpir - date_end <= XPIRS_WITHIN, get_xpirs_for_dates(date_start:date_end))
     @assert issorted(xpirs)
     @assert allunique(xpirs)
-    df = mapreduce(vcat, xpirs) do xpir
-        ThetaData.query_options(date_start, min(xpir, date_end), xpir)
+    # df = mapreduce(vcat, xpirs) do xpir
+    #     ThetaData.query_options(date_start, min(xpir, date_end), xpir)
+    # end
+
+    dfs = map(xpirs) do xpir
+        d = ThetaData.query_options(date_start, min(xpir, date_end), xpir)
+        isnothing(d) && println("WARN: no data for $(year)-$(month) xpir: $(xpir)")
+        return d
     end
+    df = reduce(vcat, filter(!isnothing, dfs))
     # println("Completed acquiring data for ($(year), $(month)) in $(stop - start) seconds")
     sort!(df, [:style, :ts, :expir, :strike])
     @assert allunique(df, [:style, :ts, :expir, :strike])
-    Paths.save_data(DataRead.file_options(year, month; sym), df)
+    # Paths.save_data(DataRead.file_options(year, month; sym), df)
     return df
 end
 

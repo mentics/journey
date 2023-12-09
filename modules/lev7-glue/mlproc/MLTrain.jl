@@ -13,6 +13,13 @@ dev(x) = gpu(x) # gpu(x)
 # TODO: need to save holdout with training model so we keep that when continuing training
 
 #=
+example use:
+trainee = {module}.MLTrain()
+training = MLTrain.setup(trainee)
+MLTrain.train(training)
+=#
+
+#=
 Typical interface/approach:
 structure()
 hypers()

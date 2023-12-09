@@ -20,7 +20,7 @@ encode_version(num, params) = "$(num)-$(Base64.base64encode(hash(params)))"
 
 #region MLTrain Interface
 function MLTrain(params=params_model())
-    df, params_data = load_data_params(db_input(NAME), DataFrame)
+    df, params_data = Paths.load_data_params(Paths.db_input(NAME), DataFrame)
 
     global state = Trainee11(;
         name=NAME,
