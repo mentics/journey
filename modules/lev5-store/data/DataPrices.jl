@@ -38,11 +38,12 @@ end
 
 import Arrow
 function update_prices(;sym="SPY")
+    tss = DataRead.get_ts(;sym)
     # TODO: deal with that thetadata is 15 minute delayed
     df1 = DataRead.load_prices(;sym, age=DateUtil.FOREVER2)
     last_ts = df1.ts[end]
     @show last_ts
-    if now(UTC) - last_ts < Minute(30)
+    if last_ts == tss[end]
         println("Prices already up to date: $(last_ts)")
         return
     end
@@ -52,7 +53,8 @@ function update_prices(;sym="SPY")
             ;sym, age=Minute(15))
     println("$(size(df2,1)) rows to add")
     df = combine_dfs(df1, df2)
-    diff = check_ts(df.ts)
+    diff = symdiff(df.ts, tss)
+    # diff = check_ts(df.ts)
     if !isempty(diff)
         println("ERROR: DataPrices not all ts found. Not saved.")
         return diff

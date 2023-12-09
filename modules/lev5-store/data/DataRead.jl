@@ -7,9 +7,14 @@ import CollUtil:push_all!
 
 export XpirDateDicts, get_xpir_dates, get_xpirs_for_dates, get_prices, get_options
 
+function get_ts(;sym="SPY", age=DateUtil.age_daily())
+    return Paths.load_data(file_ts(;sym), "tss")
+end
+
 function get_xpirts(;sym="SPY", age=DateUtil.age_daily())
     return Paths.load_data(file_xpirts(;sym), "xpirts"; age)
 end
+get_xpirts_set(;sym="SPY", age=DateUtil.age_daily()) = Set(get_xpirts(;sym, age))
 
 struct XpirDateDicts
     xpir_to_date::Dict{Date,Vector{Date}}
@@ -48,20 +53,24 @@ function get_prices_at_xpirs(; sym="SPY", age=DateUtil.age_daily())
 end
 price_xpir_lookup(prices_at_xpirs) = Dict(prices_at_xpirs.expir .=> prices_at_xpirs.price)
 
-#=
-:expir, :style, :strike, :bid, :bid_size, :bid_condition, :ask, :ask_size, :ask_condition
-=#
-function get_options_at_xpirs(; sym="SPY", age=DateUtil.age_daily())
-    return Paths.load_data(file_options_at_xpirs(;sym), DataFrame; age)
+function get_tsx(; sym="SPY", age=DateUtil.age_daily())
+    return Paths.load_data(file_tsx(;sym), DataFrame; age)
 end
-option_xpir_lookup(options_at_xpirs) = function(xpir, style, strike)
-    for row in eachrow(options_at_xpirs)
-        if row.xpir == xpir && row.style == style && row.strike == strike
-            return (;row.price_long, row.price_short)
-        end
-    end
-    return nothing
-end
+
+# #=
+# :expir, :style, :strike, :bid, :bid_size, :bid_condition, :ask, :ask_size, :ask_condition
+# =#
+# function get_options_at_xpirs(; sym="SPY", age=DateUtil.age_daily())
+#     return Paths.load_data(file_options_at_xpirs(;sym), DataFrame; age)
+# end
+# option_xpir_lookup(options_at_xpirs) = function(xpir, style, strike)
+#     for row in eachrow(options_at_xpirs)
+#         if row.xpir == xpir && row.style == style && row.strike == strike
+#             return (;row.price_long, row.price_short)
+#         end
+#     end
+#     return nothing
+# end
 
 #region Local
 file_xpirts(;sym="SPY") = joinpath(Paths.db_incoming(;sym), "expirts-$(sym).jld2")
@@ -77,11 +86,11 @@ file_options(year, month; sym="SPY") = joinpath(Paths.db_incoming("options"; sym
 load_options(year, month; sym, age)::DataFrame = Paths.load_data(file_options(year, month; sym), DataFrame; age)
 
 file_vix() = joinpath(Paths.db("market", "incoming", "tradier", "vix"), "vix-daily.arrow")
-
 file_prices_at_xpirs(;sym="SPY") = joinpath(Paths.db_incoming("prices_at_xpirs"; sym), "prices_at_xpirs.arrow")
-file_options_at_xpirs(;sym="SPY") = joinpath(Paths.db_incoming("options_at_xpirs"; sym), "options_at_xpirs.arrow")
-
 file_tsx(;sym="SPY") = joinpath(Paths.db_incoming("tsx"; sym), "tsx.arrow")
+file_ts(;sym="SPY") = joinpath(Paths.db_incoming("ts"; sym), "ts.arrow")
+
+# file_options_at_xpirs(;sym="SPY") = joinpath(Paths.db_incoming("options_at_xpirs"; sym), "options_at_xpirs.arrow")
 #endregion Local
 
 end

@@ -1,5 +1,9 @@
 module ReturnProbData
+using Dates, DataFrames, SearchSortedNearest
+import DateUtil, Paths
+import DataRead, ModelUtil
 import HistShapeData
+import Calendars as cal
 
 const NAME = replace(string(@__MODULE__), "Data" => "")
 
@@ -7,63 +11,51 @@ const NAME = replace(string(@__MODULE__), "Data" => "")
 params_data() = (;
     weeks_count = 5,
     intraday_period = Minute(30),
+    xpirs_within = Day(40),
+    bins_count = 200,
+    ret_min = -0.15,
+    ret_max = 0.15,
 )
 
 function make_input(params=params_data())
-    df_hist, params_hist = load_data_params(Paths.db_encoded(HistShapeData.NAME), DataFrame)
+    # Add xtq
+    # TODO: fix age when data is loaded ready
+    df = DataRead.get_tsx(; age=DateUtil.FOREVER2)
 
-    bins = bins()
+    # Add duration and temporal
+    transform!(df, [:ts, :expir] => make_dur(params.xpirs_within) => [:closed, :pre, :open, :post, :weekend, :holiday])
+    transform!(df, [:ts] => (ts -> broadcast.(Float32, ModelUtil.to_temporal.(ts))) => [:week_day, :month_day, :quarter_day, :year_day, :hour])
 
-    sort!(df, :ts)
+    # Add hist
+    df_hist, params_hist = Paths.load_data_params(Paths.db_encoded(HistShapeData.NAME), DataFrame)
+    @show (df.ts == df_hist.key)
+
+    # Bin the returns
+    bins = make_bins(params)
+    transform!(df, :ret => (r -> searchsortednearest.(Ref(bins), r)) => :y_bin)
+    return df
+
+    # cleanup
+    select!(df, :y_bin, Not(:y_bin, :ts, :expiration, :ret, :tex, :extrin, :extrindt, :iv_mean, :logret))
+
+    # sort!(df, :ts) TODO
     @assert issorted(df.ts)
     @assert allunique(df.ts)
     @assert size(df, 1) == size(df_hist, 1)
 
-    save_data(db_input(NAME), params, df)
+    # save_data(db_input(NAME), params, df)
     return df
 end
-
-function make_data_input()
-    bins = bins()
-
-    # Restrict to ts's for which we have encoded hist data
-    hist = hm.load_data_encoded()
-    hist_valid_ts = Set(hist.ts)
-
-    df = dat.tsx_df()
-    filter!(:ts => (ts -> ts in hist_valid_ts), df)
-    dropmissing!(df, [:ret, :extrin])
-    len_before = length(df[!,1])
-
-    # TODO: consider including extrin directly in the future
-    transform!(df, [:extrin, :tex] => ((xtrin, tex) -> xtrin ./ sqrt.(tex)) => :vol)
-    # transform!(df, :ret => (r -> Float32.(r .- 1.0)) => :ret)
-    transform!(df, :ret => (r -> searchsortednearest.(Ref(bins), r .- 1)) => :y_bin)
-
-    # Add temporal columns
-    transform!(df, [:ts, :expiration] => ((ts, xpir) -> dur_to_input.(cal.calcDur.(ts, xpir))) => [:closed, :pre, :open, :post, :weekend, :holiday])
-    transform!(df, [:ts] => (ts -> broadcast.(Float32, ModelUtil.to_temporal.(ts))) => [:week_day, :month_day, :quarter_day, :year_day, :hour])
-
-    # Add historical columns
-    dfhist = DataFrame(hist)
-    leftjoin!(df, dfhist; on=:ts)
-
-    select!(df, :y_bin, Not(:y_bin, :ts, :expiration, :ret, :tex, :extrin, :extrindt, :iv_mean, :logret))
-    dropmissing!(df)
-
-    @assert len_before == length(df[!,1]) "len_before == length(df[!,1]): $(len_before) == $(length(df[!,1]))"
-    dat.save(COMBINED_INPUT_PATH, df)
-    return df
-end
-
 #endregion Public
 
 #region Util
-function bins()
-    (;bins_count, ret_min, ret_max) = config()
+function make_bins(params)
+    (;bins_count, ret_min, ret_max) = params
     ModelUtil.make_bins(bins_count, ret_min, ret_max)
 end
-#endregion Util
 
+make_dur(max_days) = (ts, xpir) -> dur_to_input.(cal.calcDur.(ts, xpir), max_days)
+dur_to_input(dur, max_days) = Float32.(([getfield(dur, nam) for nam in propertynames(dur)]) ./ max_days)
+#endregion Util
 
 end

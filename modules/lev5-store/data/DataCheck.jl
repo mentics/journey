@@ -15,28 +15,17 @@ function combine_dfs(dfs...; keycol=:ts)
     return df
 end
 
-function check_ts(tss; ts_to=now(UTC))
-    tss_all = DateUtil.all_bdays_ts(;
-        date_from=DATE_START, ts_to,
-        time_from=Time(9,30), time_to=Time(16,0))
-    # @assert isempty(symdiff(tss, tss_expected))
-
-    diff = symdiff(tss, tss_all)
-    exceptions = missing_allowed()
-    return filter!(diff) do d
-        !(d in exceptions)
-    end
-end
-
-function check_dates(dates; date_to=market_today())
-    dates_all = DateUtil.all_bdays_itr(;
-        date_from=DATE_START, date_to)
-    return symdiff(tss, dates_all)
-end
+# function check_dates(dates; date_to=market_today())
+#     dates_all = DateUtil.all_bdays_itr(;
+#         date_from=DATE_START, date_to)
+#     return symdiff(tss, dates_all)
+# end
 
 function missing_allowed()
     # These might be because day before holiday, short day
     # TODO: could maybe use Calendars MktTime to filter these out
+    # TODO: are any of these on expiration days? If so, somewhere is probably messed up because of it
+    # DataRead.get_xpirts() gives an earlier xpirts time for these dates, so probably ok
     exceptions = ["2020-11-27T19:00:00",
      "2020-11-27T19:30:00",
      "2020-11-27T20:00:00",

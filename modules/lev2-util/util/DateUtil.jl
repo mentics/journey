@@ -208,6 +208,9 @@ daysinquarter(d)::UInt16 = ( q1 = Dates.firstdayofquarter(d) ; (q1 + Dates.Month
 # daysinyear(d)::UInt16 = ( q1 = Dates.firstdayofquarter(d) ; (q1 + Dates.Month(3) - q1).value )
 
 const DEFAULT_DATA_START_DATE = Date(2012,6,1)
+const DEFAULT_MARKET_START_TIME = Time(9, 30)
+const DEFAULT_MARKET_CLOSE_TIME = Time(16,0)
+const DEFAULT_TS_PERIOD = Minute(30)
 
 function year_months(;start_date=DEFAULT_DATA_START_DATE, end_date=market_today())
     [(;year=year(d), month=month(d)) for d in start_date:Month(1):end_date]
@@ -229,7 +232,7 @@ function all_bdays_itr(;date_from=Date(2012,6,1), date_to=market_today())
     return Iterators.filter(d -> Dates.dayofweek(d) <= 5 && isBusDay(d), date_from:Day(1):date_to)
 end
 
-function all_bdays_ts(;date_from=Date(2012,6,1), ts_to=now(UTC), time_from=Time(9, 30), time_to=Time(16,0), period=Minute(30))
+function all_bdays_ts(;date_from=DEFAULT_DATA_START_DATE, ts_to=now(UTC), time_from=DEFAULT_MARKET_START_TIME, time_to=DEFAULT_MARKET_CLOSE_TIME, period=DEFAULT_TS_PERIOD)
     res = DateTime[]
     zts_to = toMarketTZ(ts_to)
     date_to = market_date(zts_to)

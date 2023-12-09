@@ -38,6 +38,7 @@ function calc_xtq(ts, xpirts, ts_price, style, strikes, bids, asks)
     xs = strikes ./ ts_price .- 1
     ps = fit(xs, xtrins).param
     # global kpoly = (;xs, xtrins, ps)
+    # TODO: include multiple points to get some shape and direction
     xtq = model(0.0, ps)
     return xtq
 end
@@ -49,29 +50,30 @@ function make_tsx(;sym="SPY")
     df = mapreduce(vcat, DateUtil.year_months()[1:1]) do (year, month)
         proc(remove_at_xpirts(DataRead.get_options(year, month; sym)), price_lookup)
     end
+    # TODO: put this check back in when data available
+    # @assert DataRead.get_ts() == df.ts
     Paths.save_data(DataRead.file_tsx(;sym), df)
     return df
 end
 
 function update_tsx(;sym="SPY")
-    # DataXpirts.update_xpirts(;sym)
-    # DataPrices.update_prices(;sym)
-
-    # xpirtss = get_xpirtss(;sym)
-    # @assert issorted(xpirtss)
-    # df = DataRead.get_prices_at_xpirs(; sym, age=DateUtil.FOREVER2)
-    # @assert issorted(df.expir)
-    # last_xpirts = df.expir[end]
-    # if xpirtss[end] > last_xpirts
-    #     ind = searchsortedfirst(xpirtss, last_xpirts + Hour(1))
-    #     df_append = proc(xpirtss[ind:end])
-    #     df = vcat(df, df_append)
-    #     Paths.save_data(DataRead.file_prices_at_xpirs(;sym), df; update=true)
-    #     return xpirtss[ind:end]
-    # else
-    #     println("options_at_xpirs already up to date $(last_xpirts)")
-    #     return nothing
-    # end
+    df = DataRead.get_tsx()
+    tss = DataRead.get_ts()
+    if tss[end] > df.ts[end]
+        price_lookup = DataRead.price_lookup()
+        ind = searchsortedfirst(tss, df.ts[end] + Second(5))
+        to_proc = tss[ind:end]
+        yms = DateUtil.year_months.(;start_date=Date(to_proc[1]), end_date=Date(to_proc[end]))
+        df = mapreduce(vcat, yms) do (year, month)
+            df = filter(:ts => (ts -> to_proc[1] <= ts <= ts_proc[end]), DataRead.get_options(year, month; sym))
+            proc(df, price_lookup)
+        end
+        @assert tss == df.ts
+        return to_proc
+    else
+        println("DataTsx already up to date $(df.ts[end]) == tss[end]")
+        touch(DataRead.file_tsx(;sym))
+    end
 end
 #endregion Standard Api
 
@@ -92,7 +94,7 @@ calc_tsx_in_df(price_lookup) = function(tss, xpirtss, styles, strikes, bids, ask
 end
 function calc_tsx(ts, xpirts, ts_price, xpir_price, style, strikes, bids, asks)
     xtq = calc_xtq(ts, xpirts, ts_price, style, strikes, bids, asks)
-    ret = xpir_price / ts_price
+    ret = xpir_price / ts_price - 1
     return (;xtq, ret)
 end
 
