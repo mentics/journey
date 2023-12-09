@@ -45,7 +45,7 @@ function calc_xtq(ts, xpirts, ts_price, style, strikes, bids, asks)
     # global kpoly = (;xs, xtrins, ps)
     # TODO: include multiple points to get some shape and direction
     xtq = model(0.0, ps)
-    return xtq
+    return Float32(xtq)
 end
 #endregion
 

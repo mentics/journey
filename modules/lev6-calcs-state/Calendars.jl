@@ -63,6 +63,7 @@ end
 #     return tex
 # end
 
+calcDur(from::DateTime, to::Date) = calcDur(from, getMarketClose(to))
 function calcDur(from::DateTime, to::DateTime)::MarketDur
     # TODO: make single call that returns date and time for market tz from DateTime
     fromDate = DateUtil.toDateMarket(from)

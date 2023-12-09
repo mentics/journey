@@ -300,5 +300,14 @@ const FOREVER2 = Nanosecond(typemax(Int))
 const DATETIME_BEFORE = DateTime(0)
 
 # latest_ts(ts) = DateUtil.week_prev_ts(ts; time_from=Time(9,30), time_to=Time(16,0))
+const SPY_EX_DATES = Date[]
+function next_ex_date(date)
+    !isempty(SPY_EX_DATES) || append!(SPY_EX_DATES, calc_ex_dates())
+    @assert issorted(SPY_EX_DATES)
+    return SPY_EX_DATES[searchsortedfirst(SPY_EX_DATES, date)]
+end
 
+calc_ex_dates() =
+    filter(x -> (dayofweek(x) == 5) && (dayofweekofmonth(x) == 3) && month(x) in [3,6,9,12],
+            DEFAULT_DATA_START_DATE:Day(1):(today() + Year(1)))
 end

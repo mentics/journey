@@ -17,14 +17,21 @@ params_data() = (;
     ret_max = 0.15,
 )
 
+prefix_sym(sym, pre) = Symbol(string(pre) * string(sym))
+
 function make_input(params=params_data())
     # Add xtq
     # TODO: fix age when data is loaded ready
     df_tsx = DataRead.get_tsx(; age=DateUtil.FOREVER2)
 
-    # Add duration and temporal
-    transform!(df_tsx, [:ts, :expir] => make_dur(params.xpirs_within) => [:closed, :pre, :open, :post, :weekend, :holiday])
-    transform!(df_tsx, [:ts] => (ts -> broadcast.(Float32, ModelUtil.to_temporal.(ts))) => [:week_day, :month_day, :quarter_day, :year_day, :hour])
+    # Add temporal for ts
+    transform!(df_tsx, [:ts] => (ts -> ModelUtil.to_temporal_ts.(ts)) => prefix_sym.([:week_day, :month_day, :quarter_day, :year_day, :hour], :ts_))
+    # temporal for expiration
+    transform!(df_tsx, [:expir] => (xpir -> ModelUtil.to_temporal_date.(Date.(xpir))) => prefix_sym.([:week_day, :month_day, :quarter_day, :year_day], :xpir_))
+    # duration to expiration
+    transform!(df_tsx, [:ts, :expir] => make_dur(params.xpirs_within) => prefix_sym.([:closed, :pre, :open, :post, :weekend, :holiday], :dur_))
+    # duration to dividend
+    transform!(df_tsx, [:ts] => (ts -> dur_to_div.(ts)) => prefix_sym.([:closed, :pre, :open, :post, :weekend, :holiday], :div_dur_))
 
     # Add hist
     df_hist, params_hist = Paths.load_data_params(Paths.db_encoded(HistShapeData.NAME), DataFrame)
@@ -62,6 +69,11 @@ end
 
 make_dur(max_days) = (ts, xpir) -> dur_to_input.(cal.calcDur.(ts, xpir), max_days)
 dur_to_input(dur, max_days) = Float32.(([getfield(dur, nam) for nam in propertynames(dur)]) ./ max_days)
+
+function dur_to_div(ts)
+    # divs are every quarter, so 3 months of days for max days
+    dur_to_input(cal.calcDur(ts, DateUtil.next_ex_date(ts)), Day(3 * 31))
+end
 #endregion Util
 
 end

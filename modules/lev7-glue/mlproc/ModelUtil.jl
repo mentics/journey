@@ -35,17 +35,24 @@ function make_bins(num_bins, left, right)
     return left .+ [span * b for b in 0.0:(1/(num_bins-1)):1.0]
 end
 
-# TODO: consider days until monthly expiration? until dividends?
-# tradierDividends only gives us back since 2014-3-21 for spy
-function to_temporal(ts)
+function to_temporal_ts(ts)
     date = Date(ts)
-    return (
+    return Float32.((
         dayofweek(date) / 7,
         dayofmonth(date) / daysinmonth(date),
         dayofquarter(date) / DateUtil.daysinquarter(date),
         dayofyear(date) / daysinyear(date),
         hour(ts) / 24,
-    )
+    ))
+end
+
+function to_temporal_date(date)
+    return Float32.((
+        dayofweek(date) / 7,
+        dayofmonth(date) / daysinmonth(date),
+        dayofquarter(date) / DateUtil.daysinquarter(date),
+        dayofyear(date) / daysinyear(date),
+    ))
 end
 
 #region Persistence
