@@ -31,7 +31,7 @@ function make_options(year, month; sym="SPY")
     # println("Completed acquiring data for ($(year), $(month)) in $(stop - start) seconds")
     sort!(df, [:style, :ts, :expir, :strike])
     @assert allunique(df, [:style, :ts, :expir, :strike])
-    # Paths.save_data(DataRead.file_options(year, month; sym), df)
+    Paths.save_data(DataRead.file_options(year, month; sym), df)
     return df
 end
 
