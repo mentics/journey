@@ -38,6 +38,7 @@ end
 
 import Arrow
 function update_prices(;sym="SPY")
+    path = DataRead.file_prices(;sym)
     tss = DataRead.get_ts(;sym)
     # TODO: deal with that thetadata is 15 minute delayed
     df1 = DataRead.load_prices(;sym, age=DateUtil.FOREVER2)
@@ -45,6 +46,7 @@ function update_prices(;sym="SPY")
     @show last_ts
     if last_ts == tss[end]
         println("Prices already up to date: $(last_ts)")
+        touch(path)
         return
     end
     df2 = ThetaData.query_prices(
@@ -59,7 +61,7 @@ function update_prices(;sym="SPY")
         println("ERROR: DataPrices not all ts found. Not saved.")
         return diff
     end
-    Paths.save_data(DataRead.file_prices(;sym), df; update=true)
+    Paths.save_data(path, df; update=true)
     return
 end
 #endregion Standard Api

@@ -16,23 +16,22 @@ params_model() = (;
     use_bias = false,
 )
 
-encode_version(num, params) = "$(num)-$(Base64.base64encode(hash(params)))"
-
 #region MLTrain Interface
-function MLTrain(params=params_model())
+function make_trainee(params_m=params_model())
     df, params_data = Paths.load_data_params(Paths.db_input(NAME), DataFrame)
+    params = (;data=params_data, model=params_m)
 
-    global state = Trainee11(;
+    global state = Trainee(;
         name=NAME,
-        version=encode_version(1, params),
-        make_model = () -> make_model(merge(params, params_data)),
+        version=ModelUtil.encode_version(1, params),
+        make_model = () -> make_model(params.model),
         get_inference_model,
         run_train,
         run_infer,
-        prep_data = params_data -> make_data(df, params_data),
+        prep_data = params_train -> make_data(df, params_train),
         get_learning_rate = TrainUtil.learning_rate_linear_decay(), # TrainUtil.lr_cycle_decay(),
         get_loss = calc_loss,
-        params = (;data=params_data, model=params),
+        params,
         mod = @__MODULE__
     )
     return state
@@ -61,7 +60,7 @@ to_draw_yh(yhat, ind) = yhat.vix[1:end,ind]
 function make_data(df, params)
     shuffled = shuffleobs(df) # pre-shuffle so holdout is random
     training, holdout = splitobs(shuffled; at=(1.0 - params.holdout))
-    InputData7(;
+    InputData(;
         all_data = df,
         data_for_epoch = () -> shuffleobs(training),
         prep_input,
@@ -78,11 +77,11 @@ end
 
 function single(df, ind)
     return prep_input(df[ind:ind,:])
-    row = df[ind:ind,:]
-    data = map(eachcol(row)[2:end]) do col
-        reduce(hcat, col)
-    end
-    return prep_input(data)
+    # row = df[ind:ind,:]
+    # data = map(eachcol(row)[2:end]) do col
+    #     reduce(hcat, col)
+    # end
+    # return prep_input(data)
 end
 
 function prep_input(obss)
@@ -177,9 +176,9 @@ function model_decoder(cfg)
 
     blocks1_count = floor(Int, cfg.block_count / 2)
     blocks2_count = cfg.block_count - blocks1_count
-    blocks1 = [SkipConnection(ModelUtil.make_block(cfg, through_width, cfg.hidden_width, cfg.layers_per_block), +) for _ in 1:blocks1_count]
+    blocks1 = [SkipConnection(ModelUtil.make_block(through_width, cfg.hidden_width, cfg.layers_per_block, cfg.activation, cfg.use_bias), +) for _ in 1:blocks1_count]
     # dropout = Dropout(0.1)
-    blocks2 = [SkipConnection(ModelUtil.make_block(cfg, through_width, cfg.hidden_width, cfg.layers_per_block), +) for _ in 1:blocks2_count]
+    blocks2 = [SkipConnection(ModelUtil.make_block(through_width, cfg.hidden_width, cfg.layers_per_block, cfg.activation, cfg.use_bias), +) for _ in 1:blocks2_count]
 
     output_under = Dense(cfg.hidden_width_under => cfg.input_width_under; bias=cfg.use_bias)
     output_vix = Dense(cfg.hidden_width_vix => cfg.input_width_vix; bias=cfg.use_bias)

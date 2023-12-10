@@ -1,11 +1,14 @@
 module DataTsx
 using Dates, DataFrames
+using ThreadPools
 using ThetaData, Paths
 import DateUtil, PricingBase, OptionUtil
-using DataRead, DataXpirts, DataPrices
+using DataConst, DataRead, DataXpirts, DataPrices
 import Calendars as cal
 
 const NTM_COUNT = 8
+
+# TODO: more confirming the curve fitting is doing well. Maybe add asserts for its quality.
 
 #=
 Data modules pattern:
@@ -52,14 +55,40 @@ end
 #region Standard Api
 function make_tsx(;sym="SPY")
     price_lookup = DataRead.price_lookup()
-    df = mapreduce(vcat, DateUtil.year_months()[5:6]) do (year, month)
-        println("processing $year $month")
-        proc(remove_at_xpirts(DataRead.get_options(year, month; sym)), price_lookup)
+
+    names = readdir(dirname(DataRead.file_options(2012, 6)))
+    # [match(r"quotes-SPY-(\d{4})-(\d{2}).arrow", f).captures[1:2] for f in fs]
+    yms = sort!([parse.(Int, match(r"quotes-SPY-(\d{4})-(\d{2}).arrow", name).captures[1:2]) for name in names])
+
+    # df = mapreduce(vcat, DateUtil.year_months()[2:4]) do (year, month)
+    #     println("processing $year $month")
+    #     df = DataRead.get_options(year, month; sym)
+    #     sdf = remove_at_xpirts(filter_within_days(df, DataConst.XPIRS_WITHIN))
+    #     proc(sdf, price_lookup)
+    # end
+
+    # DateUtil.year_months()[2:8]
+    stop = false
+    try
+        dfs = qbmap(yms) do (year, month)
+            !stop || return
+            println("processing $year $month")
+            df = DataRead.get_options(year, month; sym)
+            sdf = remove_at_xpirts(filter_within_days(df, DataConst.XPIRS_WITHIN))
+            proc(sdf, price_lookup)
+        end
+        df = reduce(vcat, dfs)
+        sort!(df, [:ts, :expir])
+        @assert issorted(df, [:ts, :expir])
+        @assert allunique(df, [:ts, :expir])
+
+        # TODO: put this check back in when data available
+        # @assert DataRead.get_ts() == df.ts
+        Paths.save_data(DataRead.file_tsx(;sym), df)
+        return df
+    finally
+        stop = true
     end
-    # TODO: put this check back in when data available
-    # @assert DataRead.get_ts() == df.ts
-    Paths.save_data(DataRead.file_tsx(;sym), df)
-    return df
 end
 
 function update_tsx(;sym="SPY")
@@ -85,12 +114,13 @@ end
 
 #region Local
 function proc(df, price_lookup)
+    threads = false
     gdf = groupby(df, [:ts, :expir, :style])
-    df = combine(gdf, [:ts,:expir,:style,:strike,:bid,:ask] => calc_tsx_in_df(price_lookup) => [:xtq, :ret])
+    df = combine(gdf, [:ts,:expir,:style,:strike,:bid,:ask] => calc_tsx_in_df(price_lookup) => [:xtq, :ret]; threads)
     gdf = groupby(df, [:ts, :expir])
     df = combine(gdf,
             [:style, :xtq] => split_style => [:xtq_call, :xtq_put],
-            :ret => first => :ret)
+            :ret => first => :ret; threads)
 end
 
 function split_style(s, x)
@@ -133,7 +163,9 @@ function _all(f, v, args...)
     return true
 end
 
-remove_at_xpirts(df) = filter([:ts,:expir] => ((ts, xpirts) -> ts != xpirts), df)
+remove_at_xpirts(df) = filter([:ts,:expir] => ((ts, xpirts) -> ts != xpirts), df; view=true)
+filter_within_days(df, within_days) = filter([:ts, :expir] => is_within_days(within_days), df; view=true)
+is_within_days(within_days) = (ts, xpir) -> xpir - ts <= within_days
 
 import LsqFit
 function model(x, p)

@@ -20,13 +20,15 @@ function (m::SplitLayer)(x)
     )
 end
 
-function make_block(cfg, through_width, hidden_width, num_layers)
+encode_version(num, params) = "$(num)-$(Paths.params_hash(params)))"
+
+function make_block(through_width, hidden_width, num_layers, activation, bias=false)
     layers = Dense[]
-    push!(layers, Dense(through_width => hidden_width, cfg.activation; bias=false))
+    push!(layers, Dense(through_width => hidden_width, activation; bias))
     for _ in 1:(num_layers-2)
-        push!(layers, Dense(hidden_width => hidden_width, cfg.activation; bias=false))
+        push!(layers, Dense(hidden_width => hidden_width, activation; bias))
     end
-    push!(layers, Dense(hidden_width => through_width, cfg.activation; bias=false))
+    push!(layers, Dense(hidden_width => through_width, activation; bias))
     return Chain(layers)
 end
 

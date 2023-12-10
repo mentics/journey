@@ -34,8 +34,8 @@ make_opt(type instance) # default is Lion
 # function make_loss_func end
 # make_opt(learning_rate_func, loss_untrained) = AdamW(learning_rate_func(0, 0f0, loss_untrained))
 
-export InputData7
-@kwdef struct InputData7
+export InputData
+@kwdef struct InputData
     all_data
     data_for_epoch
     prep_input
@@ -44,8 +44,8 @@ export InputData7
     single
 end
 
-export Trainee11
-@kwdef struct Trainee11
+export Trainee
+@kwdef struct Trainee
     name
     version
     make_model
@@ -59,8 +59,8 @@ export Trainee11
     mod
 end
 
-@kwdef struct Training13
-    trainee::Trainee11
+@kwdef struct Training
+    trainee::Trainee
     model
     opt
     opt_state
@@ -76,7 +76,7 @@ params_train() = (;
     batch_size = 512,
 )
 
-function setup(trainee::Trainee11, params=params_train())
+function setup(trainee::Trainee, params=params_train())
     Random.seed!(Random.default_rng(), params.rng_seed)
 
     model = trainee.make_model() |> dev
@@ -90,7 +90,7 @@ function setup(trainee::Trainee11, params=params_train())
     metrics[:loss_untrained] = calc_base_loss(model, trainee.get_loss, data, params.batch_size)
     println("Initial loss: $(metrics[:loss_untrained])")
 
-    training = Training13(;
+    training = Training(;
         trainee,
         model,
         opt,
@@ -102,7 +102,7 @@ function setup(trainee::Trainee11, params=params_train())
     return training
 end
 
-function train(training::Training13; epochs=1000)
+function train(training::Training; epochs=1000)
     Random.seed!(Random.default_rng(), training.params.train.rng_seed)
     println("Training beginning...")
     trainee = training.trainee
@@ -154,6 +154,7 @@ function train(training::Training13; epochs=1000)
         push!(epoch_losses, loss_epoch)
 
         println("Epoch $(epoch) - Average loss $(loss_epoch) which is $(loss_epoch / loss_prev) * loss_prev")
+        loss_prev = loss_epoch
 
         check_holdout(model, trainee, data, params.batch_size)
 
@@ -266,7 +267,7 @@ end
 # TODO: maybe in different module
 using DataFrames
 using Paths
-function save_inferred(trainee::Trainee11)
+function save_inferred(trainee::Trainee)
     model = trainee.get_inference_model(trainee.make_model() |> dev)
     ModelUtil.load_infer(trainee.name, model, trainee.params)
     println("Model has param count: ", sum(length, Flux.params(model)))

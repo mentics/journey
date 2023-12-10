@@ -1,7 +1,7 @@
 module ReturnProbData
 using Dates, DataFrames, SearchSortedNearest
 import DateUtil, Paths
-import DataRead, ModelUtil
+import DataConst, DataRead, ModelUtil
 import HistShapeData
 import Calendars as cal
 
@@ -9,15 +9,13 @@ const NAME = replace(string(@__MODULE__), "Data" => "")
 
 #region Public
 params_data() = (;
-    weeks_count = 5,
-    intraday_period = Minute(30),
-    xpirs_within = Day(40),
+    # weeks_count = 5,
+    # intraday_period = Minute(30),
+    xpirs_within = DataConst.XPIRS_WITHIN,
     bins_count = 200,
     ret_min = -0.15,
     ret_max = 0.15,
 )
-
-prefix_sym(sym, pre) = Symbol(string(pre) * string(sym))
 
 function make_input(params=params_data())
     # Add xtq
@@ -29,7 +27,7 @@ function make_input(params=params_data())
     # temporal for expiration
     transform!(df_tsx, [:expir] => (xpir -> ModelUtil.to_temporal_date.(Date.(xpir))) => prefix_sym.([:week_day, :month_day, :quarter_day, :year_day], :xpir_))
     # duration to expiration
-    transform!(df_tsx, [:ts, :expir] => make_dur(params.xpirs_within) => prefix_sym.([:closed, :pre, :open, :post, :weekend, :holiday], :dur_))
+    transform!(df_tsx, [:ts, :expir] => make_dur(params.xpirs_within) => prefix_sym.([:closed, :pre, :open, :post, :weekend, :holiday], :xpir_dur_))
     # duration to dividend
     transform!(df_tsx, [:ts] => (ts -> dur_to_div.(ts)) => prefix_sym.([:closed, :pre, :open, :post, :weekend, :holiday], :div_dur_))
 
@@ -45,18 +43,15 @@ function make_input(params=params_data())
     bins = make_bins(params)
     transform!(df, :ret => (r -> searchsortednearest.(Ref(bins), r)) => :y_bin)
 
-    # TODO: add temporal info for expiration
-    # TODO: add dividend date information
-
     # cleanup
-    select!(df, :y_bin, Not(:y_bin))
+    select!(df, :ts, :expir, :y_bin, Not([:ts, :expir, :y_bin, :ret]))
 
     @assert issorted(df, [:ts, :expir])
     @assert allunique(df, [:ts, :expir])
     @assert size(df, 1) == size(df_tsx, 1) "size(df, 1) $(size(df, 1)) == $(size(df_tsx, 1)) size(df_tsx, 1)"
     # TODO: assert same size for df and df_hist
 
-    # save_data(db_input(NAME), params, df)
+    Paths.save_data_params(Paths.db_input(NAME), params, df)
     return df
 end
 #endregion Public
@@ -74,6 +69,8 @@ function dur_to_div(ts)
     # divs are every quarter, so 3 months of days for max days
     dur_to_input(cal.calcDur(ts, DateUtil.next_ex_date(ts)), Day(3 * 31))
 end
+
+prefix_sym(sym, pre) = Symbol(string(pre) * string(sym))
 #endregion Util
 
 end
