@@ -281,7 +281,7 @@ end
 #endregion Local
 
 #region ChainsToOq
-function oq_post(yms=make_yms())
+function oq_post(yms=DateUtil.year_months())
     ThreadUtil.loop(yms) do (y, m)
         df = oqs_pre_df(y, m)
         transform!(df, [:strike, :expiration] => calc_xpir_price => [:call_xpir_price_long, :call_xpir_price_short, :put_xpir_price_long, :put_xpir_price_short])
@@ -290,7 +290,7 @@ function oq_post(yms=make_yms())
     end
 end
 
-function chains_to_oq_pre(yms=make_yms())
+function chains_to_oq_pre(yms=DateUtil.year_months())
     ThreadUtil.loop(yms) do (y, m)
         df = proc_oq(y, m)
         Arrow.write(path_oqs_pre(y, m), df)
@@ -457,7 +457,7 @@ function calc_vol(curp::Real, tex::Real, oqs, ts)
     return calc_vol(extrindt)
 end
 
-function chains_to_tsx(yms=make_yms())::Nothing
+function chains_to_tsx(yms=DateUtil.year_months())::Nothing
     @atomic negative_extrin_count2.value = 0
     tsindex = ts_indexed()
 
@@ -796,7 +796,7 @@ end
 #endregion
 
 #region ChainsToXpir
-function chains_to_xpirts(yms=make_yms())
+function chains_to_xpirts(yms=DateUtil.year_months())
     thr_xpirtss = [Vector{DateTime}() for _ in 1:nthreads()]
     ThreadUtil.loop(yms) do (y, m)
         thid = Threads.threadid()
@@ -855,13 +855,7 @@ end
 #endregion
 
 #region Misc
-function make_yms()
-    return sort!(filter!(vec([(y, m) for y in 2010:2023, m in 1:12])) do (y, m)
-        y != 2023 || m <= 6
-    end)
-end
-
-function combine_dfs(f_load, sort_check, path=nothing; yms=make_yms())
+function combine_dfs(f_load, sort_check, path=nothing; yms=DateUtil.year_months())
     dfs = Vector{DataFrame}(undef, length(yms))
     i = 0
     for (y, m) in yms

@@ -7,6 +7,8 @@ import DataXpirs:get_xpirs_for_dates
 
 using DataConst, DataRead, DataCheck
 
+# TODO: Not a bday: 2019-02-02
+
 #region Standard API
 function make_options(year, month; sym="SPY")
     date_start = Date(year, month, 1)

@@ -75,7 +75,7 @@ end
 
 # Can call on input batch after prep_input
 function get_input_keys(batch)
-    return batch.ts, batch.expir
+    return batch.keys
 end
 
 function single(df, ind, params)
@@ -90,20 +90,26 @@ end
 function prep_input(obss, params)
     # dataframe of batch_size rows of same columns as input data
     # need to make matrices that can be pushed to gpu and used in model
+    keys = collect(zip(obss.ts, obss.expir))
     x = permutedims(Matrix(select(obss, Not([:ts, :expir, :y_bin]))))
     y = Flux.onehotbatch(obss.y_bin, 1:params.data.bins_count)
-    return (;x, y)
+    return (;keys, x, y)
 end
 #endregion Data
 
 #region Run
 function calc_loss(model, batch)
     yhat = run_train(model, batch.x)
-    return Flux.Losses.logitcrossentropy(yhat, batch.y)
+    # return Flux.Losses.logitcrossentropy(yhat, batch.y)
+    return Flux.Losses.crossentropy(yhat, batch.y)
 end
 
 function run_train(model, batchx)
-    return model(batchx)
+    yhat = model(batchx)
+    yhat = relu(yhat)
+    s = sum(yhat)
+    yhat = yhat ./ s
+    return yhat
 end
 
 run_infer(model, batchx) = run_train(model, batchx)
@@ -130,5 +136,27 @@ function get_inference_model(model)
 end
 # TODO: function make_inference_model()
 #endregion Model
+
+#region Check
+# function check_live(training)
+    # training.data.single()
+# end
+function check_load(ind=1)
+    df, params = Paths.load_data_params(Paths.db_output(rpm.NAME), DataFrame)
+    check(df, ind)
+end
+import DrawUtil
+function check(df, ind=1)
+    data = Vector(select(df, Not(:key))[ind,:])
+    replace!(x -> x < 0 ? 0f0 : x, data)
+    # return data
+    data ./= sum(data)
+    # @show count(x -> x > 0, data)
+    key = df.key[ind]
+    @show key
+    # DrawUtil.draw(:barplot, softmax(data))
+    DrawUtil.draw(:barplot, data)
+end
+#endregion Check
 
 end

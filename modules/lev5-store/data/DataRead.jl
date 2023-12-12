@@ -48,8 +48,8 @@ function get_options_yms()
     # [match(r"quotes-SPY-(\d{4})-(\d{2}).arrow", f).captures[1:2] for f in fs]
     avail = [(;year=y, month=m) for (y, m) in sort!([parse.(Int, match(r"quotes-SPY-(\d{4})-(\d{2}).arrow", name).captures[1:2]) for name in names])]
     all = DateUtil.year_months()
-    return symdiff(all, avail)
-    # return (;all, avail)
+    diff = symdiff(all, avail)
+    return (;all, avail, diff)
 end
 
 function get_vix(;age=DateUtil.age_daily())

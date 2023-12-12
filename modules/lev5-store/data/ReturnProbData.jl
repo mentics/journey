@@ -32,7 +32,7 @@ function make_input(params=params_data())
     transform!(df_tsx, [:ts] => (ts -> dur_to_div.(ts)) => prefix_sym.([:closed, :pre, :open, :post, :weekend, :holiday], :div_dur_))
 
     # Add hist
-    df_hist, params_hist = Paths.load_data_params(Paths.db_encoded(HistShapeData.NAME), DataFrame)
+    df_hist, params_hist = Paths.load_data_params(Paths.db_output(HistShapeData.NAME), DataFrame)
     rename!(df_hist, :key => :ts)
     params = merge(params, (;hist=params_hist))
     df = innerjoin(df_tsx, df_hist; on=:ts)

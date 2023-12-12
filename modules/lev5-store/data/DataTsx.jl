@@ -27,15 +27,20 @@ function calc_xtqs(ts, xpirts, ts_price, style, strikes, bids, asks)
     # inds = first(sortperm(strikes; by=x -> abs(x - ts_price)), NTM_COUNT3)
     @assert issorted(strikes)
     mid = searchsortedlast(strikes, ts_price)
-    inds = (mid - NTM_RADIUS + 1):(mid + NTM_RADIUS)
+    radius = min(NTM_RADIUS, lastindex(strikes) - mid)
+    if radius <= 2
+        global kargs = (;ts, xpirts, ts_price, style, strikes, bids, asks)
+        error("too few strikes")
+    end
+    inds = (mid - radius + 1):(mid + radius)
     strikes = strikes[inds]
     # @show ts_price inds strikes
     bids = bids[inds]
     asks = asks[inds]
     p = sortperm(strikes)
     strikes = strikes[p]
-    @assert strikes[NTM_COUNT3 ÷ 2] <= ts_price
-    @assert strikes[NTM_COUNT3 ÷ 2 + 1] >= ts_price
+    @assert strikes[radius] <= ts_price
+    @assert strikes[radius+1] >= ts_price
     bids = bids[p]
     asks = asks[p]
     # xtrins = OptionUtil.calc_extrin(style, ts_price, strikes, bids, asks)
@@ -54,13 +59,21 @@ function calc_xtqs(ts, xpirts, ts_price, style, strikes, bids, asks)
     end
     xs = Float64.(strikes ./ ts_price .- 1) # for fitting precision
     max_y = 2 * maximum(xtrins)
+
+    if !issorted(xtrins[1:radius])
+        println("WARN: bad data left for $(ts): $(xtrins)")
+    end
+    if !issorted(xtrins[(radius+1):end]; rev=true)
+        println("WARN: bad data right for $(ts): $(xtrins)")
+    end
+
     xtqs = fit_sides(xs, xtrins, style, max_y)
 
-    if style == 1 || !_all(x -> -0.001 < x < max_y, xtqs) || maximum(xtqs) != xtqs[length(xtqs) ÷ 2 + 1]
-        global kxtq = (;divid, xtrins, xs, xtqs, max_y, xtrins_bids, xtrins_asks, args=(ts, xpirts, ts_price, style, strikes, bids, asks))
+    if !_all(x -> -0.001 < x < max_y, xtqs) || maximum(xtqs) != xtqs[length(xtqs) ÷ 2 + 1]
+        global kxtq = (;divid, xtrins, xs, xtqs, max_y, xtrins_bids, xtrins_asks, args=(;ts, xpirts, ts_price, style, strikes, bids, asks))
         error("xtq out of range: $(xtqs)")
     end
-    global kxtq = (;divid, xtrins, xs, xtqs, max_y, xtrins_bids, xtrins_asks, args=(ts, xpirts, ts_price, style, strikes, bids, asks))
+    global kxtq = (;divid, xtrins, xs, xtqs, max_y, xtrins_bids, xtrins_asks, args=(;ts, xpirts, ts_price, style, strikes, bids, asks))
     return Float32.(xtqs)
 end
 #endregion
@@ -69,10 +82,8 @@ end
 function make_tsx(;sym="SPY")
     price_lookup = DataRead.price_lookup()
 
-    names = readdir(dirname(DataRead.file_options(2012, 6)))
-    # [match(r"quotes-SPY-(\d{4})-(\d{2}).arrow", f).captures[1:2] for f in fs]
-    yms = sort!([parse.(Int, match(r"quotes-SPY-(\d{4})-(\d{2}).arrow", name).captures[1:2]) for name in names])
-    # TODO: use this opportunity to confirm this matches all months from start to now
+    (;diff) = DataRead.get_options_yms()
+    yms = diff
 
     # df = mapreduce(vcat, DateUtil.year_months()[2:4]) do (year, month)
     #     println("processing $year $month")
@@ -186,28 +197,60 @@ filter_all(within_days) = function(ts, xpirts)
 end
 
 function fit_sides(xs::Vector{Float64}, ys::Vector{Float64}, style, max_y)
-    mid = (NTM_COUNT3 ÷ 2)
-    # mid_inds = mid:(mid+1)
+    mid = length(xs) ÷ 2
     mid_inds = (mid-1):(mid+2)
+    xs_mid = xs[mid_inds]
+    @assert xs_mid[2] <= 0
+    @assert xs_mid[3] >= 0
+    ys_mid = ys[mid_inds]
+
+    # mid_inds = (mid-1):(mid+2)
+
     # mid_ps = LsqFit.curve_fit(vertex_model, xs[mid_inds], ys[mid_inds], [0.00001,1000.0]; lower=[0.0,0.0], upper=[max_y, Inf]).param
     # mid_ps = fit(vertex_model, xs[mid_inds], ys[mid_inds], max_y)
-    ys_mid = ys[mid_inds]
-    ys_mid[1] = mean(ys[1:(mid-2)])
-    ys_mid[end] = mean(ys[(mid+2):end])
-    # @show ys_mid
-    @assert ys_mid[end] < ys_mid[end-1]
-    @assert ys[1] < ys[2]
-    mid_ps = fit_vm(xs[mid_inds], ys_mid, max_y)
-    yatz = vertex_model(0.0, mid_ps)
-    if yatz <= maximum(ys)
-        global kfit_sides = (;mid, mid_inds, ys_mid, mid_ps, yatz, args=(;xs, ys, style, max_y))
+
+    # ys_mid = ys[mid_inds]
+    # ys_mid[1] = mean(ys[1:(mid-2)])
+    # ys_mid[end] = mean(ys[(mid+2):end])
+    # # @show ys_mid
+    # @assert ys_mid[end] < ys_mid[end-1]
+    # @assert ys[1] < ys[2]
+
+    # x1 = xs[2]
+    # x2 = xs[3]
+    # y1 = ys[2]
+    # y2 = ys[3]
+    # (;yatz, a, b) = findab(xs[mid_inds]..., ys[mid_inds]...)
+    yatz = find_yatz(xs_mid, ys_mid)
+
+    # mid_ps = fit_vm(xs[mid_inds], ys_mid, max_y)
+    # yatz = vertex_model(0.0, mid_ps)
+
+
+    # if yatz <= maximum(ys)
+    #     global kfit_sides = (;mid, mid_inds, ys_mid, mid_ps, yatz, args=(;xs, ys, style, max_y))
+    # end
+    # @show mid_ps yatz
+    # @assert mid_ps[1] > maximum(ys_mid)
+
+    if yatz < maximum(ys)
+        global kfit_sides = (;mid, mid_inds, xs_mid, ys_mid, yatz, args=(;xs, ys, style, max_y))
+        # TODO: don't do this workaround
+        println("WARN: yatz too low $(yatz) $(maximum(ys))")
+        yatz = maximum(ys)
     end
-    @show mid_ps yatz
-    @assert mid_ps[1] > maximum(ys_mid)
-    @assert yatz > maximum(ys)
-    xtqs = insert!(copy(ys), mid+1, yatz)
+    if yatz > 1.4 * maximum(ys)
+        global kfit_sides = (;mid, mid_inds, xs_mid, ys_mid, yatz, args=(;xs, ys, style, max_y))
+        # TODO: don't do this workaround
+        println("WARN: yatz too high $(yatz) $(maximum(ys))")
+        yatz = 1.4 * maximum(ys)
+    end
+
+    @assert yatz >= maximum(ys)
+    @assert yatz <= 1.4 * maximum(ys)
+    # xtqs = insert!(copy(ys), mid+1, yatz)
     # @show xtqs
-    return xtqs
+    return [ys_mid[2], yatz, ys_mid[3]]
 
     sm = side_model(yatz)
     if style == -1
@@ -329,8 +372,187 @@ b = -j^2 / (log(u/a))
 
 v = a * e^(-(-j^2 / (log(u/a))) * k^2)
 
+===========================
+
+Find a and b such that
+y = a * e^(-b * x^2)
+passes through x1, y1 and x2, y2.
+Two equations and two unknowns:
+y1 = a * e^(-b * x1^2)
+y2 = a * e^(-b * x2^2)
+1) Solve for a in the first equation
+a = y1 / e^(-b * x1^2)
+2) Substitute for a in the second equation
+y2 = (y1 / e^(-b * x1^2)) * e^(-b * x2^2)
+and solve for b
+n = (m / e^(-b * j^2)) * e^(-b * k^2)
+n = m e^(b (j^2 - k^2))
+log(n) - log(m) = b * (j^2 - k^2)
+b = log(n/m) / (j^2 - k^2)
+??? b = log(m/n) / (k^2 - j^2)
+3) enter actuals for b value:
+b = log(y2/y1) / (x1^2 - x2^2)
+b = log(0.000510909854206082 / 0.0005074596441491433) / ((-0.0010197162628173828)^2 - 0.000868678092956543^2)
+b = 23757.044035799776
+4) Use that value for b in original equation with both points, solve for a, and make sure they both match
+a = y1 / e^(-b * x1^2)
+a = y2 / e^(-b * x2^2)
+
+The problem is that the closer the y's are together, it tries to make a flat line which is not what we want.
+=#
+
+# function findab(x1, x2, y1, y2)
+#     b = log(y2/y1) / (x1^2 - x2^2)
+#     @assert b > 0
+#     a = y1 / exp(-b * x1^2)
+#     a2 = y2 / exp(-b * x2^2)
+#     @assert a ≈ a2
+#     yatz = a
+#     return (;yatz, a, b)
+# end
+
+# import DrawUtil:draw,draw!
+# function checkab(kf)
+#     x1, x2 = kf.xs_mid
+#     y1, y2 = kf.ys_mid
+#     b = log(y2/y1) / (x1^2 - x2^2)
+#     if b < 0 && abs(1 - y2 / y1) < 1e-4
+#         b2 = abs(1 / (x1^2 - x2^2))
+#         @show b2
+#     else
+#         b2 = -b
+#     end
+#     # b2 = log(y2/y1) / (x1^2 - x2^2)
+#     # @assert b > 0
+#     a = y1 / exp(-b * x1^2)
+#     a2 = y2 / exp(-b2 * x2^2)
+#     # a3 = y2 / exp(b * x2^2)
+#     # @assert a ≈ a2
+#     f = x -> a * exp(-b * x^2)
+#     f2 = x -> a2 * exp(-b2 * x^2)
+
+#     axs = (2*x1):0.00001:(2*x2)
+#     draw(:vlines, 0.0)
+#     draw!(:scatter, kf.xs_mid, kf.ys_mid; label="points")
+#     draw!(:lines, axs, [f(x) for x in axs]; label="fit")
+#     draw!(:lines, axs, [f2(x) for x in axs]; label="-fit")
+#     yatz = a
+#     return (;yatz, a, b)
+# end
+
+#=
+slopes
+y = a * e^(-b * x^2)
+y = a * e^(-b * x^2)
+dy/dx = -2 * a * b * x * e^(-b * x^2)
+m1 = -2 * a * b * x1 * e^(-b * x1^2)
+m2 = -2 * a * b * x2 * e^(-b * x2^2)
+m = -2 * a * b * j * e^(-b * j^2)
+n = -2 * a * b * k * e^(-b * k^2)
+a = -(m e^(b j^2))/(2 b j) and b j!=0
+n = -2 * (-(m e^(b j^2))/(2 b j)) * b * k * e^(-b * k^2)
+n = (k m e^(b (j^2 - k^2)))/j
+b = log((j n)/(k m))/(j^2 - k^2)
+a1 = -(m e^(b j^2))/(2 b j)
+a2 = -(n e^(b k^2))/(2 b k)
+--------
+
+It won't go through the points and the points aren't symmetrical anyway, but the function is.
+=#
+
+# function findab(xs, ys)
+#     dy1 = (ys[2] - ys[1]) / (xs[2] - xs[1])
+#     dy2 = (ys[4] - ys[3]) / (xs[4] - xs[3])
+#     x1 = xs[2]
+#     x2 = xs[3]
+#     b = log((x1 * dy2)/(x2 * dy1))/(x1^2 - x2^2)
+#     a1 = -(dy1 * exp(b * x1^2))/(2 * b * x1)
+#     a2 = -(dy2 * exp(b * x2^2))/(2 * b * x2)
+#     @show b a1 a2
+#     @assert a1 ≈ a2
+#     return (;a=a1, b)
+# end
+
+# import DrawUtil:draw,draw!
+# function checkab(kf)
+#     mi = 3:6
+#     xs = kf.args.xs[mi]
+#     ys = kf.args.ys[mi]
+#     (;a, b) = findab(xs, ys)
+#     f = x -> a * exp(-b * x^2)
+
+#     axs = (2*xs[1]):0.00001:(2*xs[end])
+#     draw(:vlines, 0.0)
+#     draw!(:scatter, xs, ys; label="points")
+#     draw!(:lines, axs, [f(x) for x in axs]; label="fit")
+#     yatz = a
+#     return (;yatz, a, b)
+# end
+
+#=
+fit lines to the style side
 
 =#
+
+# function fit_line(xs, ys)
+#     X = [xs ones(length(xs))]
+#     m, b = X \ ys
+#     return (;m, b)
+# end
+
+# function fit_lines(xs, ys)
+#     # puts use left, calls use right
+#     # if style == -1
+
+#     (mleft, bleft) = fit_line(xs[1:4], ys[1:4])
+#     (mright, bright) = fit_line(xs[5:8], ys[5:8])
+#     return (;mleft, bleft, mright, bright)
+# end
+
+# function find_yatz(xs, ys, style)
+#     (;mleft, bleft, mright, bright) = fit_lines(xs, ys)
+#     # return style == 1 ? bright : bleft
+#     return max(bleft, bright)
+# end
+
+# import DrawUtil:draw,draw!
+# function check_yatz(kf)
+#     xs = kf.args.xs
+#     ys = kf.args.ys
+#     (;mleft, bleft, mright, bright) = fit_lines(xs, ys)
+#     axs = (2*xs[1]):0.00001:(2*xs[end])
+#     draw(:vlines, 0.0)
+#     draw!(:scatter, xs, ys; label="points")
+#     draw!(:lines, axs, [mleft*x + bleft for x in axs]; label="left")
+#     draw!(:lines, axs, [mright*x + bright for x in axs]; label="right")
+#     yatz = a
+#     return (;yatz, a, b)
+# end
+
+function find_yatz(xs_mid, ys_mid)
+    if xs_mid[2] ≈ 0.0
+        return ys_mid[2]
+    elseif xs_mid[3] ≈ 0.0
+        return ys_mid[3]
+    end
+    mleft = (ys_mid[2] - ys_mid[1]) / (xs_mid[2] - xs_mid[1])
+    mright = (ys_mid[4] - ys_mid[3]) / (xs_mid[4] - xs_mid[3])
+    mpos = (mleft - mright) / 2
+    ind = ys_mid[3] > ys_mid[2] ? 3 : 2
+    yatz = ys_mid[ind] + mpos * abs(xs_mid[ind])
+    return yatz
+end
+
+import DrawUtil:draw,draw!
+function check_yatz(kf)
+    xs = kf.args.xs
+    ys = kf.args.ys
+    yatz = find_yatz(xs, ys)
+    draw(:vlines, 0.0)
+    draw!(:scatter, xs, ys; label="points")
+    draw!(:scatter, 0.0, yatz; label="yatz")
+    return yatz
+end
 
 #region Old Fit
 # m(x, ps) = ps[1] * exp(-ps[2] * x^2)

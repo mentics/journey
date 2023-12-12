@@ -124,11 +124,11 @@ function train(training::Training; epochs=1000)
     for epoch in 1:epochs
         loss_epoch_sum = 0.0
         batches_epoch_count = 0
+        ifold = 0
         for (train_data, cv_data) in kfolds(data.data_for_epoch(); k=params.kfolds)
+            ifold += 1
             batches_fold_count = 0
-            ifold = 0
             for obss in eachobs(train_data, batchsize=params.batch_size)
-                ifold += 1
                 batch = data.prep_input(obss) |> dev
                 loss, grads = Flux.withgradient(trainee.get_loss, model, batch)
                 loss_epoch_sum += loss
@@ -258,30 +258,47 @@ end
 # TODO: maybe in different module
 using DataFrames
 using Paths
-function save_inferred(trainee::Trainee)
+function save_output(trainee::Trainee; load=false)
     model = trainee.get_inference_model(trainee.make_model() |> dev)
-    ModelUtil.load_infer(trainee.name, model, trainee.params)
-    println("Model has param count: ", sum(length, Flux.params(model)))
+    if load
+        ModelUtil.load_infer(trainee.name, model, trainee.params)
+        println("Model has param count: ", sum(length, Flux.params(model)))
+    end
 
     pt = params_train()
     data = trainee.prep_data(pt)
     df = mapreduce(vcat, eachobs(data.all_data, batchsize=pt.batch_size)) do obss
         batch = data.prep_input(obss) |> dev
-        inferred = trainee.run_infer(model, batch) |> cpu
+        output = trainee.run_infer(model, batch.x) |> cpu
+        df = DataFrame(permutedims(output), :auto) # rows to cols
+
         keys = data.get_input_keys(batch) |> cpu
-        @assert ndims(keys) == 2 # can add support for higher dims if need it someday
-        @assert size(keys)[1] == 1
-        df = DataFrame(permutedims(inferred, (2,1)), :auto)
-        insertcols!(df, 1, :key => vec(keys))
+        insertcols!(df, 1, :key => keys)
         return df
+
+        # keys = data.get_input_keys(batch) |> cpu
+        # if keys isa AbstractDataFrame
+        #     for (name, col) in Iterators.reverse(pairs(eachcol(keys)))
+        #         insertcols!(df, 1, name => col)
+        #     end
+        # else
+        #     @assert keys isa AbstractVector
+        #     insertcols!(df, 1, :key => keys)
+        # end
+        # return df
     end
 
     @assert issorted(df.key)
     @assert allunique(df.key)
     @assert size(data.all_data, 1) == size(df, 1)
-    path = Paths.save_data_params(Paths.db_encoded(trainee.name), trainee.params, df)
-    print("Saved encoded data to $(path)")
+    path = Paths.save_data_params(Paths.db_output(trainee.name), trainee.params, df)
+    print("Saved output data to $(path)")
     return df
+end
+
+# TODO: put this in data read or someplace like that
+function load_rpm_output(model_name)
+    Paths.load_data_params(Paths.db_output(model_name), DataFrame)
 end
 #endregion Infer
 
