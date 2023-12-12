@@ -11,8 +11,8 @@ using DataConst, DataRead, DataCheck
 function make_options(year, month; sym="SPY")
     date_start = Date(year, month, 1)
     date_end = Dates.lastdayofmonth(date_start)
-    # xpirs = get_xpirs_for_dates(date_start:date_end)
-    xpirs = filter(xpir -> xpir - date_end <= DataConst.XPIRS_WITHIN, get_xpirs_for_dates(date_start:date_end))
+    xpirs = DataRead.get_xpirs_for_dates(date_start:date_end; age=(now(UTC) - date_end))
+    filter!(xpir -> xpir - date_end <= DataConst.XPIRS_WITHIN, xpirs)
     @assert issorted(xpirs)
     @assert allunique(xpirs)
     # df = mapreduce(vcat, xpirs) do xpir

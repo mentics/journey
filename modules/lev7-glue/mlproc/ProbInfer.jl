@@ -1,11 +1,11 @@
 module ProbInfer
 
+import HistShapeModel
+import ReturnProbModel
+
 #region API
-struct Input
-
-end
-
 function make_infer()
+    HistShapeModel.MLTrain
     get_combined_model()
     get_historical_model()
     infer = function()

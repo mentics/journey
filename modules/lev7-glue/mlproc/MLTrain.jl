@@ -6,11 +6,17 @@ import Flux:Flux,cpu,gpu,throttle
 using MLUtils
 import Optimisers:AdamW
 using DateUtil, IndexUtil, ModelUtil
-
 CUDA.allowscalar(false)
 dev(x) = gpu(x) # gpu(x)
 
 # TODO: need to save holdout with training model so we keep that when continuing training
+
+params_train() = (;
+    rng_seed = 1,
+    holdout = 0.1,
+    kfolds = 5,
+    batch_size = 512,
+)
 
 #=
 example use:
@@ -34,6 +40,7 @@ make_opt(type instance) # default is Lion
 # function make_loss_func end
 # make_opt(learning_rate_func, loss_untrained) = AdamW(learning_rate_func(0, 0f0, loss_untrained))
 
+#region Types
 export InputData
 @kwdef struct InputData
     all_data
@@ -68,14 +75,9 @@ end
     metrics
     params
 end
+#endregion Types
 
-params_train() = (;
-    rng_seed = 1,
-    holdout = 0.1,
-    kfolds = 5,
-    batch_size = 512,
-)
-
+#region Train
 function setup(trainee::Trainee, params=params_train())
     Random.seed!(Random.default_rng(), params.rng_seed)
 
@@ -166,10 +168,6 @@ function train(training::Training; epochs=1000)
     end
 end
 
-function batch1(training)
-    return training.data.prep_input(first(eachobs(training.data.data_for_epoch(), batchsize=training.params.train.batch_size)))
-end
-
 function calc_base_loss(model, calc_loss, data, batch_size)
     count = 10
     loss = 0.0
@@ -178,6 +176,28 @@ function calc_base_loss(model, calc_loss, data, batch_size)
     end
     loss /= count
     return loss
+end
+#endregion Train
+
+#region Check
+function check_holdout(model, trainee, data, batch_size)
+    loss = 0.0
+    count = 0
+    for obss in eachobs(data.holdout; batchsize=batch_size)
+        count += 1
+        loss += trainee.get_loss(model, data.prep_input(obss) |> dev)
+    end
+    loss /= count
+
+    println("Loss for holdout: $(loss)")
+    # for ibatch in training.params[:cv].holdout
+    #     loss = training.trainee.get_loss(training.trainee.training_model, training.trainee.batches.get(1, ibatch))
+    #     println("Loss for holdout batch $(ibatch): $(loss)")
+    # end
+end
+
+function batch1(training)
+    return training.data.prep_input(first(eachobs(training.data.data_for_epoch(), batchsize=training.params.train.batch_size)))
 end
 
 import DrawUtil:draw,draw!
@@ -232,36 +252,7 @@ function check(trainee, batchi)
     #     end
     #   end
 end
-
-function latent_space(mod)
-    # return mod.run_encode(kall.model, kall.get_batch(0, 1) |> dev)
-    data = mapreduce(hcat, 1:kall.batch_count) do batchi
-        batch = kall.get_batch(0, batchi) |> dev
-        return mod.run_encode(kall.model, batch) |> cpu
-    end
-    inds = mapreduce(vcat, 1:kall.batch_count) do batchi
-        kall.get_inds(0, batchi)
-    end
-    return (;data, inds)
-end
-
-test_batch_loss(trainee, ibatch) = trainee.get_loss(trainee.training_model, trainee.batches.get(0, ibatch))
-
-function check_holdout(model, trainee, data, batch_size)
-    loss = 0.0
-    count = 0
-    for obss in eachobs(data.holdout; batchsize=batch_size)
-        count += 1
-        loss += trainee.get_loss(model, data.prep_input(obss) |> dev)
-    end
-    loss /= count
-
-    println("Loss for holdout: $(loss)")
-    # for ibatch in training.params[:cv].holdout
-    #     loss = training.trainee.get_loss(training.trainee.training_model, training.trainee.batches.get(1, ibatch))
-    #     println("Loss for holdout batch $(ibatch): $(loss)")
-    # end
-end
+#endregion Check
 
 #region Infer
 # TODO: maybe in different module
@@ -293,5 +284,19 @@ function save_inferred(trainee::Trainee)
     return df
 end
 #endregion Infer
+
+function latent_space(mod)
+    # return mod.run_encode(kall.model, kall.get_batch(0, 1) |> dev)
+    data = mapreduce(hcat, 1:kall.batch_count) do batchi
+        batch = kall.get_batch(0, batchi) |> dev
+        return mod.run_encode(kall.model, batch) |> cpu
+    end
+    inds = mapreduce(vcat, 1:kall.batch_count) do batchi
+        kall.get_inds(0, batchi)
+    end
+    return (;data, inds)
+end
+
+test_batch_loss(trainee, ibatch) = trainee.get_loss(trainee.training_model, trainee.batches.get(0, ibatch))
 
 end

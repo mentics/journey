@@ -87,7 +87,7 @@ function save_infer(name, model, params)
     print("Saved inference model to $(path) in $(stop - start) seconds.")
 end
 
-load_infer(training) = load_infer(training.trainee.name, training.trainee.get_inference_model(training.model), training.params)
+load_infer(trainee, model) = load_infer(trainee.name, model, trainee.params)
 function load_infer(name, model, params)
     start = time()
     (path, model_state) = Paths.load_data_params(Paths.db_infer(name), params, "model_state"; latest=true)
@@ -97,12 +97,12 @@ function load_infer(name, model, params)
     println("Loaded inference model from $(path) in $(stop - start) seconds")
 end
 
-function save_encoded(name, encoded, params)
-    start = time()
-    path = Paths.save_data_params(Paths.db_encoded(name), params)
-    stop = time()
-    print("Saved inference model to $(path) in $(stop - start) seconds.")
-end
+# function save_encoded(name, encoded, params)
+#     start = time()
+#     path = Paths.save_data_params(Paths.db_encoded(name), params)
+#     stop = time()
+#     print("Saved inference model to $(path) in $(stop - start) seconds.")
+# end
 #endregion Persistence
 
 end

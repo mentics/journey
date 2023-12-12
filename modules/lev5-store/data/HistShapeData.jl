@@ -3,6 +3,8 @@ using Dates, DataFrames, StatsBase
 using DateUtil, DataConst, DataRead, Paths, FilesArrow
 import VectorCalcUtil as vcu
 
+# TODO: consider dividing meta by sqrt time
+
 const NAME = replace(string(@__MODULE__), "Data" => "")
 
 #region Public

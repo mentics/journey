@@ -26,8 +26,8 @@ function get_xpir_dates(;sym="SPY", age=DateUtil.age_daily())::XpirDateDicts
     load_xpir_dates(sym; age)
 end
 
-function get_xpirs_for_dates(dates)
-    xdd = get_xpir_dates()
+function get_xpirs_for_dates(dates; age=DateUtil.age_daily())
+    xdd = get_xpir_dates(;age)
     dates = filter(date -> haskey(xdd.date_to_xpir, date), dates)
     return collect(mapreduce(date -> xdd.date_to_xpir[date], push_all!, dates; init=SortedSet()))
 end
@@ -42,6 +42,14 @@ end
 
 function get_options(year, month; sym="SPY", age=DateUtil.age_daily())
     return Paths.load_data(file_options(year, month; sym), DataFrame)
+end
+function get_options_yms()
+    names = readdir(dirname(DataRead.file_options(2012, 6)))
+    # [match(r"quotes-SPY-(\d{4})-(\d{2}).arrow", f).captures[1:2] for f in fs]
+    avail = [(;year=y, month=m) for (y, m) in sort!([parse.(Int, match(r"quotes-SPY-(\d{4})-(\d{2}).arrow", name).captures[1:2]) for name in names])]
+    all = DateUtil.year_months()
+    return symdiff(all, avail)
+    # return (;all, avail)
 end
 
 function get_vix(;age=DateUtil.age_daily())

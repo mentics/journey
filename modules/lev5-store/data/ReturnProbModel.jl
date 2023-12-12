@@ -12,7 +12,7 @@ const NAME = replace(string(@__MODULE__), "Model" => "")
 params_model() = (;
     block_count = 4,
     layers_per_block = 4,
-    hidden_width_mult = 2,
+    hidden_width_mult = 4,
     dropout = 0.2f0,
     activation = NNlib.swish,
     use_bias = false,
@@ -126,8 +126,9 @@ function make_model(input_width, params)
 end
 
 function get_inference_model(model)
-    return model.layers.encoder
+    return model
 end
+# TODO: function make_inference_model()
 #endregion Model
 
 end
