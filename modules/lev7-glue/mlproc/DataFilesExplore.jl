@@ -3,11 +3,11 @@ using Dates, DataStructures, DataFrames
 using BaseTypes, SmallTypes, ChainTypes
 using BaseUtil, DateUtil, ChainUtil
 import SH, Pricing, Calendars
-import DataFiles as dat
 import Explore as ore
-import ProbMultiKde as pmk
 import DrawUtil, ThreadUtil
 using OutputUtil
+
+using DataRead
 
 # TODO: check how close :under_at_xpir and :xpir_value are
 # TODO: because selling at xpir is lossy, punish the outcomes harshly for that section
@@ -16,16 +16,16 @@ using OutputUtil
 const EMPTY_VECTOR = Vector()
 
 function explore(;inds=nothing, yms=dat.make_yms(), skip_existing=true, use_problup=false, use_pos=true, xpir_inds=1:2)
+    price_lup = DataRead.price_lookup()
+    price_lup_xpirts = DataRead.price_lookup_xpirts()
+    prob_for_tsxp = DataRead.prob_for_tsxp()
     ts_min = dat.estimate_min_ts() + Month(1)
     y_min, m_min = year(ts_min), month(ts_min)
     filter!(yms) do (y, m)
         y > y_min || (y == y_min && m >= m_min)
     end
     for (y, m) in yms
-        kde = pmk.get_kde(y, m)
-        oqs_df = dat.oqs_df(y, m)
-        # TODO: save a file that's already filtered?
-        oqs_df = filter(:ts => dat.filter_tsx_prob, oqs_df)
+        oqs_df = DataRead.get_options(y, m)
         sdfs = groupby(oqs_df, :ts)
         itr = isnothing(inds) ? sdfs :
               inds isa Integer ? sdfs[inds:end] : sdfs[inds]
@@ -41,14 +41,10 @@ function explore(;inds=nothing, yms=dat.make_yms(), skip_existing=true, use_prob
                 println("$(ts): Skipping non-normal")
                 continue
             end
-            if !isnothing(findfirst(ismissing, sdf_ts.call_xpir_value)) ||
-                    !isnothing(findfirst(ismissing, sdf_ts.call_xpir_price_long))
-                    println("$(ts): Skipping due to missing xpir pricing")
-                    continue
-            end
-            # println("Processing ts:$(ts)")
-            curp = dat.pents_to_c(dat.lup_under(ts))
-            ctx = ore.make_ctx(ts, kde, curp)
+            println("Processing ts:$(ts)")
+
+            curp = price_lup[ts]
+            ctx = ore.make_ctx(ts, prob_for_tsxp[ts], curp)
             # TODO: could be more efficient leveraging group by below? get keys on xpir_lookup?
             # xpirtss = filter!(d -> Date(d) > ctx.date, unique(sdf.expiration))
             # sort!(xpirtss)
@@ -67,10 +63,10 @@ function explore(;inds=nothing, yms=dat.make_yms(), skip_existing=true, use_prob
             #     ChainUtil.oqssEntry(to_oqs(xpir_lookup[xpirts]), curp; minlong=C(0.05), minshort=C(0.05))
             # end
 
-            sdf_xpir = groupby(sdf_ts, :expiration)
+            sdf_xpir = groupby(sdf_ts, :expir)
 
             for sdf in sdf_xpir[xpir_inds]
-                xpirts = sdf.expiration[1]
+                xpirts = first(sdf.expir)
                 xpir = Date(xpirts)
                 # 0 < bdays(ts, xpir) <= 8 || continue
                 0 < bdays(ts, xpir) || continue

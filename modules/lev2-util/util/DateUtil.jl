@@ -295,6 +295,7 @@ file_ts(ts=now(UTC)) = Dates.format(ts,"yyyymmdd-HHMMSS")
 export asof_daily, age_daily
 asof_daily()::DateTime = market_midnight(Date(market_now()))
 age_daily()::Period = now(UTC) - asof_daily()
+age_period()::Period = DEFAULT_TS_PERIOD
 
 const FOREVER2 = Nanosecond(typemax(Int))
 const DATETIME_BEFORE = DateTime(0)

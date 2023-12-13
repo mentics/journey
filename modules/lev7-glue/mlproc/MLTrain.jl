@@ -273,7 +273,7 @@ function save_output(trainee::Trainee; load=false)
         df = DataFrame(permutedims(output), :auto) # rows to cols
 
         keys = data.get_input_keys(batch) |> cpu
-        insertcols!(df, 1, :key => keys)
+        insertcols!(df, 1, pairs(keys)...)
         return df
 
         # keys = data.get_input_keys(batch) |> cpu
@@ -288,8 +288,9 @@ function save_output(trainee::Trainee; load=false)
         # return df
     end
 
-    @assert issorted(df.key)
-    @assert allunique(df.key)
+    keycols = data.get_input_keys()
+    @assert issorted(df, keycols)
+    @assert allunique(df, keycols)
     @assert size(data.all_data, 1) == size(df, 1)
     path = Paths.save_data_params(Paths.db_output(trainee.name), trainee.params, df)
     print("Saved output data to $(path)")
@@ -297,7 +298,8 @@ function save_output(trainee::Trainee; load=false)
 end
 
 # TODO: put this in data read or someplace like that
-function load_rpm_output(model_name)
+# in dict form, it's in DataRead now
+function load_output(model_name)
     Paths.load_data_params(Paths.db_output(model_name), DataFrame)
 end
 #endregion Infer

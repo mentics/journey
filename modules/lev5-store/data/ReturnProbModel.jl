@@ -77,6 +77,7 @@ end
 function get_input_keys(batch)
     return batch.keys
 end
+get_input_keys() = [:ts, :expir]
 
 function single(df, ind, params)
     return prep_input(df[ind:ind,:], params)
@@ -90,7 +91,7 @@ end
 function prep_input(obss, params)
     # dataframe of batch_size rows of same columns as input data
     # need to make matrices that can be pushed to gpu and used in model
-    keys = collect(zip(obss.ts, obss.expir))
+    keys = (;obss.ts, obss.expir)
     x = permutedims(Matrix(select(obss, Not([:ts, :expir, :y_bin]))))
     y = Flux.onehotbatch(obss.y_bin, 1:params.data.bins_count)
     return (;keys, x, y)

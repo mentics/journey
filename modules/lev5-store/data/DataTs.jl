@@ -19,7 +19,8 @@ end
 
 function update_ts(;sym="SPY")
     tss = DateUtil.all_bdays_ts()
-    ts_last = DataRead.get_ts()[end]
+    filter!(x -> !(x in DataCheck.missing_allowed()), tss)
+    ts_last = DataRead.get_ts(;age=DateUtil.FOREVER2)[end]
     if tss[end] > ts_last
         Paths.save_data(DataRead.file_ts(;sym); tss)
     else

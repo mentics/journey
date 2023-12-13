@@ -20,22 +20,24 @@ function make_prices_at_xpirs(;sym="SPY")
 end
 
 function update_prices_at_xpirs(;sym="SPY")
-    DataXpirts.update_xpirts(;sym)
-    DataPrices.update_prices(;sym)
+    # updated in DataUpdate
+    # DataXpirts.update_xpirts(;sym)
+    # DataPrices.update_prices(;sym)
 
-    xpirtss = get_xpirtss(;sym)
-    @assert issorted(xpirtss)
+    xpirtss_all = get_xpirtss(;sym)
+    @assert issorted(xpirtss_all)
     df = DataRead.get_prices_at_xpirs(; sym, age=DateUtil.FOREVER2)
     @assert issorted(df.expir)
-    last_xpirts = df.expir[end]
-    if xpirtss[end] > last_xpirts
-        ind = searchsortedfirst(xpirtss, last_xpirts + Hour(1))
-        df_append = proc(xpirtss[ind:end])
+    last_proced_xpirts = df.expir[end]
+    if xpirtss_all[end] > last_proced_xpirts
+        ind = searchsortedfirst(xpirtss_all, last_proced_xpirts + Hour(1))
+        # @show ind lastindex(xpirtss_all)
+        df_append = proc(xpirtss_all[ind:end])
         df = vcat(df, df_append)
         Paths.save_data(DataRead.file_prices_at_xpirs(;sym), df; update=true)
-        return xpirtss[ind:end]
+        return xpirtss_all[ind:end]
     else
-        println("options_at_xpirs already up to date $(last_xpirts)")
+        println("options_at_xpirs already up to date $(last_proced_xpirts)")
         return nothing
     end
 end

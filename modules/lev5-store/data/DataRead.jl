@@ -7,8 +7,8 @@ import CollUtil:push_all!
 
 export XpirDateDicts, get_xpir_dates, get_xpirs_for_dates, get_prices, get_options
 
-function get_ts(;sym="SPY", age=DateUtil.age_daily())
-    return Paths.load_data(file_ts(;sym), "tss")
+function get_ts(;sym="SPY", age=DateUtil.age_period())
+    return Paths.load_data(file_ts(;sym), "tss"; age)
 end
 
 function get_xpirts(;sym="SPY", age=DateUtil.age_daily())
@@ -56,13 +56,29 @@ function get_vix(;age=DateUtil.age_daily())
     return Paths.load_data(file_vix(), DataFrame)
 end
 
-function get_prices_at_xpirs(; sym="SPY", age=DateUtil.age_daily())
+function get_prices_at_xpirts(; sym="SPY", age=DateUtil.age_daily())
     return Paths.load_data(file_prices_at_xpirs(;sym), DataFrame; age)
 end
-price_xpir_lookup(prices_at_xpirs) = Dict(prices_at_xpirs.expir .=> prices_at_xpirs.price)
+function price_lookup_xpirts(;sym="SPY", age=DateUtil.age_daily())
+    prices = get_prices_at_xpirts(;sym, age)
+    return Dict(prices.expir .=> prices.price)
+end
 
 function get_tsx(; sym="SPY", age=DateUtil.age_daily())
     return Paths.load_data(file_tsx(;sym), DataFrame; age)
+end
+
+# TODO: where to define the names to not depend on the modules?
+import Caches:cache!
+function prob_for_tsxp(; sym="SPY", age=DateUtil.age_period())
+    return cache!(Dict{DateTime,Dict{DateTime,Vector{Float32}}}, Symbol("prob_for_tsxp"), age) do
+        df, _ = Paths.load_data_params(Paths.db_output("ReturnProb"), DataFrame; age)
+        d = Dict{DateTime,Dict{DateTime,Vector{Float32}}}()
+        for (key, sdf) in pairs(groupby(df, :ts))
+            d[key.ts] = Dict(sdf.expir .=> Vector.(eachrow(sdf[:,3:end])))
+        end
+        return d
+    end
 end
 
 # #=
