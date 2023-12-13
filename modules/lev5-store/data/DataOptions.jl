@@ -12,7 +12,7 @@ using DataConst, DataRead, DataCheck
 #region Standard API
 function make_options(year, month; sym="SPY")
     date_start = Date(year, month, 1)
-    date_end = Dates.lastdayofmonth(date_start)
+    date_end = min(DateUtil.market_today(), Dates.lastdayofmonth(date_start))
     xpirs = DataRead.get_xpirs_for_dates(date_start:date_end; age=(now(UTC) - DateTime(date_end)))
     filter!(xpir -> xpir - date_end <= DataConst.XPIRS_WITHIN, xpirs)
     @assert issorted(xpirs)
