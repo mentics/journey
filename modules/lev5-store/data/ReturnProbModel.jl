@@ -66,7 +66,7 @@ function make_data(df, params)
     InputData(;
         all_data = df,
         data_for_epoch = () -> shuffleobs(training),
-        prep_input = obss -> prep_input(obss, params),
+        prep_input = (obss, args...) -> prep_input(obss, params, args...),
         get_input_keys,
         holdout,
         single = ind -> single(df, ind, params)
@@ -88,32 +88,102 @@ function single(df, ind, params)
     # return prep_input(data, params)
 end
 
+function prep_input_old(obss, params)
+    # dataframe of batch_size rows of same columns as input data
+    # need to make matrices that can be pushed to gpu and used in model
+    keys = (;obss.ts, obss.expir)
+    # x = permutedims(Matrix(select(obss, Not([:ts, :expir, :y_bin]))))
+    # x = PermutedDimsArray(Matrix(select(obss, Not([:ts, :expir, :y_bin]))), (2,1))
+    x = PermutedDimsArray(Matrix(select(obss, Not([:ts, :expir, :y_bin]))), (2,1))
+    y = Flux.onehotbatch(obss.y_bin, 1:params.data.bins_count)
+    return (;keys, x, y)
+end
+
+# 41.1 microseconds
+# not thread safe because of reuse of m
+function prep_input(obss, params, x)
+    # dataframe of batch_size rows of same columns as input data
+    # need to make matrices that can be pushed to gpu and used in model
+    keys = (;obss.ts, obss.expir)
+    # x = permutedims(Matrix(select(obss, Not([:ts, :expir, :y_bin]))))
+    # x = PermutedDimsArray(Matrix(select(obss, Not([:ts, :expir, :y_bin]))), (2,1))
+    cols = collect(Vector{Float32}, eachcol(obss[!,4:end]))
+    # @show size(x) size(cols) size(cols[1])
+    # x = Matrix{Float32}(undef, length(cols), length(cols[1]))
+    @inbounds for i in eachindex(cols)
+        x[i,:] .= cols[i]
+    end
+    # x = PermutedDimsArray(Matrix(select(obss, Not([:ts, :expir, :y_bin]))), (2,1))
+    y = Flux.onehotbatch(obss.y_bin, 1:params.data.bins_count)
+    return (;keys, x, y)
+end
+
 function prep_input(obss, params)
     # dataframe of batch_size rows of same columns as input data
     # need to make matrices that can be pushed to gpu and used in model
     keys = (;obss.ts, obss.expir)
-    x = permutedims(Matrix(select(obss, Not([:ts, :expir, :y_bin]))))
+    cols = collect(Vector{Float32}, eachcol(obss[!,4:end]))
+    x = Matrix{Float32}(undef, length(cols), length(cols[1]))
+    @inbounds for i in eachindex(cols)
+        x[i,:] .= cols[i]
+    end
     y = Flux.onehotbatch(obss.y_bin, 1:params.data.bins_count)
     return (;keys, x, y)
+end
+
+# 63.8 microseconds
+# function prep_input2(obss, params)
+#     # dataframe of batch_size rows of same columns as input data
+#     # need to make matrices that can be pushed to gpu and used in model
+#     keys = (;obss.ts, obss.expir)
+#     x = reduce(vcat, reshape.(eachcol(obss[!,4:end]), 1, :))
+#     y = Flux.onehotbatch(obss.y_bin, 1:params.data.bins_count)
+#     return (;keys, x, y)
+# end
+
+function test(obss, m)
+    # @show reverse(size(obss))
+    # m = Matrix{Float32}(undef, 62, 512)
+    # i = 0
+    # for col in Iterators.drop(eachcol(obss), 3)
+    @inbounds for i in 4:size(obss,2)
+        # i += 1
+        # m[i-3, :] .= col
+        # m[i-3, :] .= obss[!,i]
+        @inbounds for j in 1:512
+            m[i-3,j] = obss[j, i]
+        end
+    end
+    # @time sm = obss[!,4:end]
+    # @time ec = eachcol(sm)
+    # @time reshape.(ec, 1, :)
+    return nothing
 end
 #endregion Data
 
 #region Run
 function calc_loss(model, batch)
     yhat = run_train(model, batch.x)
-    # return Flux.Losses.logitcrossentropy(yhat, batch.y)
-    return Flux.Losses.crossentropy(yhat, batch.y)
+    return Flux.Losses.logitcrossentropy(yhat, batch.y)
+    # return Flux.Losses.crossentropy(yhat, batch.y)
 end
 
 function run_train(model, batchx)
-    yhat = model(batchx)
-    yhat = relu(yhat)
-    s = sum(yhat)
-    yhat = yhat ./ s
-    return yhat
+    model(batchx)
+    # yhat = model(batchx)
+    # yhat = relu(yhat)
+    # ss = sum(yhat; dims=1)
+    # yhat = yhat ./ ss
+    # return yhat
 end
 
-run_infer(model, batchx) = run_train(model, batchx)
+function run_infer(model, batchx)
+    yhat = model(batchx)
+    yhat = relu(yhat)
+    ss = sum(yhat; dims=1)
+    yhat = yhat ./ ss
+    return yhat
+end
 #endregion Run
 
 #region Model

@@ -26,7 +26,7 @@ function update_prices_at_xpirs(;sym="SPY")
 
     xpirtss_all = get_xpirtss(;sym)
     @assert issorted(xpirtss_all)
-    df = DataRead.get_prices_at_xpirs(; sym, age=DateUtil.FOREVER2)
+    df = DataRead.get_prices_at_xpirts(; sym, age=DateUtil.FOREVER2)
     @assert issorted(df.expir)
     last_proced_xpirts = df.expir[end]
     if xpirtss_all[end] > last_proced_xpirts
@@ -38,6 +38,7 @@ function update_prices_at_xpirs(;sym="SPY")
         return xpirtss_all[ind:end]
     else
         println("options_at_xpirs already up to date $(last_proced_xpirts)")
+        touch(DataRead.file_prices_at_xpirs(;sym))
         return nothing
     end
 end

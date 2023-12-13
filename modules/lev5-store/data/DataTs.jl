@@ -25,6 +25,7 @@ function update_ts(;sym="SPY")
         Paths.save_data(DataRead.file_ts(;sym); tss)
     else
         println("DataTs already up to date $(ts_last)")
+        touch(DataRead.file_ts(;sym))
     end
 end
 #endregion Standard Api

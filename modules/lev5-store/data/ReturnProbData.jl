@@ -4,6 +4,7 @@ import DateUtil, Paths
 import DataConst, DataRead, ModelUtil
 import HistShapeData
 import Calendars as cal
+using ProbMeta
 
 const NAME = replace(string(@__MODULE__), "Data" => "")
 
@@ -12,9 +13,8 @@ params_data() = (;
     # weeks_count = 5,
     # intraday_period = Minute(30),
     xpirs_within = DataConst.XPIRS_WITHIN,
-    bins_count = 200,
-    ret_min = -0.15,
-    ret_max = 0.15,
+    bins_count = Bins.VNUM,
+    # ProbMeta.BIN_PARAMS...
 )
 
 function make_input(params=params_data())
@@ -40,8 +40,9 @@ function make_input(params=params_data())
     @show (df.ts == df_hist.ts)
 
     # Bin the returns
-    bins = make_bins(params)
-    transform!(df, :ret => (r -> searchsortednearest.(Ref(bins), r)) => :y_bin)
+    # bins = make_bins(params)
+    # transform!(df, :ret => (r -> searchsortednearest.(Ref(bins), r)) => :y_bin)
+    transform!(df, :ret => (r -> Bins.nearest.(r .+ 1)) => :y_bin)
 
     # cleanup
     select!(df, :ts, :expir, :y_bin, Not([:ts, :expir, :y_bin, :ret]))
@@ -58,11 +59,6 @@ end
 #endregion Public
 
 #region Util
-function make_bins(params)
-    (;bins_count, ret_min, ret_max) = params
-    ModelUtil.make_bins(bins_count, ret_min, ret_max)
-end
-
 make_dur(max_days) = (ts, xpir) -> dur_to_input.(cal.calcDur.(ts, xpir), max_days)
 dur_to_input(dur, max_days) = Float32.(([getfield(dur, nam) for nam in propertynames(dur)]) ./ max_days)
 

@@ -14,8 +14,7 @@ using ProbMultiKde
 import ProbMultiKde as pmk
 import ThreadUtil
 import LinesLeg as LL
-
-const ProbLup4 = Dict{DateTime,pmk.KdeProb2}()
+using ProbMeta
 
 # const CONFIG3 = Ref((;
 #     adjustprices = C(-0.0),
@@ -180,20 +179,20 @@ function opentrade(r; minextra=P(0.01))
     Trading.open_trade(market(), r.lqs, r.neto; pre=false, minextra);
 end
 
-function make_ctx_now(; keep=2)
-    mkt = market()
-    ts = mkt.tsMarket
-    curp = mkt.curp
-    kde = pmk.get_kde(ts)
-    # ress = [Keeper{Result}(keep) for _ in 1:Threads.nthreads()]
-    # kelly_bufs = [Kelly.make_buf() for _ in 1:Threads.nthreads()]
-    # (;ts, date=Date(ts), curp, kde, keep, ress, kelly_bufs)
-    return make_ctx(ts, kde, curp; keep)
-end
-function make_ctx(ts, kde, curp; keep=2)
+# function make_ctx_now(; keep=2)
+#     mkt = market()
+#     ts = mkt.tsMarket
+#     curp = mkt.curp
+#     kde = pmk.get_kde(ts)
+#     # ress = [Keeper{Result}(keep) for _ in 1:Threads.nthreads()]
+#     # kelly_bufs = [Kelly.make_buf() for _ in 1:Threads.nthreads()]
+#     # (;ts, date=Date(ts), curp, kde, keep, ress, kelly_bufs)
+#     return make_ctx(ts, kde, curp; keep)
+# end
+function make_ctx(ts, prob_for_xpirts, curp; keep=2)
     ress = [Keeper{Result}(keep) for _ in 1:Threads.nthreads()]
     kelly_bufs = [Kelly.make_buf() for _ in 1:Threads.nthreads()]
-    return (;ts, date=Date(ts), kde, curp, keep, ress, kelly_bufs)
+    return (;ts, date=Date(ts), prob_for_xpirts, curp, keep, ress, kelly_bufs)
 end
 
 function reset_ctx(ctx)
@@ -204,14 +203,12 @@ function reset_ctx(ctx)
     @assert isempty(ctx.ress[end])
 end
 
-function findkel(ctx, xpirts::DateTime, oqs, oqss, pos_rs, incs; use_problup=true)
-    use_problup && empty!(ProbLup4)
+function findkel(ctx, xpirts::DateTime, oqss, pos_rs, incs)
     reset_ctx(ctx)
     ress = ctx.ress
 
-    # TODO: messy concating these after they were just separated
-    # oqs = vcat(oqss.call.long, oqss.put.long)
-    prob = pmk.makeprob(ctx.kde, ctx.curp, ctx.ts, xpirts, oqs)
+    # prob = pmk.makeprob(ctx.kde, ctx.curp, ctx.ts, xpirts, oqs)
+    prob = ctx.prob_for_xpirts(xpirts)
     riskrat = calcriskrat(ctx.ts, xpirts)
 
     pos = nothing
@@ -224,7 +221,6 @@ function findkel(ctx, xpirts::DateTime, oqs, oqss, pos_rs, incs; use_problup=tru
     end
 
     ctx2 = kv(;ctx.ts, ctx.date, ctx.curp, prob, riskrat, xpirts, ctx.kelly_bufs, pos)
-    use_problup && ( ProbLup4[xpirts] = prob )
     # 1 in incs && findkel1!(ress, ctx2, oqss) && error("stop")
     2 in incs && findkel2!(ress, ctx2, oqss) && error("stop")
     3 in incs && findkel3!(ress, ctx2, oqss) && error("stop")
@@ -441,12 +437,12 @@ function check!(ress, ctx, lqs)::Nothing
     netos = P.(SH.getBid.(lqs))
     segs = LL.toSegments(lqs, netos)
     LL.canprofit(segs) || return
-    commit = max(Pricing.calcMarg(ctx.prob.center, segs))
+    commit = max(Pricing.calcMarg(ctx.curp, segs))
     cfg.commit_min < commit < cfg.commit_max || return
     # commit *= ctx.riskrat
 
     thid = Threads.threadid()
-    kel, evret, ev, probprofit = calckel(ctx.kelly_bufs[thid], ctx.prob, commit, segs)
+    kel, evret, ev, probprofit = calckel(ctx.kelly_bufs[thid], ctx.curp, ctx.prob, commit, segs)
     (isfinite(kel) && kel > cfg.kel_min) || return
     probprofit >= cfg.probprofit_min || return
     # evrate = calcevrate(evret, ctx.xpirts, ctx.date)
@@ -482,7 +478,7 @@ function check!(ress, ctx, lqs)::Nothing
         # balrat = 1 / cnt
         balrat = 1 / (19 * 3) # 19 / day * 3 days
         # TODO: filter out ones that have a lot of outcome too close to zero
-        annual = calc_iter_ret(ctx.prob, segs, commit, timult)
+        annual = calc_iter_ret(ctx.curp, ctx.prob, segs, commit, timult)
         if annual < config().annual_min
             # println("WARN: annual return $(annual) too low, evrate:$(evrate)")
             return
@@ -496,22 +492,22 @@ function check!(ress, ctx, lqs)::Nothing
 end
 
 import Lines
-function calc_iter_ret(prob, lqs; balrat = 0.5)
+function calc_iter_ret(curp, prob, lqs; balrat = 0.5)
     xpir = SH.getExpir(lqs)
     netos = P.(SH.getBid.(lqs))
     segs = LL.toSegments(lqs, netos)
     timult = DateUtil.timult(prob.ts, xpir)
     commit = max(Pricing.calcMarg(prob.center, segs))
-    return calc_iter_ret(prob, segs, commit, timult; balrat)
+    return calc_iter_ret(curp, prob, segs, commit, timult; balrat)
 end
-function calc_iter_ret(prob, segs, commit, timult; balrat = 0.5)
-    len = length(prob.xs.xs)
+function calc_iter_ret(curp, prob, segs, commit, timult; balrat = 0.5)
+    len = Bins.VNUM # length(prob.xs.xs)
     s = 1.0
     for i in 1:len
-        x = prob.xs.xs[i]
-        y = Lines.atsegs(segs, x * prob.center)
+        x = Bins.x(i) # prob.xs.xs[i]
+        y = Lines.atsegs(segs, x * curp)
         o = y / commit
-        p = prob.prob_mass[i]
+        p = prob[i] # prob.prob_mass[i]
         @assert -commit <= y @str commit x y o p balrat
         # p *= o >= 0.0 ? 1.0 - probadjust : 1.0 + probadjust
         # o > 0 && (probprofit += p)
@@ -615,10 +611,10 @@ import Kelly, Pricing, LinesLeg as LL
 # calckel(lms) = calckel(ProbLup[SH.getExpir(lms)], lms)
 # calckel(prob, lms) = calckel(prob, calcriskrat(today(), SH.getExpir(lms)), lms)
 
-function calckel(buf, prob, risk::Real, segs)
+function calckel(buf, curp, prob, risk::Real, segs)
     probadjust = config().kelprobadjust
     try
-        return Kelly.calckel(buf, prob, risk, segs, probadjust)
+        return Kelly.calckel(buf, curp, prob, risk, segs, probadjust)
     catch e
         # global kcalckel = kv(;prob, risk, segs=nc(segs), probadjust)
         rethrow(e)

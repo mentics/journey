@@ -32,10 +32,10 @@ function make_block(through_width, hidden_width, num_layers, activation, bias=fa
     return Chain(layers)
 end
 
-function make_bins(num_bins, left, right)
-    span = right - left
-    return left .+ [span * b for b in 0.0:(1/(num_bins-1)):1.0]
-end
+# function make_bins(num_bins, left, right)
+#     span = right - left
+#     return left .+ [span * b for b in 0.0:(1/(num_bins-1)):1.0]
+# end
 
 function to_temporal_ts(ts)
     date = Date(ts)
@@ -87,6 +87,7 @@ function save_infer(name, model, params)
     print("Saved inference model to $(path) in $(stop - start) seconds.")
 end
 
+load_infer(trainee) = load_infer(trainee.name, trainee.make_model(), trainee.params)
 load_infer(trainee, model) = load_infer(trainee.name, model, trainee.params)
 function load_infer(name, model, params)
     start = time()
@@ -95,6 +96,7 @@ function load_infer(name, model, params)
     Flux.loadmodel!(model, model_state)
     stop = time()
     println("Loaded inference model from $(path) in $(stop - start) seconds")
+    return model
 end
 #endregion Persistence
 

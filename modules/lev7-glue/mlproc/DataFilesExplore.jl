@@ -6,6 +6,7 @@ import SH, Pricing, Calendars
 import Explore as ore
 import DrawUtil, ThreadUtil
 using OutputUtil
+import Calendars as cal
 
 using DataRead
 
@@ -15,17 +16,18 @@ using DataRead
 #region Public
 const EMPTY_VECTOR = Vector()
 
-function explore(;inds=nothing, yms=dat.make_yms(), skip_existing=true, use_problup=false, use_pos=true, xpir_inds=1:2)
+function is_ts_backtest(ts)
+    date = Date(ts)
+    return ts != cal.getMarketOpen(date) && ts != cal.getMarketClose(date)
+end
+
+function explore(;inds=nothing, yms=dat.make_yms(), skip_existing=true, use_pos=true, xpir_inds=1:2)
     price_lup = DataRead.price_lookup()
-    price_lup_xpirts = DataRead.price_lookup_xpirts()
-    prob_for_tsxp = DataRead.prob_for_tsxp()
-    ts_min = dat.estimate_min_ts() + Month(1)
-    y_min, m_min = year(ts_min), month(ts_min)
-    filter!(yms) do (y, m)
-        y > y_min || (y == y_min && m >= m_min)
-    end
+    # price_lup_xpirts = DataRead.price_lookup_xpirts()
+    prob_for_tsxp = DataRead.prob_for_tsxp(;age=Day(2))
     for (y, m) in yms
-        oqs_df = DataRead.get_options(y, m)
+        # TODO: could create this filtered file in advance
+        @time oqs_df = filter(:ts => is_ts_backtest, DataRead.get_options(y, m))
         sdfs = groupby(oqs_df, :ts)
         itr = isnothing(inds) ? sdfs :
               inds isa Integer ? sdfs[inds:end] : sdfs[inds]
@@ -37,14 +39,10 @@ function explore(;inds=nothing, yms=dat.make_yms(), skip_existing=true, use_prob
             ts = first(sdf_ts.ts)
             rs_ts = Vector()
             !skip_existing || !haskey(TOP_TS, ts) || continue
-            if !dat.is_ts_normal(ts)
-                println("$(ts): Skipping non-normal")
-                continue
-            end
             println("Processing ts:$(ts)")
 
-            curp = price_lup[ts]
-            ctx = ore.make_ctx(ts, prob_for_tsxp[ts], curp)
+            curp = C(price_lup[ts])
+            ctx = ore.make_ctx(ts, xpirts -> prob_for_tsxp(ts, xpirts), curp)
             # TODO: could be more efficient leveraging group by below? get keys on xpir_lookup?
             # xpirtss = filter!(d -> Date(d) > ctx.date, unique(sdf.expiration))
             # sort!(xpirtss)
@@ -76,7 +74,7 @@ function explore(;inds=nothing, yms=dat.make_yms(), skip_existing=true, use_prob
                 # pos = get!(ore.pos_new, XPIR_POS, xpirts)
                 top_xpir = get!(TOP_XPIRTS, xpirts) do; Vector() end
                 pos = use_pos ? top_xpir : EMPTY_VECTOR
-                res = ore.findkel(ctx, xpirts, oqs, oqss, pos, 1:4; use_problup)
+                res = ore.findkel(ctx, xpirts, oqss, pos, 1:4)
                 # isnothing(res) && @goto stop
                 # global kres = res
 
@@ -371,7 +369,20 @@ function showres(tsi_index, ts, sdf, under, r1)
     return lms
 end
 
-function df_calc_pnl(df, lqs, xpirts)
+function quotes_at(ts, lqs)
+    df = DataRead.get_options(year(ts), month(ts))
+    df = df[df.ts .== ts .&& df.expir .== ts, :]
+    # global kargs = (;df, lqs, xpirts)
+    return map(lqs) do lq
+        style = SH.getStyle(lq)
+        strike = SH.getStrike(lq)
+        return only(df[df.style .== style .&& df.strike .== strike])
+    end
+end
+
+function df_calc_pnl(df_ts, lqs, xpirts)
+    rows = at_xpirts(xpirts, lqs)
+
     strikes = SH.getStrike.(lqs)
     rows = dfrow.(Ref(df), xpirts, strikes)
     neto = sum(dfneto.(rows, lqs))
@@ -381,8 +392,8 @@ function df_calc_pnl(df, lqs, xpirts)
     return (;neto, netc, netc_value, pnl=neto + netc, pnl_value=neto + netc_value, curp)
 end
 function dfrow(df, xpirts, strike)
-    s = dat.topents(strike)
-    return only(df[(df.expiration .== xpirts) .& (df.strike .== s),:])
+    s = strike # dat.topents(strike)
+    return only(df[(df.expir .== xpirts) .& (df.strike .== s),:])
 end
 # dfneto(dfrow, lm) = dat.pents_to_c(dfrow[dfsym(SH.getStyle(lm), SH.getSide(lm), Action.open)])
 # dfnetc(dfrow, lm) = dat.pents_to_c(dfrow[dfsym(SH.getStyle(lm), SH.toOther(SH.getSide(lm)), Action.close)])
@@ -410,14 +421,34 @@ dfsym_xpir_price(style, side) = Symbol("$(style)_xpir_price_$(side)")
 dfsym_xpir_value(style) = Symbol("$(style)_xpir_value")
 
 using OptionTypes, OptionQuoteTypes, OptionMetaTypes, QuoteTypes
-to_oqs(df::DataFrames.AbstractDataFrame) = collect(Iterators.flatten(map(to_oq_pair, eachrow(df))))
-function to_oq_pair(row)
-    oc = Option(Style.call, Date(row.expiration), dat.pents_to_c(row.strike))
-    op = Option(Style.put, Date(row.expiration), dat.pents_to_c(row.strike))
-    qc = Quote(dat.pents_to_c(row.call_bid), dat.pents_to_c(row.call_ask))
-    qp = Quote(dat.pents_to_c(row.put_bid), dat.pents_to_c(row.put_ask))
+function to_oqs(df)
+    gdfs = groupby(df, [:ts, :expir, :strike])
+    oqs = Vector{OptionQuote}()
+    sizehint!(oqs, length(gdfs))
+    for gdf in gdfs
+        oq1, oq2 = to_oq(gdf)
+        push!(oqs, oq1, oq2)
+    end
+    return oqs
+end
+function to_oq(gdf)
+    # each group should have one put and one call, in that order.
+    @assert gdf.style == [-1, 1]
+    op = Option(Style.put, Date(gdf.expir[1]), gdf.strike[1])
+    oc = Option(Style.call, Date(gdf.expir[2]), gdf.strike[2])
+    qp = Quote(gdf.bid[1], gdf.ask[1])
+    qc = Quote(gdf.bid[2], gdf.ask[2])
     return OptionQuote(oc, qc, OptionMetaTypes.MetaZero), OptionQuote(op, qp, OptionMetaTypes.MetaZero)
 end
+
+# to_oqs(df::DataFrames.AbstractDataFrame) = collect(Iterators.flatten(map(to_oq_pair, eachrow(df))))
+# function to_oq_pair(row)
+#     oc = Option(Style.call, Date(row.expiration), dat.pents_to_c(row.strike))
+#     op = Option(Style.put, Date(row.expiration), dat.pents_to_c(row.strike))
+#     qc = Quote(dat.pents_to_c(row.call_bid), dat.pents_to_c(row.call_ask))
+#     qp = Quote(dat.pents_to_c(row.put_bid), dat.pents_to_c(row.put_ask))
+#     return OptionQuote(oc, qc, OptionMetaTypes.MetaZero), OptionQuote(op, qp, OptionMetaTypes.MetaZero)
+# end
 #endregion Local
 
 #region CheckClosing

@@ -69,15 +69,22 @@ function get_tsx(; sym="SPY", age=DateUtil.age_daily())
 end
 
 # TODO: where to define the names to not depend on the modules?
-import Caches:cache!
+# import Caches:cache!
+# function prob_for_tsxp(; sym="SPY", age=DateUtil.age_period())
+#     return cache!(Dict{DateTime,Dict{DateTime,Vector{Float32}}}, Symbol("prob_for_tsxp-$(sym)"), age) do
+#         df, _ = Paths.load_data_params(Paths.db_output("ReturnProb"), DataFrame; age)
+#         d = Dict{DateTime,Dict{DateTime,Vector{Float32}}}()
+#         for (key, sdf) in pairs(groupby(df, :ts))
+#             d[key.ts] = Dict(sdf.expir .=> sdf.output)
+#         end
+#         return d
+#     end
+# end
 function prob_for_tsxp(; sym="SPY", age=DateUtil.age_period())
-    return cache!(Dict{DateTime,Dict{DateTime,Vector{Float32}}}, Symbol("prob_for_tsxp"), age) do
-        df, _ = Paths.load_data_params(Paths.db_output("ReturnProb"), DataFrame; age)
-        d = Dict{DateTime,Dict{DateTime,Vector{Float32}}}()
-        for (key, sdf) in pairs(groupby(df, :ts))
-            d[key.ts] = Dict(sdf.expir .=> Vector.(eachrow(sdf[:,3:end])))
-        end
-        return d
+    df, _ = Paths.load_data_params(Paths.db_output("ReturnProb"), DataFrame; age)
+    gdf = groupby(df, [:ts, :expir])
+    return function(ts, xpirts)
+        only(gdf[(ts, xpirts)].output)
     end
 end
 

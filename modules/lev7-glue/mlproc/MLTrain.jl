@@ -258,34 +258,34 @@ end
 # TODO: maybe in different module
 using DataFrames
 using Paths
-function save_output(trainee::Trainee; load=false)
-    model = trainee.get_inference_model(trainee.make_model() |> dev)
-    if load
+import ThreadPools
+function save_output(trainee::Trainee, model=nothing)
+    if isnothing(model)
+        model = trainee.make_model() |> dev
         ModelUtil.load_infer(trainee.name, model, trainee.params)
         println("Model has param count: ", sum(length, Flux.params(model)))
     end
+    # TODO: show some loss info to validate that it's a trained model
+    model = trainee.get_inference_model(model)
 
     pt = params_train()
     data = trainee.prep_data(pt)
+    # TODO: get feature count and don't hardcode 59 here
+    feature_count = size(data.all_data, 2) - 3
+    x = Matrix{Float32}(undef, feature_count, pt.batch_size)
+    xgpu = CuArray{Float32}(undef, feature_count, pt.batch_size)
     df = mapreduce(vcat, eachobs(data.all_data, batchsize=pt.batch_size)) do obss
-        batch = data.prep_input(obss) |> dev
-        output = trainee.run_infer(model, batch.x) |> cpu
-        df = DataFrame(permutedims(output), :auto) # rows to cols
-
-        keys = data.get_input_keys(batch) |> cpu
-        insertcols!(df, 1, pairs(keys)...)
-        return df
-
-        # keys = data.get_input_keys(batch) |> cpu
-        # if keys isa AbstractDataFrame
-        #     for (name, col) in Iterators.reverse(pairs(eachcol(keys)))
-        #         insertcols!(df, 1, name => col)
-        #     end
-        # else
-        #     @assert keys isa AbstractVector
-        #     insertcols!(df, 1, :key => keys)
-        # end
-        # return df
+        if size(obss, 1) == pt.batch_size
+            batch = data.prep_input(obss, x)
+            copyto!(xgpu, batch.x)
+            output = trainee.run_infer(model, xgpu) |> cpu
+            return DataFrame((;batch.keys..., output=eachcol(output)))
+        else
+            # Handle the last batch which is likely a different size
+            batch = data.prep_input(obss)
+            output = trainee.run_infer(model, batch.x |> gpu) |> cpu
+            return DataFrame((;batch.keys..., output=eachcol(output)))
+        end
     end
 
     keycols = data.get_input_keys()

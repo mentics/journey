@@ -39,7 +39,7 @@ function update_options(year, month; sym="SPY")
     df1 = Paths.load_data(year, month; sym, age=DateUtil.FOREVER2)
     last_ts = df1.ts[end]
     start_date = market_date(last_ts)
-    end_date = Dates.lastdayofmonth(start_date)
+    end_date = min(market_today(), Dates.lastdayofmonth(start_date))
     df2 = ThetaData.query_options(start_date, end_date; sym, age=Minute(15))
     df = combine_dfs(df1, df2)
     diff = check_ts(df.ts)
