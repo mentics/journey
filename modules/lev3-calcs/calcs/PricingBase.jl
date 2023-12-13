@@ -1,5 +1,13 @@
 module PricingBase
 
+function quote_dir(dir, bid::T, ask::T)::T where T<:Real
+    if dir == 1
+        return quote_long(bid, ask)
+    else
+        return quote_short(bid, ask)
+    end
+end
+
 function quote_long(bid::T, ask::T)::T where T<:Real
     return price_raw(-ask, -bid)
 end

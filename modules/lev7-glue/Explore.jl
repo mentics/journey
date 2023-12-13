@@ -215,8 +215,8 @@ function findkel(ctx, xpirts::DateTime, oqss, pos_rs, incs)
     if !isempty(pos_rs)
         lqs = get_pos_lqs(pos_rs)
         segs = LL.toSegments(lqs, P.(SH.getBid.(lqs)))
-        risk = riskrat * max(Pricing.calcMarg(prob.center, segs))
-        kel, evret, ev, probprofit = calckel(ctx.kelly_bufs[Threads.threadid()], prob, risk, segs)
+        risk = riskrat * max(Pricing.calcMarg(ctx.curp, segs))
+        kel, evret, ev, probprofit = calckel(ctx.kelly_bufs[Threads.threadid()], ctx.curp, prob, risk, segs)
         pos = kv(;lqs=nc(lqs), segs=nc(segs), risk, kel, evret, ev, probprofit, count=length(pos_rs))
     end
 
@@ -458,14 +458,14 @@ function check!(ress, ctx, lqs)::Nothing
             pos_count = pos.count
             all_lqs = sort!(vcat(pos.lqs, lqs...); by=SH.getStrike)
             all_segs = LL.toSegments(all_lqs, P.(SH.getBid.(all_lqs)))
-            marg = Pricing.calcMarg(ctx.prob.center, all_segs)
+            marg = Pricing.calcMarg(ctx.curp, all_segs)
             all_risk = ctx.riskrat * max(marg)
             if all_risk > cfg.all_risk_max
                 # global kriskhigh = (;marg, all_risk, lqs, pos_lqs=pos.lqs, all_lqs, all_segs)
                 # @show all_risk
                 return
             end
-            all_kel, all_evret, all_ev, all_probprofit = calckel(ctx.kelly_bufs[thid], ctx.prob, all_risk, all_segs)
+            all_kel, all_evret, all_ev, all_probprofit = calckel(ctx.kelly_bufs[thid], ctx.curp, ctx.prob, all_risk, all_segs)
             if !isnan(all_evret) && (all_evret <= pos.evret) # || all_probprofit <= pos.probprofit)
                 return
             end

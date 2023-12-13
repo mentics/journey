@@ -177,14 +177,17 @@ end
 function calc_rets(rs; close_early=true)
     return map(rs) do r
         if invalid(r.r1.commit) || invalid(r.r1.kel)
-            @show r.r1.commit r.result.pnl_value r.r1.kel
+            # @show r.r1.commit r.result.pnl_value r.r1.kel
+            @show r.r1.commit r.result.pnl r.r1.kel
             error("invalid commit")
         end
         pnl = if close_early
             close = find_close(r)
-            isnothing(close) ? r.result.pnl_value : close.pnl
+            # isnothing(close) ? r.result.pnl_value : close.pnl
+            isnothing(close) ? r.result.pnl : close.pnl
         else
-            r.result.pnl_value
+            # r.result.pnl_value
+            r.result.pnl
         end
         @assert pnl > (-r.r1.commit - 0.0001) @str "pnl less than -commit" pnl r.r1.commit
         # return (r.r1.balrat * r.r1.kel * pnl / r.r1.commit, pnl)
@@ -198,8 +201,10 @@ function updown(all=get_all())
     # all = get_all()
     tot_count = length(all)
     # sort!(all; by=r -> )
-    up = filter(r -> r.result.pnl_value >= 0, all)
-    down = filter(r -> r.result.pnl_value < 0, all)
+    # up = filter(r -> r.result.pnl_value >= 0, all)
+    # down = filter(r -> r.result.pnl_value < 0, all)
+    up = filter(r -> r.result.pnl >= 0, all)
+    down = filter(r -> r.result.pnl < 0, all)
     println("up:")
     stats(up, tot_count)
     println("down:")
@@ -260,7 +265,6 @@ function get_oqs(ts::DateTime)
 end
 load_oqs(ts) = to_oqs(load_oqs_df(ts))
 load_oqs_df(ts::DateTime) = filter(:ts => t -> t == ts, dat.oqs_df(dat.get_ym(ts)...))
-
 
 makeprob(ts, lms) = makeprob(ts, SH.getExpir(lms))
 makeprob(ts::DateTime, xpir::Date) = makeprob(ts, dat.market_close(xpir))
@@ -369,48 +373,60 @@ function showres(tsi_index, ts, sdf, under, r1)
     return lms
 end
 
-function quotes_at(ts, lqs)
-    df = DataRead.get_options(year(ts), month(ts))
-    df = df[df.ts .== ts .&& df.expir .== ts, :]
+quotes_at(xpirts, ts, lqs) = quotes_at(DataRead.get_options(year(ts), month(ts)), xpirts, ts, lqs)
+function quotes_at(df, xpirts, ts, lqs)
+    df = df[df.ts .== ts .&& df.expir .== xpirts, :]
     # global kargs = (;df, lqs, xpirts)
     return map(lqs) do lq
-        style = SH.getStyle(lq)
-        strike = SH.getStrike(lq)
-        return only(df[df.style .== style .&& df.strike .== strike])
+        style = Int8(SH.getStyle(lq))
+        strike = Float32(SH.getStrike(lq))
+        return only(df[df.style .== style .&& df.strike .== strike, :])
     end
 end
 
 function df_calc_pnl(df_ts, lqs, xpirts)
-    rows = at_xpirts(xpirts, lqs)
+    global kargs = (;df_ts, lqs, xpirts)
+    ts = first(df_ts.ts)
+    at_ts = quotes_at(df_ts, xpirts, ts, lqs)
+    at_xpirts = quotes_at(xpirts, xpirts, lqs)
+    neto = sum(dfneto.(at_ts, SH.getSide.(lqs)))
+    netc = sum(dfnetc.(at_xpirts, SH.getSide.(lqs)))
+    return (;neto, netc, pnl=(neto + netc))
 
-    strikes = SH.getStrike.(lqs)
-    rows = dfrow.(Ref(df), xpirts, strikes)
-    neto = sum(dfneto.(rows, lqs))
-    netc = sum(dfnetc_xpir.(rows, lqs))
-    netc_value = sum(dfnetc_xpir_value.(rows, lqs))
-    curp = dat.pents_to_c(dat.lup_under(xpirts))
-    return (;neto, netc, netc_value, pnl=neto + netc, pnl_value=neto + netc_value, curp)
+    # strikes = SH.getStrike.(lqs)
+    # rows = dfrow.(Ref(df), xpirts, strikes)
+    # neto = sum(dfneto.(rows, lqs))
+    # netc = sum(dfnetc_xpir.(rows, lqs))
+    # netc_value = sum(dfnetc_xpir_value.(rows, lqs))
+    # curp = dat.pents_to_c(dat.lup_under(xpirts))
+    # return (;neto, netc, netc_value, pnl=neto + netc, pnl_value=neto + netc_value, curp)
 end
-function dfrow(df, xpirts, strike)
-    s = strike # dat.topents(strike)
-    return only(df[(df.expir .== xpirts) .& (df.strike .== s),:])
-end
+# function dfrow(df, xpirts, strike)
+#     s = strike # dat.topents(strike)
+#     return only(df[(df.expir .== xpirts) .& (df.strike .== s),:])
+# end
 # dfneto(dfrow, lm) = dat.pents_to_c(dfrow[dfsym(SH.getStyle(lm), SH.getSide(lm), Action.open)])
 # dfnetc(dfrow, lm) = dat.pents_to_c(dfrow[dfsym(SH.getStyle(lm), SH.toOther(SH.getSide(lm)), Action.close)])
 
-function dfneto(dfrow, lm)
-    dir = Int(SH.getSide(lm)) * Int(Action.open)
-    return -dir * dat.pents_to_c(dfrow[dfsym_bidask(SH.getStyle(lm), dir)])
+import PricingBase
+function dfneto(dfrow, side)
+    dir = Int(side) * Int(Action.open)
+    return PricingBase.quote_dir(dir, dfrow.bid, dfrow.ask)
 end
-function dfnetc(dfrow, lm)
-    # dir = Int(SH.toOther(SH.getSide(lm))) * Int(Action.close)
-    dir = Int(SH.getSide(lm)) * Int(Action.close)
-    bidask_col = dfsym_bidask(SH.getStyle(lm), dir)
-    bidask = dfrow[bidask_col]
-    res = -dir * dat.pents_to_c(bidask)
-    # @show dir bidask_col bidask res
-    return res
+function dfnetc(dfrow, side)
+    dir = Int(side) * Int(Action.close)
+    return PricingBase.quote_dir(dir, dfrow.bid, dfrow.ask)
 end
+
+# function dfnetc(dfrow, lm)
+#     # dir = Int(SH.toOther(SH.getSide(lm))) * Int(Action.close)
+#     dir = Int(SH.getSide(lm)) * Int(Action.close)
+#     bidask_col = dfsym_bidask(SH.getStyle(lm), dir)
+#     bidask = dfrow[bidask_col]
+#     res = -dir * dat.pents_to_c(bidask)
+#     # @show dir bidask_col bidask res
+#     return res
+# end
 
 dfnetc_xpir(dfrow, lm) = dat.pents_to_c(dfrow[dfsym_xpir_price(SH.getStyle(lm), SH.toOther(SH.getSide(lm)))])
 dfnetc_xpir_value(dfrow, lm) = Int(SH.getSide(lm)) * dat.pents_to_c(dfrow[dfsym_xpir_value(SH.getStyle(lm))])
