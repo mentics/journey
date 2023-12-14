@@ -82,8 +82,8 @@ end
 function make_tsx(;sym="SPY")
     price_lookup = DataRead.price_lookup()
 
-    (;diff) = DataRead.get_options_yms()
-    yms = diff
+    (;avail) = DataRead.get_options_yms()
+    yms = avail
 
     # df = mapreduce(vcat, DateUtil.year_months()[2:4]) do (year, month)
     #     println("processing $year $month")
@@ -94,7 +94,7 @@ function make_tsx(;sym="SPY")
 
     # DateUtil.year_months()[2:8]
     stop = false
-    yms = [(2017,12)]
+    # yms = [(2017,12)]
     try
         dfs = qbmap(yms) do (year, month)
             !stop || return
