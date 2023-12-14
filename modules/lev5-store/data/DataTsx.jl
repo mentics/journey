@@ -252,91 +252,91 @@ function fit_sides(xs::Vector{Float64}, ys::Vector{Float64}, style, max_y)
     # @show xtqs
     return [ys_mid[2], yatz, ys_mid[3]]
 
-    sm = side_model(yatz)
-    if style == -1
-        left_inds = 1:mid
-        right_inds = (mid+1):NTM_COUNT3
-        left_xs = vcat(xs[left_inds], 0.0)
-        left_ys = vcat(ys[left_inds], yatz)
-        left_ps = fit(sm, left_xs, left_ys)
+    # sm = side_model(yatz)
+    # if style == -1
+    #     left_inds = 1:mid
+    #     right_inds = (mid+1):NTM_COUNT3
+    #     left_xs = vcat(xs[left_inds], 0.0)
+    #     left_ys = vcat(ys[left_inds], yatz)
+    #     left_ps = fit(sm, left_xs, left_ys)
 
-        right_xs = vcat(0.0, xs[right_inds])
-        right_ys = vcat(yatz, ys[right_inds])
-        right_ps = fit(sm, right_xs, right_ys)
+    #     right_xs = vcat(0.0, xs[right_inds])
+    #     right_ys = vcat(yatz, ys[right_inds])
+    #     right_ps = fit(sm, right_xs, right_ys)
 
-        left_1 = sm(-XTQ_RADIUS, left_ps)
-        right_1 = sm(XTQ_RADIUS, right_ps)
-        return (;xtqs=[left_1, yatz, right_1], left_ps, right_ps)
-    else
-        right_inds = 1:mid
-        left_inds = (mid+1):NTM_COUNT3
-        right_xs = vcat(0.0, xs[right_inds])
-        right_ys = vcat(yatz, ys[right_inds])
-        right_ps = fit(sm, right_xs, right_ys)
+    #     left_1 = sm(-XTQ_RADIUS, left_ps)
+    #     right_1 = sm(XTQ_RADIUS, right_ps)
+    #     return (;xtqs=[left_1, yatz, right_1], left_ps, right_ps)
+    # else
+    #     right_inds = 1:mid
+    #     left_inds = (mid+1):NTM_COUNT3
+    #     right_xs = vcat(0.0, xs[right_inds])
+    #     right_ys = vcat(yatz, ys[right_inds])
+    #     right_ps = fit(sm, right_xs, right_ys)
 
-        left_xs = vcat(xs[left_inds], 0.0)
-        left_ys = vcat(ys[left_inds], yatz)
-        left_ps = fit(sm, left_xs, left_ys)
+    #     left_xs = vcat(xs[left_inds], 0.0)
+    #     left_ys = vcat(ys[left_inds], yatz)
+    #     left_ps = fit(sm, left_xs, left_ys)
 
-        right_1 = sm(XTQ_RADIUS, right_ps)
-        left_1 = sm(-XTQ_RADIUS, left_ps)
-        return (;xtqs=[left_1, yatz, right_1], left_ps, right_ps)
-    end
-end
-
-function check(xs, ys, res)
-    (;xtqs, left_ps, right_ps) = res
-    yatz = xtqs[2]
-    sm = side_model(yatz)
-    left_xs = (2*xs[1]):0.0001:0.0
-    right_xs = 0.0:0.0001:(2*xs[end])
-    draw(:vlines, 0.0)
-    draw!(:scatter, xs, ys; label="points")
-    draw!(:lines, left_xs, [sm(x, left_ps) for x in left_xs]; label="left")
-    draw!(:lines, right_xs, [sm(x, right_ps) for x in right_xs]; label="right")
-end
-
-import LsqFit
-vertex_model(x, p) = @. p[1] * exp(-p[2] * x^2)
-# side_model(x, p) = @. p[1] / (1 + p[2] * x^2)
-# side_model(yatz) = (x, p) -> @. yatz / (1 + p[1] * x^2 + p[2] * x^3 + p[3] * x^4)
-side_model(yatz) = (x, p) -> @. yatz / (1 + p[1] * x^2)
-sminit() = [1.0]
-smlower() = [0.0]
-# smweights() = [1.0, 0.9, 0.8, 0.7, 0.6]
-# smweights() = [1.0, 1.0, 0.0, 0.0, 0.0]
-# smweights() = fill(NTM_COUNT3 ÷ 2 + 1)
-# fit(model, xs, ys) = LsqFit.curve_fit(model, xs, ys, smweights(), sminit()).param
-fit(model, xs, ys) = LsqFit.curve_fit(model, xs, ys, sminit(); lower=smlower()).param
-
-# vm(xs, ps) = @. log(ps[1]) - ps[2] * xs^2
-function vm(xs, ps)
-    # if ps[1] < 0.0
-    #     @show xs ps
-    #     error("bad ps")
+    #     right_1 = sm(XTQ_RADIUS, right_ps)
+    #     left_1 = sm(-XTQ_RADIUS, left_ps)
+    #     return (;xtqs=[left_1, yatz, right_1], left_ps, right_ps)
     # end
-    @. log(ps[1]) - ps[2] * xs^2
-    # @. ps[1] - ps[2] * xs^2
 end
-function fit_vm(xs, ys, max_y)
-    ys2 = [log(max(1e-8, y)) for y in ys]
-    # @show xs ys ys2
-    # return LsqFit.curve_fit(vm, xs, ys2, [0.0001,1.0,1.0,0.0001], [log(maximum(ys)), 1000.0]).param#; lower=[0.0, 1.0]).param
-    return LsqFit.curve_fit(vm, xs, ys2, [0.0001,1.0,1.0,0.0001], [maximum(ys), 1000.0]).param #; lower=[0.0, 1.0]).param
-end
-function it(xs, ys)
-    mleft = (ys[2] - ys[1]) / (xs[2] - xs[1])
-    mright = (ys[4] - ys[3]) / (xs[4] - xs[3])
-    @show mleft mright
-    b = log((xs[2] * mright) / (xs[3] * mleft)) / (xs[2]^2 - xs[3]^2)
 
-    a = exp(-b * xs[2]^2) / ys[2]
-    a2 = exp(-b * xs[3]^2) / ys[3]
-    # a = m / (-2 * b * x2 * e^(-b * x2 ^ 2))
-    a3 = mleft / (-2 * b * xs[2] * exp(-b * xs[2]^2))
+# function check(xs, ys, res)
+#     (;xtqs, left_ps, right_ps) = res
+#     yatz = xtqs[2]
+#     sm = side_model(yatz)
+#     left_xs = (2*xs[1]):0.0001:0.0
+#     right_xs = 0.0:0.0001:(2*xs[end])
+#     draw(:vlines, 0.0)
+#     draw!(:scatter, xs, ys; label="points")
+#     draw!(:lines, left_xs, [sm(x, left_ps) for x in left_xs]; label="left")
+#     draw!(:lines, right_xs, [sm(x, right_ps) for x in right_xs]; label="right")
+# end
 
-    return (a, a2, a3, b)
-end
+# import LsqFit
+# vertex_model(x, p) = @. p[1] * exp(-p[2] * x^2)
+# # side_model(x, p) = @. p[1] / (1 + p[2] * x^2)
+# # side_model(yatz) = (x, p) -> @. yatz / (1 + p[1] * x^2 + p[2] * x^3 + p[3] * x^4)
+# side_model(yatz) = (x, p) -> @. yatz / (1 + p[1] * x^2)
+# sminit() = [1.0]
+# smlower() = [0.0]
+# # smweights() = [1.0, 0.9, 0.8, 0.7, 0.6]
+# # smweights() = [1.0, 1.0, 0.0, 0.0, 0.0]
+# # smweights() = fill(NTM_COUNT3 ÷ 2 + 1)
+# # fit(model, xs, ys) = LsqFit.curve_fit(model, xs, ys, smweights(), sminit()).param
+# fit(model, xs, ys) = LsqFit.curve_fit(model, xs, ys, sminit(); lower=smlower()).param
+
+# # vm(xs, ps) = @. log(ps[1]) - ps[2] * xs^2
+# function vm(xs, ps)
+#     # if ps[1] < 0.0
+#     #     @show xs ps
+#     #     error("bad ps")
+#     # end
+#     @. log(ps[1]) - ps[2] * xs^2
+#     # @. ps[1] - ps[2] * xs^2
+# end
+# function fit_vm(xs, ys, max_y)
+#     ys2 = [log(max(1e-8, y)) for y in ys]
+#     # @show xs ys ys2
+#     # return LsqFit.curve_fit(vm, xs, ys2, [0.0001,1.0,1.0,0.0001], [log(maximum(ys)), 1000.0]).param#; lower=[0.0, 1.0]).param
+#     return LsqFit.curve_fit(vm, xs, ys2, [0.0001,1.0,1.0,0.0001], [maximum(ys), 1000.0]).param #; lower=[0.0, 1.0]).param
+# end
+# function it(xs, ys)
+#     mleft = (ys[2] - ys[1]) / (xs[2] - xs[1])
+#     mright = (ys[4] - ys[3]) / (xs[4] - xs[3])
+#     @show mleft mright
+#     b = log((xs[2] * mright) / (xs[3] * mleft)) / (xs[2]^2 - xs[3]^2)
+
+#     a = exp(-b * xs[2]^2) / ys[2]
+#     a2 = exp(-b * xs[3]^2) / ys[3]
+#     # a = m / (-2 * b * x2 * e^(-b * x2 ^ 2))
+#     a3 = mleft / (-2 * b * xs[2] * exp(-b * xs[2]^2))
+
+#     return (a, a2, a3, b)
+# end
 #endregion Util
 
 #=
@@ -543,16 +543,16 @@ function find_yatz(xs_mid, ys_mid)
     return yatz
 end
 
-import DrawUtil:draw,draw!
-function check_yatz(kf)
-    xs = kf.args.xs
-    ys = kf.args.ys
-    yatz = find_yatz(xs, ys)
-    draw(:vlines, 0.0)
-    draw!(:scatter, xs, ys; label="points")
-    draw!(:scatter, 0.0, yatz; label="yatz")
-    return yatz
-end
+# import DrawUtil:draw,draw!
+# function check_yatz(kf)
+#     xs = kf.args.xs
+#     ys = kf.args.ys
+#     yatz = find_yatz(xs, ys)
+#     draw(:vlines, 0.0)
+#     draw!(:scatter, xs, ys; label="points")
+#     draw!(:scatter, 0.0, yatz; label="yatz")
+#     return yatz
+# end
 
 #region Old Fit
 # m(x, ps) = ps[1] * exp(-ps[2] * x^2)
@@ -582,28 +582,28 @@ end
 #     return ps
 # end
 
-import DrawUtil
-function drawpoly(xpts, ypts, ps; n=false)
-    n && DrawUtil.draw(:vlines, 0.0)
-    DrawUtil.draw!(:scatter, xpts, ypts)
-    width = xpts[end] - xpts[1]
-    left = xpts[1] - width
-    right = xpts[end] + width
-    xs = left:(width/100):right
-    DrawUtil.draw!(:lines, xs, model(xs, ps))
-end
+# import DrawUtil
+# function drawpoly(xpts, ypts, ps; n=false)
+#     n && DrawUtil.draw(:vlines, 0.0)
+#     DrawUtil.draw!(:scatter, xpts, ypts)
+#     width = xpts[end] - xpts[1]
+#     left = xpts[1] - width
+#     right = xpts[end] + width
+#     xs = left:(width/100):right
+#     DrawUtil.draw!(:lines, xs, model(xs, ps))
+# end
 
-function drawpoly2(xpts, ypts, left_ps, right_ps; n=false)
-    n && DrawUtil.draw(:vlines, 0.0)
-    DrawUtil.draw!(:scatter, xpts, ypts; label="data")
-    width = xpts[end] - xpts[1]
-    left = xpts[1] - width
-    right = xpts[end] + width
-    left_xs = left:(width/50):0.0
-    right_xs = 0.0:(width/50):right
-    DrawUtil.draw!(:lines, left_xs, model(left_xs, left_ps); label="left")
-    DrawUtil.draw!(:lines, right_xs, model(right_xs, right_ps); label="right")
-end
+# function drawpoly2(xpts, ypts, left_ps, right_ps; n=false)
+#     n && DrawUtil.draw(:vlines, 0.0)
+#     DrawUtil.draw!(:scatter, xpts, ypts; label="data")
+#     width = xpts[end] - xpts[1]
+#     left = xpts[1] - width
+#     right = xpts[end] + width
+#     left_xs = left:(width/50):0.0
+#     right_xs = 0.0:(width/50):right
+#     DrawUtil.draw!(:lines, left_xs, model(left_xs, left_ps); label="left")
+#     DrawUtil.draw!(:lines, right_xs, model(right_xs, right_ps); label="right")
+# end
 
 # # # TODO: make better model and fitting?
 # # powers = -2:-1
