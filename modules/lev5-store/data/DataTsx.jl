@@ -27,7 +27,7 @@ function calc_xtqs(ts, xpirts, ts_price, style, strikes, bids, asks)
     # inds = first(sortperm(strikes; by=x -> abs(x - ts_price)), NTM_COUNT3)
     @assert issorted(strikes)
     mid = searchsortedlast(strikes, ts_price)
-    radius = min(NTM_RADIUS, lastindex(strikes) - mid)
+    radius = min(NTM_RADIUS, lastindex(strikes) - mid, mid)
     if radius <= 2
         global kargs = (;ts, xpirts, ts_price, style, strikes, bids, asks)
         error("too few strikes")
@@ -60,12 +60,13 @@ function calc_xtqs(ts, xpirts, ts_price, style, strikes, bids, asks)
     xs = Float64.(strikes ./ ts_price .- 1) # for fitting precision
     max_y = 2 * maximum(xtrins)
 
-    if !issorted(xtrins[1:radius])
-        println("WARN: bad data left for $(ts): $(xtrins)")
-    end
-    if !issorted(xtrins[(radius+1):end]; rev=true)
-        println("WARN: bad data right for $(ts): $(xtrins)")
-    end
+    # TODO: fix the algo to deal with this
+    # if !issorted(xtrins[1:radius])
+    #     println("WARN: bad data left for $(ts): $(xtrins)")
+    # end
+    # if !issorted(xtrins[(radius+1):end]; rev=true)
+    #     println("WARN: bad data right for $(ts): $(xtrins)")
+    # end
 
     xtqs = fit_sides(xs, xtrins, style, max_y)
 
@@ -73,7 +74,7 @@ function calc_xtqs(ts, xpirts, ts_price, style, strikes, bids, asks)
         global kxtq = (;divid, xtrins, xs, xtqs, max_y, xtrins_bids, xtrins_asks, args=(;ts, xpirts, ts_price, style, strikes, bids, asks))
         error("xtq out of range: $(xtqs)")
     end
-    global kxtq = (;divid, xtrins, xs, xtqs, max_y, xtrins_bids, xtrins_asks, args=(;ts, xpirts, ts_price, style, strikes, bids, asks))
+    # global kxtq = (;divid, xtrins, xs, xtqs, max_y, xtrins_bids, xtrins_asks, args=(;ts, xpirts, ts_price, style, strikes, bids, asks))
     return Float32.(xtqs)
 end
 #endregion
@@ -139,6 +140,7 @@ end
 #region Local
 function proc(df, price_lookup)
     threads = false
+    # df = filter(:ts => (ts -> Date(ts) == Date(2012))) # filtered out in ThetaData
     gdf = groupby(df, [:ts, :expir, :style])
     df = combine(gdf, [:ts,:expir,:style,:strike,:bid,:ask] => calc_tsx_in_df(price_lookup) => [:xtq1, :xtq2, :xtq3, :ret]; threads)
     gdf = groupby(df, [:ts, :expir])

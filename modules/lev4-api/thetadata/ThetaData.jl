@@ -70,7 +70,7 @@ function query_options(date_start, date_end, xpir; period=1800000, sym="SPY")
         for tick in d["ticks"]
             global ktick = tick
             date = to_date(tick[10])
-            date != BAD_DATA_DATE || continue
+            !(date in BAD_DATA_DATES) || continue
             ts = DateUtil.fromMarketTZ(date, to_time(tick[1]))
             ts != cal.getMarketOpen(Date(ts)) || continue # skip open time because I don't trust, too volatile
             bid_size = tick[2]
@@ -160,6 +160,6 @@ end
 # end
 #endregion Explore and Test
 
-const BAD_DATA_DATE = Date(2019,2,2)
+const BAD_DATA_DATES = [Date(2012,12,17), Date(2019,2,2)]
 
 end
