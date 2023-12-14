@@ -61,13 +61,17 @@ function query_options(date_start, date_end, xpir; period=1800000, sym="SPY")
 
     start = time()
     df = DataFrame([DateTime[], DateTime[], Int8[], CT[], CT[], UInt32[], UInt8[], CT[], UInt32[], UInt8[]], [:ts, :expir, :style, :strike, :bid, :bid_size, :bid_condition, :ask, :ask_size, :ask_condition])
+    global kdata = data
     for d in data["response"]
+        global kd = d
         info = d["contract"]
         style = Int8(info["right"] == "C" ? 1 : -1)
         strike = info["strike"]
         for tick in d["ticks"]
-            # tick[1] != 34200000 || continue # skip opening time
-            ts = DateUtil.fromMarketTZ(to_date(tick[10]), to_time(tick[1]))
+            global ktick = tick
+            date = to_date(tick[10])
+            date != BAD_DATA_DATE || continue
+            ts = DateUtil.fromMarketTZ(date, to_time(tick[1]))
             ts != cal.getMarketOpen(Date(ts)) || continue # skip open time because I don't trust, too volatile
             bid_size = tick[2]
             bid_condition = tick[3]
@@ -155,5 +159,7 @@ end
 #     dat.lup_under(ts)
 # end
 #endregion Explore and Test
+
+const BAD_DATA_DATE = Date(2019,2,2)
 
 end
