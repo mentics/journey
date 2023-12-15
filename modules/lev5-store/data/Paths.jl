@@ -1,5 +1,5 @@
 module Paths
-using Dates, Base64
+using Dates, Base64, StableHashTraits
 
 # export db_incoming, db_input, db_checkpoint, db_infer
 # export save_data, save_data_params, load_data, load_data_params
@@ -51,7 +51,8 @@ function check_file_mtime(path, age, asof)
     return
 end
 
-params_hash(params) = Base64.base64encode(hash(params))
+# params_hash(params) = Base64.base64encode(hash(params))
+params_hash(params) = stable_hash(params; version=2)
 #endregion
 
 end

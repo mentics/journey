@@ -20,6 +20,8 @@ params_data() = (;
 function make_input(params=params_data())
     # Get xtqs and ret
     df_tsx = DataRead.get_tsx()
+    # Near the end, we don't have returns because they are in the future so filter them out.
+    df_tsx = filter(:ret => isfinite, df_tsx)
 
     # Add temporal for ts
     transform!(df_tsx, [:ts] => (ts -> ModelUtil.to_temporal_ts.(ts)) => prefix_sym.([:week_day, :month_day, :quarter_day, :year_day, :hour], :ts_))
@@ -35,12 +37,12 @@ function make_input(params=params_data())
     rename!(df_hist, :key => :ts)
     params = merge(params, (;hist=params_hist))
     df = innerjoin(df_tsx, df_hist; on=:ts)
-    # TODO: should match eventually. so change to assert when ready (except for skip_back, need to deal with that)
-    @show (df.ts == df_hist.ts)
+
+    # TODO: should match eventually. so change to assert when ready
+    # except for skip_back and near current time where ret is in the future
+    # @show (df.ts == df_hist.ts)
 
     # Bin the returns
-    # bins = make_bins(params)
-    # transform!(df, :ret => (r -> searchsortednearest.(Ref(bins), r)) => :y_bin)
     transform!(df, :ret => (r -> Bins.nearest.(r .+ 1)) => :y_bin)
 
     # cleanup
