@@ -2,7 +2,7 @@ module FilesArrow
 using Arrow, JLD2
 import DataFrames:AbstractDataFrame,DataFrame
 import DateUtil
-import Paths:Paths,params_hash
+import Paths:Paths,safe_hash
 
 function Paths.save_data(path, df::AbstractDataFrame; update=false)
     mkpath(dirname(path))
@@ -11,7 +11,7 @@ function Paths.save_data(path, df::AbstractDataFrame; update=false)
 end
 
 function Paths.save_data_params(parent_dir, params, df::AbstractDataFrame; update=false)
-    dir = joinpath(parent_dir, params_hash(params))
+    dir = joinpath(parent_dir, safe_hash(params))
     if isdir(dir)
         error("dir already exists for save_data, todo: verify params match: $(dir)")
     end
@@ -32,7 +32,7 @@ end
 
 function Paths.load_data_params(parent_dir, ::Type{DataFrame}; age=DateUtil.FOREVER2, asof=DateUtil.DATETIME_BEFORE, copycols=false, params=nothing)
     if !isnothing(params)
-        dir = joinpath(parent_dir, params_hash(params))
+        dir = joinpath(parent_dir, safe_hash(params))
     else
         dir = sort!(readdir(parent_dir; join=true), by=mtime)[end]
     end

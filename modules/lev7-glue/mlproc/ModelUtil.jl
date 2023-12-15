@@ -20,7 +20,7 @@ function (m::SplitLayer)(x)
     )
 end
 
-encode_version(num, params) = "$(num)-$(Paths.params_hash(params)))"
+encode_version(num, params) = "$(num)-$(Paths.safe_hash(params)))"
 
 function make_block(through_width, hidden_width, num_layers, activation, bias=false)
     layers = Dense[]
