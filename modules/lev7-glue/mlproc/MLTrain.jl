@@ -319,6 +319,9 @@ end
 
 test_batch_loss(trainee, ibatch) = trainee.get_loss(trainee.training_model, trainee.batches.get(0, ibatch))
 
+function save(training)
+    ModelUtil.save_training(training)
+end
 function load(training)
     ModelUtil.load_training(training)
     check_holdout(training)
