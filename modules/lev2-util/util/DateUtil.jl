@@ -301,4 +301,8 @@ BAD_DATA_DATES() = [
 ]
 # Date(2019,2,2) should be filtered out by isBusDay
 
+function ts_in(range::Interval{Date, Closed, Closed})
+    in(Interval{Closed,Open}(market_midnight(first(range)), market_midnight(last(range) + Day(1))))
+end
+
 end

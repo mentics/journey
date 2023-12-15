@@ -180,6 +180,7 @@ end
 #endregion Train
 
 #region Check
+check_holdout(training) = check_holdout(training.model, training.trainee, training.data, training.params.train.batch_size)
 function check_holdout(model, trainee, data, batch_size)
     loss = 0.0
     count = 0
@@ -317,5 +318,10 @@ function latent_space(mod)
 end
 
 test_batch_loss(trainee, ibatch) = trainee.get_loss(trainee.training_model, trainee.batches.get(0, ibatch))
+
+function load(training)
+    ModelUtil.load_training(training)
+    check_holdout(training)
+end
 
 end

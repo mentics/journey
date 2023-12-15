@@ -106,6 +106,10 @@ end
 # end
 
 extrin_sub_dist(style::Style.T, strike::Real, curp::Real)::Bool = xor(Style.call == style, strike >= curp)
+extrin_sub_dist(style::Integer, strike::Real, curp::Real)::Bool = xor(style == 1, strike >= curp)
+
+(value_at_xpir(style::Style.T, strike::T, curp::T)::T) where T<:Real = extrin_sub_dist(style, strike, curp) ? abs(curp - strike) : zero(T)
+(value_at_xpir(style::Integer, strike::T, curp::T)::T) where T<:Real = extrin_sub_dist(style, strike, curp) ? abs(curp - strike) : zero(T)
 
 #region OldExtrema
 # legsExtrema(neto, legs::NTuple{2}) = spreadExtrema(neto, longShort(legs[1], legs[2])...)

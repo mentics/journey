@@ -1,5 +1,5 @@
 module ReturnProbData
-using Dates, DataFrames, SearchSortedNearest
+using Dates, Intervals, DataFrames, SearchSortedNearest
 import DateUtil, Paths
 import DataConst, DataRead, ModelUtil
 import HistShapeData
@@ -14,12 +14,14 @@ params_data() = (;
     # intraday_period = Minute(30),
     xpirs_within = DataConst.XPIRS_WITHIN,
     bins_count = Bins.VNUM,
+    train_date_range = DateUtil.DEFAULT_DATA_START_DATE..Date(2023,6,30),
     # ProbMeta.BIN_PARAMS...
 )
 
 function make_input(params=params_data())
     # Get xtqs and ret
     df_tsx = DataRead.get_tsx()
+    filter(:ts => DateUtil.ts_in(params.train_date_range), df_tsx)
     # Near the end, we don't have returns because they are in the future so filter them out.
     df_tsx = filter(:ret => isfinite, df_tsx)
 

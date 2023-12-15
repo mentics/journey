@@ -213,11 +213,11 @@ end
     # training.data.single()
 # end
 function check_load(ind=1)
-    df, params = Paths.load_data_params(Paths.db_output(rpm.NAME), DataFrame)
-    check(df, ind)
+    df, _ = Paths.load_data_params(Paths.db_output(rpm.NAME), DataFrame)
+    check_output(df, ind)
 end
 import DrawUtil
-function check(df, ind=1)
+function check_output(df, ind=1)
     data = Vector(select(df, Not(:key))[ind,:])
     replace!(x -> x < 0 ? 0f0 : x, data)
     # return data
@@ -227,6 +227,13 @@ function check(df, ind=1)
     @show key
     # DrawUtil.draw(:barplot, softmax(data))
     DrawUtil.draw(:barplot, data)
+end
+
+function check1(training, ind=1)
+    trainee = training.trainee
+    batch = training.data.single(ind)
+    out1 = vec(trainee.run_infer(training.model, batch.x |> gpu) |> cpu)
+    DrawUtil.draw(:barplot, out1)
 end
 #endregion Check
 

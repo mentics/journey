@@ -16,18 +16,22 @@ using DataRead
 #region Public
 const EMPTY_VECTOR = Vector()
 
-function is_ts_backtest(ts)
+is_ts_backtest(ts_min) = function(ts)
     date = Date(ts)
-    return ts != cal.getMarketOpen(date) && ts != cal.getMarketClose(date)
+    return ts >= ts_min && ts != cal.getMarketOpen(date) && ts != cal.getMarketClose(date)
 end
 
 function explore(;inds=nothing, yms=dat.make_yms(), skip_existing=true, use_pos=true, xpir_inds=1:2)
     price_lup = DataRead.price_lookup()
     # price_lup_xpirts = DataRead.price_lookup_xpirts()
-    prob_for_tsxp = DataRead.prob_for_tsxp(;age=Day(2))
+    ts_min, prob_for_tsxp = DataRead.prob_for_tsxp(;age=Day(2))
     for (y, m) in yms
         # TODO: could create this filtered file in advance
-        @time oqs_df = filter(:ts => is_ts_backtest, DataRead.get_options(y, m))
+        oqs_df = filter(:ts => is_ts_backtest(ts_min), DataRead.get_options(y, m))
+        if isempty(oqs_df)
+            println("No data found for $(y)-$(m)")
+            continue
+        end
         sdfs = groupby(oqs_df, :ts)
         itr = isnothing(inds) ? sdfs :
               inds isa Integer ? sdfs[inds:end] : sdfs[inds]
@@ -39,7 +43,7 @@ function explore(;inds=nothing, yms=dat.make_yms(), skip_existing=true, use_pos=
             ts = first(sdf_ts.ts)
             rs_ts = Vector()
             !skip_existing || !haskey(TOP_TS, ts) || continue
-            println("Processing ts:$(ts)")
+            # println("Processing ts:$(ts)")
 
             curp = C(price_lup[ts])
             ctx = ore.make_ctx(ts, xpirts -> prob_for_tsxp(ts, xpirts), curp)
@@ -66,6 +70,7 @@ function explore(;inds=nothing, yms=dat.make_yms(), skip_existing=true, use_pos=
             for sdf in sdf_xpir[xpir_inds]
                 xpirts = first(sdf.expir)
                 xpir = Date(xpirts)
+                xpir_price = price_lup[xpirts]
                 # 0 < bdays(ts, xpir) <= 8 || continue
                 0 < bdays(ts, xpir) || continue
                 oqs = to_oqs(sdf)
@@ -86,7 +91,7 @@ function explore(;inds=nothing, yms=dat.make_yms(), skip_existing=true, use_pos=
                     # showres(tsi_index, ts, sdf, curp, res[end])
                     # showres(tsi_index, ts, sdf, curp, res[1])
                     r1 = res[1]
-                    result = df_calc_pnl(sdf, r1.lqs, xpirts) # dat.market_close(SH.getExpir(r1.lms)))
+                    result = df_calc_pnl(sdf, r1.lqs, xpirts; xpir_price) # dat.market_close(SH.getExpir(r1.lms)))
                     # ThreadUtil.runSync(lock_proc) do
                         r = (;ts, curp, r1, result)
                         push!(top_xpir, r)
@@ -373,24 +378,38 @@ function showres(tsi_index, ts, sdf, under, r1)
     return lms
 end
 
-quotes_at(xpirts, ts, lqs) = quotes_at(DataRead.get_options(year(ts), month(ts)), xpirts, ts, lqs)
-function quotes_at(df, xpirts, ts, lqs)
+import OptionUtil
+quotes_at(xpirts, ts, lqs; kws...) = quotes_at(DataRead.get_options(year(ts), month(ts)), xpirts, ts, lqs; kws...)
+function quotes_at(df, xpirts, ts, lqs; xpir_price=nothing)
     df = df[df.ts .== ts .&& df.expir .== xpirts, :]
     # global kargs = (;df, lqs, xpirts)
     return map(lqs) do lq
         style = Int8(SH.getStyle(lq))
         strike = Float32(SH.getStrike(lq))
-        return only(df[df.style .== style .&& df.strike .== strike, :])
+        r = df[df.style .== style .&& df.strike .== strike, :]
+        if size(r, 1) != 1
+            println("Unexpected row count looking up quotes for $((;count=size(r, 1), ts, xpirts, style, strike))")
+            # global kquotesat = (;df, xpirts, ts, lqs)
+            if !isnothing(xpir_price)
+                val = OptionUtil.value_at_xpir(style, strike, xpir_price)
+                # TODO: is this the right way to make it 0.01 worse
+                return (;bid=val, ask=val+0.01f0)
+            else
+                error("Can't handle missing data")
+            end
+        end
+        r = only(r)
+        return (;r.bid, r.ask)
     end
 end
 
-function df_calc_pnl(df_ts, lqs, xpirts)
+function df_calc_pnl(df_ts, lqs, xpirts; kws...)
     global kargs = (;df_ts, lqs, xpirts)
     ts = first(df_ts.ts)
     at_ts = quotes_at(df_ts, xpirts, ts, lqs)
-    at_xpirts = quotes_at(xpirts, xpirts, lqs)
-    neto = sum(dfneto.(at_ts, SH.getSide.(lqs)))
-    netc = sum(dfnetc.(at_xpirts, SH.getSide.(lqs)))
+    at_xpirts = quotes_at(xpirts, xpirts, lqs; kws...)
+    neto = sum(calc_neto.(at_ts, SH.getSide.(lqs)))
+    netc = sum(calc_netc.(at_xpirts, SH.getSide.(lqs)))
     return (;neto, netc, pnl=(neto + netc))
 
     # strikes = SH.getStrike.(lqs)
@@ -409,13 +428,13 @@ end
 # dfnetc(dfrow, lm) = dat.pents_to_c(dfrow[dfsym(SH.getStyle(lm), SH.toOther(SH.getSide(lm)), Action.close)])
 
 import PricingBase
-function dfneto(dfrow, side)
+function calc_neto(qt, side)
     dir = Int(side) * Int(Action.open)
-    return PricingBase.quote_dir(dir, dfrow.bid, dfrow.ask)
+    return PricingBase.quote_dir(dir, qt.bid, qt.ask)
 end
-function dfnetc(dfrow, side)
+function calc_netc(qt, side)
     dir = Int(side) * Int(Action.close)
-    return PricingBase.quote_dir(dir, dfrow.bid, dfrow.ask)
+    return PricingBase.quote_dir(dir, qt.bid, qt.ask)
 end
 
 # function dfnetc(dfrow, lm)
@@ -498,7 +517,7 @@ function calc_close(r, ts)
         # rows = dfrow.(Ref(df), xpirts, strikes)
         # rows = filter([:ts, :expiration, :strike] => filter_txs(ts, r.r1.xpirts, strikes), dfoqs)
         # netc = sum(dfnetc.(eachrow(rows), lqs))
-        netc = sum(dfnetc.(rows, lqs))
+        netc = sum(calc_netc.(rows, lqs))
         pnl = r.r1.neto + netc
         if pnl < no_worse_than
             return nothing
