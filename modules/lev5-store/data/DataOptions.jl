@@ -29,11 +29,12 @@ function make_options(year, month; sym="SPY")
     end
     df = reduce(vcat, filter(!isnothing, dfs))
     # println("Completed acquiring data for ($(year), $(month)) in $(stop - start) seconds")
-    sort!(df, [:style, :ts, :expir, :strike])
-    @assert allunique(df, [:style, :ts, :expir, :strike])
+    sort!(df, keycols())
+    @assert allunique(df, keycols())
     Paths.save_data(DataRead.file_options(year, month; sym), df)
     return df
 end
+
 
 function update_options(year, month; sym="SPY")
     # TODO: how to make sure that when month passes, previous month is finished?
@@ -43,27 +44,32 @@ function update_options(year, month; sym="SPY")
     # TODO: deal with that thetadata is 15 minute delayed
     df1 = Paths.load_data(path, DataFrame; age=DateUtil.FOREVER2)
     last_ts = df1.ts[end]
-    if last_ts == tss[end]
-        println("Options already up to date: $(last_ts)")
-        touch(path)
-        return
-    end
+    # if last_ts == tss[end]
+    #     println("Options already up to date: $(last_ts)")
+    #     touch(path)
+    #     return
+    # end
 
-    start_date = DateUtil.market_date(last_ts)
+    start_date = DateUtil.bdaysBefore(DateUtil.market_date(last_ts), 1)
     # end_date = min(DateUtil.market_today(), Dates.lastdayofmonth(start_date))
     end_date = DateUtil.market_today()
 
+    @show start_date end_date
     xpirs = DataRead.get_xpirs_for_dates(start_date:end_date; age=Minute(30))
     filter!(xpir -> xpir - end_date <= DataConst.XPIRS_WITHIN, xpirs)
+    println("Found xpirs to process: $(xpirs)")
     @assert issorted(xpirs)
     @assert allunique(xpirs)
 
     df2 = mapreduce(vcat, xpirs) do xpir
-        d = ThetaData.query_options(start_date, min(xpir, end_date), xpir)
+        d = ThetaData.query_options(start_date, min(xpir, end_date), xpir)#; cache=false)
         isnothing(d) && error("WARN: no data for $(year)-$(month) xpir: $(xpir)")
         return d
     end
-    df = DataCheck.combine_dfs(df1, df2)
+    global kdfs = (;df1, df2)
+    @assert df1 isa DataFrame
+    @assert df2 isa DataFrame
+    df = DataCheck.combine_dfs(df1, df2; keycols=keycols())
 
     # TODO: thetadata query options doesn't return near market open, so maybe do something for that?
     tss = filter(ts -> ts != cal.getMarketOpen(Date(ts)), tss)
@@ -79,6 +85,7 @@ end
 #endregion Standard API
 
 #region Local
+keycols() = [:style, :ts, :expir, :strike]
 #endregion Local
 
 end

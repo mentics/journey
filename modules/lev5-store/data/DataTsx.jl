@@ -100,6 +100,7 @@ function make_tsx(;sym="SPY")
     # DateUtil.year_months()[2:8]
     stop = false
     # yms = [(2023,12)]
+    # yms = [(2023,i) for i in 1:12]
     try
         dfs = qbmap(yms) do (year, month)
             !stop || return
@@ -153,7 +154,7 @@ function proc(df, price_lookup)
     global kdf_orig = df
     gdf = groupby(df, [:ts, :expir, :style])
     df = combine(gdf, [:ts,:expir,:style,:strike,:bid,:ask] => calc_tsx_in_df(price_lookup) => [:xtq1, :xtq2, :xtq3, :ret]; threads)
-    df = filter([:xtq2] => (x -> x != -1f0), df)
+    # df = filter([:xtq2] => (x -> x != -1f0), df)
     global kdf = df
     # return df
     gdf = groupby(df, [:ts, :expir])

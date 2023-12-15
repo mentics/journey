@@ -34,11 +34,12 @@ http://localhost:25510/v2/bulk_hist/option/quote?root=SPY&exp=20120601&start_dat
 =#
 using LRUCache
 const HIST_CACHE2 = LRUCache.LRU{String,Union{Nothing,Dict}}(;maxsize=10000)
-function query_options(date_start, date_end, xpir; period=1800000, sym="SPY")
+function query_options(date_start, date_end, xpir; period=1800000, sym="SPY", cache=true)
     println("Getting quotes for $(date_start) to $(date_end) for xpir=$(xpir)")
 
     url = "http://localhost:25510//v2/bulk_hist/option/quote?exp=$(str(xpir))&start_date=$(str(date_start))&end_date=$(str(date_end))&root=$(sym)&ivl=$(period)"
-    data = get!(HIST_CACHE2, url) do
+    if !cache || !haskey(HIST_CACHE2, url)
+    # data = get!(HIST_CACHE2, url) do
         start = time()
         resp = HTTP.get(url, HEADERS_GET[]; retry=false)
         dict = parseJson(String(resp.body), Dict)
@@ -52,7 +53,9 @@ function query_options(date_start, date_end, xpir; period=1800000, sym="SPY")
         end
         stop = time()
         println("  data was not in cache, acquired from thetadata in $(stop - start) seconds: $(url)")
-        return dict
+        data = dict
+    else
+        data = HIST_CACHE2[url]
     end
     if isnothing(data)
         println("WARN: no data for url=$(url)")

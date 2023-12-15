@@ -3,13 +3,13 @@ using Dates
 using DateUtil
 import DataConst:DATE_START
 
-function combine_dfs(dfs...; keycol=:ts)
+function combine_dfs(dfs...; keycols=[:ts])
     df = vcat(dfs...)
-    sort!(df, [keycol])
-    unique!(df, [keycol])
+    sort!(df, keycols)
+    unique!(df, keycols)
     # @assert size(df, 1) > 10000
-    @assert issorted(df, keycol)
-    @assert allunique(df[!,keycol])
+    @assert issorted(df, keycols)
+    @assert allunique(df[!,keycols])
     return df
 end
 
