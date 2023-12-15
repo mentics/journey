@@ -171,7 +171,7 @@ function __init__()
         # GLMakie.activate!(true)
         GLMakie.set_theme!(GLMakie.theme_black())
         GLMakie.update_theme!(fontsize=12)
-        GLMakie.set_window_config!(;
+        GLMakie.activate!(;
             vsync = false,
             float = false,
             focus_on_show = true,
