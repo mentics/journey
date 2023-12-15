@@ -20,6 +20,7 @@ include("repl-simple.jl")
 using Dates, DataFrames, MLUtils
 
 using DateUtil
+import Calendars as cal
 
 using DataRead, Paths, FilesArrow, FilesJLD2
 

@@ -54,7 +54,7 @@ function update_prices(;sym="SPY")
             ;sym, age=Minute(0))
     println("$(size(df2,1)) rows to add")
     df = DataCheck.combine_dfs(df1, df2)
-    diff = symdiff(df.ts, tss)
+    diff = setdiff(tss, df.ts)
     if !isempty(diff)
         println("ERROR: DataPrices not all ts found. Not saved.")
         return diff
