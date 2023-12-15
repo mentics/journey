@@ -43,7 +43,6 @@ function update_prices(;sym="SPY")
     # TODO: deal with that thetadata is 15 minute delayed
     df1 = DataRead.load_prices(;sym, age=DateUtil.FOREVER2)
     last_ts = df1.ts[end]
-    @show last_ts
     if last_ts == tss[end]
         println("Prices already up to date: $(last_ts)")
         touch(path)
@@ -52,11 +51,10 @@ function update_prices(;sym="SPY")
     df2 = ThetaData.query_prices(
             DateUtil.market_date(last_ts),
             DateUtil.market_today()
-            ;sym, age=Minute(15))
+            ;sym, age=Minute(0))
     println("$(size(df2,1)) rows to add")
-    df = combine_dfs(df1, df2)
+    df = DataCheck.combine_dfs(df1, df2)
     diff = symdiff(df.ts, tss)
-    # diff = check_ts(df.ts)
     if !isempty(diff)
         println("ERROR: DataPrices not all ts found. Not saved.")
         return diff

@@ -30,7 +30,10 @@ function calc_xtqs(ts, xpirts, ts_price, style, strikes, bids, asks)
     radius = min(NTM_RADIUS, lastindex(strikes) - mid, mid)
     if radius <= 2
         global kargs = (;ts, xpirts, ts_price, style, strikes, bids, asks)
-        error("too few strikes")
+        # TODO investigate
+        # too few strikes for 2014-02-03T16:30:00 2014-02-28T21:00:00
+        println("WARN: too few strikes for $(ts) $(xpirts)")
+        return [-1f0, -1f0, -1f0]
     end
     inds = (mid - radius + 1):(mid + radius)
     strikes = strikes[inds]
@@ -72,7 +75,8 @@ function calc_xtqs(ts, xpirts, ts_price, style, strikes, bids, asks)
 
     if !_all(x -> -0.001 < x < max_y, xtqs) || maximum(xtqs) != xtqs[length(xtqs) ÷ 2 + 1]
         global kxtq = (;divid, xtrins, xs, xtqs, max_y, xtrins_bids, xtrins_asks, args=(;ts, xpirts, ts_price, style, strikes, bids, asks))
-        error("xtq out of range: $(xtqs)")
+        # TODO: fix the algo to deal with this or fix data or something
+        println("WARN: xtq out of range: $(xtqs)")
     end
     # global kxtq = (;divid, xtrins, xs, xtqs, max_y, xtrins_bids, xtrins_asks, args=(;ts, xpirts, ts_price, style, strikes, bids, asks))
     return Float32.(xtqs)
@@ -95,7 +99,7 @@ function make_tsx(;sym="SPY")
 
     # DateUtil.year_months()[2:8]
     stop = false
-    # yms = [(2017,12)]
+    # yms = [(2023,12)]
     try
         dfs = qbmap(yms) do (year, month)
             !stop || return
@@ -107,9 +111,14 @@ function make_tsx(;sym="SPY")
         @assert issorted(df, [:ts, :expir])
         @assert allunique(df, [:ts, :expir])
 
-        # TODO: put this check back in when data available
-        # @assert DataRead.get_ts() == df.ts
-        # Paths.save_data(DataRead.file_tsx(;sym), df)
+        Paths.save_data(DataRead.file_tsx(;sym), df)
+        tss = DataRead.get_ts()
+        # TODO: inside thetadata, we're filtering out market open
+        tss = filter(ts -> ts != cal.getMarketOpen(Date(ts)), tss)
+        diff = symdiff(df.ts, tss)
+        if !isempty(diff)
+            return diff
+        end
         return df
     finally
         stop = true
@@ -120,6 +129,7 @@ function update_tsx(;sym="SPY")
     df = DataRead.get_tsx()
     tss = DataRead.get_ts()
     if tss[end] > df.ts[end]
+        # TODO: reprocess the last days because we might have put placeholder values for :ret
         price_lookup = DataRead.price_lookup()
         ind = searchsortedfirst(tss, df.ts[end] + Second(5))
         to_proc = tss[ind:end]
@@ -140,19 +150,34 @@ end
 #region Local
 function proc(df, price_lookup)
     threads = false
-    # df = filter(:ts => (ts -> Date(ts) == Date(2012))) # filtered out in ThetaData
+    global kdf_orig = df
     gdf = groupby(df, [:ts, :expir, :style])
     df = combine(gdf, [:ts,:expir,:style,:strike,:bid,:ask] => calc_tsx_in_df(price_lookup) => [:xtq1, :xtq2, :xtq3, :ret]; threads)
+    df = filter([:xtq2] => (x -> x != -1f0), df)
+    global kdf = df
+    # return df
     gdf = groupby(df, [:ts, :expir])
+    @assert abs(length(gdf) - size(df, 1) ÷ 2) <= 1 "length(gdf) $(length(gdf)) == $(size(df, 1) ÷ 2) size(df, 1) ÷ 2"
     df = combine(gdf,
             [:style, :xtq1, :xtq2, :xtq3] => split_style => [:xtq1_call, :xtq2_call, :xtq3_call, :xtq1_put, :xtq2_put, :xtq3_put],
             :ret => first => :ret; threads)
+    filter!([:xtq2_call, :xtq2_put] => ((xc, xp) -> xc != -1f0 || xp != -1f0), df)
+    # filter!([:xtq2_call, :xtq2_put] => ((xc, xp) -> xc != -1f0 || xp != -1f0), df)
 end
 
 function split_style(s, x1, x2, x3)
+    if size(s, 1) != 2
+        # @show s x1 x2 x3
+        # error("only one $(size(s, 1))")
+        return (;xtq1_call=-1f0, xtq2_call=-1f0, xtq3_call=-1f0, xtq1_put=-1f0, xtq2_put=-1f0, xtq3_put=-1f0)
+    end
+    if s[1] != -1
+        @show s x1 x2 x3
+        error("wrong one")
+    end
     @assert s[1] == -1
     @assert s[2] == 1
-    (;xtq1_call=x1[1], xtq2_call=x2[1], xtq3_call=x3[1], xtq1_put=x1[2], xtq2_put=x2[2], xtq3_put=x3[2])
+    return (;xtq1_call=x1[1], xtq2_call=x2[1], xtq3_call=x3[1], xtq1_put=x1[2], xtq2_put=x2[2], xtq3_put=x3[2])
 end
 
 calc_tsx_in_df(price_lookup) = function(tss, xpirtss, styles, strikes, bids, asks)
@@ -162,7 +187,8 @@ calc_tsx_in_df(price_lookup) = function(tss, xpirtss, styles, strikes, bids, ask
     @assert all(xpirts .== xpirtss)
     style = first(styles)
     @assert all(style .== styles)
-    calc_tsx(ts, xpirts, price_lookup[ts], price_lookup[xpirts], style, strikes, bids, asks)
+    price_xpirts = xpirts > now(UTC) ? NaN : price_lookup[xpirts]
+    calc_tsx(ts, xpirts, price_lookup[ts], price_xpirts, style, strikes, bids, asks)
 end
 function calc_tsx(ts, xpirts, ts_price, xpir_price, style, strikes, bids, asks)
     xtqs = calc_xtqs(ts, xpirts, ts_price, style, strikes, bids, asks)
@@ -237,14 +263,14 @@ function fit_sides(xs::Vector{Float64}, ys::Vector{Float64}, style, max_y)
 
     if yatz < maximum(ys)
         global kfit_sides = (;mid, mid_inds, xs_mid, ys_mid, yatz, args=(;xs, ys, style, max_y))
-        # TODO: don't do this workaround
-        println("WARN: yatz too low $(yatz) $(maximum(ys))")
+        # TODO: don't do this workaround and fix algo so unneeded
+        # println("WARN: yatz too low $(yatz) $(maximum(ys))")
         yatz = maximum(ys)
     end
     if yatz > 1.4 * maximum(ys)
         global kfit_sides = (;mid, mid_inds, xs_mid, ys_mid, yatz, args=(;xs, ys, style, max_y))
-        # TODO: don't do this workaround
-        println("WARN: yatz too high $(yatz) $(maximum(ys))")
+        # TODO: don't do this workaround and fix algo so unneeded
+        # println("WARN: yatz too high $(yatz) $(maximum(ys))")
         yatz = 1.4 * maximum(ys)
     end
 

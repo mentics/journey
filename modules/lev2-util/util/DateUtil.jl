@@ -208,8 +208,6 @@ daysinquarter(d)::UInt16 = ( q1 = Dates.firstdayofquarter(d) ; (q1 + Dates.Month
 # daysinyear(d)::UInt16 = ( q1 = Dates.firstdayofquarter(d) ; (q1 + Dates.Month(3) - q1).value )
 
 const DEFAULT_DATA_START_DATE = Date(2012,6,1)
-const DEFAULT_MARKET_START_TIME = Time(9, 30)
-const DEFAULT_MARKET_CLOSE_TIME = Time(16,0)
 const DEFAULT_TS_PERIOD = Minute(30)
 
 function year_months(;start_date=DEFAULT_DATA_START_DATE, end_date=market_today())
@@ -224,23 +222,6 @@ function all_weekday_ts(;date_from=DEFAULT_DATA_START_DATE, date_to=market_today
     res = DateTime[]
     for date in all_weekdays(;date_from, date_to)
         append!(res, [fromMarketTZ(date, t) for t in time_from:period:time_to])
-    end
-    return res
-end
-
-function all_bdays_itr(;date_from=Date(2012,6,1), date_to=market_today())
-    return Iterators.filter(d -> Dates.dayofweek(d) <= 5 && isBusDay(d), date_from:Day(1):date_to)
-end
-
-function all_bdays_ts(;date_from=DEFAULT_DATA_START_DATE, ts_to=now(UTC), time_from=DEFAULT_MARKET_START_TIME, time_to=DEFAULT_MARKET_CLOSE_TIME, period=DEFAULT_TS_PERIOD)
-    res = DateTime[]
-    zts_to = toMarketTZ(ts_to)
-    date_to = market_date(zts_to)
-    for date in all_bdays_itr(;date_from, date_to=(date_to - Day(1)))
-        append!(res, [fromMarketTZ(date, t) for t in time_from:period:time_to])
-    end
-    if (isBusDay(ts_to))
-        append!(res, filter!(ts -> ts < ts_to, [fromMarketTZ(date_to, t) for t in time_from:period:time_to]))
     end
     return res
 end
@@ -311,4 +292,13 @@ end
 calc_ex_dates() =
     filter(x -> (dayofweek(x) == 5) && (dayofweekofmonth(x) == 3) && month(x) in [3,6,9,12],
             DEFAULT_DATA_START_DATE:Day(1):(today() + Year(1)))
+
+# TODO: once these are fixed, rebuild DataOptions
+# const BAD_DATA_DATES = [Date(2012,12,17)]
+BAD_DATA_DATES() = [
+    Date(2012,12,17),
+    Date(2018,1,18)
+]
+# Date(2019,2,2) should be filtered out by isBusDay
+
 end

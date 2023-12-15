@@ -18,9 +18,8 @@ params_data() = (;
 )
 
 function make_input(params=params_data())
-    # Add xtq
-    # TODO: fix age when data is loaded ready
-    df_tsx = DataRead.get_tsx(; age=DateUtil.FOREVER2)
+    # Get xtqs and ret
+    df_tsx = DataRead.get_tsx()
 
     # Add temporal for ts
     transform!(df_tsx, [:ts] => (ts -> ModelUtil.to_temporal_ts.(ts)) => prefix_sym.([:week_day, :month_day, :quarter_day, :year_day, :hour], :ts_))
