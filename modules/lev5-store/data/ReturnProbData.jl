@@ -20,7 +20,7 @@ params_data() = (;
 
 function make_input(params=params_data())
     # Get xtqs and ret
-    df_tsx = DataRead.get_tsx()
+    df_tsx = DataRead.get_tsx(;age=DateUtil.age_daily())
     filter(:ts => DateUtil.ts_in(params.train_date_range), df_tsx)
     # Near the end, we don't have returns because they are in the future so filter them out.
     df_tsx = filter(:ret => isfinite, df_tsx)
