@@ -24,7 +24,7 @@ function make_input(params=params_data())
     df_tsx = filter(:ts => DateUtil.ts_in(params.train_date_range), df_tsx)
     # Near the end, we don't have returns because they are in the future so filter them out.
     df_tsx = filter(:ret => isfinite, df_tsx)
-    return df_tsx
+
     # Add temporal for ts
     transform!(df_tsx, [:ts] => (ts -> ModelUtil.to_temporal_ts.(ts)) => prefix_sym.([:week_day, :month_day, :quarter_day, :year_day, :hour], :ts_))
     # temporal for expiration
