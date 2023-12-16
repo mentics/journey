@@ -208,7 +208,13 @@ function findkel(ctx, xpirts::DateTime, oqss, pos_rs, incs)
     ress = ctx.ress
 
     # prob = pmk.makeprob(ctx.kde, ctx.curp, ctx.ts, xpirts, oqs)
-    prob = ctx.prob_for_xpirts(xpirts)
+    prob = nothing
+    try
+        prob = ctx.prob_for_xpirts(xpirts)
+    catch e
+        println("ERROR: exception thrown getting prob for $((;ctx.ts, xpirts)). Skipping.\n  $(e)")
+        return []
+    end
     riskrat = calcriskrat(ctx.ts, xpirts)
 
     pos = nothing
@@ -415,7 +421,7 @@ function kel4!(ress, ctx, side1, oqsL1, oqsL2, oqsR1, oqsR2)
                 for right2 in (left1+1):lastindex(oqsR2)
                     oqR2 = oqsR2[right2]
                     strikeR2 = SH.getStrike(oqR2)
-                    strikeR2 >= strikeR1 || continue
+                    strikeR2 > strikeR1 || continue
                     (strikeR2 - strikeR1) <= maxspread || break
                     lqs = (make_leg(oqL1, side1), make_leg(oqL2, side2), make_leg(oqR1, side2), make_leg(oqR2, side1))
                     check!(ress, ctx, lqs)

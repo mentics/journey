@@ -11,11 +11,12 @@ dev(x) = gpu(x) # gpu(x)
 
 # TODO: need to save holdout with training model so we keep that when continuing training
 
-params_train() = (;
+params_train(;kws...) = (;
     rng_seed = 1,
     holdout = 0.1,
     kfolds = 5,
     batch_size = 512,
+    kws...
 )
 
 #=
@@ -78,7 +79,8 @@ end
 #endregion Types
 
 #region Train
-function setup(trainee::Trainee, params=params_train())
+function setup(trainee::Trainee, params=nothing; kws...)
+    isnothing(params) && ( params = params_train(;kws...) )
     Random.seed!(Random.default_rng(), params.rng_seed)
 
     model = trainee.make_model() |> dev
@@ -260,7 +262,8 @@ end
 using DataFrames
 using Paths
 import ThreadPools
-function save_output(trainee::Trainee, model=nothing)
+save_output(training::Training; kws...) = save_output(training.trainee, training.model; kws...)
+function save_output(trainee::Trainee, model=nothing; kws...)
     if isnothing(model)
         model = trainee.make_model() |> dev
         ModelUtil.load_infer(trainee.name, model, trainee.params)
@@ -269,7 +272,8 @@ function save_output(trainee::Trainee, model=nothing)
     # TODO: show some loss info to validate that it's a trained model
     model = trainee.get_inference_model(model)
 
-    pt = params_train()
+    pt = params_train(;kws...)
+    @show pt
     data = trainee.prep_data(pt)
     # TODO: get feature count and don't hardcode 59 here
     feature_count = size(data.all_data, 2) - 3

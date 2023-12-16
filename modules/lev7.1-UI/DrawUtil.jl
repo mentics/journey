@@ -182,6 +182,9 @@ function __init__()
     end
 end
 
+# TODO:
+# ┌ Warning: Found `resolution` in the theme when creating a `Scene`. The `resolution` keyword for `Scene`s and `Figure`s has been deprecated. Use `Figure(; size = ...` or `Scene(; size = ...)` instead, which better reflects that this is a unitless size and not a pixel resolution. The key could also come from `set_theme!` calls or related theming functions.
+# └ @ Makie C:\Users\joel\.julia\packages\Makie\6NLuU\src\scenes.jl:220
 makeFig() = Figure(;resolution = (1200, 1000))
 
 function getAxis(args...; use_axis=nothing, kws...)

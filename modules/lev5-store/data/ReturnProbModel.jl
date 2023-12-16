@@ -1,7 +1,7 @@
 module ReturnProbModel
-using DataFrames
+using Intervals, Dates, DataFrames
 using Flux, MLUtils
-using Paths, ModelUtil, TrainUtil, MLTrain
+using DateUtil, Paths, ModelUtil, TrainUtil, MLTrain
 
 #=
 No pushing to gpu in data or model modules. Only MLTrain pushed to gpu.
@@ -60,15 +60,23 @@ to_draw_yh(yhat, ind) = yhat.vix[1:end,ind]
 #endregion MLTrain Interface
 
 #region Data
+date_range_train() = (;date_range = DateUtil.DEFAULT_DATA_START_DATE..Date(2023,6,30))
+date_range_backtest() = (;date_range = Date(2023,7,1)..DateUtil.market_today())
 function make_data(df, params)
-    shuffled = shuffleobs(df) # pre-shuffle so holdout is random
-    training, holdout = splitobs(shuffled; at=(1.0 - params.train.holdout))
+    @show params
+    # Hold out some of the most recent data so we can backtest on untrained data
+    df_train = filter(:ts => DateUtil.ts_in(params.train.date_range), df)
+    df_holdout = filter(:ts => !DateUtil.ts_in(params.train.date_range), df)
+    @assert df_holdout.ts[1] > df_train.ts[end]
+
+    # shuffled = shuffleobs(df) # pre-shuffle so holdout is random
+    # training, holdout = splitobs(shuffled; at=(1.0 - params.train.holdout))
     InputData(;
         all_data = df,
-        data_for_epoch = () -> shuffleobs(training),
+        data_for_epoch = () -> shuffleobs(df_train),
         prep_input = (obss, args...) -> prep_input(obss, params, args...),
         get_input_keys,
-        holdout,
+        holdout=df_holdout,
         single = ind -> single(df, ind, params)
     )
 end

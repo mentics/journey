@@ -127,7 +127,7 @@ function make_tsx(;sym="SPY")
 end
 
 function update_tsx(;sym="SPY")
-    df = DataRead.get_tsx()
+    df = DataRead.get_tsx(;age=DateUtil.FOREVER2)
     tss = DataRead.get_ts()
     if tss[end] > df.ts[end]
         # TODO: reprocess the last days because we might have put placeholder values for :ret

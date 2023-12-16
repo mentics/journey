@@ -25,6 +25,7 @@ function explore(;inds=nothing, yms=dat.make_yms(), skip_existing=true, use_pos=
     price_lup = DataRead.price_lookup()
     # price_lup_xpirts = DataRead.price_lookup_xpirts()
     ts_min, prob_for_tsxp = DataRead.prob_for_tsxp(;age=Day(2))
+    ts_set = Set(DataRead.get_ts())
     for (y, m) in yms
         # TODO: could create this filtered file in advance
         oqs_df = filter(:ts => is_ts_backtest(ts_min), DataRead.get_options(y, m))
@@ -41,6 +42,12 @@ function explore(;inds=nothing, yms=dat.make_yms(), skip_existing=true, use_pos=
         # rs_for_xpirts = Dict{DateTime,Vector}()
         for sdf_ts in itr
             ts = first(sdf_ts.ts)
+            # TODO: clean up tsx so it doesn't have any after hours things, such as on 2020-11-27
+            if !(ts in ts_set)
+                println("Skipping extraneous ts $(ts)")
+                continue
+            end
+            ts in ts_set || continue
             rs_ts = Vector()
             !skip_existing || !haskey(TOP_TS, ts) || continue
             # println("Processing ts:$(ts)")
@@ -91,7 +98,7 @@ function explore(;inds=nothing, yms=dat.make_yms(), skip_existing=true, use_pos=
                     # showres(tsi_index, ts, sdf, curp, res[end])
                     # showres(tsi_index, ts, sdf, curp, res[1])
                     r1 = res[1]
-                    result = df_calc_pnl(sdf, r1.lqs, xpirts; xpir_price) # dat.market_close(SH.getExpir(r1.lms)))
+                    result = df_calc_pnl(r1, sdf, r1.lqs, xpirts; xpir_price) # dat.market_close(SH.getExpir(r1.lms)))
                     # ThreadUtil.runSync(lock_proc) do
                         r = (;ts, curp, r1, result)
                         push!(top_xpir, r)
@@ -194,7 +201,13 @@ function calc_rets(rs; close_early=true)
             # r.result.pnl_value
             r.result.pnl
         end
-        @assert pnl > (-r.r1.commit - 0.0001) @str "pnl less than -commit" pnl r.r1.commit
+        if !(pnl > (-r.r1.commit - 0.0001))
+            global kr = r
+            # TODO: this found a case where a condor was formed with a long/short of the same contract:
+            # ts = DateTime("2020-02-20T20:30:00")
+            # xpir = 2020-02-24
+            println(@str "pnl less than -commit" pnl r.r1.commit)
+        end
         # return (r.r1.balrat * r.r1.kel * pnl / r.r1.commit, pnl)
         return r.r1.balrat * r.r1.kel * pnl / r.r1.commit
     end
@@ -403,14 +416,22 @@ function quotes_at(df, xpirts, ts, lqs; xpir_price=nothing)
     end
 end
 
-function df_calc_pnl(df_ts, lqs, xpirts; kws...)
+function df_calc_pnl(r1, df_ts, lqs, xpirts; xpir_price)
     global kargs = (;df_ts, lqs, xpirts)
-    ts = first(df_ts.ts)
-    at_ts = quotes_at(df_ts, xpirts, ts, lqs)
-    at_xpirts = quotes_at(xpirts, xpirts, lqs; kws...)
-    neto = sum(calc_neto.(at_ts, SH.getSide.(lqs)))
-    netc = sum(calc_netc.(at_xpirts, SH.getSide.(lqs)))
-    return (;neto, netc, pnl=(neto + netc))
+    # ts = first(df_ts.ts)
+    # at_ts = quotes_at(df_ts, xpirts, ts, lqs)
+    # at_xpirts = quotes_at(xpirts, xpirts, lqs; kws...)
+    # neto = sum(calc_neto.(at_ts, SH.getSide.(lqs)))
+    # netc = sum(calc_netc.(at_xpirts, SH.getSide.(lqs)))
+
+    neto = r1.neto
+    # neto = calc_neto.(SH.getQuote.(lqs), SH.getSide.(lqs))
+    action_dir = Int.(SH.getSide.(lqs)) .* Int(Action.close)
+    netcs = -action_dir .* OptionUtil.value_at_xpir.(SH.getStyle.(lqs), Float32.(SH.getStrike.(lqs)), xpir_price)
+    # println(netcs)
+    netc = sum(netcs)
+    res = (;neto, netc, pnl=(neto + netc))
+    return res
 
     # strikes = SH.getStrike.(lqs)
     # rows = dfrow.(Ref(df), xpirts, strikes)
