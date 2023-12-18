@@ -8,9 +8,9 @@ const NAME = replace(string(@__MODULE__), "Model" => "")
 
 params_model() = (;
     encoded_width = 32,
-    block_count = 2,
+    block_count = 4,
     layers_per_block = 2,
-    hidden_width_mult = 1,
+    hidden_width_mult = 2,
     dropout = 0f0, # 0.1f0,
     activation = NNlib.swish,
     use_bias = false,
@@ -146,8 +146,9 @@ function run_encoder(encoder, batch; batchnorm=false)
         v = encoder(((batch.prices_seq, batch.prices_meta), (batch.vix_seq, batch.vix_meta)))
         return vcat(v, batch.prices_meta, batch.vix_meta)
     else
-        v = encoder((vcat(batch.prices_seq, batch.prices_meta), vcat(batch.vix_seq, batch.vix_meta)))
-        return vcat(v, batch.prices_meta, batch.vix_meta)
+        # v = encoder((vcat(batch.prices_seq, batch.prices_meta), vcat(batch.vix_seq, batch.vix_meta)))
+        v = encoder((batch.prices_seq, batch.vix_seq))
+        return v
     end
 end
 
@@ -193,8 +194,8 @@ function config(params)
 end
 
 function model_encoder(cfg)
-    input_under = Dense(cfg.input_width_under + cfg.input_width_meta => cfg.hidden_width_under; bias=cfg.use_bias)
-    input_vix = Dense(cfg.input_width_vix + cfg.input_width_meta => cfg.hidden_width_vix; bias=cfg.use_bias)
+    input_under = Dense(cfg.input_width_under => cfg.hidden_width_under; bias=cfg.use_bias)
+    input_vix = Dense(cfg.input_width_vix => cfg.hidden_width_vix; bias=cfg.use_bias)
     layer_input = Parallel(vcat; input_under, input_vix)
     through_width = cfg.hidden_width_under + cfg.hidden_width_vix
 
@@ -212,7 +213,7 @@ end
 
 function model_decoder(cfg)
     through_width = cfg.hidden_width_under + cfg.hidden_width_vix
-    layer_input = Dense(cfg.encoded_with_meta => through_width, cfg.activation; bias=false)
+    layer_input = Dense(cfg.encoded_width => through_width, cfg.activation; bias=false)
 
     blocks1_count = floor(Int, cfg.block_count / 2)
     blocks2_count = cfg.block_count - blocks1_count

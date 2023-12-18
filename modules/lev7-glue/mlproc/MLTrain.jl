@@ -331,6 +331,9 @@ function latent_space(mod)
     return (;data, inds)
 end
 
+function test_loss(training, ind)
+    training.trainee.get_loss(training.model, training.data.single(ind) |> gpu)
+end
 test_batch_loss(trainee, ibatch) = trainee.get_loss(trainee.training_model, trainee.batches.get(0, ibatch))
 
 function save(training)
