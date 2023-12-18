@@ -23,11 +23,11 @@ using ProbMeta
 
 config() = (;
     adjustprices = C(-0.0),
-    kelprobadjust = 0.0,
+    kelprobadjust = 0.1,
     commit_min = 0.07,
     commit_max = 4.01,
-    probprofit_min = 0.84,
-    kel_min = 0.5,
+    probprofit_min = 0.92,
+    kel_min = 0.25,
     evrate_min = 4.01,
     all_risk_max = 10000.0,
     max_spread = 4.1,

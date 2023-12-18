@@ -10,12 +10,12 @@ No pushing to gpu in data or model modules. Only MLTrain pushed to gpu.
 const NAME = replace(string(@__MODULE__), "Model" => "")
 
 params_model() = (;
-    block_count = 4,
-    layers_per_block = 4,
-    hidden_width_mult = 4,
+    block_count = 2,
+    layers_per_block = 2,
+    hidden_width_mult = 2,
     dropout = 0.2f0,
     activation = NNlib.swish,
-    use_bias = false,
+    use_bias = true,
 )
 
 #region MLTrain Interface
@@ -61,13 +61,12 @@ to_draw_yh(yhat, ind) = yhat.vix[1:end,ind]
 
 #region Data
 date_range_train() = (;date_range = DateUtil.DEFAULT_DATA_START_DATE..Date(2023,6,30))
-date_range_backtest() = (;date_range = Date(2023,7,1)..DateUtil.market_today())
+# date_range_backtest() = (;date_range = Date(2023,7,1)..DateUtil.market_today())
 function make_data(df, params)
-    @show params
     # Hold out some of the most recent data so we can backtest on untrained data
     df_train = filter(:ts => DateUtil.ts_in(params.train.date_range), df)
     df_holdout = filter(:ts => !DateUtil.ts_in(params.train.date_range), df)
-    @assert df_holdout.ts[1] > df_train.ts[end]
+    @assert df_holdout.ts[1] > df_train.ts[end] "df_holdout.ts[1] $(df_holdout.ts[1]) > $(df_train.ts[end]) df_train.ts[end]"
 
     # shuffled = shuffleobs(df) # pre-shuffle so holdout is random
     # training, holdout = splitobs(shuffled; at=(1.0 - params.train.holdout))
@@ -87,14 +86,7 @@ function get_input_keys(batch)
 end
 get_input_keys() = [:ts, :expir]
 
-function single(df, ind, params)
-    return prep_input(df[ind:ind,:], params)
-    # row = df[ind:ind,:]
-    # data = map(eachcol(row)[2:end]) do col
-    #     reduce(hcat, col)
-    # end
-    # return prep_input(data, params)
-end
+single(df, ind, params) = prep_input(df[ind:ind,:], params)
 
 function prep_input_old(obss, params)
     # dataframe of batch_size rows of same columns as input data
@@ -149,40 +141,76 @@ end
 #     return (;keys, x, y)
 # end
 
-function test(obss, m)
-    # @show reverse(size(obss))
-    # m = Matrix{Float32}(undef, 62, 512)
-    # i = 0
-    # for col in Iterators.drop(eachcol(obss), 3)
-    @inbounds for i in 4:size(obss,2)
-        # i += 1
-        # m[i-3, :] .= col
-        # m[i-3, :] .= obss[!,i]
-        @inbounds for j in 1:512
-            m[i-3,j] = obss[j, i]
-        end
-    end
-    # @time sm = obss[!,4:end]
-    # @time ec = eachcol(sm)
-    # @time reshape.(ec, 1, :)
-    return nothing
-end
+# function test(obss, m)
+#     # @show reverse(size(obss))
+#     # m = Matrix{Float32}(undef, 62, 512)
+#     # i = 0
+#     # for col in Iterators.drop(eachcol(obss), 3)
+#     @inbounds for i in 4:size(obss,2)
+#         # i += 1
+#         # m[i-3, :] .= col
+#         # m[i-3, :] .= obss[!,i]
+#         @inbounds for j in 1:512
+#             m[i-3,j] = obss[j, i]
+#         end
+#     end
+#     # @time sm = obss[!,4:end]
+#     # @time ec = eachcol(sm)
+#     # @time reshape.(ec, 1, :)
+#     return nothing
+# end
 #endregion Data
 
 #region Run
 function calc_loss(model, batch)
     yhat = run_train(model, batch.x)
-    return Flux.Losses.logitcrossentropy(yhat, batch.y)
-    # return Flux.Losses.crossentropy(yhat, batch.y)
+    return calc_loss_for(yhat, batch.y)
+end
+function calc_loss_for(yhat, y)
+    # return Flux.Losses.logitcrossentropy(yhat, batch.y)
+    return Flux.Losses.crossentropy(yhat, y)
+end
+
+import Distributions
+import VectorCalcUtil as vcu
+function min_loss(params)
+    count = params.data.bins_count
+    y_bins = [count ÷ 2, 1, count, rand(1:count)]
+    d = Dict()
+    for y_bin in y_bins
+        y = Flux.onehotbatch(y_bin, 1:count)
+        # y = Flux.onehotbatch(obss.y_bin, 1:count)
+        perfect = calc_loss_for(y, y)
+
+        ndist = Distributions.Normal(1.0, 0.1)
+        yhat = replace(x -> x < 1f-10 ? 0f0 : x, vcu.normalize!([Distributions.pdf(ndist, x) for x in Bins.xs()]))
+        distri10 = calc_loss_for(yhat, y)
+
+        ndist = Distributions.Normal(1.0, 0.05)
+        yhat = replace(x -> x < 1f-10 ? 0f0 : x, vcu.normalize!([Distributions.pdf(ndist, x) for x in Bins.xs()]))
+        distri5 = calc_loss_for(yhat, y)
+
+        ndist = Distributions.Normal(1.0, 0.01)
+        yhat = replace(x -> x < 1f-10 ? 0f0 : x, vcu.normalize!([Distributions.pdf(ndist, x) for x in Bins.xs()]))
+        distri1 = calc_loss_for(yhat, y)
+
+        yhat = vcu.normalize!(rand(count))
+        random = calc_loss_for(yhat, y)
+
+        res = (;perfect, distri1, distri5, distri10, random)
+        println(res)
+        d[y_bin] = res
+    end
+    return d
 end
 
 function run_train(model, batchx)
-    model(batchx)
-    # yhat = model(batchx)
-    # yhat = relu(yhat)
-    # ss = sum(yhat; dims=1)
-    # yhat = yhat ./ ss
-    # return yhat
+    # model(batchx)
+    yhat = model(batchx)
+    yhat = relu(yhat)
+    ss = sum(yhat; dims=1)
+    yhat = yhat ./ ss
+    return yhat
 end
 
 function run_infer(model, batchx)
@@ -221,28 +249,34 @@ end
     # training.data.single()
 # end
 function check_load(ind=1)
-    df, _ = Paths.load_data_params(Paths.db_output(rpm.NAME), DataFrame)
+    df, _ = Paths.load_data_params(Paths.db_output(NAME), DataFrame)
     check_output(df, ind)
 end
 import DrawUtil
+using ProbMeta
 function check_output(df, ind=1)
-    data = Vector(select(df, Not(:key))[ind,:])
-    replace!(x -> x < 0 ? 0f0 : x, data)
-    # return data
-    data ./= sum(data)
-    # @show count(x -> x > 0, data)
-    key = df.key[ind]
-    @show key
-    # DrawUtil.draw(:barplot, softmax(data))
-    DrawUtil.draw(:barplot, data)
+    # data = Vector(select(df, Not(:key))[ind,:])
+    # replace!(x -> x < 0 ? 0f0 : x, data)
+    # # return data
+    # data ./= sum(data)
+    # # @show count(x -> x > 0, data)
+    # key = df.key[ind]
+    # @show key
+    # # DrawUtil.draw(:barplot, softmax(data))
+
+    DrawUtil.draw(:barplot, Bins.xs(), df.output[ind])
 end
 
-function check1(training, ind=1)
+function check1(training, inds=1)
     trainee = training.trainee
-    batch = training.data.single(ind)
-    out1 = vec(trainee.run_infer(training.model, batch.x |> gpu) |> cpu)
-    DrawUtil.draw(:barplot, out1)
+    DrawUtil.draw(:vlines, 1.0; color=:white)
+    for ind in inds
+        batch = training.data.single(ind)
+        out1 = vec(trainee.run_infer(training.model, batch.x |> gpu) |> cpu)
+        DrawUtil.draw!(:barplot, Bins.xs(), out1; label="i-$(ind)")
+    end
 end
+
 #endregion Check
 
 end

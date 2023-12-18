@@ -4,7 +4,7 @@ using Dates, Random
 using CUDA
 import Flux:Flux,cpu,gpu,throttle
 using MLUtils
-import Optimisers:AdamW
+# import Optimisers:AdamW
 using DateUtil, IndexUtil, ModelUtil
 CUDA.allowscalar(false)
 dev(x) = gpu(x) # gpu(x)
@@ -15,7 +15,8 @@ params_train(;kws...) = (;
     rng_seed = 1,
     holdout = 0.1,
     kfolds = 5,
-    batch_size = 512,
+    batch_size = 32,
+    weight_decay = 0.0f0,
     kws...
 )
 
@@ -86,8 +87,14 @@ function setup(trainee::Trainee, params=nothing; kws...)
     model = trainee.make_model() |> dev
     println("Model has param count: ", sum(length, Flux.params(model)))
 
-    opt = AdamW(trainee.get_learning_rate(1))
-    opt_state = Flux.setup(opt, model) |> dev
+    if iszero(params.weight_decay)
+        opt_inner = Flux.AdamW(trainee.get_learning_rate(1))
+        opt = Flux.OptimiserChain(Flux.WeightDecay(params.weight_decay), opt_inner)
+        opt_state = Flux.setup(opt, model) |> dev
+    else
+        opt = Flux.AdamW(trainee.get_learning_rate(1))
+        opt_state = Flux.setup(opt, model) |> dev
+    end
 
     data = trainee.prep_data(params)
     metrics = Dict{Symbol,Any}()
@@ -130,6 +137,7 @@ function train(training::Training; epochs=1000)
         for (train_data, cv_data) in kfolds(data.data_for_epoch(); k=params.kfolds)
             ifold += 1
             batches_fold_count = 0
+            Flux.trainmode!(model)
             for obss in eachobs(train_data, batchsize=params.batch_size)
                 batch = data.prep_input(obss) |> dev
                 loss, grads = Flux.withgradient(trainee.get_loss, model, batch)
@@ -143,6 +151,7 @@ function train(training::Training; epochs=1000)
                 print_status("  update - epoch: $(epoch), fold: $(ifold), fold_batches: $(batches_fold_count), epoch_batches: $(batches_epoch_count) - Training loss $(loss)")
             end
 
+            Flux.testmode!(model)
             loss_validation = 0f0
             count = 0
             for obss in eachobs(cv_data, batchsize=params.batch_size)
@@ -151,6 +160,7 @@ function train(training::Training; epochs=1000)
                 loss_validation += trainee.get_loss(model, batch)
             end
             loss_validation /= count
+            Flux.testmode!(model, :auto)
 
             println("Epoch $(epoch), fold $(ifold) - Validation loss #$(batches_epoch_count): $(loss_validation)")
         end
@@ -184,13 +194,15 @@ end
 #region Check
 check_holdout(training) = check_holdout(training.model, training.trainee, training.data, training.params.train.batch_size)
 function check_holdout(model, trainee, data, batch_size)
+    Flux.testmode!(model)
     loss = 0.0
     count = 0
-    for obss in eachobs(data.holdout; batchsize=batch_size)
+    for obss in eachobs(data.holdout; batchsize=512)
         count += 1
         loss += trainee.get_loss(model, data.prep_input(obss) |> dev)
     end
     loss /= count
+    Flux.testmode!(model, :auto)
 
     println("Loss for holdout: $(loss)")
     # for ibatch in training.params[:cv].holdout
@@ -218,8 +230,8 @@ function checki(training, inds)
 
         yy = trainee.mod.to_draw_y(batch, 1)
         yhy = trainee.mod.to_draw_yh(yhat, 1)
-        draw!(:scatter, yy)
-        draw!(:scatter, yhy)
+        draw!(:scatter, yy; label="y-$(i)")
+        draw!(:scatter, yhy; label="yh-$(i)")
 
         # # draw(:scatter, x; label="x")
         # # draw!(:scatter, yhx, yhy; label="yh")
@@ -273,9 +285,7 @@ function save_output(trainee::Trainee, model=nothing; kws...)
     model = trainee.get_inference_model(model)
 
     pt = params_train(;kws...)
-    @show pt
     data = trainee.prep_data(pt)
-    # TODO: get feature count and don't hardcode 59 here
     feature_count = size(data.all_data, 2) - 3
     x = Matrix{Float32}(undef, feature_count, pt.batch_size)
     xgpu = CuArray{Float32}(undef, feature_count, pt.batch_size)
