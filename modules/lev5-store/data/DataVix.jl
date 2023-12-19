@@ -21,7 +21,7 @@ function make_vix()
         println("ERROR: DataVix dates didn't match expected. Not saving.")
         return diff
     end
-    save_data(DataRead.file_vix(), df)
+    Paths.save_data(DataRead.file_vix(), df)
     return df
     # dates_df = DataFrame(:date => collect(DateUtil.all_weekdays()))
     # vix_alldates_df = sort!(leftjoin(dates_df, df, on=:date), [:date])
@@ -37,7 +37,11 @@ function update_vix()
         return nothing
     end
     raw = TradierData.tradierHistQuotes("daily", last_date + Day(1), DateUtil.market_today(), "VIX")
-    !isempty(raw) || ( println("VIX no new data"); return nothing )
+    if isempty(raw)
+        println("VIX no new data")
+        touch(DataRead.file_vix())
+        return nothing
+    end
     df2 = DataFrame(raw)
     select!(df2,
             :date => (ds -> Date.(ds)) => :date,
@@ -45,19 +49,19 @@ function update_vix()
             :high => f32 => :high,
             :low => f32 => :low,
             :close => f32 => :close)
-    df = DataCheck.combine_dfs(df1, df2; keycol=:date)
+    df = DataCheck.combine_dfs(df1, df2; keycols=[:date])
     diff = check_dates(df.date)
     if !isempty(diff)
         println("ERROR: DataVix dates didn't match expected. Not saving.")
         return diff
     end
-    save_data(DataRead.file_vix(), df; update=true)
+    Paths.save_data(DataRead.file_vix(), df; update=true)
     return df
 end
 #endregion Standard API
 
 #region Util
-check_dates(dates) = symdiff(DateUtil.all_bdays_itr(), dates)
+check_dates(dates) = symdiff(Iterators.filter(DateUtil.isbd, DateUtil.all_weekdays()), dates)
 
 f32(v::Vector) = Float32.(v)
 #endregion Util

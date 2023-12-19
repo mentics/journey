@@ -305,4 +305,12 @@ function ts_in(range::Interval{Date, Closed, Closed})
     in(Interval{Closed,Open}(market_midnight(first(range)), market_midnight(last(range) + Day(1))))
 end
 
+# function prev_weekday(date)
+#     date = date - Day(1)
+#     while !(Dates.dayofweek(date) in 1:5)
+#         date = date - Day(1)
+#     end
+#     return date
+# end
+
 end

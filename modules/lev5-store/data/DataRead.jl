@@ -53,7 +53,7 @@ function get_options_yms()
 end
 
 function get_vix(;age=DateUtil.age_daily())
-    return Paths.load_data(file_vix(), DataFrame)
+    return Paths.load_data(file_vix(), DataFrame; age)
 end
 
 function get_prices_at_xpirts(; sym="SPY", age=DateUtil.age_daily())

@@ -11,7 +11,7 @@ params_model() = (;
     block_count = 4,
     layers_per_block = 2,
     hidden_width_mult = 2,
-    dropout = 0f0, # 0.1f0,
+    dropout = 0.05f0,
     activation = NNlib.swish,
     use_bias = false,
     batchnorm = false,
@@ -71,11 +71,11 @@ to_draw_yh(yhat, ind) = vcat(yhat.prices[1:end,ind], yhat.vix[1:end,ind])
 
 #region Data
 # date_range_train() = (;date_range = DateUtil.DEFAULT_DATA_START_DATE..Date(2023,6,30))
-date_range_train() = (;date_range = Date(2016,1,1)..Date(2023,6,30))
+# date_range_train() = (;date_range = Date(2016,1,1)..Date(2023,6,30))
 function make_data(df, params)
     # Hold out some of the most recent data so we can backtest on untrained data
-    df_train = filter(:ts => DateUtil.ts_in(params.train.date_range), df)
-    df_holdout = filter(:ts => (ts -> ts >= last(params.train.date_range) + Day(1)), df)
+    df_train = filter(:ts => DateUtil.ts_in(params.data.date_range), df)
+    df_holdout = filter(:ts => (ts -> ts >= last(params.data.date_range) + Day(1)), df)
     @assert df_holdout.ts[1] > df_train.ts[end] "df_holdout.ts[1] $(df_holdout.ts[1]) > $(df_train.ts[end]) df_train.ts[end]"
 
     InputData(;
