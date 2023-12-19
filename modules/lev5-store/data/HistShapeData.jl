@@ -3,6 +3,11 @@ using Intervals, Dates, DataFrames, StatsBase
 using DateUtil, DataConst, DataRead, Paths, FilesArrow
 import VectorCalcUtil as vcu
 
+# TODO: convert bool vector to bitvector for mask?
+
+prices_seq_len(params_data) = DateUtil.TIMES_PER_WEEK * params_data.weeks_count
+vix_seq_len(params_data) = 4 * DateUtil.DAYS_PER_WEEK * params_data.weeks_count
+
 # TODO: consider dividing meta by sqrt time
 
 const NAME = replace(string(@__MODULE__), "Data" => "")
@@ -91,7 +96,7 @@ function make_prices_seq1(params=params_data())
         return PS1[]
     end
     weeks_count = params.weeks_count
-    seq_len = DateUtil.TIMES_PER_WEEK * weeks_count
+    seq_len = prices_seq_len(params)
 
     df_prices = make_input_prices_raw(params.intraday_period)
     first_ind = find_first_ind_ts(df_prices, seq_len)
@@ -247,13 +252,13 @@ end
 
 function make_vix_seq1(params=params_data())
     weeks_count = params.weeks_count
-    seq_len = DateUtil.DAYS_PER_WEEK * weeks_count
+    vix_count = vix_seq_len(params) ÷ 4
 
     df = make_vix_raw()
-    first_ind = find_first_ind_date(df, seq_len)
+    first_ind = find_first_ind_date(df, vix_count)
     inds = first_ind:lastindex(df.date)
     m = mapreduce(hcat, inds) do ind
-        make_sequence_date(df, ind, weeks_count, seq_len)
+        make_sequence_date(df, ind, weeks_count, vix_count)
     end
     df_seq = DataFrame(
         :date => df.date[inds],
@@ -265,7 +270,7 @@ function make_vix_seq1(params=params_data())
         :vix_seq => [m[:,i] for i in axes(m,2)],
     )
     @assert typeof(df_seq.vix_mask[1]) == BitVector
-    @assert length(df_seq.vix_mask[1]) == 4*seq_len "length(df_seq.vix_mask[1]) $(length(df_seq.vix_mask[1])) == $(4*seq_len) 4*seq_len"
+    @assert length(df_seq.vix_mask[1]) == 4*vix_count "length(df_seq.vix_mask[1]) $(length(df_seq.vix_mask[1])) == $(4*vix_count) 4*seq_len"
 
     # df_seq = DataFrame(permutedims(m), :auto)
     # insertcols!(df_seq, 1, :mask => masks)

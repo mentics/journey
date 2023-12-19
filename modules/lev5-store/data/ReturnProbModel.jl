@@ -2,10 +2,13 @@ module ReturnProbModel
 using Intervals, Dates, DataFrames
 using Flux, MLUtils
 using DateUtil, Paths, ModelUtil, TrainUtil, MLTrain
+import CudaUtil:copyto_itr!
 
 #=
 No pushing to gpu in data or model modules. Only MLTrain pushed to gpu.
 =#
+
+get_input_width(df) = size(df, 2) - 3 # 2 key cols and a y col
 
 const NAME = replace(string(@__MODULE__), "Model" => "")
 
@@ -21,7 +24,7 @@ params_model() = (;
 #region MLTrain Interface
 function make_trainee(params_m=params_model())
     df, params_data = Paths.load_data_params(Paths.db_input(NAME), DataFrame)
-    input_width = size(df, 2) - 3 # 2 key cols and a y col
+    input_width = get_input_width(df)
     params = (;data=params_data, model=params_m)
 
     global state = Trainee(;
@@ -60,12 +63,12 @@ to_draw_yh(yhat, ind) = yhat.vix[1:end,ind]
 #endregion MLTrain Interface
 
 #region Data
-date_range_train() = (;date_range = DateUtil.DEFAULT_DATA_START_DATE..Date(2023,6,30))
+# date_range_train() = (;date_range = DateUtil.DEFAULT_DATA_START_DATE..Date(2023,6,30))
 # date_range_backtest() = (;date_range = Date(2023,7,1)..DateUtil.market_today())
 function make_data(df, params)
     # Hold out some of the most recent data so we can backtest on untrained data
-    df_train = filter(:ts => DateUtil.ts_in(params.train.date_range), df)
-    df_holdout = filter(:ts => !DateUtil.ts_in(params.train.date_range), df)
+    df_train = filter(:ts => DateUtil.ts_in(params.data.hist.data.train_date_range), df)
+    df_holdout = filter(:ts => !DateUtil.ts_in(params.data.hist.data.train_date_range), df)
     @assert df_holdout.ts[1] > df_train.ts[end] "df_holdout.ts[1] $(df_holdout.ts[1]) > $(df_train.ts[end]) df_train.ts[end]"
 
     # shuffled = shuffleobs(df) # pre-shuffle so holdout is random
@@ -88,47 +91,45 @@ get_input_keys() = [:ts, :expir]
 
 single(df, ind, params) = prep_input(df[ind:ind,:], params)
 
-function prep_input_old(obss, params)
-    # dataframe of batch_size rows of same columns as input data
-    # need to make matrices that can be pushed to gpu and used in model
-    keys = (;obss.ts, obss.expir)
-    # x = permutedims(Matrix(select(obss, Not([:ts, :expir, :y_bin]))))
-    # x = PermutedDimsArray(Matrix(select(obss, Not([:ts, :expir, :y_bin]))), (2,1))
-    x = PermutedDimsArray(Matrix(select(obss, Not([:ts, :expir, :y_bin]))), (2,1))
-    y = Flux.onehotbatch(obss.y_bin, 1:params.data.bins_count)
-    return (;keys, x, y)
+# function prep_input_old(obss, params)
+#     # dataframe of batch_size rows of same columns as input data
+#     # need to make matrices that can be pushed to gpu and used in model
+#     keys = (;obss.ts, obss.expir)
+#     # x = permutedims(Matrix(select(obss, Not([:ts, :expir, :y_bin]))))
+#     # x = PermutedDimsArray(Matrix(select(obss, Not([:ts, :expir, :y_bin]))), (2,1))
+#     x = PermutedDimsArray(Matrix(select(obss, Not([:ts, :expir, :y_bin]))), (2,1))
+#     y = Flux.onehotbatch(obss.y_bin, 1:params.data.bins_count)
+#     return (;keys, x, y)
+# end
+
+make_buffers(obss) = make_buffers(get_input_width(obss), size(obss, 1))
+import Flux
+function make_buffers(input_width, batch_size)
+    c = (;
+        x = Matrix{Float32}(undef, input_width, batch_size),
+        # Note: custom objects are used for onehot and copyto! doesn't seem to work on them.
+        # y = Matrix{Bool}(undef, bins_count, batch_size),
+    )
+    g = (;
+        x = Flux.gpu(c.x)
+    )
+    return (;cpu=c, gpu=g)
 end
 
+prep_input(obss, params) = prep_input(obss, params, make_buffers(obss))
 # 41.1 microseconds
 # not thread safe because of reuse of m
-function prep_input(obss, params, x)
-    # dataframe of batch_size rows of same columns as input data
-    # need to make matrices that can be pushed to gpu and used in model
-    keys = (;obss.ts, obss.expir)
-    # x = permutedims(Matrix(select(obss, Not([:ts, :expir, :y_bin]))))
-    # x = PermutedDimsArray(Matrix(select(obss, Not([:ts, :expir, :y_bin]))), (2,1))
-    cols = collect(Vector{Float32}, eachcol(obss[!,4:end]))
-    # @show size(x) size(cols) size(cols[1])
-    # x = Matrix{Float32}(undef, length(cols), length(cols[1]))
-    @inbounds for i in eachindex(cols)
-        x[i,:] .= cols[i]
-    end
-    # x = PermutedDimsArray(Matrix(select(obss, Not([:ts, :expir, :y_bin]))), (2,1))
-    y = Flux.onehotbatch(obss.y_bin, 1:params.data.bins_count)
-    return (;keys, x, y)
-end
-
-function prep_input(obss, params)
+function prep_input(obss, params, bufs)
     # dataframe of batch_size rows of same columns as input data
     # need to make matrices that can be pushed to gpu and used in model
     keys = (;obss.ts, obss.expir)
     cols = collect(Vector{Float32}, eachcol(obss[!,4:end]))
-    x = Matrix{Float32}(undef, length(cols), length(cols[1]))
-    @inbounds for i in eachindex(cols)
-        x[i,:] .= cols[i]
+    for i in eachindex(cols)
+        bufs.cpu.x[i,:] .= cols[i]
     end
-    y = Flux.onehotbatch(obss.y_bin, 1:params.data.bins_count)
-    return (;keys, x, y)
+    copyto!(bufs.gpu.x, bufs.cpu.x)
+    y = Flux.onehotbatch(obss.y_bin, 1:params.data.bins_count) |> gpu
+    return (;keys, x=bufs.gpu.x, y)
 end
 
 # 63.8 microseconds

@@ -6,6 +6,7 @@ using ThetaData, Paths
 import DateUtil, PricingBase, OptionUtil
 using DataConst, DataRead, DataXpirts, DataPrices
 import Calendars as cal
+import DataCheck
 
 const NTM_COUNT3 = 8
 const NTM_RADIUS = NTM_COUNT3 ÷ 2
@@ -113,9 +114,7 @@ function make_tsx(;sym="SPY")
         @assert allunique(df, [:ts, :expir])
 
         Paths.save_data(DataRead.file_tsx(;sym), df)
-        tss = DataRead.get_ts()
-        # TODO: inside thetadata, we're filtering out market open
-        tss = filter(ts -> ts != cal.getMarketOpen(Date(ts)), tss)
+        tss = tss_for_tsx()
         diff = symdiff(df.ts, tss)
         if !isempty(diff)
             return diff
@@ -127,22 +126,28 @@ function make_tsx(;sym="SPY")
 end
 
 function update_tsx(;sym="SPY")
-    df = DataRead.get_tsx(;age=DateUtil.FOREVER2)
-    tss = DataRead.get_ts()
-    if tss[end] > df.ts[end]
-        # TODO: reprocess the last days because we might have put placeholder values for :ret
+    df1 = DataRead.get_tsx(;age=DateUtil.FOREVER2)
+    tss = tss_for_tsx()
+    if tss[end] > df1.ts[end]
+        # TODO: reprocess the last days (which might be in previous month) because we might have put placeholder values for :ret
+        # actually, it could go way back for months we need to fix rets
         price_lookup = DataRead.price_lookup()
-        ind = searchsortedfirst(tss, df.ts[end] + Second(5))
+        ind = searchsortedfirst(tss, df1.ts[end] + Second(5))
         to_proc = tss[ind:end]
         yms = DateUtil.year_months.(;start_date=Date(to_proc[1]), end_date=Date(to_proc[end]))
-        df = mapreduce(vcat, yms) do (year, month)
-            df = filter(:ts => (ts -> to_proc[1] <= ts <= ts_proc[end]), filtered_options(year, month))
+        df2 = mapreduce(vcat, yms) do (year, month)
+            df = filter(:ts => (ts -> to_proc[1] <= ts <= to_proc[end]), filtered_options(year, month; sym))
             proc(df, price_lookup)
         end
-        @assert tss == df.ts
+        df = DataCheck.combine_dfs(df1, df2; keycols=[:ts,:expir])
+        Paths.save_data(DataRead.file_tsx(;sym), df; update=true)
+        diff = symdiff(df.ts, tss)
+        if !isempty(diff)
+            return diff
+        end
         return to_proc
     else
-        println("DataTsx already up to date $(df.ts[end]) == tss[end]")
+        println("DataTsx already up to date $(df1.ts[end]) == tss[end]")
         touch(DataRead.file_tsx(;sym))
     end
 end
@@ -679,5 +684,12 @@ end
 #     v = rand(10000)
 #     BenchmarkTools.@btime f2($v)
 # end
+
+function tss_for_tsx()
+    tss = DataRead.get_ts()
+    # TODO: inside thetadata, we're filtering out market open
+    tss = filter(ts -> ts != cal.getMarketOpen(Date(ts)), tss)
+    return tss
+end
 
 end

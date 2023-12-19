@@ -16,9 +16,19 @@ params_train(;kws...) = (;
     holdout = 0.1,
     kfolds = 5,
     batch_size = 512,
-    weight_decay = 0f0,
+    weight_decay = 0.00004f0,
     kws...
 )
+
+# Note: the following seemed to work well for HistShapeModel
+# params_train(;kws...) = (;
+#     rng_seed = 1,
+#     holdout = 0.1,
+#     kfolds = 5,
+#     batch_size = 512,
+#     weight_decay = 0.00004f0,
+#     kws...
+# )
 
 #=
 example use:
@@ -80,16 +90,19 @@ end
 #endregion Types
 
 #region Train
-function setup(trainee::Trainee, params=nothing; kws...)
-    isnothing(params) && ( params = params_train(;kws...) )
-    Random.seed!(Random.default_rng(), params.rng_seed)
+function setup(trainee::Trainee, pt=nothing; kws...)
+    isnothing(pt) && ( pt = params_train(;kws...) )
+    # params = (;data=trainee.params.data, model=trainee.params.model, train=pt)
+    params = (;trainee.params..., train=pt)
+    global kparams = params
+    Random.seed!(Random.default_rng(), pt.rng_seed)
 
     model = trainee.make_model() |> dev
     println("Model has param count: ", sum(length, Flux.params(model)))
 
-    if !iszero(params.weight_decay)
+    if !iszero(pt.weight_decay)
         opt_inner = Flux.AdamW(trainee.get_learning_rate(1))
-        opt = Flux.OptimiserChain(Flux.WeightDecay(params.weight_decay), opt_inner)
+        opt = Flux.OptimiserChain(Flux.WeightDecay(pt.weight_decay), opt_inner)
         opt_state = Flux.setup(opt, model) |> dev
     else
         opt = Flux.AdamW(trainee.get_learning_rate(1))
@@ -98,8 +111,6 @@ function setup(trainee::Trainee, params=nothing; kws...)
 
     data = trainee.prep_data(params)
     metrics = Dict{Symbol,Any}()
-    metrics[:loss_untrained] = calc_base_loss(model, trainee.get_loss, data, params.batch_size)
-    println("Initial loss: $(metrics[:loss_untrained])")
 
     training = Training(;
         trainee,
@@ -108,8 +119,12 @@ function setup(trainee::Trainee, params=nothing; kws...)
         opt_state,
         data,
         metrics,
-        params = (;data=trainee.params.data, model=trainee.params.model, train=params),
+        params,
     )
+
+    print("Initial loss: ")
+    metrics[:loss_untrained] = check_holdout(training) # calc_base_loss(model, trainee.get_loss, data, params.batch_size)
+
     return training
 end
 
@@ -130,6 +145,8 @@ function train(training::Training; epochs=1000)
         # println("epoch: $(epoch), fold: $(ifold), batch: $(batches_fold_count) / $(length(cv_inds.train)) ($(ibatch)) - Training loss $(loss)")
     end
 
+    bufs = nothing
+    batch_size_prev = 0
     for epoch in 1:epochs
         loss_epoch_sum = 0.0
         batches_epoch_count = 0
@@ -139,7 +156,12 @@ function train(training::Training; epochs=1000)
             batches_fold_count = 0
             Flux.trainmode!(model)
             for obss in eachobs(train_data, batchsize=params.batch_size)
-                batch = data.prep_input(obss) |> dev
+                batch_size = size(obss, 1)
+                if batch_size != batch_size_prev
+                    bufs = trainee.mod.make_buffers(obss)
+                    batch_size_prev = batch_size
+                end
+                batch = data.prep_input(obss, bufs)
                 loss, grads = Flux.withgradient(trainee.get_loss, model, batch)
                 loss_epoch_sum += loss
                 yield()
@@ -170,7 +192,7 @@ function train(training::Training; epochs=1000)
         println("Epoch $(epoch) - Average loss $(loss_epoch) which is $(loss_epoch / loss_prev) * loss_prev")
         loss_prev = loss_epoch
 
-        check_holdout(model, trainee, data, params.batch_size)
+        check_holdout(training)
 
         rate = trainee.get_learning_rate(epoch)
         Flux.Optimisers.adjust!(training.opt_state, rate)
@@ -180,24 +202,50 @@ function train(training::Training; epochs=1000)
     end
 end
 
-function calc_base_loss(model, calc_loss, data, batch_size)
-    count = 10
-    loss = 0.0
-    for obss in first(eachobs(data.data_for_epoch(); batchsize=batch_size), count)
-        loss += calc_loss(model, data.prep_input(obss) |> dev)
-    end
-    loss /= count
-    return loss
-end
+# Copying BitArray to gpu is very slow
+# using CUDA
+# function test()
+#     c = rand(100,100) .> 0.5
+#     g = CUDA.cu(c)
+#     @time copyto!(g, c)
+# end
+# function test2()
+#     c = convert(Array{Bool}, rand(100,100) .> 0.5)
+#     g = CUDA.cu(c)
+#     @time copyto!(g, c)
+# end
+
+# import BenchmarkTools
+# function test(gbufs, bufs)
+#     # They were nearly identical time, but first one had allocations
+#     BenchmarkTools.@btime gpu($bufs)
+#     BenchmarkTools.@btime copyto_itr!($gbufs, $bufs)
+# end
+
+# function calc_base_loss(model, calc_loss, data, params)
+#     count = 10
+#     loss = 0.0
+#     for obss in first(eachobs(data.data_for_epoch(); batchsize=params.train.batch_size), count)
+#         loss += calc_loss(model, data.prep_input(obss, params) |> dev)
+#     end
+#     loss /= count
+#     return loss
+# end
 #endregion Train
 
 #region Check
-check_holdout(training) = check_holdout(training.model, training.trainee, training.data, training.params.train.batch_size)
-function check_holdout(model, trainee, data, batch_size)
+# check_holdout(training) = check_holdout(training.model, training.trainee, training.data, training.params.train.batch_size)
+# function check_holdout(model, trainee, data, batch_size)
+function check_holdout(training)
+    model = training.model
+    trainee = training.trainee
+    data = training.data
+    params = training.params
+
     Flux.testmode!(model)
     loss = 0.0
     count = 0
-    for obss in eachobs(data.holdout; batchsize=512)
+    for obss in eachobs(data.holdout; batchsize=params.train.batch_size)
         count += 1
         loss += trainee.get_loss(model, data.prep_input(obss) |> dev)
     end
@@ -209,10 +257,14 @@ function check_holdout(model, trainee, data, batch_size)
     #     loss = training.trainee.get_loss(training.trainee.training_model, training.trainee.batches.get(1, ibatch))
     #     println("Loss for holdout batch $(ibatch): $(loss)")
     # end
+    return loss
 end
 
+obss1(training) = first(eachobs(training.data.data_for_epoch(), batchsize=training.params.train.batch_size))
+
 function batch1(training)
-    return training.data.prep_input(first(eachobs(training.data.data_for_epoch(), batchsize=training.params.train.batch_size)))
+    # return training.data.prep_input(first(eachobs(training.data.data_for_epoch(), batchsize=training.params.train.batch_size)))
+    return training.data.prep_input(obss1(training))
 end
 
 import DrawUtil:draw,draw!
@@ -274,32 +326,36 @@ end
 using DataFrames
 using Paths
 import ThreadPools
-save_output(training::Training; kws...) = save_output(training.trainee, training.model; kws...)
-function save_output(trainee::Trainee, model=nothing; kws...)
-    if isnothing(model)
-        model = trainee.make_model() |> dev
-        ModelUtil.load_infer(trainee.name, model, trainee.params)
-        println("Model has param count: ", sum(length, Flux.params(model)))
-    end
-    # TODO: show some loss info to validate that it's a trained model
-    model = trainee.get_inference_model(model)
-
+# save_output(training::Training; kws...) = save_output(training.trainee, training.model; kws...)
+# function save_output(trainee::Trainee, model=nothing; kws...)
+function save_output(training::Training; kws...)
+    trainee = training.trainee
+    model = training.model
+    # if isnothing(model)
+    #     model = trainee.make_model() |> dev
+    #     ModelUtil.load_infer(trainee.name, model, trainee.params)
+    #     println("Model has param count: ", sum(length, Flux.params(model)))
+    # end
     pt = params_train(;kws...)
     data = trainee.prep_data(pt)
-    feature_count = size(data.all_data, 2) - 3
-    x = Matrix{Float32}(undef, feature_count, pt.batch_size)
-    xgpu = CuArray{Float32}(undef, feature_count, pt.batch_size)
+    # TODO:
+    check_holdout(training)
+    model = trainee.get_inference_model(model)
+
+    bufs = trainee.mod.make_buffers(obss1(training))
+    # xgpu = CuArray{Float32}(undef, feature_count, pt.batch_size)
     df = mapreduce(vcat, eachobs(data.all_data, batchsize=pt.batch_size)) do obss
         if size(obss, 1) == pt.batch_size
-            batch = data.prep_input(obss, x)
-            copyto!(xgpu, batch.x)
-            output = trainee.run_infer(model, xgpu) |> cpu
-            return DataFrame((;batch.keys..., output=eachcol(output)))
+            batch = data.prep_input(obss, bufs)
+            yhat = trainee.run_infer(model, batch.x) |> cpu
+            output = [yhat[:,i] for i in axes(yhat,2)]
+            return DataFrame((;batch.keys..., output))
         else
             # Handle the last batch which is likely a different size
             batch = data.prep_input(obss)
-            output = trainee.run_infer(model, batch.x |> gpu) |> cpu
-            return DataFrame((;batch.keys..., output=eachcol(output)))
+            yhat = trainee.run_infer(model, batch.x |> gpu) |> cpu
+            output = [yhat[:,i] for i in axes(yhat,2)]
+            return DataFrame((;batch.keys..., output))
         end
     end
 
@@ -342,6 +398,7 @@ end
 function load(training)
     ModelUtil.load_training(training)
     check_holdout(training)
+    return
 end
 
 end

@@ -2,7 +2,7 @@ module ReturnProbData
 using Dates, Intervals, DataFrames, SearchSortedNearest
 import DateUtil, Paths
 import DataConst, DataRead, ModelUtil
-import HistShapeData
+import HistShapeData as hsd
 import Calendars as cal
 using ProbMeta
 
@@ -34,8 +34,11 @@ function make_input(params=params_data())
     transform!(df_tsx, [:ts] => (ts -> dur_to_div.(ts)) => prefix_sym.([:closed, :pre, :open, :post, :weekend, :holiday], :div_dur_))
 
     # Add hist
-    df_hist, params_hist = Paths.load_data_params(Paths.db_output(HistShapeData.NAME), DataFrame)
-    rename!(df_hist, :key => :ts)
+    df_hist, params_hist = Paths.load_data_params(Paths.db_output(hsd.NAME), DataFrame)
+    # rename!(df_hist, :key => :ts)
+    df_hist_ts = DataFrame(:ts => df_hist.ts)
+    df_hist_enc = DataFrame([[df_hist.output[row][col] for row in eachindex(df_hist.output)] for col in eachindex(df_hist.output[1])], :auto)
+    df_hist = hcat(df_hist_ts, df_hist_enc)
     params = merge(params, (;hist=params_hist))
     df = innerjoin(df_tsx, df_hist; on=:ts)
 

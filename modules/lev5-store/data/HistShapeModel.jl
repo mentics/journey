@@ -3,6 +3,8 @@ using Intervals, Dates, StatsBase, DataFrames, Base64
 using Flux, NNlib, MLUtils
 using DateUtil, Paths
 using ModelUtil, TrainUtil, MLTrain
+import HistShapeData as hsd
+import CudaUtil
 
 const NAME = replace(string(@__MODULE__), "Model" => "")
 
@@ -96,21 +98,105 @@ get_input_keys() = [:ts]
 
 single(df, ind) = prep_input(df[ind:ind,:])
 
+# function prep_input(obss)
+#     # dataframe of batch_size rows of same columns as input data
+#     # need to make matrices that can be pushed to gpu and used in model
+#     # TODO: find better way
+#     data = map(eachcol(obss)) do col
+#         reduce(hcat, col)
+#     end
+#     return NamedTuple{Tuple(Symbol.(names(obss)))}(data)
+# end
+
+#=
+Note: I thought to use copyto!(dest, doff, src, soff, n) to copy directly from these vectors into GPU buffers, but...
+That will work for normal arrays, but at this point, they're still Arrow primitive arrays, so doesn't work.
+=#
+get_lengths(obss) = (;
+    prices_len = length(obss.prices_seq[1]),
+    vix_len = length(obss.vix_seq[1]),
+    batch_size = size(obss, 1),
+)
+make_buffers(obss) = make_buffers(get_lengths(obss)...)
+import Flux
+function make_buffers(prices_len, vix_len, batch_size)
+    cpu = (;
+        prices_seq = Matrix{Float32}(undef, prices_len, batch_size),
+        # Note: Using a BitArray makes it very slow to copy data to the GPU.
+        # prices_mask = BitArray(undef, prices_len, batch_size),
+        prices_mask = Matrix{Bool}(undef, prices_len, batch_size),
+        vix_seq = Matrix{Float32}(undef, vix_len, batch_size),
+        # vix_mask = BitArray(undef, vix_len, batch_size),
+        vix_mask = Matrix{Bool}(undef, vix_len, batch_size),
+    )
+    gpu = Flux.gpu(cpu)
+    return (;cpu, gpu)
+end
+
 function prep_input(obss)
+    prep_input(obss, make_buffers(get_lengths(obss)...))
+end
+function prep_input(obss, bufs_2)
+    bufs = bufs_2.cpu
     # dataframe of batch_size rows of same columns as input data
     # need to make matrices that can be pushed to gpu and used in model
-    # TODO: find better way
-    data = map(eachcol(obss)) do col
-        reduce(hcat, col)
+    for i in eachindex(obss.prices_seq)
+        bufs.prices_seq[:,i] .= obss.prices_seq[i]
     end
-    return NamedTuple{Tuple(Symbol.(names(obss)))}(data)
+    for i in eachindex(obss.prices_mask)
+        bufs.prices_mask[:,i] .= obss.prices_mask[i]
+    end
+    for i in eachindex(obss.vix_seq)
+        bufs.vix_seq[:,i] .= obss.vix_seq[i]
+    end
+    for i in eachindex(obss.vix_mask)
+        bufs.vix_mask[:,i] .= obss.vix_mask[i]
+    end
+    gbufs = CudaUtil.copyto_itr!(bufs_2.gpu, bufs)
+    return (;keys = (;obss.ts), x=gbufs, y=gbufs)
 end
+
+# function gen_output_all(model, data, batch_size)
+#     x = Matrix{Float32}(undef, feature_count, pt.batch_size)
+#     xgpu = CuArray{Float32}(undef, feature_count, pt.batch_size)
+#     df = mapreduce(vcat, eachobs(data.all_data, batchsize=pt.batch_size)) do obss
+#         if size(obss, 1) == pt.batch_size
+#             batch = data.prep_input(obss, x)
+#             copyto!(xgpu, batch.x)
+#             output = trainee.run_infer(model, xgpu) |> cpu
+#             return DataFrame((;batch.keys..., output=eachcol(output)))
+#         else
+#             # Handle the last batch which is likely a different size
+#             batch = data.prep_input(obss)
+#             output = trainee.run_infer(model, batch.x |> gpu) |> cpu
+#             return DataFrame((;batch.keys..., output=eachcol(output)))
+#         end
+#     end
+
+
+
+#     global kargs = (;obss, m)
+#     error
+#     # dataframe of batch_size rows of same columns as input data
+#     # need to make matrices that can be pushed to gpu and used in model
+
+#     @inbounds for i in eachindex(cols)
+#         x[i,:] .= cols[i]
+#     end
+
+#     # TODO: find better way
+#     data = map(eachcol(obss)) do col
+#         reduce(hcat, col)
+#     end
+#     x = (;obss.prices_seq, obss.prices_mask, obss.vix_seq, obss.vix_mask)
+#     return (;keys, x, y=x)
+# end
 #endregion Data
 
 #region Run
 function calc_loss(model, batch)
-    (;prices, vix) = run_train(model, batch)
-    return Flux.mse(prices, batch.prices_seq) + Flux.mse(vix, batch.vix_seq)
+    (;prices, vix) = run_train(model, batch.x)
+    return Flux.mse(prices, batch.x.prices_seq) + Flux.mse(vix, batch.x.vix_seq)
 end
 function calc_loss_batchnorm(model, batch)
     (;prices, vix) = run_train(model, batch; batchnorm=true)
@@ -131,31 +217,31 @@ function y_batchnorm(model, batch)
     return y_prices, y_vix
 end
 
-function run_train(model, batch; batchnorm=false)
-    encoded = run_encoder(model.layers.encoder, batch; batchnorm)
-    return run_decoder(model.layers.decoder, encoded, batch)
+function run_train(model, batchx; batchnorm=false)
+    encoded = run_encoder(model.layers.encoder, batchx; batchnorm)
+    return run_decoder(model.layers.decoder, encoded, batchx)
 end
 
-function run_infer(encoder, batch; batchnorm=false)
-    return run_encoder(encoder, batch; batchnorm)
+function run_infer(encoder, batchx; batchnorm=false)
+    return run_encoder(encoder, batchx; batchnorm)
 end
 
-function run_encoder(encoder, batch; batchnorm=false)
+function run_encoder(encoder, batchx; batchnorm=false)
     # It's expected that the input is already masked, so no need to multiply it by the mask
     if batchnorm
-        v = encoder(((batch.prices_seq, batch.prices_meta), (batch.vix_seq, batch.vix_meta)))
-        return vcat(v, batch.prices_meta, batch.vix_meta)
+        v = encoder(((batchx.prices_seq, batchx.prices_meta), (batchx.vix_seq, batchx.vix_meta)))
+        return vcat(v, batchx.prices_meta, batchx.vix_meta)
     else
         # v = encoder((vcat(batch.prices_seq, batch.prices_meta), vcat(batch.vix_seq, batch.vix_meta)))
-        v = encoder((batch.prices_seq, batch.vix_seq))
+        v = encoder((batchx.prices_seq, batchx.vix_seq))
         return v
     end
 end
 
-function run_decoder(decoder, encoded, input)
+function run_decoder(decoder, encoded, batchx)
     (dec_prices_raw, dec_vix_raw) = decoder(encoded)
-    prices = dec_prices_raw .* input.prices_mask
-    vix = dec_vix_raw .* input.vix_mask
+    prices = dec_prices_raw .* batchx.prices_mask
+    vix = dec_vix_raw .* batchx.vix_mask
     return (;prices, vix)
 end
 #endregion Run
@@ -171,11 +257,9 @@ function make_model(params; batchnorm=false)
 end
 
 function config(params)
-    weeks_count = params.data.weeks_count
     (;hidden_width_mult, encoded_width) = params.model
-    input_width_under = DateUtil.TIMES_PER_WEEK * weeks_count
-    vix_count = DateUtil.DAYS_PER_WEEK * weeks_count
-    input_width_vix = vix_count * 4
+    input_width_under = hsd.prices_seq_len(params.data)
+    input_width_vix = hsd.vix_seq_len(params.data)
     input_width_meta = 2
     input_width = input_width_under + input_width_vix
     hidden_width_under = hidden_width_mult * input_width_under
@@ -185,7 +269,6 @@ function config(params)
     return (;
         params.data...,
         params.model...,
-        vix_count,
         input_width_under, input_width_vix,
         input_width_meta,
         hidden_width_under, hidden_width_vix, hidden_width,
