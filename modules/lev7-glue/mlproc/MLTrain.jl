@@ -16,7 +16,7 @@ params_train(;kws...) = (;
     holdout = 0.1,
     kfolds = 5,
     batch_size = 512,
-    weight_decay = 0.0001f0,
+    weight_decay = 0f0,
     kws...
 )
 
@@ -87,7 +87,7 @@ function setup(trainee::Trainee, params=nothing; kws...)
     model = trainee.make_model() |> dev
     println("Model has param count: ", sum(length, Flux.params(model)))
 
-    if iszero(params.weight_decay)
+    if !iszero(params.weight_decay)
         opt_inner = Flux.AdamW(trainee.get_learning_rate(1))
         opt = Flux.OptimiserChain(Flux.WeightDecay(params.weight_decay), opt_inner)
         opt_state = Flux.setup(opt, model) |> dev
