@@ -13,12 +13,12 @@ get_input_width(df) = size(df, 2) - 3 # 2 key cols and a y col
 const NAME = replace(string(@__MODULE__), "Model" => "")
 
 params_model() = (;
-    block_count = 2,
-    layers_per_block = 2,
+    block_count = 4,
+    layers_per_block = 4,
     hidden_width_mult = 2,
-    dropout = 0.2f0,
+    dropout = 0.05f0,
     activation = NNlib.swish,
-    use_bias = true,
+    use_bias = false,
 )
 
 #region MLTrain Interface
