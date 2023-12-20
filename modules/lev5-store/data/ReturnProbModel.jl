@@ -1,5 +1,5 @@
 module ReturnProbModel
-using Intervals, Dates, DataFrames
+using Intervals, Dates, DataFrames, StatsBase
 using Flux, MLUtils
 using DateUtil, Paths, ModelUtil, TrainUtil, MLTrain
 import CudaUtil:copyto_itr!
@@ -21,6 +21,12 @@ params_model() = (;
     use_bias = false,
 )
 
+import MLyze
+function setup_ce_all(df, params)
+    ky = MLyze.calc_pmf_kde(df.y_bin; nbins=params.data.bins_count)
+    return [Flux.crossentropy(ky, Flux.onehot(y, 1:params.data.bins_count)) for y in 1:params.data.bins_count]
+end
+
 #region MLTrain Interface
 function make_trainee(params_m=params_model())
     df, params_data = Paths.load_data_params(Paths.db_input(NAME), DataFrame)
@@ -36,7 +42,7 @@ function make_trainee(params_m=params_model())
         run_infer,
         prep_data = params_train -> make_data(df, merge(params, (;train=params_train))),
         get_learning_rate = TrainUtil.learning_rate_linear_decay(), # TrainUtil.lr_cycle_decay(),
-        get_loss = calc_loss,
+        get_loss = (model, batch) -> calc_loss(model, batch),
         params,
         mod = @__MODULE__
     )
@@ -70,13 +76,14 @@ function make_data(df, params)
     df_train = filter(:ts => DateUtil.ts_in(params.data.hist.data.train_date_range), df)
     df_holdout = filter(:ts => !DateUtil.ts_in(params.data.hist.data.train_date_range), df)
     @assert df_holdout.ts[1] > df_train.ts[end] "df_holdout.ts[1] $(df_holdout.ts[1]) > $(df_train.ts[end]) df_train.ts[end]"
+    ce_all = setup_ce_all(df, params)
 
     # shuffled = shuffleobs(df) # pre-shuffle so holdout is random
     # training, holdout = splitobs(shuffled; at=(1.0 - params.train.holdout))
     InputData(;
         all_data = df,
         data_for_epoch = () -> shuffleobs(df_train),
-        prep_input = (obss, args...) -> prep_input(obss, params, args...),
+        prep_input = (obss, args...) -> prep_input(obss, params, args...; ce_all),
         get_input_keys,
         holdout=df_holdout,
         single = ind -> single(df, ind, params)
@@ -116,10 +123,10 @@ function make_buffers(input_width, batch_size)
     return (;cpu=c, gpu=g)
 end
 
-prep_input(obss, params) = prep_input(obss, params, make_buffers(obss))
+prep_input(obss, params; kws...) = prep_input(obss, params, make_buffers(obss); kws...)
 # 41.1 microseconds
 # not thread safe because of reuse of m
-function prep_input(obss, params, bufs)
+function prep_input(obss, params, bufs; ce_all)
     # dataframe of batch_size rows of same columns as input data
     # need to make matrices that can be pushed to gpu and used in model
     keys = (;obss.ts, obss.expir)
@@ -129,7 +136,8 @@ function prep_input(obss, params, bufs)
     end
     copyto!(bufs.gpu.x, bufs.cpu.x)
     y = Flux.onehotbatch(obss.y_bin, 1:params.data.bins_count) |> gpu
-    return (;keys, x=bufs.gpu.x, y)
+    ce_compare = ce_all[obss.y_bin] |> gpu
+    return (;keys, x=bufs.gpu.x, y, ce_compare)
 end
 
 # 63.8 microseconds
@@ -163,13 +171,15 @@ end
 #endregion Data
 
 #region Run
-function calc_loss(model, batch)
+function calc_loss(model, batch; kws...)
     yhat = run_train(model, batch.x)
-    return calc_loss_for(yhat, batch.y)
+    return calc_loss_for(yhat, batch; kws...)
 end
-function calc_loss_for(yhat, y)
+function calc_loss_for(yhat, batch)
+    y = batch.y
     # return Flux.Losses.logitcrossentropy(yhat, batch.y)
-    return Flux.Losses.crossentropy(yhat, y)
+    # return Flux.Losses.crossentropy(yhat, y)
+    return Flux.Losses.crossentropy(yhat, y; agg=(x -> mean(x ./ batch.ce_compare)))
 end
 
 import Distributions
