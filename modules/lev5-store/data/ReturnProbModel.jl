@@ -16,7 +16,7 @@ params_model() = (;
     block_count = 4,
     layers_per_block = 4,
     hidden_width_mult = 2,
-    dropout = 0.2f0,
+    dropout = 0f0,
     activation = NNlib.swish,
     use_bias = false,
 )
@@ -216,12 +216,12 @@ function min_loss(params)
 end
 
 function run_train(model, batchx)
-    # model(batchx)
     yhat = model(batchx)
-    yhat = relu(yhat)
-    ss = sum(yhat; dims=1)
-    yhat = yhat ./ ss
-    return yhat
+    return softmax(yhat)
+    # yhat = relu(yhat)
+    # ss = sum(yhat; dims=1)
+    # yhat = yhat ./ ss
+    # return yhat
 end
 
 function run_infer(model, batchx)
