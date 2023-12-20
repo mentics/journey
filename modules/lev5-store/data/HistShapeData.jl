@@ -56,7 +56,6 @@ function make_input(params=params_data())
     # rename!(df, :prices_ts => :ts)
     select!(df, Not([:date, :price, :open, :high, :low, :close]))
     sort!(df, :ts)
-    # analysis(df)
     Paths.save_data_params(Paths.db_input(NAME), params, df)
     return df
 end
@@ -365,18 +364,5 @@ end
 #     return [μ, σ]
 # end
 #endregion util
-
-#region Analysis
-function analysis(df, params=params_data())
-    weeks_count = params.weeks_count
-    prices_seq_len = DateUtil.TIMES_PER_WEEK * weeks_count
-    vix_seq_len = DateUtil.DAYS_PER_WEEK * weeks_count
-
-    for i in eachindex(df.prices_seq[1])
-        mask = [df.prices_mask[r][end] for r in eachindex(df.prices_mask)]
-        [df.prices_seq[r][end] for r in eachindex(df.prices_seq)][mask]
-    end
-end
-#endregion Analysis
 
 end

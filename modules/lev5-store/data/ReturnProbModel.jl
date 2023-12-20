@@ -16,7 +16,7 @@ params_model() = (;
     block_count = 4,
     layers_per_block = 4,
     hidden_width_mult = 2,
-    dropout = 0.05f0,
+    dropout = 0.2f0,
     activation = NNlib.swish,
     use_bias = false,
 )

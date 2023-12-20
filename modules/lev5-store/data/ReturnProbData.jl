@@ -12,7 +12,7 @@ const NAME = replace(string(@__MODULE__), "Data" => "")
 params_data() = (;
     # weeks_count = 5,
     # intraday_period = Minute(30),
-    xpirs_within = DataConst.XPIRS_WITHIN,
+    xpirs_within = DataConst.XPIRS_WITHIN_CALC,
     bins_count = Bins.VNUM,
     # ProbMeta.BIN_PARAMS...
 )

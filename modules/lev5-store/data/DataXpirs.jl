@@ -5,6 +5,7 @@ using ThetaData, Paths, FilesJLD2, Caches
 import DateUtil
 import CollUtil:push_all!
 import Calendars as cal
+import DataConst
 
 using DataRead
 
@@ -22,7 +23,7 @@ function make_xpir_dates(;sym="SPY")
     for xpir in xpirs
         add_xpir_dates!(xdd, xpir; sym)
     end
-    Paths.save_data(DataRead.file_xpirs(;sym); xpir_to_date, date_to_xpir)
+    Paths.save_data(DataRead.file_xpirs(;sym); xdd.xpir_to_date, xdd.date_to_xpir)
 end
 
 function update_xpir_dates(;sym="SPY")
@@ -51,8 +52,10 @@ end
 function add_xpir_dates!(xdd::XpirDateDicts, xpir; sym)
     dates = ThetaData.query_dates_for_xpir(xpir, sym)
     for date in dates
-        push!(get!(Vector, xdd.xpir_to_date, xpir), date)
-        push!(get!(Vector, xdd.date_to_xpir, date), xpir)
+        if xpir - date <= DataConst.XPIRS_WITHIN
+            push!(get!(Vector, xdd.xpir_to_date, xpir), date)
+            push!(get!(Vector, xdd.date_to_xpir, date), xpir)
+        end
     end
 end
 #endregion Local

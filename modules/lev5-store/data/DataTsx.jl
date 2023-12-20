@@ -21,6 +21,18 @@ Data modules pattern:
   update_*: update files with recent historical data
 =#
 
+function validate_result(df)
+    @assert issorted(df, [:ts, :expir])
+    @assert allunique(df, [:ts, :expir])
+
+    @assert !any(df.xtq1_call .== -1.0)
+    @assert !any(df.xtq2_call .== -1.0)
+    @assert !any(df.xtq3_call .== -1.0)
+    @assert !any(df.xtq1_put .== -1.0)
+    @assert !any(df.xtq2_put .== -1.0)
+    @assert !any(df.xtq3_put .== -1.0)
+end
+
 #region Extra
 # Can use from either backtest/training or live.
 function calc_xtqs(ts, xpirts, ts_price, style, strikes, bids, asks)
@@ -94,13 +106,13 @@ function make_tsx(;sym="SPY")
     # df = mapreduce(vcat, DateUtil.year_months()[2:4]) do (year, month)
     #     println("processing $year $month")
     #     df = DataRead.get_options(year, month; sym)
-    #     sdf = remove_at_xpirts(filter_within_days(df, DataConst.XPIRS_WITHIN))
+    #     sdf = remove_at_xpirts(filter_within_days(df, DataConst.XPIRS_WITHIN_CALC))
     #     proc(sdf, price_lookup)
     # end
 
     # DateUtil.year_months()[2:8]
     stop = false
-    # yms = [(2023,12)]
+    yms = [(2017,3), (2017,9)]
     # yms = [(2023,i) for i in 1:12]
     try
         dfs = qbmap(yms) do (year, month)
@@ -110,10 +122,9 @@ function make_tsx(;sym="SPY")
         end
         df = reduce(vcat, dfs)
         sort!(df, [:ts, :expir])
-        @assert issorted(df, [:ts, :expir])
-        @assert allunique(df, [:ts, :expir])
 
-        Paths.save_data(DataRead.file_tsx(;sym), df)
+        validate_result(df)
+        # Paths.save_data(DataRead.file_tsx(;sym), df)
         tss = tss_for_tsx()
         diff = symdiff(df.ts, tss)
         if !isempty(diff)
@@ -135,6 +146,7 @@ function update_tsx(;sym="SPY")
         ind = searchsortedfirst(tss, df1.ts[end] + Second(5))
         to_proc = tss[ind:end]
         yms = DateUtil.year_months.(;start_date=Date(to_proc[1]), end_date=Date(to_proc[end]))
+        df1 = filter(:ts => (ts -> !( (year(ts), month(ts)) in yms )), df1)
         df2 = mapreduce(vcat, yms) do (year, month)
             df = filter(:ts => (ts -> to_proc[1] <= ts <= to_proc[end]), filtered_options(year, month; sym))
             proc(df, price_lookup)
@@ -150,6 +162,25 @@ function update_tsx(;sym="SPY")
         println("DataTsx already up to date $(df1.ts[end]) == tss[end]")
         touch(DataRead.file_tsx(;sym))
     end
+end
+
+function reproc_tsx(yms;sym="SPY")
+    df1 = DataRead.get_tsx(;age=DateUtil.FOREVER2)
+    price_lookup = DataRead.price_lookup()
+    df1 = filter(:ts => (ts -> !( (year(ts), month(ts)) in yms )), df1)
+    df2 = mapreduce(vcat, yms) do (year, month)
+        proc(filtered_options(year, month; sym), price_lookup)
+    end
+    df = DataCheck.combine_dfs(df1, df2; keycols=[:ts,:expir])
+    validate_result(df)
+    Paths.save_data(DataRead.file_tsx(;sym), df; update=true)
+
+    # tss = filter(ts -> (year(ts), month(ts)) in yms, tss_for_tsx())
+    diff = symdiff(df.ts, tss_for_tsx())
+    if !isempty(diff)
+        return diff
+    end
+    return to_proc
 end
 #endregion Standard Api
 
@@ -167,7 +198,7 @@ function proc(df, price_lookup)
     df = combine(gdf,
             [:style, :xtq1, :xtq2, :xtq3] => split_style => [:xtq1_call, :xtq2_call, :xtq3_call, :xtq1_put, :xtq2_put, :xtq3_put],
             :ret => first => :ret; threads)
-    filter!([:xtq2_call, :xtq2_put] => ((xc, xp) -> xc != -1f0 || xp != -1f0), df)
+    filter!([:xtq2_call, :xtq2_put] => ((xc, xp) -> xc != -1f0 && xp != -1f0), df)
     # filter!([:xtq2_call, :xtq2_put] => ((xc, xp) -> xc != -1f0 || xp != -1f0), df)
 end
 
@@ -214,9 +245,9 @@ function _all(f, v, args...)
 end
 
 # df = DataRead.get_options(year, month; sym)
-# # sdf = remove_at_xpirts(filter_within_days(df, DataConst.XPIRS_WITHIN))
-# sdf = filter_df(df, DataConst.XPIRS_WITHIN)
-filtered_options(year, month; sym) = filter_df(DataRead.get_options(year, month; sym), DataConst.XPIRS_WITHIN)
+# # sdf = remove_at_xpirts(filter_within_days(df, DataConst.XPIRS_WITHIN_CALC))
+# sdf = filter_df(df, DataConst.XPIRS_WITHIN_CALC)
+filtered_options(year, month; sym) = filter_df(DataRead.get_options(year, month; sym), DataConst.XPIRS_WITHIN_CALC)
 
 # remove_at_xpirts(df) = filter([:ts,:expir] => ((ts, xpirts) -> ts != xpirts), df; view=true)
 # filter_within_days(df, within_days) = filter([:ts, :expir] => is_within_days(within_days), df; view=true)
