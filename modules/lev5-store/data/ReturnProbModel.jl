@@ -22,9 +22,32 @@ params_model() = (;
 )
 
 import MLyze
-function setup_ce_all(df, params)
-    ky = MLyze.calc_pmf_kde(df.y_bin; nbins=params.data.bins_count)
-    return [Flux.crossentropy(ky, Flux.onehot(y, 1:params.data.bins_count)) for y in 1:params.data.bins_count]
+function setup_ce_all(df, nbins)
+    ky = calc_y_pmfk(df.y_bin, nbins)
+    return [Flux.crossentropy(ky, Flux.onehot(y, 1:nbins)) for y in 1:nbins]
+end
+calc_y_pmfk(y_bins, nbins) = MLyze.calc_pmf_kde(y_bins; nbins=nbins)
+
+function save_y_pmfk()
+    df, params_data = Paths.load_data_params(Paths.db_input(NAME), DataFrame)
+    y_pmfk = calc_y_pmfk(df.y_bin, params_data.bins_count)
+    Paths.save_data(Paths.db_output("y_pmfk"); y_pmfk)
+end
+
+function load_y_pmfk()
+    # TODO: age?
+    return Paths.load_data(Paths.db_output("y_pmfk"), "y_pmfk")
+end
+
+function save_ce_all()
+    df, params_data = Paths.load_data_params(Paths.db_input(NAME), DataFrame)
+    ce_all = setup_ce_all(df, params_data.bins_count)
+    Paths.save_data(Paths.db_output("ce_all"); ce_all)
+end
+
+function load_ce_all()
+    # TODO: age?
+    return Paths.load_data(Paths.db_output("ce_all"), "ce_all")
 end
 
 #region MLTrain Interface
@@ -77,7 +100,7 @@ function make_data(df, params)
     df_train = filter(:ts => DateUtil.ts_in(params.data.hist.data.train_date_range), df)
     df_holdout = filter(:ts => !DateUtil.ts_in(params.data.hist.data.train_date_range), df)
     @assert df_holdout.ts[1] > df_train.ts[end] "df_holdout.ts[1] $(df_holdout.ts[1]) > $(df_train.ts[end]) df_train.ts[end]"
-    ce_all = setup_ce_all(df, params)
+    ce_all = setup_ce_all(df, params.data.bins_count)
 
     # shuffled = shuffleobs(df) # pre-shuffle so holdout is random
     # training, holdout = splitobs(shuffled; at=(1.0 - params.train.holdout))
@@ -218,11 +241,11 @@ end
 
 function run_train(model, batchx)
     yhat = model(batchx)
-    return softmax(yhat)
-    # yhat = relu(yhat)
-    # ss = sum(yhat; dims=1)
-    # yhat = yhat ./ ss
-    # return yhat
+    # return softmax(yhat)
+    yhat = relu(yhat)
+    ss = sum(yhat; dims=1)
+    yhat = yhat ./ ss
+    return yhat
 end
 
 function run_infer(model, batchx)

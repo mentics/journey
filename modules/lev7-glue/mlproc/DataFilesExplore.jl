@@ -7,6 +7,9 @@ import Explore as ore
 import DrawUtil, ThreadUtil
 using OutputUtil
 import Calendars as cal
+import Paths
+import ProbMeta:Bins
+import MLyze
 
 using DataRead
 
@@ -25,6 +28,8 @@ function explore(;inds=nothing, yms=dat.make_yms(), skip_existing=true, use_pos=
     price_lup = DataRead.price_lookup()
     # price_lup_xpirts = DataRead.price_lookup_xpirts()
     ts_min, prob_for_tsxp = DataRead.prob_for_tsxp(;age=Day(2))
+    # y_pmfk = Paths.load_data(Paths.db_output("y_pmfk"), "y_pmfk")
+    # prob_for_tsxp = (ts, xpirts) -> y_pmfk
     ts_set = Set(DataRead.get_ts())
     for (y, m) in yms
         # TODO: could create this filtered file in advance

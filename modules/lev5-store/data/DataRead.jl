@@ -80,7 +80,7 @@ end
 #         return d
 #     end
 # end
-function prob_for_tsxp(; sym="SPY", age=DateUtil.age_period())
+function prob_for_tsxp(; age=DateUtil.age_period())
     df, _ = Paths.load_data_params(Paths.db_output("ReturnProb"), DataFrame; age)
     gdf = groupby(df, [:ts, :expir])
     return first(df.ts), function(ts, xpirts)
