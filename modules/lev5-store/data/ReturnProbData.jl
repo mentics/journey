@@ -12,17 +12,19 @@ const NAME = replace(string(@__MODULE__), "Data" => "")
 params_data() = (;
     # weeks_count = 5,
     # intraday_period = Minute(30),
-    xpirs_within = DataConst.XPIRS_WITHIN_CALC,
+    xpirs_within = Day(20), # DataConst.XPIRS_WITHIN_CALC,
     bins_count = Bins.VNUM,
     # ProbMeta.BIN_PARAMS...
 )
 
-function make_input(params=params_data())
+import DataTsx
+function make_input(params=params_data(); age=DateUtil.age_daily())
     # Get xtqs and ret
-    df_tsx = DataRead.get_tsx(;age=DateUtil.age_daily())
+    df_tsx = DataRead.get_tsx(;age)
     # Near the end, we don't have returns because they are in the future so filter them out.
     # We can't even backtest on this because we won't know the performance of it anyway
     df_tsx = filter(:ret => isfinite, df_tsx)
+    # df_tsx = DataTsx.filter_df(df_tsx, params.xpirs_within; view=false)
 
     # Add temporal for ts
     transform!(df_tsx, [:ts] => (ts -> ModelUtil.to_temporal_ts.(ts)) => prefix_sym.([:week_day, :month_day, :quarter_day, :year_day, :hour], :ts_))
@@ -32,6 +34,8 @@ function make_input(params=params_data())
     transform!(df_tsx, [:ts, :expir] => make_dur(params.xpirs_within) => prefix_sym.([:closed, :pre, :open, :post, :weekend, :holiday], :xpir_dur_))
     # duration to dividend
     transform!(df_tsx, [:ts] => (ts -> dur_to_div.(ts)) => prefix_sym.([:closed, :pre, :open, :post, :weekend, :holiday], :div_dur_))
+    # Add absolute time cycle encoding
+    transform!(df_tsx, [:ts] => (ts -> to_cycles.(ts)) => cycle_syms())
 
     # Add hist
     df_hist, params_hist = Paths.load_data_params(Paths.db_output(hsd.NAME), DataFrame)
@@ -73,6 +77,27 @@ function dur_to_div(ts)
 end
 
 prefix_sym(sym, pre) = Symbol(string(pre) * string(sym))
+
+const CYCLE_START_DATE = Date(2000,1,1)
+to_cycles(ts) = cycles(CYCLE_START_DATE, Date(ts))
+import OutputUtil
+cycle_syms() = [Symbol(string("cycle", replace(string(OutputUtil.rd2(c)), '.' => '_'))) for c in cycle_lengths()]
+
+cycle_lengths() = [1/12, 1/4, 1/3, 1/2, 1, 2, 5, 10, 100]
+function cycles(start_date, end_date)
+    dur = diff_in_years(start_date, end_date)
+    return [abs(sin(π * dur / cycle)) for cycle in cycle_lengths()]
+end
+
+function diff_in_years(start_date, end_date)
+    @assert end_date >= start_date
+    years_whole = year(end_date) - year(start_date)
+    diy_start = daysinyear(start_date)
+    diy_end = daysinyear(end_date)
+    years_start = (diy_start - dayofyear(start_date) + 1) / diy_start
+    years_end = (diy_end - dayofyear(end_date)) / diy_end
+    return years_whole + years_start - years_end
+end
 #endregion Util
 
 end

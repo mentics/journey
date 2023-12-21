@@ -22,18 +22,18 @@ using ProbMeta
 # ))
 
 config() = (;
-    adjustprices = C(-0.0),
-    kelprobadjust = 0.05,
+    adjustprices = C(-0.01),
+    kelprobadjust = 0.0,
     commit_min = 0.07,
     commit_max = 4.01,
     probprofit_min = 0.92,
-    kel_min = 0.8,
+    kel_min = 0.2,
     evrate_min = 4.01,
     all_risk_max = 10000.0,
     max_spread = 4.1,
     max_gap = 4.1,
     maxcondormiddle = 4.1,
-    annual_min = 8.01,
+    annual_min = 4.01,
 )
 
 # config() = (;

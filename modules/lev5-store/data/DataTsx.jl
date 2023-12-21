@@ -90,6 +90,7 @@ function calc_xtqs(ts, xpirts, ts_price, style, strikes, bids, asks)
         global kxtq = (;divid, xtrins, xs, xtqs, max_y, xtrins_bids, xtrins_asks, args=(;ts, xpirts, ts_price, style, strikes, bids, asks))
         # TODO: fix the algo to deal with this or fix data or something
         println("WARN: xtq out of range: $(xtqs)")
+        return [-1f0, -1f0, -1f0]
     end
     # global kxtq = (;divid, xtrins, xs, xtqs, max_y, xtrins_bids, xtrins_asks, args=(;ts, xpirts, ts_price, style, strikes, bids, asks))
     return Float32.(xtqs)
@@ -112,7 +113,7 @@ function make_tsx(;sym="SPY")
 
     # DateUtil.year_months()[2:8]
     stop = false
-    yms = [(2017,3), (2017,9)]
+    # yms = [(2017,3), (2017,9)]
     # yms = [(2023,i) for i in 1:12]
     try
         dfs = qbmap(yms) do (year, month)
@@ -124,7 +125,7 @@ function make_tsx(;sym="SPY")
         sort!(df, [:ts, :expir])
 
         validate_result(df)
-        # Paths.save_data(DataRead.file_tsx(;sym), df)
+        Paths.save_data(DataRead.file_tsx(;sym), df; update=true)
         tss = tss_for_tsx()
         diff = symdiff(df.ts, tss)
         if !isempty(diff)
@@ -247,18 +248,21 @@ end
 # df = DataRead.get_options(year, month; sym)
 # # sdf = remove_at_xpirts(filter_within_days(df, DataConst.XPIRS_WITHIN_CALC))
 # sdf = filter_df(df, DataConst.XPIRS_WITHIN_CALC)
-filtered_options(year, month; sym) = filter_df(DataRead.get_options(year, month; sym), DataConst.XPIRS_WITHIN_CALC)
+import ReturnProbData as rpd
+filtered_options(year, month; sym) = filter_df(DataRead.get_options(year, month; sym), rpd.params_data().xpirs_within) # DataConst.XPIRS_WITHIN_CALC)
 
 # remove_at_xpirts(df) = filter([:ts,:expir] => ((ts, xpirts) -> ts != xpirts), df; view=true)
 # filter_within_days(df, within_days) = filter([:ts, :expir] => is_within_days(within_days), df; view=true)
 # is_within_days(within_days) = (ts, xpir) -> xpir - ts <= within_days
 
-filter_df(df, within_days) = filter([:ts,:expir] => filter_all(within_days), df; view=true)
+filter_df(df, within_days; view=true) = filter([:ts,:expir] => filter_all(within_days), df; view)
 
 filter_all(within_days) = function(ts, xpirts)
-    xpirts - ts < within_days &&
+    date = Date(ts)
+    return xpirts - ts < within_days &&
             ts != xpirts &&
-            ts <= cal.getMarketClose(Date(ts))
+            ts < cal.getMarketClose(date) &&
+            ts > cal.getMarketOpen(date)
 end
 
 function fit_sides(xs::Vector{Float64}, ys::Vector{Float64}, style, max_y)
@@ -290,7 +294,6 @@ function fit_sides(xs::Vector{Float64}, ys::Vector{Float64}, style, max_y)
 
     # mid_ps = fit_vm(xs[mid_inds], ys_mid, max_y)
     # yatz = vertex_model(0.0, mid_ps)
-
 
     # if yatz <= maximum(ys)
     #     global kfit_sides = (;mid, mid_inds, ys_mid, mid_ps, yatz, args=(;xs, ys, style, max_y))
@@ -719,7 +722,7 @@ end
 function tss_for_tsx()
     tss = DataRead.get_ts()
     # TODO: inside thetadata, we're filtering out market open
-    tss = filter(ts -> ts != cal.getMarketOpen(Date(ts)), tss)
+    tss = filter(ts -> ts != cal.getMarketOpen(Date(ts)) && ts != cal.getMarketClose(Date(ts)), tss)
     return tss
 end
 

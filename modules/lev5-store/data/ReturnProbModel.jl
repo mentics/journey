@@ -15,10 +15,14 @@ const NAME = replace(string(@__MODULE__), "Model" => "")
 params_model() = (;
     block_count = 4,
     layers_per_block = 4,
-    hidden_width_mult = 4,
+    use_output_for_hidden = true,
+    hidden_width_mult = 2,
     dropout = 0.0f0,
     activation = NNlib.swish,
-    use_bias = false,
+    use_bias_in = true,
+    use_bias_block = false,
+    use_bias_out = true,
+    output_activation = NNlib.relu,
 )
 
 import MLyze
@@ -53,7 +57,7 @@ end
 #region MLTrain Interface
 function make_trainee(params_m=params_model())
     df, params_data = Paths.load_data_params(Paths.db_input(NAME), DataFrame)
-    df = select(df, Not([:xtq1_call, :xtq2_call, :xtq3_call, :xtq1_put, :xtq2_put, :xtq3_put]))
+    # df = select(df, Not([:xtq1_call, :xtq2_call, :xtq3_call, :xtq1_put, :xtq2_put, :xtq3_put]))
     input_width = get_input_width(df)
     params = (;data=params_data, model=params_m)
 
@@ -260,17 +264,28 @@ end
 #region Model
 function make_model(input_width, params)
     cfg = params.model
-    through_width = cfg.hidden_width_mult * input_width
-    input_layer = Dense(input_width => through_width; bias=cfg.use_bias)
+    output_width = params.data.bins_count
+    through_width = cfg.use_output_for_hidden ? cfg.hidden_width_mult * output_width : cfg.hidden_width_mult * input_width
 
-    blocks1_count = floor(Int, cfg.block_count / 2)
+    input_layer = Dense(input_width => through_width; bias=cfg.use_bias_in)
+
+    blocks1_count = cfg.block_count ÷ 2
     blocks2_count = cfg.block_count - blocks1_count
-    blocks1 = [SkipConnection(ModelUtil.make_block(through_width, through_width, cfg.layers_per_block, cfg.activation, cfg.use_bias), +) for _ in 1:blocks1_count]
+    blocks1 = [SkipConnection(ModelUtil.make_block(through_width, through_width, cfg.layers_per_block, cfg.activation, cfg.use_bias_block), +) for _ in 1:blocks1_count]
     dropout = Dropout(cfg.dropout)
-    blocks2 = [SkipConnection(ModelUtil.make_block(through_width, through_width, cfg.layers_per_block, cfg.activation, cfg.use_bias), +) for _ in 1:blocks2_count]
+    blocks2 = [SkipConnection(ModelUtil.make_block(through_width, through_width, cfg.layers_per_block, cfg.activation, cfg.use_bias_block), +) for _ in 1:blocks2_count]
 
-    output_layer = Dense(through_width => params.data.bins_count; bias=false)
-    return Chain(;input_layer, blocks=Chain(blocks1..., dropout, blocks2...), output_layer)
+    output_layer = Dense(through_width => output_width, cfg.output_activation; bias=cfg.use_bias_out)
+
+    b1 = [Symbol(string("b1_",i)) => blocks1[i] for i in eachindex(blocks1)]
+    b2 = [Symbol(string("b2_",i)) => blocks2[i] for i in eachindex(blocks2)]
+
+    if iszero(cfg.dropout)
+        return Chain(;input_layer, b1..., b2..., output_layer)
+    else
+        # return Chain(;input_layer, blocks=Chain(blocks1..., dropout, blocks2...), output_layer)
+        return Chain(;input_layer, b1..., dropout, b2..., output_layer)
+    end
 end
 
 function get_inference_model(model)
