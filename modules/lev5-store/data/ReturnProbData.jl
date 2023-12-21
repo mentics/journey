@@ -10,21 +10,16 @@ const NAME = replace(string(@__MODULE__), "Data" => "")
 
 #region Public
 params_data() = (;
-    # weeks_count = 5,
-    # intraday_period = Minute(30),
-    xpirs_within = Day(20), # DataConst.XPIRS_WITHIN_CALC,
+    xpirs_within = DataConst.XPIRS_WITHIN_CALC2,
     bins_count = Bins.VNUM,
-    # ProbMeta.BIN_PARAMS...
 )
 
-import DataTsx
 function make_input(params=params_data(); age=DateUtil.age_daily())
     # Get xtqs and ret
     df_tsx = DataRead.get_tsx(;age)
     # Near the end, we don't have returns because they are in the future so filter them out.
     # We can't even backtest on this because we won't know the performance of it anyway
     df_tsx = filter(:ret => isfinite, df_tsx)
-    # df_tsx = DataTsx.filter_df(df_tsx, params.xpirs_within; view=false)
 
     # Add temporal for ts
     transform!(df_tsx, [:ts] => (ts -> ModelUtil.to_temporal_ts.(ts)) => prefix_sym.([:week_day, :month_day, :quarter_day, :year_day, :hour], :ts_))

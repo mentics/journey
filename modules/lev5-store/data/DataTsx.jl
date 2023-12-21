@@ -245,25 +245,8 @@ function _all(f, v, args...)
     return true
 end
 
-# df = DataRead.get_options(year, month; sym)
-# # sdf = remove_at_xpirts(filter_within_days(df, DataConst.XPIRS_WITHIN_CALC))
-# sdf = filter_df(df, DataConst.XPIRS_WITHIN_CALC)
-import ReturnProbData as rpd
-filtered_options(year, month; sym) = filter_df(DataRead.get_options(year, month; sym), rpd.params_data().xpirs_within) # DataConst.XPIRS_WITHIN_CALC)
-
-# remove_at_xpirts(df) = filter([:ts,:expir] => ((ts, xpirts) -> ts != xpirts), df; view=true)
-# filter_within_days(df, within_days) = filter([:ts, :expir] => is_within_days(within_days), df; view=true)
-# is_within_days(within_days) = (ts, xpir) -> xpir - ts <= within_days
-
-filter_df(df, within_days; view=true) = filter([:ts,:expir] => filter_all(within_days), df; view)
-
-filter_all(within_days) = function(ts, xpirts)
-    date = Date(ts)
-    return xpirts - ts < within_days &&
-            ts != xpirts &&
-            ts < cal.getMarketClose(date) &&
-            ts > cal.getMarketOpen(date)
-end
+filtered_options(year, month; sym) = filter_ts_calc(DataRead.get_options(year, month; sym))
+# filter_df(DataRead.get_options(year, month; sym), rpd.params_data().xpirs_within) # DataConst.XPIRS_WITHIN_CALC)
 
 function fit_sides(xs::Vector{Float64}, ys::Vector{Float64}, style, max_y)
     mid = length(xs) ÷ 2

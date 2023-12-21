@@ -114,7 +114,7 @@ function make_data(df, params)
         prep_input = (obss, args...) -> prep_input(obss, params, args...; ce_all),
         get_input_keys,
         holdout=df_holdout,
-        single = ind -> single(df, ind, params)
+        single = ind -> single(df, ind, params; ce_all)
     )
 end
 
@@ -124,7 +124,7 @@ function get_input_keys(batch)
 end
 get_input_keys() = [:ts, :expir]
 
-single(df, ind, params) = prep_input(df[ind:ind,:], params)
+single(df, ind, params; kws...) = prep_input(df[ind:ind,:], params; kws...)
 
 # function prep_input_old(obss, params)
 #     # dataframe of batch_size rows of same columns as input data
@@ -245,11 +245,11 @@ end
 
 function run_train(model, batchx)
     yhat = model(batchx)
-    # return softmax(yhat)
-    yhat = relu(yhat)
-    ss = sum(yhat; dims=1)
-    yhat = yhat ./ ss
-    return yhat
+    return softmax(yhat)
+    # yhat = relu(yhat)
+    # ss = sum(yhat; dims=1)
+    # yhat = yhat ./ ss
+    # return yhat
 end
 
 function run_infer(model, batchx)
