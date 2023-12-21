@@ -15,8 +15,8 @@ const NAME = replace(string(@__MODULE__), "Model" => "")
 params_model() = (;
     block_count = 4,
     layers_per_block = 4,
-    hidden_width_mult = 2,
-    dropout = 0f0,
+    hidden_width_mult = 4,
+    dropout = 0.0f0,
     activation = NNlib.swish,
     use_bias = false,
 )
@@ -30,6 +30,7 @@ end
 #region MLTrain Interface
 function make_trainee(params_m=params_model())
     df, params_data = Paths.load_data_params(Paths.db_input(NAME), DataFrame)
+    df = select(df, Not([:xtq1_call, :xtq2_call, :xtq3_call, :xtq1_put, :xtq2_put, :xtq3_put]))
     input_width = get_input_width(df)
     params = (;data=params_data, model=params_m)
 

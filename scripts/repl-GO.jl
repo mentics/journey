@@ -22,7 +22,7 @@ using Dates, DataFrames, MLUtils
 using DateUtil
 import Calendars as cal
 
-using DataRead, Paths, FilesArrow, FilesJLD2
+using DataRead, DataUpdate, Paths, FilesArrow, FilesJLD2
 
 import HistShapeData as hsd
 import HistShapeModel as hsm
