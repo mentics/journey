@@ -13,10 +13,10 @@ get_input_width(df) = size(df, 2) - 3 # 2 key cols and a y col
 const NAME = replace(string(@__MODULE__), "Model" => "")
 
 params_model() = (;
-    block_count = 2,
-    layers_per_block = 2,
-    use_output_for_hidden = true,
-    hidden_width_mult = 1,
+    block_count = 4,
+    layers_per_block = 4,
+    use_output_for_hidden = false,
+    hidden_width_mult = 2,
     dropout = 0.0f0,
     activation = NNlib.swish,
     use_bias_in = true,
