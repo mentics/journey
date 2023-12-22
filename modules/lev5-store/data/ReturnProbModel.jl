@@ -246,7 +246,14 @@ end
 const KERNEL = fill(0.2f0, 5) |> gpu
 function run_train(model, batchx)
     yhat = model(batchx)
-    # return softmax(yhat)
+
+
+    yhat = relu(yhat)
+    sz = size(yhat)
+    yhat_smoothed = reshape(NNlib.conv(reshape(yhat, sz[1], 1, sz[2]), reshape(KERNEL, 5, 1, 1); pad=2), sz...)
+    return softmax(yhat)
+
+
     yhat = relu(yhat)
     # global kyhat = yhat
     sz = size(yhat)
