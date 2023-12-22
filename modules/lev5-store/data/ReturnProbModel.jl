@@ -15,11 +15,11 @@ const NAME = replace(string(@__MODULE__), "Model" => "")
 params_model() = (;
     block_count = 4,
     layers_per_block = 4,
-    use_output_for_hidden = false,
-    hidden_width_mult = 2,
+    use_output_for_hidden = true,
+    hidden_width_mult = 1,
     dropout = 0.0f0,
     activation = NNlib.swish,
-    use_bias_in = true,
+    use_bias_in = false,
     use_bias_block = false,
     use_bias_out = false,
     output_activation = NNlib.relu,
@@ -207,7 +207,9 @@ function calc_loss_for(yhat, batch)
     y = batch.y
     # return Flux.Losses.logitcrossentropy(yhat, batch.y)
     # return Flux.Losses.crossentropy(yhat, y)
-    return Flux.Losses.crossentropy(yhat, y; agg=(x -> mean(x ./ batch.ce_compare)))
+    ce = Flux.Losses.crossentropy(yhat, y; agg=(x -> mean(x ./ batch.ce_compare)))
+    smooth_penalty = calc_smooth_penalty(yhat) # / (10 + ce)
+    return ce + smooth_penalty
 end
 
 import Distributions
@@ -243,24 +245,45 @@ function min_loss(params)
     return d
 end
 
+function max_smooth_penalty()
+    v = [x % 2 == 0 ? 1. : 0. for x in 1:100]
+    vcu.normalize!(v)
+    return calc_smooth_penalty(v)
+end
+function ok_smooth_penalty()
+    v = [x < 50 ? x : 100.0 - x for x in 1.0:100.0]
+    vcu.normalize!(v)
+    return calc_smooth_penalty(v)
+end
+const KERNEL3 = reshape([-1.0, 1.0,-1.0], 3,1,1) |> gpu
+function calc_smooth_kernel(v)
+    sz = size(v)
+    reshape(Flux.conv(reshape(v, sz[1],1,sz[2]), KERNEL3; pad=1), sz[1], sz[2])
+end
+# calc_smooth_penalty(yhat) = sum(abs.(yhat .- circshift(yhat, 1)))
+function calc_smooth_penalty(v)
+    count(x -> x > 0, calc_smooth_kernel(v)) / length(v)
+end
+
 const KERNEL = fill(0.2f0, 5) |> gpu
 function run_train(model, batchx)
     yhat = model(batchx)
+    global kyhat1 = yhat
+    return softmax(yhat)
+
+    # yhat = relu(yhat)
+    # sz = size(yhat)
+    # yhat_smoothed = reshape(NNlib.conv(reshape(yhat, sz[1], 1, sz[2]), reshape(KERNEL, 5, 1, 1); pad=2), sz...)
+    # return softmax(yhat_smoothed)
 
 
-    yhat = relu(yhat)
-    sz = size(yhat)
-    yhat_smoothed = reshape(NNlib.conv(reshape(yhat, sz[1], 1, sz[2]), reshape(KERNEL, 5, 1, 1); pad=2), sz...)
-    return softmax(yhat_smoothed)
-
-
-    yhat = relu(yhat)
-    # global kyhat = yhat
-    sz = size(yhat)
-    yhat_smoothed = reshape(NNlib.conv(reshape(yhat, sz[1], 1, sz[2]), reshape(KERNEL, 5, 1, 1); pad=2), sz...)
-    ss = sum(yhat_smoothed; dims=1)
-    yhat = yhat_smoothed ./ ss
-    return yhat
+    # yhat = relu(yhat)
+    # # global kyhat = yhat
+    # sz = size(yhat)
+    # yhat_smoothed = reshape(NNlib.conv(reshape(yhat, sz[1], 1, sz[2]), reshape(KERNEL, 5, 1, 1); pad=2), sz...)
+    # ss = sum(yhat_smoothed; dims=1)
+    # yhat = yhat_smoothed ./ ss
+    # return yhat
 end
 
 function run_infer(model, batchx)

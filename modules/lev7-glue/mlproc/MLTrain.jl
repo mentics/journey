@@ -142,6 +142,7 @@ function train(training::Training; epochs=1000)
     weight_decay = params.weight_decay
 
     loss_holdout_hist = CircularBuffer(5)
+    loss_epoch_hist = CircularBuffer(5)
     loss_prev = 100.0
     epoch_losses = Float32[]
     training.metrics[:epoch_losses] = epoch_losses
@@ -195,6 +196,7 @@ function train(training::Training; epochs=1000)
         push!(epoch_losses, loss_epoch)
 
         println("Epoch $(epoch) - Average loss $(loss_epoch) which is $(loss_epoch / loss_prev) * loss_prev")
+        pushfirst!(loss_epoch_hist, loss_epoch)
         loss_prev = loss_epoch
 
         loss_holdout = check_holdout(training)
@@ -208,14 +210,14 @@ function train(training::Training; epochs=1000)
             weight_decay *= loss_holdout_ratio
             Flux.Optimisers.adjust!(training.opt_state; gamma=weight_decay)
             println("Increased weight decay to $(weight_decay) for ratio $(loss_holdout_ratio)")
-        elseif length(loss_holdout_hist) == capacity(loss_holdout_hist)
+        elseif length(loss_epoch_hist) == capacity(loss_epoch_hist)
             # TODO: use epoch loss also somehow? use this to detect when to end/give up?
-            recent = (loss_holdout_hist[1] + loss_holdout_hist[2]) / 2
-            past = (loss_holdout_hist[end] + loss_holdout_hist[end-1]) / 2
+            recent = (loss_epoch_hist[1] + loss_epoch_hist[2]) / 2
+            past = (loss_epoch_hist[end] + loss_epoch_hist[end-1]) / 2
             improvement = 1.0 - recent / past
             if improvement < 0.001
                 weight_decay *= 0.9
-                println("Decreased weight decay to $(weight_decay) for improvement $(improvement)")
+                println("Decreased weight decay to $(weight_decay) for epoch loss improvement $(improvement)")
             end
         end
         pushfirst!(loss_holdout_hist, loss_holdout)
@@ -288,6 +290,7 @@ function batch1(training)
     # return training.data.prep_input(first(eachobs(training.data.data_for_epoch(), batchsize=training.params.train.batch_size)))
     return training.data.prep_input(obss1(training))
 end
+yhat_single(training, ind) = training.trainee.run_train(training.model, training.data.single(ind).x) |> cpu
 
 import DrawUtil:draw,draw!
 function checki(training, inds)
