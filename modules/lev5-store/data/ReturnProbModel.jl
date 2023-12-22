@@ -251,7 +251,7 @@ function run_train(model, batchx)
     yhat = relu(yhat)
     sz = size(yhat)
     yhat_smoothed = reshape(NNlib.conv(reshape(yhat, sz[1], 1, sz[2]), reshape(KERNEL, 5, 1, 1); pad=2), sz...)
-    return softmax(yhat)
+    return softmax(yhat_smoothed)
 
 
     yhat = relu(yhat)

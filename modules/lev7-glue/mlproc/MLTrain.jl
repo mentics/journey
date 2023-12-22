@@ -1,6 +1,6 @@
 module MLTrain
 import Base:@kwdef
-using Dates, Random
+using Dates, Random, DataStructures
 using CUDA
 import Flux:Flux,cpu,gpu,throttle
 using MLUtils
@@ -100,14 +100,17 @@ function setup(trainee::Trainee, pt=nothing; kws...)
     model = trainee.make_model() |> dev
     println("Model has param count: ", sum(length, Flux.params(model)))
 
-    if !iszero(pt.weight_decay)
-        opt_inner = Flux.AdamW(trainee.get_learning_rate(1))
-        opt = Flux.OptimiserChain(Flux.WeightDecay(pt.weight_decay), opt_inner)
-        opt_state = Flux.setup(opt, model) |> dev
-    else
-        opt = Flux.AdamW(trainee.get_learning_rate(1))
-        opt_state = Flux.setup(opt, model) |> dev
-    end
+    opt = Flux.AdamW(trainee.get_learning_rate(1), (0.9, 0.999), pt.weight_decay)
+    opt_state = Flux.setup(opt, model) |> dev
+
+    # if !iszero(pt.weight_decay)
+    #     opt_inner = Flux.AdamW(trainee.get_learning_rate(1))
+    #     opt = Flux.OptimiserChain(Flux.WeightDecay(pt.weight_decay), opt_inner)
+    #     opt_state = Flux.setup(opt, model) |> dev
+    # else
+    #     opt = Flux.AdamW(trainee.get_learning_rate(1))
+    #     opt_state = Flux.setup(opt, model) |> dev
+    # end
 
     data = trainee.prep_data(params)
     metrics = Dict{Symbol,Any}()
@@ -136,8 +139,10 @@ function train(training::Training; epochs=1000)
     metrics = training.metrics
     params = training.params.train
     data = training.data
+    weight_decay = params.weight_decay
 
-    loss_prev = 1.0
+    loss_holdout_hist = CircularBuffer(5)
+    loss_prev = 100.0
     epoch_losses = Float32[]
     training.metrics[:epoch_losses] = epoch_losses
     print_status = throttle(4; leading=false) do status
@@ -192,11 +197,28 @@ function train(training::Training; epochs=1000)
         println("Epoch $(epoch) - Average loss $(loss_epoch) which is $(loss_epoch / loss_prev) * loss_prev")
         loss_prev = loss_epoch
 
-        check_holdout(training)
+        loss_holdout = check_holdout(training)
 
         rate = trainee.get_learning_rate(epoch)
         Flux.Optimisers.adjust!(training.opt_state, rate)
         println("Updated learning rate to $(rate)")
+        loss_holdout_ratio = loss_holdout / loss_epoch
+        if loss_holdout_ratio > 1.1
+            # holdout loss is trailing too far, so increase weight decay to generalize better
+            weight_decay *= loss_holdout_ratio
+            Flux.Optimisers.adjust!(training.opt_state; gamma=weight_decay)
+            println("Increased weight decay to $(weight_decay) for ratio $(loss_holdout_ratio)")
+        elseif length(loss_holdout_hist) == capacity(loss_holdout_hist)
+            # TODO: use epoch loss also somehow? use this to detect when to end/give up?
+            recent = (loss_holdout_hist[1] + loss_holdout_hist[2]) / 2
+            past = (loss_holdout_hist[end] + loss_holdout_hist[end-1]) / 2
+            improvement = 1.0 - recent / past
+            if improvement < 0.001
+                weight_decay *= 0.9
+                println("Decreased weight decay to $(weight_decay) for improvement $(improvement)")
+            end
+        end
+        pushfirst!(loss_holdout_hist, loss_holdout)
 
         throttle(5 * 60; leading=false) do; ModelUtil.save_training(training) end
     end
