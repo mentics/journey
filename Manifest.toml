@@ -2,7 +2,7 @@
 
 julia_version = "1.9.4"
 manifest_format = "2.0"
-project_hash = "75fbb86c33626afe33999269198d52fc4039144e"
+project_hash = "faa2d90aa6a0a93c34e6263ed895fd5b98170517"
 
 [[deps.ATK_jll]]
 deps = ["Artifacts", "Glib_jll", "JLLWrappers", "Libdl"]
@@ -471,6 +471,12 @@ version = "2.10.0"
 git-tree-sha1 = "9b0dc525a052b9269ccc5f7f04d5b3639c65bca5"
 uuid = "a10d1c49-ce27-4219-8d33-6db1a4562965"
 version = "2.5.0"
+
+[[deps.DSP]]
+deps = ["Compat", "FFTW", "IterTools", "LinearAlgebra", "Polynomials", "Random", "Reexport", "SpecialFunctions", "Statistics"]
+git-tree-sha1 = "f7f4319567fe769debfcf7f8c03d8da1dd4e2fb0"
+uuid = "717857b8-e6f2-59f4-9121-6e50c889abd2"
+version = "0.7.9"
 
 [[deps.DataAPI]]
 git-tree-sha1 = "8da84edb865b0b5b0100c0666a9bc9a0b71c553c"

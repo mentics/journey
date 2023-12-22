@@ -21,7 +21,7 @@ params_model() = (;
     activation = NNlib.swish,
     use_bias_in = true,
     use_bias_block = false,
-    use_bias_out = true,
+    use_bias_out = false,
     output_activation = NNlib.relu,
 )
 
@@ -243,13 +243,16 @@ function min_loss(params)
     return d
 end
 
+import DSP
+const KERNEL = fill(0.2f0, 5) |> gpu
 function run_train(model, batchx)
     yhat = model(batchx)
-    return softmax(yhat)
-    # yhat = relu(yhat)
-    # ss = sum(yhat; dims=1)
-    # yhat = yhat ./ ss
-    # return yhat
+    # return softmax(yhat)
+    yhat = relu(yhat)
+    DSP.conv(yhat, KERNEL)
+    ss = sum(yhat; dims=1)
+    yhat = yhat ./ ss
+    return yhat
 end
 
 function run_infer(model, batchx)
