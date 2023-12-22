@@ -13,10 +13,10 @@ get_input_width(df) = size(df, 2) - 3 # 2 key cols and a y col
 const NAME = replace(string(@__MODULE__), "Model" => "")
 
 params_model() = (;
-    block_count = 4,
-    layers_per_block = 4,
+    block_count = 2,
+    layers_per_block = 2,
     use_output_for_hidden = true,
-    hidden_width_mult = 2,
+    hidden_width_mult = 1,
     dropout = 0.0f0,
     activation = NNlib.swish,
     use_bias_in = true,
@@ -243,15 +243,16 @@ function min_loss(params)
     return d
 end
 
-import DSP
 const KERNEL = fill(0.2f0, 5) |> gpu
 function run_train(model, batchx)
     yhat = model(batchx)
     # return softmax(yhat)
     yhat = relu(yhat)
-    DSP.conv(yhat, KERNEL)
-    ss = sum(yhat; dims=1)
-    yhat = yhat ./ ss
+    # global kyhat = yhat
+    sz = size(yhat)
+    yhat_smoothed = reshape(NNlib.conv(reshape(yhat, sz[1], 1, sz[2]), reshape(KERNEL, 5, 1, 1); pad=2), sz...)
+    ss = sum(yhat_smoothed; dims=1)
+    yhat = yhat_smoothed ./ ss
     return yhat
 end
 
