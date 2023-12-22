@@ -290,7 +290,7 @@ function batch1(training)
     # return training.data.prep_input(first(eachobs(training.data.data_for_epoch(), batchsize=training.params.train.batch_size)))
     return training.data.prep_input(obss1(training))
 end
-yhat_single(training, ind) = training.trainee.run_train(training.model, training.data.single(ind).x) |> cpu
+yhat_single(training, ind) = vec(training.trainee.run_train(training.model, training.data.single(ind).x) |> cpu)
 
 import DrawUtil:draw,draw!
 function checki(training, inds)
@@ -298,7 +298,7 @@ function checki(training, inds)
     trainee = training.trainee
     for i in inds
         gbatch = training.data.single(i) |> gpu
-        yhat = trainee.run_train(training.model, gbatch) |> cpu
+        yhat = trainee.run_train(training.model, gbatch.x) |> cpu
         batch = gbatch |> cpu
 
         # # (x, x) = trainee.mod.to_draw_x(batch, 2)

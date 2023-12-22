@@ -13,8 +13,8 @@ get_input_width(df) = size(df, 2) - 3 # 2 key cols and a y col
 const NAME = replace(string(@__MODULE__), "Model" => "")
 
 params_model() = (;
-    block_count = 4,
-    layers_per_block = 4,
+    block_count = 2,
+    layers_per_block = 2,
     use_output_for_hidden = true,
     hidden_width_mult = 1,
     dropout = 0.0f0,
@@ -77,17 +77,17 @@ function make_trainee(params_m=params_model())
     return state
 end
 
-# to_draw_x(batch, ind) = (batch.ts, batch.prices_seq[1:end,ind])
-# to_draw_y(batch, ind) = (batch.ts, batch.prices_seq[1:end,ind])
-# to_draw_yh(batch, yhat, ind) = (batch.ts, yhat.prices[1:end,ind])
+# to_draw_x(batch, ind) = (1:803, batch.x[1:end,ind])
+to_draw_y(batch, ind) = batch.y[1:end,ind] |> cpu
+to_draw_yh(yhat, ind) = yhat[1:end,ind] |> cpu
 
 # to_draw_x(batch, ind) = batch.prices_seq[1:end,ind]
 # to_draw_y(batch, ind) = batch.prices_seq[1:end,ind]
 # to_draw_yh(yhat, ind) = yhat.prices[1:end,ind]
 
-to_draw_x(batch, ind) = batch.vix_seq[1:end,ind]
-to_draw_y(batch, ind) = batch.vix_seq[1:end,ind]
-to_draw_yh(yhat, ind) = yhat.vix[1:end,ind]
+# to_draw_x(batch, ind) = batch.vix_seq[1:end,ind]
+# to_draw_y(batch, ind) = batch.vix_seq[1:end,ind]
+# to_draw_yh(yhat, ind) = yhat.vix[1:end,ind]
 
 # to_draw_y(batch, ind) = (batch.ts, batch.y[:,ind])
 # to_draw_yh(yhat, ind) = (bins(), softmax(yhat[:,ind]))
@@ -268,7 +268,7 @@ end
 const KERNEL = fill(0.2f0, 5) |> gpu
 function run_train(model, batchx)
     yhat = model(batchx)
-    global kyhat1 = yhat
+    # global kyhat1 = yhat
     return softmax(yhat)
 
     # yhat = relu(yhat)
@@ -278,12 +278,12 @@ function run_train(model, batchx)
 
 
     # yhat = relu(yhat)
-    # # global kyhat = yhat
+    # global kyhat = yhat
     # sz = size(yhat)
-    # yhat_smoothed = reshape(NNlib.conv(reshape(yhat, sz[1], 1, sz[2]), reshape(KERNEL, 5, 1, 1); pad=2), sz...)
-    # ss = sum(yhat_smoothed; dims=1)
-    # yhat = yhat_smoothed ./ ss
-    # return yhat
+    # yhat = reshape(NNlib.conv(reshape(yhat, sz[1], 1, sz[2]), reshape(KERNEL, 5, 1, 1); pad=2), sz...)
+    ss = sum(yhat; dims=1)
+    yhat = yhat ./ ss
+    return yhat
 end
 
 function run_infer(model, batchx)
