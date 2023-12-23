@@ -165,10 +165,24 @@ function prep_input(obss, params, bufs; ce_all)
         bufs.cpu.x[i,:] .= cols[i]
     end
     copyto!(bufs.gpu.x, bufs.cpu.x)
-    y = Flux.onehotbatch(obss.y_bin, 1:params.data.bins_count) |> gpu
+    # y = Flux.onehotbatch(obss.y_bin, 1:params.data.bins_count) |> gpu
+    y = YS2[][:,obss.y_bin]
     ce_compare = (ce_all[obss.y_bin] .^2) |> gpu
     return (;keys, x=bufs.gpu.x, y, ce_compare)
 end
+
+import CUDA
+const YS2 = Ref{CuArray{Float32, 2, CUDA.Mem.DeviceBuffer}}()
+import Distributions
+function setup_y()
+    ys = Matrix(undef, Bins.VNUM, Bins.VNUM)
+    for i in 1:Bins.VNUM
+        dlap = Distributions.Laplace(Float32(i), 16f0) # from roughly fitting to all y_bin and narrowing as a goal
+        ys[:,i] .= vcu.normalize!([Distributions.pdf(dlap, x) for x in 1:Bins.VNUM])
+    end
+    YS2[] = ys |> gpu
+end
+# get_y(y) = Y_KERNELS[y]
 
 # 63.8 microseconds
 # function prep_input2(obss, params)
@@ -208,8 +222,9 @@ end
 function calc_loss_for(yhat, y, ce_compare)
     # return Flux.Losses.crossentropy(yhat, y)
     ce = Flux.Losses.crossentropy(yhat, y; agg=(x -> mean(x ./ ce_compare)))
-    smooth_penalty = 10 * calc_smooth_penalty(yhat) # / (10 + ce)
-    return ce + smooth_penalty
+    return ce
+    # smooth_penalty = 10 * calc_smooth_penalty(yhat) # / (10 + ce)
+    # return ce + smooth_penalty
 end
 
 import Distributions
