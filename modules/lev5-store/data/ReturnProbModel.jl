@@ -221,9 +221,13 @@ function calc_loss(model, batch; kws...)
     return calc_loss_for(yhat, batch.y, batch.ce_compare; kws...)
 end
 function calc_loss_for(yhat, y, ce_compare)
+    return Flux.Losses.mse(yhat, y)
+
     # return Flux.Losses.crossentropy(yhat, y)
-    ce = Flux.Losses.crossentropy(yhat, y; agg=(x -> mean(x ./ ce_compare)))
-    return ce
+
+    # ce = Flux.Losses.crossentropy(yhat, y; agg=(x -> mean(x ./ ce_compare)))
+    # return ce
+
     # smooth_penalty = 10 * calc_smooth_penalty(yhat) # / (10 + ce)
     # return ce + smooth_penalty
 end
@@ -386,7 +390,7 @@ function check1(training, inds=1)
         batch = training.data.single(ind)
         yhat = vec(trainee.run_infer(training.model, batch.x |> gpu) |> cpu)
         cc = vec(batch.ce_compare |> cpu)
-        return yhat, cc, (batch.y |> cpu)
+        # return yhat, cc, (batch.y |> cpu)
         DrawUtil.draw!(:barplot, Bins.xs(), yhat; label="i-$(ind)")
     end
 end
