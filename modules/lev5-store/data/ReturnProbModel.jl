@@ -203,14 +203,12 @@ end
 #region Run
 function calc_loss(model, batch; kws...)
     yhat = run_train(model, batch.x)
-    return calc_loss_for(yhat, batch; kws...)
+    return calc_loss_for(yhat, batch.y, batch.ce_compare; kws...)
 end
-function calc_loss_for(yhat, batch)
-    y = batch.y
-    # return Flux.Losses.logitcrossentropy(yhat, batch.y)
+function calc_loss_for(yhat, y, ce_compare)
     # return Flux.Losses.crossentropy(yhat, y)
-    ce = Flux.Losses.crossentropy(yhat, y; agg=(x -> mean(x ./ batch.ce_compare)))
-    smooth_penalty = calc_smooth_penalty(yhat) # / (10 + ce)
+    ce = Flux.Losses.crossentropy(yhat, y; agg=(x -> mean(x ./ ce_compare)))
+    smooth_penalty = 10 * calc_smooth_penalty(yhat) # / (10 + ce)
     return ce + smooth_penalty
 end
 
@@ -220,25 +218,26 @@ function min_loss(params)
     count = params.data.bins_count
     y_bins = [count ÷ 2, 1, count, rand(1:count)]
     d = Dict()
+    ce_compare = fill(1f0, count)
     for y_bin in y_bins
         y = Flux.onehotbatch(y_bin, 1:count)
         # y = Flux.onehotbatch(obss.y_bin, 1:count)
-        perfect = calc_loss_for(y, y)
+        perfect = calc_loss_for(y, y, ce_compare)
 
         ndist = Distributions.Normal(1.0, 0.1)
         yhat = replace(x -> x < 1f-10 ? 0f0 : x, vcu.normalize!([Distributions.pdf(ndist, x) for x in Bins.xs()]))
-        distri10 = calc_loss_for(yhat, y)
+        distri10 = calc_loss_for(yhat, y, ce_compare)
 
         ndist = Distributions.Normal(1.0, 0.05)
         yhat = replace(x -> x < 1f-10 ? 0f0 : x, vcu.normalize!([Distributions.pdf(ndist, x) for x in Bins.xs()]))
-        distri5 = calc_loss_for(yhat, y)
+        distri5 = calc_loss_for(yhat, y, ce_compare)
 
         ndist = Distributions.Normal(1.0, 0.01)
         yhat = replace(x -> x < 1f-10 ? 0f0 : x, vcu.normalize!([Distributions.pdf(ndist, x) for x in Bins.xs()]))
-        distri1 = calc_loss_for(yhat, y)
+        distri1 = calc_loss_for(yhat, y, ce_compare)
 
         yhat = vcu.normalize!(rand(count))
-        random = calc_loss_for(yhat, y)
+        random = calc_loss_for(yhat, y, ce_compare)
 
         res = (;perfect, distri1, distri5, distri10, random)
         println(res)
@@ -258,9 +257,19 @@ function ok_smooth_penalty()
     return calc_smooth_penalty(v)
 end
 const KERNEL3 = reshape([-1.0, 1.0,-1.0], 3,1,1) |> gpu
-function calc_smooth_kernel(v)
+const KERNEL_CPU = reshape([-1.0, 1.0,-1.0], 3,1,1)
+import CUDA:CuArray
+function calc_smooth_kernel(v::CuArray)
     sz = size(v)
     reshape(Flux.conv(reshape(v, sz[1],1,sz[2]), KERNEL3; pad=1), sz[1], sz[2])
+end
+function calc_smooth_kernel(v::CuArray{Float32, 1})
+    sz = (length(v),1)
+    reshape(Flux.conv(reshape(v, sz[1],1,sz[2]), KERNEL3; pad=1), sz[1], sz[2])
+end
+function calc_smooth_kernel(v::AbstractVector)
+    sz = (length(v),1)
+    reshape(Flux.conv(reshape(v, sz[1],1,sz[2]), KERNEL_CPU; pad=1), sz[1], sz[2])
 end
 # calc_smooth_penalty(yhat) = sum(abs.(yhat .- circshift(yhat, 1)))
 function calc_smooth_penalty(v)
