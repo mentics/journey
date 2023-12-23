@@ -5,7 +5,9 @@ using DateUtil, Paths, ModelUtil, TrainUtil, MLTrain
 import CudaUtil:copyto_itr!
 
 #=
-No pushing to gpu in data or model modules. Only MLTrain pushed to gpu.
+No pushing to gpu in data or model modules. Only MLTrain pushed to gpu. well... would be nice, but api for data was messy that way, but maybe can get back to that.
+
+TODO: something is wrong with dividing by ce_all this way.
 =#
 
 get_input_width(df) = size(df, 2) - 3 # 2 key cols and a y col
@@ -164,7 +166,7 @@ function prep_input(obss, params, bufs; ce_all)
     end
     copyto!(bufs.gpu.x, bufs.cpu.x)
     y = Flux.onehotbatch(obss.y_bin, 1:params.data.bins_count) |> gpu
-    ce_compare = ce_all[obss.y_bin] |> gpu
+    ce_compare = (ce_all[obss.y_bin] .^2) |> gpu
     return (;keys, x=bufs.gpu.x, y, ce_compare)
 end
 
