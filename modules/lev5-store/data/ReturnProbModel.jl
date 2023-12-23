@@ -271,7 +271,7 @@ const KERNEL = fill(0.2f0, 5) |> gpu
 function run_train(model, batchx)
     yhat = model(batchx)
     # global kyhat1 = yhat
-    return softmax(yhat)
+    # return softmax(yhat)
 
     # yhat = relu(yhat)
     # sz = size(yhat)
@@ -289,11 +289,12 @@ function run_train(model, batchx)
 end
 
 function run_infer(model, batchx)
-    yhat = model(batchx)
-    yhat = relu(yhat)
-    ss = sum(yhat; dims=1)
-    yhat = yhat ./ ss
-    return yhat
+    return run_train(model, batchx)
+    # yhat = model(batchx)
+    # yhat = relu(yhat)
+    # ss = sum(yhat; dims=1)
+    # yhat = yhat ./ ss
+    # return yhat
 end
 #endregion Run
 
