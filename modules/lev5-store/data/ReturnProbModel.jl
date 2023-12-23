@@ -30,20 +30,21 @@ params_model() = (;
 import MLyze
 function setup_ce_all(df, nbins)
     ky = calc_y_pmfk(df.y_bin, nbins)
-    return [Flux.crossentropy(ky, Flux.onehot(y, 1:nbins)) for y in 1:nbins]
+    # return [Flux.crossentropy(ky, Flux.onehot(y, 1:nbins)) for y in 1:nbins]
+    return [Flux.crossentropy(ky, get_y(y) |> cpu) for y in 1:nbins]
 end
 calc_y_pmfk(y_bins, nbins) = MLyze.calc_pmf_kde(y_bins; nbins=nbins)
 
-function save_y_pmfk()
-    df, params_data = Paths.load_data_params(Paths.db_input(NAME), DataFrame)
-    y_pmfk = calc_y_pmfk(df.y_bin, params_data.bins_count)
-    Paths.save_data(Paths.db_output("y_pmfk"); y_pmfk)
-end
+# function save_y_pmfk()
+#     df, params_data = Paths.load_data_params(Paths.db_input(NAME), DataFrame)
+#     y_pmfk = calc_y_pmfk(df.y_bin, params_data.bins_count)
+#     Paths.save_data(Paths.db_output("y_pmfk"); y_pmfk)
+# end
 
-function load_y_pmfk()
-    # TODO: age?
-    return Paths.load_data(Paths.db_output("y_pmfk"), "y_pmfk")
-end
+# function load_y_pmfk()
+#     # TODO: age?
+#     return Paths.load_data(Paths.db_output("y_pmfk"), "y_pmfk")
+# end
 
 function save_ce_all()
     df, params_data = Paths.load_data_params(Paths.db_input(NAME), DataFrame)
@@ -51,10 +52,10 @@ function save_ce_all()
     Paths.save_data(Paths.db_output("ce_all"); ce_all)
 end
 
-function load_ce_all()
-    # TODO: age?
-    return Paths.load_data(Paths.db_output("ce_all"), "ce_all")
-end
+# function load_ce_all()
+#     # TODO: age?
+#     return Paths.load_data(Paths.db_output("ce_all"), "ce_all")
+# end
 
 #region MLTrain Interface
 function make_trainee(params_m=params_model())
@@ -182,7 +183,7 @@ function setup_y()
     end
     YS2[] = ys |> gpu
 end
-# get_y(y) = Y_KERNELS[y]
+get_y(y) = YS2[][:,y]
 
 # 63.8 microseconds
 # function prep_input2(obss, params)
@@ -383,8 +384,10 @@ function check1(training, inds=1)
     DrawUtil.draw(:vlines, 1.0; color=:white)
     for ind in inds
         batch = training.data.single(ind)
-        out1 = vec(trainee.run_infer(training.model, batch.x |> gpu) |> cpu)
-        DrawUtil.draw!(:barplot, Bins.xs(), out1; label="i-$(ind)")
+        yhat = vec(trainee.run_infer(training.model, batch.x |> gpu) |> cpu)
+        cc = vec(batch.ce_compare |> cpu)
+        return yhat, cc, (batch.y |> cpu)
+        DrawUtil.draw!(:barplot, Bins.xs(), yhat; label="i-$(ind)")
     end
 end
 

@@ -81,7 +81,8 @@ end
 #     end
 # end
 function prob_for_tsxp(; age=DateUtil.age_period())
-    df, _ = Paths.load_data_params(Paths.db_output("ReturnProb"), DataFrame; age)
+    df, _, path = Paths.load_data_params(Paths.db_output("ReturnProb"), DataFrame; age)
+    println("Loaded prob_for_tsxp from $(path)")
     gdf = groupby(df, [:ts, :expir])
     return first(df.ts), function(ts, xpirts)
         only(gdf[(ts, xpirts)].output)

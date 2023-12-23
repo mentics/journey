@@ -42,7 +42,7 @@ function Paths.load_data_params(parent_dir, ::Type{DataFrame}; age=DateUtil.FORE
     df = DataFrame(Arrow.Table(path); copycols)
     path_params = joinpath(dir, "params.jld2")
     params = JLD2.load(path_params, "params")
-    return (;df, params)
+    return (;df, params, path)
 end
 
 end
