@@ -1,6 +1,7 @@
 module ReturnProbModel
 using Intervals, Dates, DataFrames, StatsBase
 using Flux, MLUtils
+import CUDA:CuArray
 using DateUtil, Paths, ModelUtil, TrainUtil, MLTrain
 import CudaUtil:copyto_itr!
 
@@ -278,7 +279,6 @@ function ok_smooth_penalty()
 end
 const KERNEL3 = reshape([-1.0, 1.0,-1.0], 3,1,1) |> gpu
 const KERNEL_CPU = reshape([-1.0, 1.0,-1.0], 3,1,1)
-import CUDA:CuArray
 function calc_smooth_kernel(v::CuArray)
     sz = size(v)
     reshape(Flux.conv(reshape(v, sz[1],1,sz[2]), KERNEL3; pad=1), sz[1], sz[2])
