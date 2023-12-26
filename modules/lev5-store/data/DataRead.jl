@@ -5,8 +5,9 @@ import DataStructures:SortedSet
 using DateUtil, Paths, FilesArrow, FilesJLD2
 import CollUtil:push_all!
 
-export XpirDateDicts, get_xpir_dates, get_xpirs_for_dates, get_prices, get_options
+export XpirDateDicts
 
+#region Api
 function get_ts(;sym="SPY", age=DateUtil.age_period())
     return Paths.load_data(file_ts(;sym), "tss"; age)
 end
@@ -41,7 +42,7 @@ function price_lookup(;sym="SPY", age=DateUtil.age_daily())
 end
 
 function get_options(year, month; sym="SPY", age=DateUtil.age_daily())
-    return Paths.load_data(file_options(year, month; sym), DataFrame)
+    return Paths.load_data(file_options(year, month; sym), DataFrame; age)
 end
 function get_options_yms()
     names = readdir(dirname(DataRead.file_options(2012, 6)))
@@ -104,25 +105,31 @@ end
 #     return nothing
 # end
 
-#region Local
-file_xpirts(;sym="SPY") = joinpath(Paths.db_incoming(;sym), "expirts-$(sym).jld2")
+function get_treasury_lookup(; age=DateUtil.age_daily())
+    Paths.load_data(file_treasury(), "treasury_lookup"; age)
+end
+#endregion Api
 
-file_xpirs(;sym="SPY") = joinpath(Paths.db_incoming(;sym), "expirs-$(sym).jld2")
+#region Local
+file_xpirts(;sym="SPY") = joinpath(Paths.db_thetadata(;sym), "expirts-$(sym).jld2")
+
+file_xpirs(;sym="SPY") = joinpath(Paths.db_thetadata(;sym), "expirs-$(sym).jld2")
 load_xpir_dates(sym="SPY"; age=DateUtil.age_daily())::XpirDateDicts = XpirDateDicts(Paths.load_data(file_xpirs(;sym), "xpir_to_date", "date_to_xpir"; age)...)
 
-file_prices(;sym="SPY") = joinpath(Paths.db_incoming("prices"; sym), "prices-$(sym).arrow")
+file_prices(;sym="SPY") = joinpath(Paths.db_thetadata("prices"; sym), "prices-$(sym).arrow")
 load_prices(;sym, age, copycols=false)::DataFrame = Paths.load_data(file_prices(;sym), DataFrame; age, copycols)
 
 format_ym(year, month) = "$(year)-$(lpad(month, 2, '0'))"
-file_options(year, month; sym="SPY") = joinpath(Paths.db_incoming("options"; sym), "quotes-$(sym)-$(format_ym(year, month)).arrow")
+file_options(year, month; sym="SPY") = joinpath(Paths.db_thetadata("options"; sym), "quotes-$(sym)-$(format_ym(year, month)).arrow")
 load_options(year, month; sym, age)::DataFrame = Paths.load_data(file_options(year, month; sym), DataFrame; age)
 
 file_vix() = joinpath(Paths.db("market", "incoming", "tradier", "vix"), "vix-daily.arrow")
-file_prices_at_xpirs(;sym="SPY") = joinpath(Paths.db_incoming("prices_at_xpirs"; sym), "prices_at_xpirs.arrow")
-file_tsx(;sym="SPY") = joinpath(Paths.db_incoming("tsx"; sym), "tsx.arrow")
-file_ts(;sym="SPY") = joinpath(Paths.db_incoming("ts"; sym), "ts.arrow")
+file_prices_at_xpirs(;sym="SPY") = joinpath(Paths.db_thetadata("prices_at_xpirs"; sym), "prices_at_xpirs.arrow")
+file_tsx(;sym="SPY") = joinpath(Paths.db_thetadata("tsx"; sym), "tsx.arrow")
+file_ts(;sym="SPY") = joinpath(Paths.db_thetadata("ts"; sym), "ts.arrow")
 
-# file_options_at_xpirs(;sym="SPY") = joinpath(Paths.db_incoming("options_at_xpirs"; sym), "options_at_xpirs.arrow")
+file_treasury() = joinpath(Paths.db_incoming("treasury", "treasury.jld2"))
+# file_options_at_xpirs(;sym="SPY") = joinpath(Paths.db_thetadata("options_at_xpirs"; sym), "options_at_xpirs.arrow")
 #endregion Local
 
 end

@@ -16,7 +16,7 @@ function make_options(year, month; sym="SPY")
     date_end = min(DateUtil.market_today(), Dates.lastdayofmonth(date_start))
     xpirs = DataRead.get_xpirs_for_dates(date_start:date_end; age=(now(UTC) - DateTime(date_end)))
     # filter!(xpir -> xpir - date_end <= DataConst.XPIRS_WITHIN_CALC, xpirs)
-    filter!(filter_ts_calc(date_end), xpirs)
+    filter!(DataConst.f_filter_ts_calc(date_end), xpirs)
     @assert issorted(xpirs)
     @assert allunique(xpirs)
     # df = mapreduce(vcat, xpirs) do xpir
@@ -58,7 +58,8 @@ function update_options(year, month; sym="SPY")
     @show start_date end_date
     xpirs = DataRead.get_xpirs_for_dates(start_date:end_date; age=Minute(30))
     # filter!(xpir -> xpir - end_date <= DataConst.XPIRS_WITHIN_CALC, xpirs)
-    filter!(filter_ts_calc(date_end), xpirs)
+
+    filter!(DataConst.filter_date_calc(end_date), xpirs)
     println("Found xpirs to process: $(xpirs)")
     @assert issorted(xpirs)
     @assert allunique(xpirs)
@@ -81,7 +82,7 @@ function update_options(year, month; sym="SPY")
         return diff
     end
 
-    Paths.save_data(DataRead.file_options(year, month; sym), df; update=true)
+    # Paths.save_data(DataRead.file_options(year, month; sym), df; update=true)
     return
 end
 #endregion Standard API

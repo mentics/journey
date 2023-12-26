@@ -31,6 +31,9 @@ function make_input(params=params_data(); age=DateUtil.age_daily())
     transform!(df_tsx, [:ts] => (ts -> dur_to_div.(ts)) => prefix_sym.([:closed, :pre, :open, :post, :weekend, :holiday], :div_dur_))
     # Add absolute time cycle encoding
     transform!(df_tsx, [:ts] => (ts -> to_cycles.(ts)) => cycle_syms())
+    # Add treasury rate
+    treasury_lookup = DataRead.get_treasury_lookup()
+    transform!(df_tsx, [:ts] => (ts -> treasury_lookup[DateUtil.market_date(ts)]) => :treasury_rate)
 
     # Add hist
     df_hist, params_hist = Paths.load_data_params(Paths.db_output(hsd.NAME), DataFrame)

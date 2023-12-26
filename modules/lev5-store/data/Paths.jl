@@ -27,7 +27,8 @@ function db_old()
     return Sys.iswindows() ? joinpath("D:\\", "data", "db") : "/home/jshellman/data/db"
 end
 
-db_incoming(dirs...; sym) = db("market", "incoming", "thetadata", sym, dirs...)
+db_incoming(dirs...) = db("market", "incoming", dirs...)
+db_thetadata(dirs...; sym) = db("market", "incoming", "thetadata", sym, dirs...)
 db_models(dirs...) = db("ml", "models", dirs...)
 db_input(model_name) = db_models(model_name, "input")
 

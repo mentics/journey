@@ -146,6 +146,7 @@ function update_tsx(;sym="SPY")
         price_lookup = DataRead.price_lookup()
         ind = searchsortedfirst(tss, df1.ts[end] + Second(5))
         to_proc = tss[ind:end]
+        println("To process: $(to_proc)")
         yms = DateUtil.year_months.(;start_date=Date(to_proc[1]), end_date=Date(to_proc[end]))
         df1 = filter(:ts => (ts -> !( (year(ts), month(ts)) in yms )), df1)
         df2 = mapreduce(vcat, yms) do (year, month)
@@ -188,11 +189,18 @@ end
 #region Local
 function proc(df, price_lookup)
     threads = false
-    global kdf_orig = df
+    # global kdf_orig = df
+    count = size(df,1)
+    if iszero(count)
+        return
+        println("No data found")
+    else
+        println("Processing df with length $(count)")
+    end
     gdf = groupby(df, [:ts, :expir, :style])
     df = combine(gdf, [:ts,:expir,:style,:strike,:bid,:ask] => calc_tsx_in_df(price_lookup) => [:xtq1, :xtq2, :xtq3, :ret]; threads)
     # df = filter([:xtq2] => (x -> x != -1f0), df)
-    global kdf = df
+    # global kdf = df
     # return df
     gdf = groupby(df, [:ts, :expir])
     @assert abs(length(gdf) - size(df, 1) ÷ 2) <= 1 "length(gdf) $(length(gdf)) == $(size(df, 1) ÷ 2) size(df, 1) ÷ 2"
@@ -245,7 +253,7 @@ function _all(f, v, args...)
     return true
 end
 
-filtered_options(year, month; sym) = filter_ts_calc(DataRead.get_options(year, month; sym))
+filtered_options(y, m; sym) = DataConst.filter_ts_calc(DataRead.get_options(y, m; sym))
 # filter_df(DataRead.get_options(year, month; sym), rpd.params_data().xpirs_within) # DataConst.XPIRS_WITHIN_CALC)
 
 function fit_sides(xs::Vector{Float64}, ys::Vector{Float64}, style, max_y)

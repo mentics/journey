@@ -1,5 +1,6 @@
 module DataConst
 using Dates
+import Calendars as cal
 
 # Based on earliest historical options data from ThetaData
 const DATE_START = Date(2012, 6, 1)
@@ -12,14 +13,19 @@ const XPIRS_WITHIN_CALC2 = Day(20)
 
 filter_ts_calc(df; view=false) = filter([:ts,:expir] => filter_for_calc, df; view)
 
-function filter_for_calc(ts, xpirts)
+function filter_for_calc(ts::DateTime, xpirts)
     date = Date(ts)
-    return xpirts - ts < XPIRS_WITHIN_CALC2 &&
+    return xpirts - ts <= XPIRS_WITHIN_CALC2 &&
             ts != xpirts &&
             ts < cal.getMarketClose(date) &&
             ts > cal.getMarketOpen(date)
 end
-filter_ts_calc(ts) = xpir -> filter_for_calc(ts, xpir)
+
+filter_date_calc(date::Date) = xpir -> filter_for_calc(date, xpir)
+
+function filter_for_calc(date::Date, xpir::Date)
+    return xpir - date <= XPIRS_WITHIN_CALC2
+end
 
 # filter_df(df, within_days; view=true) = filter([:ts,:expir] => filter_all(within_days), df; view)
 

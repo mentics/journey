@@ -30,6 +30,7 @@ params_model() = (;
 
 import MLyze
 function setup_ce_all(df, nbins)
+    setup_y()
     ky = calc_y_pmfk(df.y_bin, nbins)
     # return [Flux.crossentropy(ky, Flux.onehot(y, 1:nbins)) for y in 1:nbins]
     return [Flux.crossentropy(ky, get_y(y) |> cpu) for y in 1:nbins]
@@ -390,7 +391,7 @@ function check1(training, inds=1)
         batch = training.data.single(ind)
         yhat = vec(trainee.run_infer(training.model, batch.x |> gpu) |> cpu)
         cc = vec(batch.ce_compare |> cpu)
-        # return yhat, cc, (batch.y |> cpu)
+        return yhat, cc, (batch.y |> cpu)
         DrawUtil.draw!(:barplot, Bins.xs(), yhat; label="i-$(ind)")
     end
 end
