@@ -16,16 +16,18 @@ get_input_width(df) = size(df, 2) - 3 # 2 key cols and a y col
 const NAME = replace(string(@__MODULE__), "Model" => "")
 
 params_model() = (;
-    block_count = 2,
-    layers_per_block = 2,
-    use_output_for_hidden = true,
-    hidden_width_mult = 1,
+    block_count = 4,
+    layers_per_block = 4,
+    use_output_for_hidden = false,
+    hidden_width_mult = 2,
     dropout = 0.0f0,
     activation = NNlib.swish,
     use_bias_in = false,
     use_bias_block = false,
     use_bias_out = false,
     output_activation = NNlib.relu,
+    output_func = run_train_softmax,
+    ce_compare_squared = false,
 )
 
 import MLyze
@@ -37,16 +39,16 @@ function setup_ce_all(df, nbins)
 end
 calc_y_pmfk(y_bins, nbins) = MLyze.calc_pmf_kde(y_bins; nbins=nbins)
 
-# function save_y_pmfk()
-#     df, params_data = Paths.load_data_params(Paths.db_input(NAME), DataFrame)
-#     y_pmfk = calc_y_pmfk(df.y_bin, params_data.bins_count)
-#     Paths.save_data(Paths.db_output("y_pmfk"); y_pmfk)
-# end
+function save_y_pmfk()
+    df, params_data = Paths.load_data_params(Paths.db_input(NAME), DataFrame)
+    y_pmfk = calc_y_pmfk(df.y_bin, params_data.bins_count)
+    Paths.save_data(Paths.db_output("y_pmfk"); y_pmfk)
+end
 
-# function load_y_pmfk()
-#     # TODO: age?
-#     return Paths.load_data(Paths.db_output("y_pmfk"), "y_pmfk")
-# end
+function load_y_pmfk()
+    # TODO: age?
+    return Paths.load_data(Paths.db_output("y_pmfk"), "y_pmfk")
+end
 
 function save_ce_all()
     df, params_data = Paths.load_data_params(Paths.db_input(NAME), DataFrame)
@@ -54,10 +56,10 @@ function save_ce_all()
     Paths.save_data(Paths.db_output("ce_all"); ce_all)
 end
 
-# function load_ce_all()
-#     # TODO: age?
-#     return Paths.load_data(Paths.db_output("ce_all"), "ce_all")
-# end
+function load_ce_all()
+    # TODO: age?
+    return Paths.load_data(Paths.db_output("ce_all"), "ce_all")
+end
 
 #region MLTrain Interface
 function make_trainee(params_m=params_model())
@@ -71,11 +73,11 @@ function make_trainee(params_m=params_model())
         version=ModelUtil.encode_version(1, params),
         make_model = () -> make_model(input_width, params),
         get_inference_model,
-        run_train,
-        run_infer,
+        run_train = params_m.output_func,
+        run_infer = params_m.output_func,
         prep_data = params_train -> make_data(df, merge(params, (;train=params_train))),
         get_learning_rate = TrainUtil.learning_rate_linear_decay(), # TrainUtil.lr_cycle_decay(),
-        get_loss = (model, batch) -> calc_loss(model, batch),
+        get_loss = (model, batch) -> calc_loss(params_m.output_func, model, batch),
         params,
         mod = @__MODULE__
     )
@@ -170,8 +172,10 @@ function prep_input(obss, params, bufs; ce_all)
     copyto!(bufs.gpu.x, bufs.cpu.x)
     # y = YS2[][:,obss.y_bin]
     y = Flux.onehotbatch(obss.y_bin, 1:params.data.bins_count) |> gpu
-    # ce_compare = (ce_all[obss.y_bin] .^2) |> gpu
     ce_compare = ce_all[obss.y_bin] |> gpu
+    if params.model.ce_compare_squared
+        ce_compare .^= 2
+    end
     return (;keys, x=bufs.gpu.x, y, ce_compare)
 end
 
@@ -219,8 +223,8 @@ get_y(y) = YS2[][:,y]
 #endregion Data
 
 #region Run
-function calc_loss(model, batch; kws...)
-    yhat = run_train(model, batch.x)
+function calc_loss(f, model, batch; kws...)
+    yhat = f(model, batch.x)
     return calc_loss_for(yhat, batch.y, batch.ce_compare; kws...)
 end
 function calc_loss_for(yhat, y, ce_compare)
@@ -237,33 +241,46 @@ end
 
 import Distributions
 import VectorCalcUtil as vcu
-function min_loss(params)
-    count = params.data.bins_count
-    y_bins = [count ÷ 2, 1, count, rand(1:count)]
+function min_loss()
+    y_pmfk = load_y_pmfk()
+    count = length(y_pmfk) # params.data.bins_count
+    _, pmfk_max = findmax(y_pmfk)
+    y_bins = [count ÷ 2, pmfk_max, 1, count, rand(1:count)]
+
     d = Dict()
-    ce_compare = fill(1f0, count)
+    ce_all = fill(1f0, count)
+    # ce_all = load_ce_all()
     for y_bin in y_bins
+        ce_compare = ce_all[y_bin:y_bin]
         y = Flux.onehotbatch(y_bin, 1:count)
         # y = Flux.onehotbatch(obss.y_bin, 1:count)
         perfect = calc_loss_for(y, y, ce_compare)
 
-        ndist = Distributions.Normal(1.0, 0.1)
+        ndist = Distributions.Normal(1.0, 0.001)
         yhat = replace(x -> x < 1f-10 ? 0f0 : x, vcu.normalize!([Distributions.pdf(ndist, x) for x in Bins.xs()]))
-        distri10 = calc_loss_for(yhat, y, ce_compare)
-
-        ndist = Distributions.Normal(1.0, 0.05)
-        yhat = replace(x -> x < 1f-10 ? 0f0 : x, vcu.normalize!([Distributions.pdf(ndist, x) for x in Bins.xs()]))
-        distri5 = calc_loss_for(yhat, y, ce_compare)
+        distri01 = calc_loss_for(yhat, y, ce_compare)
 
         ndist = Distributions.Normal(1.0, 0.01)
         yhat = replace(x -> x < 1f-10 ? 0f0 : x, vcu.normalize!([Distributions.pdf(ndist, x) for x in Bins.xs()]))
         distri1 = calc_loss_for(yhat, y, ce_compare)
 
+        ndist = Distributions.Normal(1.0, 0.05)
+        yhat = replace(x -> x < 1f-10 ? 0f0 : x, vcu.normalize!([Distributions.pdf(ndist, x) for x in Bins.xs()]))
+        distri5 = calc_loss_for(yhat, y, ce_compare)
+
+        ndist = Distributions.Normal(1.0, 0.1)
+        yhat = replace(x -> x < 1f-10 ? 0f0 : x, vcu.normalize!([Distributions.pdf(ndist, x) for x in Bins.xs()]))
+        distri10 = calc_loss_for(yhat, y, ce_compare)
+
         yhat = vcu.normalize!(rand(count))
         random = calc_loss_for(yhat, y, ce_compare)
 
-        res = (;perfect, distri1, distri5, distri10, random)
-        println(res)
+        # @show y_bin
+        # global kargs = (;y_pmfk, y, ce_compare)
+        yp = calc_loss_for(y_pmfk, y, ce_compare)
+
+        res = (;perfect, distri01, distri1, distri5, distri10, random, yp)
+        # println(res)
         d[y_bin] = res
     end
     return d
@@ -298,35 +315,22 @@ function calc_smooth_penalty(v)
     count(x -> x > 0, calc_smooth_kernel(v)) / length(v)
 end
 
-const KERNEL = fill(0.2f0, 5) |> gpu
-function run_train(model, batchx)
+function run_train_softmax(model, batchx)
     yhat = model(batchx)
-    # global kyhat1 = yhat
-    # return softmax(yhat)
+    return softmax(yhat)
+end
 
-    # yhat = relu(yhat)
-    # sz = size(yhat)
-    # yhat_smoothed = reshape(NNlib.conv(reshape(yhat, sz[1], 1, sz[2]), reshape(KERNEL, 5, 1, 1); pad=2), sz...)
-    # return softmax(yhat_smoothed)
-
-
-    # yhat = relu(yhat)
-    # global kyhat = yhat
-    # sz = size(yhat)
-    # yhat = reshape(NNlib.conv(reshape(yhat, sz[1], 1, sz[2]), reshape(KERNEL, 5, 1, 1); pad=2), sz...)
+function run_train_sum1(model, batchx)
+    yhat = model(batchx)
     ss = sum(yhat; dims=1)
     yhat = yhat ./ ss
     return yhat
 end
 
-function run_infer(model, batchx)
-    return run_train(model, batchx)
-    # yhat = model(batchx)
-    # yhat = relu(yhat)
-    # ss = sum(yhat; dims=1)
-    # yhat = yhat ./ ss
-    # return yhat
-end
+    # const KERNEL = fill(0.2f0, 5) |> gpu
+    # sz = size(yhat)
+    # yhat_smoothed = reshape(NNlib.conv(reshape(yhat, sz[1], 1, sz[2]), reshape(KERNEL, 5, 1, 1); pad=2), sz...)
+    # return softmax(yhat_smoothed)
 #endregion Run
 
 #region Model
@@ -392,7 +396,7 @@ function check1(training, inds=1)
         batch = training.data.single(ind)
         yhat = vec(trainee.run_infer(training.model, batch.x |> gpu) |> cpu)
         cc = vec(batch.ce_compare |> cpu)
-        return yhat, cc, (batch.y |> cpu)
+        # return yhat, cc, (batch.y |> cpu)
         DrawUtil.draw!(:barplot, Bins.xs(), yhat; label="i-$(ind)")
     end
 end

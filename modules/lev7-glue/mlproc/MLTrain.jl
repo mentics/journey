@@ -16,7 +16,7 @@ params_train(;kws...) = (;
     holdout = 0.1,
     kfolds = 5,
     batch_size = 512,
-    weight_decay = 0.0001f0,
+    weight_decay = 0.001f0,
     kws...
 )
 
@@ -290,7 +290,8 @@ function batch1(training)
     # return training.data.prep_input(first(eachobs(training.data.data_for_epoch(), batchsize=training.params.train.batch_size)))
     return training.data.prep_input(obss1(training))
 end
-yhat_single(training, ind) = vec(training.trainee.run_train(training.model, training.data.single(ind).x) |> cpu)
+single(training, ind) = (;batch=training.data.single(ind) |> cpu, yhat=vec(training.trainee.run_train(training.model, training.data.single(ind).x) |> cpu))
+# single_yhat(training, ind) = vec(training.trainee.run_train(training.model, training.data.single(ind).x) |> cpu)
 
 import DrawUtil:draw,draw!
 function checki(training, inds)
