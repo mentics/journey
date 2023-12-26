@@ -106,7 +106,17 @@ end
 # end
 
 function get_treasury_lookup(; age=DateUtil.age_daily())
-    Paths.load_data(file_treasury(), "treasury_lookup"; age)
+    lup = Paths.load_data(file_treasury(), "treasury_lookup"; age)
+    lup_min = minimum(keys(lup))
+    return function(orig_date::Date)
+        date = DateUtil.lastTradingDay(orig_date)
+        while true
+            r = get(lup, date, nothing)
+            !isnothing(r) && return r
+            date = DateUtil.bdaysBefore(date, 1)
+            date >= lup_min || error("No treasury lookup found for $(date)")
+        end
+    end
 end
 #endregion Api
 

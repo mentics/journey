@@ -33,7 +33,7 @@ function make_input(params=params_data(); age=DateUtil.age_daily())
     transform!(df_tsx, [:ts] => (ts -> to_cycles.(ts)) => cycle_syms())
     # Add treasury rate
     treasury_lookup = DataRead.get_treasury_lookup()
-    transform!(df_tsx, [:ts] => (ts -> treasury_lookup[DateUtil.market_date(ts)]) => :treasury_rate)
+    transform!(df_tsx, [:ts] => (tss -> [treasury_lookup(DateUtil.market_date(ts)) for ts in tss]) => :treasury_rate)
 
     # Add hist
     df_hist, params_hist = Paths.load_data_params(Paths.db_output(hsd.NAME), DataFrame)
@@ -60,7 +60,7 @@ function make_input(params=params_data(); age=DateUtil.age_daily())
     # @assert size(df, 1) == size(df_tsx, 1) "size(df, 1) $(size(df, 1)) == $(size(df_tsx, 1)) size(df_tsx, 1)"
     # TODO: assert same size for df and df_hist
 
-    Paths.save_data_params(Paths.db_input(NAME), params, df)
+    Paths.save_data_params(Paths.db_input(NAME), params, df; update=true)
     return df
 end
 #endregion Public

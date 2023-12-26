@@ -12,9 +12,9 @@ end
 
 function Paths.save_data_params(parent_dir, params, df::AbstractDataFrame; update=false)
     dir = joinpath(parent_dir, safe_hash(params))
-    if isdir(dir)
-        error("dir already exists for save_data, todo: verify params match: $(dir)")
-    end
+    # if isdir(dir)
+    #     error("dir already exists for save_data, todo: verify params match: $(dir)")
+    # end
     mkpath(dir)
     path_data = joinpath(dir, "data.arrow")
     path_params = joinpath(dir, "params.jld2")

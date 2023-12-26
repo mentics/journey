@@ -8,9 +8,10 @@ using DataConst, DataRead, DataXpirts, DataPrices
 import Calendars as cal
 import DataCheck
 
-const NTM_COUNT3 = 8
-const NTM_RADIUS = NTM_COUNT3 ÷ 2
-const XTQ_RADIUS = 0.004
+# const NTM_COUNT3 = 8
+# const NTM_RADIUS = NTM_COUNT3 ÷ 2
+# const XTQ_RADIUS = 0.004
+ntm_radius() = 2
 
 # TODO: more confirming the curve fitting is doing well. Maybe add asserts for its quality.
 
@@ -41,14 +42,14 @@ function calc_xtqs(ts, xpirts, ts_price, style, strikes, bids, asks)
     # inds = first(sortperm(strikes; by=x -> abs(x - ts_price)), NTM_COUNT3)
     @assert issorted(strikes)
     mid = searchsortedlast(strikes, ts_price)
-    RADIUS = 2
+    RADIUS = ntm_radius()
     radius = min(RADIUS, lastindex(strikes) - mid, mid)
-    if radius <= RADIUS
+    if radius < RADIUS
         global kargs = (;ts, xpirts, ts_price, style, strikes, bids, asks)
         # TODO investigate
         # too few strikes for 2014-02-03T16:30:00 2014-02-28T21:00:00
         println("WARN: too few strikes for $(ts) $(xpirts)")
-        return [-1f0, -1f0, -1f0]
+        return fill(-1f0, 2*RADIUS)
     end
     inds = (mid - radius + 1):(mid + radius)
     strikes = strikes[inds]
@@ -64,7 +65,8 @@ function calc_xtqs(ts, xpirts, ts_price, style, strikes, bids, asks)
     # xtrins = OptionUtil.calc_extrin(style, ts_price, strikes, bids, asks)
     xtrins_bids = OptionUtil.calc_extrin(style, ts_price, strikes, bids)
     xtrins_asks = OptionUtil.calc_extrin(style, ts_price, strikes, asks)
-    return xtrins_bids ./ divid, xtrins_asks ./ divid
+    # return ((xtrins_bids ./ divid)..., (xtrins_asks ./ divid)...)
+    return map(x -> x / divid, Iterators.flatten((xtrins_bids, xtrins_asks)))
 
     if !_all(>, xtrins_asks, -0.0001)
         global kxtrins = (;xtrins_bids, xtrins_asks, args=(;ts, xpirts, ts_price, style, strikes, bids, asks))
@@ -117,12 +119,13 @@ function make_tsx(;sym="SPY")
     # DateUtil.year_months()[2:8]
     stop = false
     # yms = [(2017,3), (2017,9)]
+    # yms = [(2023,1)]
     # yms = [(2023,i) for i in 1:12]
     try
         dfs = qbmap(yms) do (year, month)
             !stop || return
             println("processing $year $month")
-            proc(filtered_options(year, month; sym), price_lookup)
+            proc2(filtered_options(year, month; sym), price_lookup)
         end
         df = reduce(vcat, dfs)
         sort!(df, [:ts, :expir])
@@ -154,7 +157,7 @@ function update_tsx(;sym="SPY")
         df1 = filter(:ts => (ts -> !( (year(ts), month(ts)) in yms )), df1)
         df2 = mapreduce(vcat, yms) do (year, month)
             df = filter(:ts => (ts -> to_proc[1] <= ts <= to_proc[end]), filtered_options(year, month; sym))
-            proc(df, price_lookup)
+            proc2(df, price_lookup)
         end
         df = DataCheck.combine_dfs(df1, df2; keycols=[:ts,:expir])
         Paths.save_data(DataRead.file_tsx(;sym), df; update=true)
@@ -174,7 +177,7 @@ function reproc_tsx(yms;sym="SPY")
     price_lookup = DataRead.price_lookup()
     df1 = filter(:ts => (ts -> !( (year(ts), month(ts)) in yms )), df1)
     df2 = mapreduce(vcat, yms) do (year, month)
-        proc(filtered_options(year, month; sym), price_lookup)
+        proc2(filtered_options(year, month; sym), price_lookup)
     end
     df = DataCheck.combine_dfs(df1, df2; keycols=[:ts,:expir])
     validate_result(df)
@@ -214,10 +217,37 @@ function proc(df, price_lookup)
     # filter!([:xtq2_call, :xtq2_put] => ((xc, xp) -> xc != -1f0 || xp != -1f0), df)
 end
 
-function split_style(s, x1, x2, x3)
+function proc2(df, price_lookup)
+    threads = false
+    # global kdf_orig = df
+    count = size(df,1)
+    if iszero(count)
+        return
+        println("No data found")
+    else
+        println("Processing df with length $(count)")
+    end
+    gdf = groupby(df, [:ts, :expir, :style])
+    df = combine(gdf, [:ts,:expir,:style,:strike,:bid,:ask] => calc_tsx_in_df(price_lookup) => [xtq_cols()..., :ret]; threads)
+    # df = filter([:xtq2] => (x -> x != -1f0), df)
+    # global kdf = df
+    # return df
+    gdf = groupby(df, [:ts, :expir])
+    @assert abs(length(gdf) - size(df, 1) ÷ 2) <= 1 "length(gdf) $(length(gdf)) == $(size(df, 1) ÷ 2) size(df, 1) ÷ 2"
+    df = combine(gdf,
+            [:style, xtq_cols()...] => split_style => [xtq_cols("put")..., xtq_cols("call")...],
+            :ret => first => :ret; threads)
+    filter!([:xtq2_call, :xtq2_put] => ((xc, xp) -> xc != -1f0 && xp != -1f0), df)
+    # filter!([:xtq2_call, :xtq2_put] => ((xc, xp) -> xc != -1f0 || xp != -1f0), df)
+end
+
+xtq_cols() = [Symbol("xtq$(i)") for i in 1:(2*2*ntm_radius())]
+xtq_cols(style) = [Symbol("xtq$(i)_$(style)") for i in 1:(2*2*ntm_radius())]
+
+function split_style(s, xtqs...)
     if size(s, 1) != 2
-        # @show s x1 x2 x3
-        # error("only one $(size(s, 1))")
+        @show s x1 x2 x3
+        error("only one $(size(s, 1))")
         return (;xtq1_call=-1f0, xtq2_call=-1f0, xtq3_call=-1f0, xtq1_put=-1f0, xtq2_put=-1f0, xtq3_put=-1f0)
     end
     if s[1] != -1
@@ -226,7 +256,9 @@ function split_style(s, x1, x2, x3)
     end
     @assert s[1] == -1
     @assert s[2] == 1
-    return (;xtq1_call=x1[1], xtq2_call=x2[1], xtq3_call=x3[1], xtq1_put=x1[2], xtq2_put=x2[2], xtq3_put=x3[2])
+    puts = NamedTuple(Symbol("xtq$(i)_put") => xtqs[i][1] for i in eachindex(xtqs))
+    calls = NamedTuple(Symbol("xtq$(i)_call") => xtqs[i][1] for i in eachindex(xtqs))
+    return (;calls..., puts..., )
 end
 
 calc_tsx_in_df(price_lookup) = function(tss, xpirtss, styles, strikes, bids, asks)
@@ -242,7 +274,8 @@ end
 function calc_tsx(ts, xpirts, ts_price, xpir_price, style, strikes, bids, asks)
     xtqs = calc_xtqs(ts, xpirts, ts_price, style, strikes, bids, asks)
     ret = xpir_price / ts_price - 1
-    return (;xtq1=xtqs[1], xtq2=xtqs[2], xtq3=xtqs[3], ret)
+    nt = (;NamedTuple(Symbol("xtq$(i)") => xtqs[i] for i in eachindex(xtqs))..., ret)
+    return nt
 end
 #endregion Local
 
@@ -256,7 +289,7 @@ function _all(f, v, args...)
     return true
 end
 
-filtered_options(y, m; sym) = DataConst.filter_ts_calc(DataRead.get_options(y, m; sym))
+filtered_options(y, m; sym) = DataConst.filter_ts_calc(DataRead.get_options(y, m; sym, age=(today() - Date(y,m,1))))
 # filter_df(DataRead.get_options(year, month; sym), rpd.params_data().xpirs_within) # DataConst.XPIRS_WITHIN_CALC)
 
 function fit_sides(xs::Vector{Float64}, ys::Vector{Float64}, style, max_y)
