@@ -37,11 +37,13 @@ end
 # Can use from either backtest/training or live.
 function calc_xtqs(ts, xpirts, ts_price, style, strikes, bids, asks)
     tex = cal.calcTex(ts, xpirts)
+    divid = ts_price * sqrt(tex)
     # inds = first(sortperm(strikes; by=x -> abs(x - ts_price)), NTM_COUNT3)
     @assert issorted(strikes)
     mid = searchsortedlast(strikes, ts_price)
-    radius = min(NTM_RADIUS, lastindex(strikes) - mid, mid)
-    if radius <= 2
+    RADIUS = 2
+    radius = min(RADIUS, lastindex(strikes) - mid, mid)
+    if radius <= RADIUS
         global kargs = (;ts, xpirts, ts_price, style, strikes, bids, asks)
         # TODO investigate
         # too few strikes for 2014-02-03T16:30:00 2014-02-28T21:00:00
@@ -62,6 +64,8 @@ function calc_xtqs(ts, xpirts, ts_price, style, strikes, bids, asks)
     # xtrins = OptionUtil.calc_extrin(style, ts_price, strikes, bids, asks)
     xtrins_bids = OptionUtil.calc_extrin(style, ts_price, strikes, bids)
     xtrins_asks = OptionUtil.calc_extrin(style, ts_price, strikes, asks)
+    return xtrins_bids ./ divid, xtrins_asks ./ divid
+
     if !_all(>, xtrins_asks, -0.0001)
         global kxtrins = (;xtrins_bids, xtrins_asks, args=(;ts, xpirts, ts_price, style, strikes, bids, asks))
     end
@@ -69,7 +73,6 @@ function calc_xtqs(ts, xpirts, ts_price, style, strikes, bids, asks)
     # @assert _all(>, xtrins_asks, -0.0001)
     # replace!(x -> max(x, zero(x)), xtrins_bids)
     # xtrins = (xtrins_bids .+ xtrins_asks) ./ (2 * ts_price * sqrt(tex))
-    divid = ts_price * sqrt(tex)
     xtrins = map(xtrins_bids, xtrins_asks) do bid, ask
         (ask < 0 ? ask : ( (max(zero(bid), bid) + ask) / 2 )) / divid
     end

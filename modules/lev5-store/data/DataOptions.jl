@@ -82,7 +82,7 @@ function update_options(year, month; sym="SPY")
         return diff
     end
 
-    # Paths.save_data(DataRead.file_options(year, month; sym), df; update=true)
+    Paths.save_data(DataRead.file_options(year, month; sym), df; update=true)
     return
 end
 #endregion Standard API
