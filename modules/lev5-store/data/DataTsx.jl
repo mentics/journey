@@ -26,12 +26,13 @@ function validate_result(df)
     @assert issorted(df, [:ts, :expir])
     @assert allunique(df, [:ts, :expir])
 
-    @assert !any(df.xtq1_call .== -1.0)
-    @assert !any(df.xtq2_call .== -1.0)
-    @assert !any(df.xtq3_call .== -1.0)
-    @assert !any(df.xtq1_put .== -1.0)
-    @assert !any(df.xtq2_put .== -1.0)
-    @assert !any(df.xtq3_put .== -1.0)
+    @assert typeof(df.xtq1_call[1]) == Float32
+    @assert !any(df.xtq1_call .== -1f0)
+    @assert !any(df.xtq2_call .== -1f0)
+    @assert !any(df.xtq3_call .== -1f0)
+    @assert !any(df.xtq1_put .== -1f0)
+    @assert !any(df.xtq2_put .== -1f0)
+    @assert !any(df.xtq3_put .== -1f0)
 end
 
 #region Extra
@@ -66,7 +67,7 @@ function calc_xtqs(ts, xpirts, ts_price, style, strikes, bids, asks)
     xtrins_bids = OptionUtil.calc_extrin(style, ts_price, strikes, bids)
     xtrins_asks = OptionUtil.calc_extrin(style, ts_price, strikes, asks)
     # return ((xtrins_bids ./ divid)..., (xtrins_asks ./ divid)...)
-    return map(x -> x / divid, Iterators.flatten((xtrins_bids, xtrins_asks)))
+    return map(x -> Float32(x / divid), Iterators.flatten((xtrins_bids, xtrins_asks)))
 
     if !_all(>, xtrins_asks, -0.0001)
         global kxtrins = (;xtrins_bids, xtrins_asks, args=(;ts, xpirts, ts_price, style, strikes, bids, asks))

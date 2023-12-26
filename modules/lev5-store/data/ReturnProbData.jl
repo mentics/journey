@@ -1,10 +1,12 @@
 module ReturnProbData
 using Dates, Intervals, DataFrames, SearchSortedNearest
+import Flux
 import DateUtil, Paths
 import DataConst, DataRead, ModelUtil
 import HistShapeData as hsd
 import Calendars as cal
-using ProbMeta
+using ProbMeta, MLyze
+import DataFrameUtil as DF
 
 const NAME = replace(string(@__MODULE__), "Data" => "")
 
@@ -12,14 +14,12 @@ const NAME = replace(string(@__MODULE__), "Data" => "")
 params_data() = (;
     xpirs_within = DataConst.XPIRS_WITHIN_CALC2,
     bins_count = Bins.VNUM,
+    skip_cols = 4, # skip ts, expir, y_bin, ce_compare for actual input
 )
 
 function make_input(params=params_data(); age=DateUtil.age_daily())
     # Get xtqs and ret
-    df_tsx = DataRead.get_tsx(;age)
-    # Near the end, we don't have returns because they are in the future so filter them out.
-    # We can't even backtest on this because we won't know the performance of it anyway
-    df_tsx = filter(:ret => isfinite, df_tsx)
+    df_tsx = filtered_tsx(;age)
 
     # Add temporal for ts
     transform!(df_tsx, [:ts] => (ts -> ModelUtil.to_temporal_ts.(ts)) => prefix_sym.([:week_day, :month_day, :quarter_day, :year_day, :hour], :ts_))
@@ -51,8 +51,17 @@ function make_input(params=params_data(); age=DateUtil.age_daily())
     # Bin the returns
     transform!(df, :ret => (r -> Bins.nearest.(r .+ 1)) => :y_bin)
 
+    # Calc pmf and cross entropy by days to xpir for comparison
+    transform!(df, [:ts, :expir] => ((ts, xpirts) -> DateUtil.market_date.(xpirts) .- DateUtil.market_date.(ts)) => :days_to_xpir)
+    pmfk_lookup = load_pmfk_lookup()
+    bins = 1:params.bins_count
+    transform!(df, [:y_bin,:days_to_xpir] => (
+            (y_bins, days_to_xpirs) ->
+                [Flux.crossentropy(pmfk_lookup[days_to_xpirs[i]], Flux.onehot(y_bins[i], bins)) for i in eachindex(y_bins)]
+        ) => :ce_compare)
+
     # cleanup
-    select!(df, :ts, :expir, :y_bin, Not([:ts, :expir, :y_bin, :ret]))
+    select!(df, :ts, :expir, :y_bin, :ce_compare, Not([:ts, :expir, :y_bin, :ce_compare, :ret, :days_to_xpir]))
 
     @assert issorted(df, [:ts, :expir])
     @assert allunique(df, [:ts, :expir])
@@ -65,7 +74,48 @@ function make_input(params=params_data(); age=DateUtil.age_daily())
 end
 #endregion Public
 
+#region Pmfk
+# function setup_ce_all()
+#     # setup_y()
+#     ky = make_y_pmfk()
+#     return [Flux.crossentropy(ky, Flux.onehot(y, eachindex(ky))) for y in eachindex(ky)]
+#     # return [Flux.crossentropy(ky, get_y(y) |> cpu) for y in 1:nbins]
+# end
+
+function make_pmfk_lookup()
+    df = filtered_tsx()
+    _, params_hist = Paths.load_data_params(Paths.db_output(hsd.NAME), DataFrame)
+    range = params_hist.data.train_date_range
+    df_train = DF.in(df, range)
+    @assert df_train.ts[end] < (now(UTC) - Month(3))
+    # return MLyze.calc_pmf_kde(df_train.y_bin; nbins)
+
+    transform!(df, [:ts, :expir] => ((ts, xpirts) -> DateUtil.market_date.(xpirts) .- DateUtil.market_date.(ts)) => :days_to_xpir)
+    transform!(df, :ret => (r -> Bins.nearest.(r .+ 1)) => :y_bin)
+
+    gdf = groupby(df, :days_to_xpir)
+    df3 = combine(gdf, [:y_bin] => (ybins -> [MLyze.calc_pmf_kde(ybins)]) => :pmfk)
+    return Dict(zip(df3.days_to_xpir, df3.pmfk))
+end
+
+# TODO: age?
+load_pmfk_lookup() = Paths.load_data(file_pmfk_lookup(), "pmfk_lookup")
+save_pmfk_lookup() = Paths.save_data(file_pmfk_lookup(); pmfk_lookup=make_pmfk_lookup())
+file_pmfk_lookup() = Paths.db_incoming("pmfk_lookup", "pfmk.jld2")
+
+# # TODO: age?
+# load_ce_all() = Paths.load_data(Paths.db_output("ce_all"), "ce_all")
+# save_ce_all() = Paths.save_data(Paths.db_output("ce_all"); ce_all=setup_ce_all())
+#endregion Pmfk
+
 #region Util
+function filtered_tsx(;age=DateUtil.age_daily())
+    # Near the end, we don't have returns because they are in the future so filter them out.
+    # We can't even backtest on this because we won't know the performance of it anyway
+    filter(:ret => isfinite, DataRead.get_tsx(;age))
+end
+
+
 make_dur(max_days) = (ts, xpir) -> dur_to_input.(cal.calcDur.(ts, xpir), max_days)
 dur_to_input(dur, max_days) = Float32.(([getfield(dur, nam) for nam in propertynames(dur)]) ./ max_days)
 

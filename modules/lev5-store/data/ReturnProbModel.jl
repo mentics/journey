@@ -4,14 +4,13 @@ using Flux, MLUtils
 import CUDA:CuArray
 using DateUtil, Paths, ModelUtil, TrainUtil, MLTrain
 import CudaUtil:copyto_itr!
+import DataFrameUtil as DF
 
 #=
 No pushing to gpu in data or model modules. Only MLTrain pushed to gpu. well... would be nice, but api for data was messy that way, but maybe can get back to that.
 
-TODO: something is wrong with dividing by ce_all this way.
+TODO: something is wrong with dividing by ce_all this way?
 =#
-
-get_input_width(df) = size(df, 2) - 3 # 2 key cols and a y col
 
 const NAME = replace(string(@__MODULE__), "Model" => "")
 
@@ -30,42 +29,12 @@ params_model() = (;
     ce_compare_squared = false,
 )
 
-import MLyze
-function setup_ce_all(df, nbins)
-    # setup_y()
-    ky = calc_y_pmfk(df.y_bin, nbins)
-    return [Flux.crossentropy(ky, Flux.onehot(y, 1:nbins)) for y in 1:nbins]
-    # return [Flux.crossentropy(ky, get_y(y) |> cpu) for y in 1:nbins]
-end
-calc_y_pmfk(y_bins, nbins) = MLyze.calc_pmf_kde(y_bins; nbins=nbins)
-
-function save_y_pmfk()
-    df, params_data = Paths.load_data_params(Paths.db_input(NAME), DataFrame)
-    y_pmfk = calc_y_pmfk(df.y_bin, params_data.bins_count)
-    Paths.save_data(Paths.db_output("y_pmfk"); y_pmfk)
-end
-
-function load_y_pmfk()
-    # TODO: age?
-    return Paths.load_data(Paths.db_output("y_pmfk"), "y_pmfk")
-end
-
-function save_ce_all()
-    df, params_data = Paths.load_data_params(Paths.db_input(NAME), DataFrame)
-    ce_all = setup_ce_all(df, params_data.bins_count)
-    Paths.save_data(Paths.db_output("ce_all"); ce_all)
-end
-
-function load_ce_all()
-    # TODO: age?
-    return Paths.load_data(Paths.db_output("ce_all"), "ce_all")
-end
-
 #region MLTrain Interface
+get_input() = Paths.load_data_params(Paths.db_input(NAME), DataFrame)
 function make_trainee(params_m=params_model())
-    df, params_data = Paths.load_data_params(Paths.db_input(NAME), DataFrame)
+    df, params_data = get_input()
     # df = select(df, Not([:xtq1_call, :xtq2_call, :xtq3_call, :xtq1_put, :xtq2_put, :xtq3_put]))
-    input_width = get_input_width(df)
+    input_width = get_input_width(df, params_data.skip_cols)
     params = (;data=params_data, model=params_m)
 
     global state = Trainee(;
@@ -104,24 +73,25 @@ to_draw_yh(yhat, ind) = yhat[1:end,ind] |> cpu
 #endregion MLTrain Interface
 
 #region Data
-# date_range_train() = (;date_range = DateUtil.DEFAULT_DATA_START_DATE..Date(2023,6,30))
-# date_range_backtest() = (;date_range = Date(2023,7,1)..DateUtil.market_today())
+# TODO: make this easier, more reliable?
+get_input_width(df) = size(df, 2) - 4
+get_input_width(df, skip) = size(df, 2) - skip
+
 function make_data(df, params)
     # Hold out some of the most recent data so we can backtest on untrained data
-    df_train = filter(:ts => DateUtil.ts_in(params.data.hist.data.train_date_range), df)
-    df_holdout = filter(:ts => !DateUtil.ts_in(params.data.hist.data.train_date_range), df)
+    df_train, df_holdout = DF.split_in_after(df, params.data.hist.data.train_date_range)
     @assert df_holdout.ts[1] > df_train.ts[end] "df_holdout.ts[1] $(df_holdout.ts[1]) > $(df_train.ts[end]) df_train.ts[end]"
-    ce_all = setup_ce_all(df, params.data.bins_count)
+    # ce_all = setup_ce_all(df_train)
 
     # shuffled = shuffleobs(df) # pre-shuffle so holdout is random
     # training, holdout = splitobs(shuffled; at=(1.0 - params.train.holdout))
     InputData(;
         all_data = df,
         data_for_epoch = () -> shuffleobs(df_train),
-        prep_input = (obss, args...) -> prep_input(obss, params, args...; ce_all),
+        prep_input = (obss, args...) -> prep_input(obss, params, args...),
         get_input_keys,
         holdout=df_holdout,
-        single = ind -> single(df, ind, params; ce_all)
+        single = ind -> single(df, ind, params)
     )
 end
 
@@ -161,18 +131,18 @@ end
 prep_input(obss, params; kws...) = prep_input(obss, params, make_buffers(obss); kws...)
 # 41.1 microseconds
 # not thread safe because of reuse of m
-function prep_input(obss, params, bufs; ce_all)
+function prep_input(obss, params, bufs)
     # dataframe of batch_size rows of same columns as input data
     # need to make matrices that can be pushed to gpu and used in model
     keys = (;obss.ts, obss.expir)
-    cols = collect(Vector{Float32}, eachcol(obss[!,4:end]))
+    cols = collect(Vector{Float32}, eachcol(obss[!,(params.data.skip_cols+1):end]))
     for i in eachindex(cols)
         bufs.cpu.x[i,:] .= cols[i]
     end
     copyto!(bufs.gpu.x, bufs.cpu.x)
     # y = YS2[][:,obss.y_bin]
     y = Flux.onehotbatch(obss.y_bin, 1:params.data.bins_count) |> gpu
-    ce_compare = ce_all[obss.y_bin] |> gpu
+    ce_compare = obss.ce_compare |> gpu # ce_all[obss.y_bin] |> gpu
     if params.model.ce_compare_squared
         ce_compare .^= 2
     end
@@ -248,8 +218,8 @@ function min_loss()
     y_bins = [count ÷ 2, pmfk_max, 1, count, rand(1:count)]
 
     d = Dict()
-    ce_all = fill(1f0, count)
-    # ce_all = load_ce_all()
+    # ce_all = fill(1f0, count)
+    ce_all = load_ce_all()
     for y_bin in y_bins
         ce_compare = ce_all[y_bin:y_bin]
         y = Flux.onehotbatch(y_bin, 1:count)
