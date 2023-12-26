@@ -6,7 +6,7 @@ import Calendars as cal
 const DATE_START = Date(2012, 6, 1)
 
 # Ignore xpirs more than this far out everywhere.
-# const XPIRS_WITHIN = Day(192)
+const XPIRS_WITHIN = Day(192)
 
 # Only analyze xpirs within XPIRS_WITHIN_CALC.
 const XPIRS_WITHIN_CALC2 = Day(20)
