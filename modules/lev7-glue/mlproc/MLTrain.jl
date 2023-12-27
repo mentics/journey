@@ -6,10 +6,9 @@ import Flux:Flux,cpu,gpu,throttle
 using MLUtils
 # import Optimisers:AdamW
 using DateUtil, IndexUtil, ModelUtil
+
 CUDA.allowscalar(false)
 dev(x) = gpu(x) # gpu(x)
-
-# TODO: need to save holdout with training model so we keep that when continuing training
 
 params_train(;kws...) = (;
     rng_seed = 1,

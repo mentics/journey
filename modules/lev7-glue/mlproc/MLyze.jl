@@ -22,4 +22,14 @@ Get the pmf of y. Then calculate the cross entropy of each y with that pmf.
 #     [Flux.crossentropy(Flux.onehot(y), ky) for y in y_bin]
 # end
 
+sub_batch(batch, inds) = (;ce_compare=batch.ce_compare[inds], x=batch.x[:,inds], y=batch.y[:,inds])
+
+function compare_batch_losses(loss_func, model, batch, inds)
+    batch_loss = loss_func(model, sub_batch(batch, inds))
+    batch_separate = [sub_batch(batch, i:i) for i in inds]
+    batch_separate_losses = loss_func.(Ref(model), batch_separate)
+    @show batch_loss mean(batch_separate_losses)
+    return batch_loss, batch_separate_losses
+end
+
 end

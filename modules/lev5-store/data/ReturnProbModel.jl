@@ -198,12 +198,12 @@ function calc_loss(f, model, batch; kws...)
     return calc_loss_for(yhat, batch.y, batch.ce_compare; kws...)
 end
 function calc_loss_for(yhat, y, ce_compare)
-    ce = Flux.Losses.crossentropy(yhat, y; agg=(x -> mean(x ./ ce_compare)))
+    ce = Flux.Losses.crossentropy(yhat, y; agg=(x -> mean(vec(x) ./ ce_compare)))
     return ce
 
-    # return Flux.Losses.mse(yhat, y)
-
     # return Flux.Losses.crossentropy(yhat, y)
+
+    # return Flux.Losses.mse(yhat, y)
 
     # smooth_penalty = 10 * calc_smooth_penalty(yhat) # / (10 + ce)
     # return ce + smooth_penalty
