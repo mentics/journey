@@ -26,6 +26,7 @@ params_model() = (;
     use_bias_out = false,
     output_activation = NNlib.relu,
     output_func = run_train_softmax,
+    softmax_temp = 1.2f0,
     ce_compare_squared = false,
 )
 
@@ -42,11 +43,11 @@ function make_trainee(params_m=params_model())
         version=ModelUtil.encode_version(1, params),
         make_model = () -> make_model(input_width, params),
         get_inference_model,
-        run_train = params_m.output_func,
-        run_infer = params_m.output_func,
+        run_train = (model, batch) -> params_m.output_func(model, batch, params),
+        run_infer = (model, batch) -> params_m.output_func(model, batch, params),
         prep_data = params_train -> make_data(df, merge(params, (;train=params_train))),
         get_learning_rate = TrainUtil.learning_rate_linear_decay(), # TrainUtil.lr_cycle_decay(),
-        get_loss = (model, batch) -> calc_loss(params_m.output_func, model, batch),
+        get_loss = (model, batch) -> calc_loss(params_m.output_func, model, batch, params),
         params,
         mod = @__MODULE__
     )
@@ -193,8 +194,8 @@ get_y(y) = YS2[][:,y]
 #endregion Data
 
 #region Run
-function calc_loss(f, model, batch; kws...)
-    yhat = f(model, batch.x)
+function calc_loss(f, model, batch, params; kws...)
+    yhat = f(model, batch.x, params)
     return calc_loss_for(yhat, batch.y, batch.ce_compare; kws...)
 end
 function agg_loss(x, ce_compare)
@@ -205,7 +206,7 @@ function agg_loss(x, ce_compare)
     comp = vx ./ ce_compare
     @assert size(comp) == (len,)
     m = mean(comp)
-    @assert typeof(m) == Float32
+    @assert typeof(m) == Float32 "typeof(m) $(typeof(m)) == Float32"
     return m
 end
 function calc_loss_for(yhat, y, ce_compare)
@@ -296,12 +297,12 @@ function calc_smooth_penalty(v)
     count(x -> x > 0, calc_smooth_kernel(v)) / length(v)
 end
 
-function run_train_softmax(model, batchx)
+function run_train_softmax(model, batchx, params)
     yhat = model(batchx)
-    return softmax(yhat)
+    return softmax(yhat ./ params.model.softmax_temp)
 end
 
-function run_train_sum1(model, batchx)
+function run_train_sum1(model, batchx, params)
     yhat = model(batchx)
     ss = sum(yhat; dims=1)
     yhat = yhat ./ ss
