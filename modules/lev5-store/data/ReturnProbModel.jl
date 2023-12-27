@@ -17,7 +17,7 @@ const NAME = replace(string(@__MODULE__), "Model" => "")
 params_model() = (;
     block_count = 4,
     layers_per_block = 4,
-    use_output_for_hidden = false,
+    use_output_for_hidden = true,
     hidden_width_mult = 2,
     dropout = 0.0f0,
     activation = NNlib.swish,
@@ -197,8 +197,19 @@ function calc_loss(f, model, batch; kws...)
     yhat = f(model, batch.x)
     return calc_loss_for(yhat, batch.y, batch.ce_compare; kws...)
 end
+function agg_loss(x, ce_compare)
+    len = size(ce_compare, 1)
+    @assert size(x) == (1,len)
+    vx = vec(x)
+    @assert size(vx) == (len,)
+    comp = vx ./ ce_compare
+    @assert size(comp) == (len,)
+    m = mean(comp)
+    @assert typeof(m) == Float32
+    return m
+end
 function calc_loss_for(yhat, y, ce_compare)
-    ce = Flux.Losses.crossentropy(yhat, y; agg=(x -> mean(vec(x) ./ ce_compare)))
+    ce = Flux.Losses.crossentropy(yhat, y; agg=(x -> agg_loss(x, ce_compare)))
     return ce
 
     # return Flux.Losses.crossentropy(yhat, y)
