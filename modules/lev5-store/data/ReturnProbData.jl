@@ -32,7 +32,7 @@ function make_input(params=params_data(); age=DateUtil.age_daily())
     # Add absolute time cycle encoding
     transform!(df_tsx, [:ts] => (ts -> to_cycles.(ts)) => cycle_syms())
     # Add treasury rate
-    treasury_lookup = DataRead.get_treasury_lookup()
+    treasury_lookup = DataRead.get_treasury_lookup(;age)
     transform!(df_tsx, [:ts] => (tss -> [treasury_lookup(DateUtil.market_date(ts)) for ts in tss]) => :treasury_rate)
 
     # Add hist
@@ -52,7 +52,7 @@ function make_input(params=params_data(); age=DateUtil.age_daily())
     transform!(df, :ret => (r -> Bins.nearest.(r .+ 1)) => :y_bin)
 
     # Calc pmf and cross entropy by days to xpir for comparison
-    transform!(df, [:ts, :expir] => ((ts, xpirts) -> DateUtil.market_date.(xpirts) .- DateUtil.market_date.(ts)) => :days_to_xpir)
+    transform!(df, [:ts, :expir] => DateUtil.calc_days_to_xpir => :days_to_xpir)
     pmfk_lookup = load_pmfk_lookup()
     bins = 1:params.bins_count
     transform!(df, [:y_bin,:days_to_xpir] => (
@@ -112,7 +112,9 @@ file_pmfk_lookup() = Paths.db_incoming("pmfk_lookup", "pfmk.jld2")
 function filtered_tsx(;age=DateUtil.age_daily())
     # Near the end, we don't have returns because they are in the future so filter them out.
     # We can't even backtest on this because we won't know the performance of it anyway
-    filter(:ret => isfinite, DataRead.get_tsx(;age))
+    df1 = filter(:ret => isfinite, DataRead.get_tsx(;age))
+    df2 = filter([:ts,:expir] => ((ts, xpirts) -> DateUtil.calc_days_to_xpir(ts, xpirts) >= Day(1)), df1)
+    return df2
 end
 
 

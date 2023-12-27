@@ -15,25 +15,26 @@ TODO: something is wrong with dividing by ce_all this way?
 const NAME = replace(string(@__MODULE__), "Model" => "")
 
 params_model() = (;
-    block_count = 4,
+    block_count = 16,
     layers_per_block = 4,
-    use_output_for_hidden = true,
-    hidden_width_mult = 2,
-    dropout = 0.0f0,
+    use_output_for_hidden = false,
+    hidden_width_mult = 1,
+    dropout = 0.2f0,
     activation = NNlib.swish,
     use_bias_in = false,
     use_bias_block = false,
     use_bias_out = false,
     output_activation = NNlib.relu,
     output_func = run_train_softmax,
-    softmax_temp = 1.2f0,
+    # output_func = run_train_sum1,
+    softmax_temp = 1.2f0, # 8.4f0,
     ce_compare_squared = false,
 )
 
 #region MLTrain Interface
-get_input() = Paths.load_data_params(Paths.db_input(NAME), DataFrame)
+load_input() = Paths.load_data_params(Paths.db_input(NAME), DataFrame)
 function make_trainee(params_m=params_model())
-    df, params_data = get_input()
+    df, params_data = load_input()
     # df = select(df, Not([:xtq1_call, :xtq2_call, :xtq3_call, :xtq1_put, :xtq2_put, :xtq3_put]))
     input_width = get_input_width(df, params_data.skip_cols)
     params = (;data=params_data, model=params_m)
@@ -144,11 +145,12 @@ function prep_input(obss, params, bufs)
     # y = YS2[][:,obss.y_bin]
     y = Flux.onehotbatch(obss.y_bin, 1:params.data.bins_count) |> gpu
     ce_compare = obss.ce_compare |> gpu # ce_all[obss.y_bin] |> gpu
-    if params.model.ce_compare_squared
+    if !OVERRIDE_SQUARED[] && params.model.ce_compare_squared
         ce_compare .^= 2
     end
     return (;keys, x=bufs.gpu.x, y, ce_compare)
 end
+const OVERRIDE_SQUARED = Ref(false)
 
 import CUDA
 const YS2 = Ref{CuArray{Float32, 2, CUDA.Mem.DeviceBuffer}}()
@@ -223,8 +225,10 @@ end
 
 import Distributions
 import VectorCalcUtil as vcu
+import ReturnProbData as rpd
 function min_loss()
     y_pmfk = load_y_pmfk()
+    pmfk_lookup = rpd.load_pmfk_lookup()
     count = length(y_pmfk) # params.data.bins_count
     _, pmfk_max = findmax(y_pmfk)
     y_bins = [count ÷ 2, pmfk_max, 1, count, rand(1:count)]
@@ -323,23 +327,32 @@ function make_model(input_width, params)
 
     input_layer = Dense(input_width => through_width; bias=cfg.use_bias_in)
 
-    blocks1_count = cfg.block_count ÷ 2
-    blocks2_count = cfg.block_count - blocks1_count
-    blocks1 = [SkipConnection(ModelUtil.make_block(through_width, through_width, cfg.layers_per_block, cfg.activation, cfg.use_bias_block), +) for _ in 1:blocks1_count]
-    dropout = Dropout(cfg.dropout)
-    blocks2 = [SkipConnection(ModelUtil.make_block(through_width, through_width, cfg.layers_per_block, cfg.activation, cfg.use_bias_block), +) for _ in 1:blocks2_count]
+    # blocks1_count = cfg.block_count ÷ 2
+    # blocks2_count = cfg.block_count - blocks1_count
+    # blocks1 = [SkipConnection(ModelUtil.make_block(through_width, through_width, cfg.layers_per_block, cfg.activation, cfg.use_bias_block), +) for _ in 1:blocks1_count]
+    # dropout = Dropout(cfg.dropout)
+    # blocks2 = [SkipConnection(ModelUtil.make_block(through_width, through_width, cfg.layers_per_block, cfg.activation, cfg.use_bias_block), +) for _ in 1:blocks2_count]
+    # b1 = [Symbol(string("b1_",i)) => blocks1[i] for i in eachindex(blocks1)]
+    # b2 = [Symbol(string("b2_",i)) => blocks2[i] for i in eachindex(blocks2)]
+    # if iszero(cfg.dropout)
+    #     return Chain(;input_layer, b1..., b2..., output_layer)
+    # else
+    #     # return Chain(;input_layer, blocks=Chain(blocks1..., dropout, blocks2...), output_layer)
+    #     return Chain(;input_layer, b1..., dropout, b2..., output_layer)
+    # end
+
+    blocks = []
+    push!(blocks, :block_1 => SkipConnection(ModelUtil.make_block(through_width, through_width, cfg.layers_per_block, cfg.activation, cfg.use_bias_block), +))
+    for i in 1:cfg.block_count
+        if !iszero(cfg.dropout)
+            push!(blocks, Symbol("dropout_$(i)") => Dropout(cfg.dropout))
+        end
+        push!(blocks, Symbol("block_$(i)") => SkipConnection(ModelUtil.make_block(through_width, through_width, cfg.layers_per_block, cfg.activation, cfg.use_bias_block), +))
+    end
 
     output_layer = Dense(through_width => output_width, cfg.output_activation; bias=cfg.use_bias_out)
 
-    b1 = [Symbol(string("b1_",i)) => blocks1[i] for i in eachindex(blocks1)]
-    b2 = [Symbol(string("b2_",i)) => blocks2[i] for i in eachindex(blocks2)]
-
-    if iszero(cfg.dropout)
-        return Chain(;input_layer, b1..., b2..., output_layer)
-    else
-        # return Chain(;input_layer, blocks=Chain(blocks1..., dropout, blocks2...), output_layer)
-        return Chain(;input_layer, b1..., dropout, b2..., output_layer)
-    end
+    return Chain(;input_layer, blocks..., output_layer)
 end
 
 function get_inference_model(model)

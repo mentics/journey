@@ -305,6 +305,8 @@ function ts_in(range::Interval{Date, Closed, Closed})
     in(Interval{Closed,Open}(market_midnight(first(range)), market_midnight(last(range) + Day(1))))
 end
 
+calc_days_to_xpir(ts, xpirts) = DateUtil.market_date.(xpirts) .- DateUtil.market_date.(ts)
+
 # function prev_weekday(date)
 #     date = date - Day(1)
 #     while !(Dates.dayofweek(date) in 1:5)
