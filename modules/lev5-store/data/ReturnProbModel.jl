@@ -15,11 +15,11 @@ TODO: something is wrong with dividing by ce_all this way?
 const NAME = replace(string(@__MODULE__), "Model" => "")
 
 params_model() = (;
-    block_count = 16,
+    block_count = 32,
     layers_per_block = 4,
     use_output_for_hidden = false,
     hidden_width_mult = 1,
-    dropout = 0.2f0,
+    dropout = 0.4f0,
     activation = NNlib.swish,
     use_bias_in = false,
     use_bias_block = false,
@@ -27,8 +27,8 @@ params_model() = (;
     output_activation = NNlib.relu,
     output_func = run_train_softmax,
     # output_func = run_train_sum1,
-    softmax_temp = 1.2f0, # 8.4f0,
-    ce_compare_squared = false,
+    softmax_temp = 4.2f0, # 8.4f0,
+    ce_compare_squared = true,
 )
 
 #region MLTrain Interface

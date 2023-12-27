@@ -15,7 +15,7 @@ params_train(;kws...) = (;
     holdout = 0.1,
     kfolds = 5,
     batch_size = 512,
-    weight_decay = 0.000001f0,
+    weight_decay = 0.00001f0,
     kws...
 )
 
@@ -266,6 +266,7 @@ function check_holdout(training)
     params = training.params
 
     Flux.testmode!(model)
+    trainee.mod.OVERRIDE_SQUARED[] = true
     loss = 0.0
     count = 0
     for obss in eachobs(data.holdout; batchsize=params.train.batch_size)
@@ -274,6 +275,7 @@ function check_holdout(training)
     end
     loss /= count
     Flux.testmode!(model, :auto)
+    trainee.mod.OVERRIDE_SQUARED[] = false
 
     println("Loss for holdout: $(loss)")
     # for ibatch in training.params[:cv].holdout
