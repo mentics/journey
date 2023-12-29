@@ -1,4 +1,7 @@
 module DataFrameUtil
+using Dates
+using DateUtil
+using DataFrames
 
 # # Split a dataframe into the range given and everything after it
 # function split_df(df, range; keycol=:ts)
@@ -37,5 +40,8 @@ function split_in_after(df, range; keycol=:ts)
     right = searchsortedfirst(df[!,keycol], last(range))
     return df[left:(right-1),:], df[right:end,:]
 end
+
+# filter_days_to_xpir(df, days) = filter([:ts,:expir] => ((ts, xpirts) -> DateUtil.calc_days_to_xpir(ts, xpirts) >= Day(days)), df)
+filter_days_to_xpir(df, days) = filter([:ts,:expir] => ((ts, xpirts) -> DateUtil.calc_days_to_xpir(ts, xpirts) == Day(days)), df)
 
 end

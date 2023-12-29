@@ -19,7 +19,7 @@ params_model() = (;
     layers_per_block = 4,
     use_output_for_hidden = false,
     hidden_width_mult = 1,
-    dropout = 0.4f0,
+    dropout = 0.2f0,
     activation = NNlib.swish,
     use_bias_in = false,
     use_bias_block = false,
@@ -27,15 +27,23 @@ params_model() = (;
     output_activation = NNlib.relu,
     output_func = run_train_softmax,
     # output_func = run_train_sum1,
-    softmax_temp = 4.2f0, # 8.4f0,
+    softmax_temp = 1.2f0, # 8.4f0,
     ce_compare_squared = true,
 )
 
 #region MLTrain Interface
-load_input() = Paths.load_data_params(Paths.db_input(NAME), DataFrame)
-function make_trainee(params_m=params_model())
-    df, params_data = load_input()
+function load_input(; days_to_xpir=nothing)
+    df, params_data, path = Paths.load_data_params(Paths.db_input(NAME), DataFrame)
+    if !isnothing(days_to_xpir)
+        df = DF.filter_days_to_xpir(df, days_to_xpir)
+    end
+    return df, params_data
+end
+
+function make_trainee(params_m=params_model(); days_to_xpir=nothing)
+    df, params_data = load_input(; days_to_xpir)
     # df = select(df, Not([:xtq1_call, :xtq2_call, :xtq3_call, :xtq1_put, :xtq2_put, :xtq3_put]))
+    println("Training with $(size(df,1)) observations")
     input_width = get_input_width(df, params_data.skip_cols)
     params = (;data=params_data, model=params_m)
 
@@ -212,10 +220,10 @@ function agg_loss(x, ce_compare)
     return m
 end
 function calc_loss_for(yhat, y, ce_compare)
-    ce = Flux.Losses.crossentropy(yhat, y; agg=(x -> agg_loss(x, ce_compare)))
-    return ce
+    # ce = Flux.Losses.crossentropy(yhat, y; agg=(x -> agg_loss(x, ce_compare)))
+    # return ce
 
-    # return Flux.Losses.crossentropy(yhat, y)
+    return Flux.Losses.crossentropy(yhat, y)
 
     # return Flux.Losses.mse(yhat, y)
 
