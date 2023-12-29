@@ -41,7 +41,7 @@ function price_lookup(;sym="SPY", age=DateUtil.age_daily())
     return Dict(prices.ts .=> prices.price)
 end
 
-function get_options(year, month; sym="SPY", age=DateUtil.age_daily())
+function get_options(year, month; sym="SPY", age=(today() - Date(year, month, 1)))
     return Paths.load_data(file_options(year, month; sym), DataFrame; age)
 end
 function get_options_yms()
