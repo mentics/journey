@@ -1,10 +1,10 @@
 module CmdExplore
 using Dates
-using SH, Globals, BaseTypes, SmallTypes, RetTypes, StratTypes, LegQuoteTypes
+using SH, Globals, BaseTypes, SmallTypes, RetTypes, LegQuoteTypes
 using LogUtil
 using Shorthand, Between
 using Expirations, Markets, Chains
-using DrawStrat
+# using DrawStrat
 using CmdPos
 
 export ce
@@ -61,10 +61,10 @@ getInds(v, inds) = [v[i] for i in inds]
 #     ph = Prob(getCenter(phOrig), smooth(getVals(phOrig)))
 # end
 
-using StratTypes
-export findSpreads, findSpread
-findSpreads(spreads, combi::Combi) = ( findSpread(spreads, (combi[1], combi[2])), findSpread(spreads, (combi[3], combi[4])) )
-findSpread(spreads, lr::NTuple{2,LegRet}) = findfirst(s -> s == lr, spreads)
+# using StratTypes
+# export findSpreads, findSpread
+# findSpreads(spreads, combi::Combi) = ( findSpread(spreads, (combi[1], combi[2])), findSpread(spreads, (combi[3], combi[4])) )
+# findSpread(spreads, lr::NTuple{2,LegRet}) = findfirst(s -> s == lr, spreads)
 
 using ThreadPools
 using ProbTypes

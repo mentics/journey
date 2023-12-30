@@ -118,6 +118,10 @@ function get_treasury_lookup(; age=DateUtil.age_daily())
         end
     end
 end
+
+function get_trade_options(; sym="SPY", age=DateUtil.age_period())
+    return Paths.load_data(file_trade_options(;sym), DataFrame; age)
+end
 #endregion Api
 
 #region Local
@@ -140,6 +144,8 @@ file_ts(;sym="SPY") = joinpath(Paths.db_thetadata("ts"; sym), "ts.arrow")
 
 file_treasury() = joinpath(Paths.db_incoming("treasury", "treasury.jld2"))
 # file_options_at_xpirs(;sym="SPY") = joinpath(Paths.db_thetadata("options_at_xpirs"; sym), "options_at_xpirs.arrow")
+
+file_trade_options(;sym="SPY") = joinpath(Paths.db_thetadata("trade_options"; sym), "trade_options-$(sym).arrow")
 #endregion Local
 
 end
