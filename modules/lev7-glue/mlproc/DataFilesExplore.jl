@@ -24,13 +24,22 @@ is_ts_backtest(ts_min) = function(ts)
     return ts >= ts_min && ts != cal.getMarketOpen(date) && ts != cal.getMarketClose(date)
 end
 
-function explore(;inds=nothing, yms=dat.make_yms(), skip_existing=true, use_pos=true, xpir_inds=1:2)
-    price_lup = DataRead.price_lookup()
+function run_long()
+    reset()
+    yms = vcat([(2020,i) for i in 1:12], [(2021,i) for i in 1:12], [(2022,i) for i in 1:12], [(2023,i) for i in 1:12])
+    explore(;yms, use_pos=false, xpir_inds=1:4, max_bdays_out=8, incs=2:4);
+end
+
+import DataFiles as dat
+function explore(;inds=nothing, yms=dat.make_yms(), skip_existing=true, use_pos=true, xpir_inds=1:2, max_bdays_out=8, incs=1:4)
+    price_lup = DataRead.price_lookup(;age=DateUtil.FOREVER2)
+    vix_lup = DataRead.vix_lookup(;age=DateUtil.FOREVER2)
     # price_lup_xpirts = DataRead.price_lookup_xpirts()
-    ts_min, prob_for_tsxp = DataRead.prob_for_tsxp(;age=Day(2))
+    # ts_min, prob_for_tsxp = DataRead.prob_for_tsxp(;age=Day(2))
+    ts_min = dat.estimate_min_ts() + Month(1)
     # y_pmfk = Paths.load_data(Paths.db_output("y_pmfk"), "y_pmfk")
     # prob_for_tsxp = (ts, xpirts) -> y_pmfk
-    ts_set = Set(DataRead.get_ts())
+    ts_set = Set(DataRead.get_ts(;age=DateUtil.FOREVER2))
     for (y, m) in yms
         # TODO: could create this filtered file in advance
         oqs_df = filter(:ts => is_ts_backtest(ts_min), DataRead.get_options(y, m))
@@ -53,12 +62,17 @@ function explore(;inds=nothing, yms=dat.make_yms(), skip_existing=true, use_pos=
                 continue
             end
             ts in ts_set || continue
+
+            curp = C(price_lup[ts])
+            vix = C(vix_lup[market_date(ts)])
+            ore.update(ts, curp, vix) || continue
             rs_ts = Vector()
             !skip_existing || !haskey(TOP_TS, ts) || continue
             # println("Processing ts:$(ts)")
 
-            curp = C(price_lup[ts])
-            ctx = ore.make_ctx(ts, xpirts -> prob_for_tsxp(ts, xpirts), curp)
+            # ctx = ore.make_ctx(ts, xpirts -> prob_for_tsxp(ts, xpirts), curp)
+            ctx = ore.make_ctx(ts, curp, vix, use_pos)
+
             # TODO: could be more efficient leveraging group by below? get keys on xpir_lookup?
             # xpirtss = filter!(d -> Date(d) > ctx.date, unique(sdf.expiration))
             # sort!(xpirtss)
@@ -83,15 +97,23 @@ function explore(;inds=nothing, yms=dat.make_yms(), skip_existing=true, use_pos=
                 xpirts = first(sdf.expir)
                 xpir = Date(xpirts)
                 xpir_price = price_lup[xpirts]
-                # 0 < bdays(ts, xpir) <= 8 || continue
-                0 < bdays(ts, xpir) || continue
-                oqs = to_oqs(sdf)
+                0 < bdays(ts, xpir) <= max_bdays_out || continue
+                oqs = try
+                    to_oqs(sdf)
+                catch e
+                    if e isa AssertionError
+                        println("AssertionError for $(ts) $(xpirts)")
+                        continue
+                    else
+                        rethrow(e)
+                    end
+                end
                 oqss = ChainUtil.oqssEntry(oqs, curp; minlong=C(0.03), minshort=C(0.03))
 
                 # pos = get!(ore.pos_new, XPIR_POS, xpirts)
-                top_xpir = get!(TOP_XPIRTS, xpirts) do; Vector() end
-                pos = use_pos ? top_xpir : EMPTY_VECTOR
-                res = ore.findkel(ctx, xpirts, oqss, pos, 1:4)
+                top_xpir = get!(Vector, TOP_XPIRTS, xpirts) # do; Vector() end
+                # pos = use_pos ? top_xpir : EMPTY_VECTOR
+                res = ore.findkel(ctx, xpirts, oqs, oqss, top_xpir, incs)
                 # isnothing(res) && @goto stop
                 # global kres = res
 
@@ -119,6 +141,22 @@ function explore(;inds=nothing, yms=dat.make_yms(), skip_existing=true, use_pos=
         end
     end
     # @label stop
+end
+
+using LegQuoteTypes
+function walk_through(; xpr=1, kws...)
+    reset()
+    DrawUtil.draw(:hlines, 0; label="zero")
+    lqs_all = LegQuote[]
+    global klqs = lqs_all
+    for i in 1:8
+        explore(; kws..., inds=i:i)
+        rs = last(collect(TOP_XPIRTS)[xpr])
+        push!(lqs_all, rs[i].r1.lqs...)
+        sort!(lqs_all; by=SH.getStrike)
+        DrawUtil.draw!(:lines, SH.toDraw(lqs_all); label="lqs$(i)")
+        DrawUtil.draw!(:vlines, rs[i].curp; label="curp$(i)")
+    end
 end
 
 function compare_month(y, m)
@@ -166,6 +204,7 @@ function drawbal(; newfig=false, kelrat = 0.5, xpirtss=sort!(collect(keys(TOP_XP
             end
             # r.r1.probprofit >= .95
             # r.r1.balrat < 1
+            # r.r1.kelt >= 100.0
             true
         end
         # count = length(rs)
@@ -196,7 +235,7 @@ function calc_rets(rs; close_early=true)
         if invalid(r.r1.commit) || invalid(r.r1.kel)
             # @show r.r1.commit r.result.pnl_value r.r1.kel
             @show r.r1.commit r.result.pnl r.r1.kel
-            error("invalid commit")
+            error("invalid commit or kel")
         end
         pnl = if close_early
             close = find_close(r)
@@ -211,42 +250,53 @@ function calc_rets(rs; close_early=true)
             # TODO: this found a case where a condor was formed with a long/short of the same contract:
             # ts = DateTime("2020-02-20T20:30:00")
             # xpir = 2020-02-24
-            println(@str "pnl less than -commit" pnl r.r1.commit)
+            error(@str "pnl less than -commit" pnl r.r1.commit)
         end
         # return (r.r1.balrat * r.r1.kel * pnl / r.r1.commit, pnl)
-        return r.r1.balrat * r.r1.kel * pnl / r.r1.commit
+        return calc_ret(r, pnl)
     end
 end
+
+calc_ret(r, pnl=r.result.pnl) = r.r1.balrat * r.r1.kel * pnl / r.r1.commit
 
 invalid(x) = !isfinite(x) || x < 0
 
 function updown(all=get_all())
+    vix_lup = DataRead.vix_lookup(;age=DateUtil.FOREVER2)
     # all = get_all()
     tot_count = length(all)
+    println("total: $(tot_count)")
     # sort!(all; by=r -> )
     # up = filter(r -> r.result.pnl_value >= 0, all)
     # down = filter(r -> r.result.pnl_value < 0, all)
     up = filter(r -> r.result.pnl >= 0, all)
     down = filter(r -> r.result.pnl < 0, all)
     println("up:")
-    stats(up, tot_count)
-    println("down:")
-    stats(down, tot_count)
+    stats(up, tot_count; rev=true, vix_lup)
+    println("\ndown:")
+    stats(down, tot_count; rev=false, vix_lup)
     return
 end
 
+Base.show(io::IO, x::Vector{Style.T}) = print(io, '[', join(x, ','), ']')
+
 using StatsBase
-function stats(rs, tot_count)
+function stats(rs, tot_count; rev, vix_lup)
     count = length(rs)
-    println("count/total: $(r4(count / tot_count))")
-    styles = countmap([SH.getStyle.(r.r1.lqs) for r in rs])
-    print("styles: "); display(styles)
-    bdays_out = countmap([bdout(r) for r in rs])
-    print("bdays_out: "); display(bdays_out)
-    neto_sign = countmap([sign(r.r1.neto) for r in rs])
-    print("neto_sign: "); display(neto_sign)
-    spread_width = countmap([Pricing.get_spread_width(r.r1.lqs) for r in rs])
-    print("spread_width: "); display(spread_width)
+    println("  count/total: $(count) - $(r4(count / tot_count))")
+    show_f("styles", r -> SH.getStyle.(r.r1.lqs), rs; rev)
+    show_f("bdays_out", bdout, rs; rev)
+    show_f("neto_sign", r -> sign(r.r1.neto), rs; rev)
+    show_f("spread_width", r -> Pricing.get_spread_width(r.r1.lqs), rs; rev)
+
+    # styles = countmap([SH.getStyle.(r.r1.lqs) for r in rs])
+    # print("styles: "); display(styles)
+    # bdays_out = countmap([bdout(r) for r in rs])
+    # print("bdays_out: "); display(bdays_out)
+    # neto_sign = countmap([sign(r.r1.neto) for r in rs])
+    # print("neto_sign: "); display(neto_sign)
+    # spread_width = countmap([Pricing.get_spread_width(r.r1.lqs) for r in rs])
+    # print("spread_width: "); display(spread_width)
 
     if isempty(rs)
         println("no data")
@@ -254,6 +304,10 @@ function stats(rs, tot_count)
     end
     kel = quantile(map(r -> r.r1.kel, rs))
     @show kel
+    kelt = quantile(map(r -> r.r1.kelt, rs))
+    @show kelt
+    keltprob = quantile(map(r -> ore.to_val_kelt_prob(r.r1), rs))
+    @show keltprob
     evret = quantile(map(r -> r.r1.evret, rs))
     @show evret
     evrate = quantile(map(r -> r.r1.evrate, rs))
@@ -262,9 +316,29 @@ function stats(rs, tot_count)
     @show probprofit
     commit = quantile(map(r -> r.r1.commit, rs))
     @show commit
+    vix = quantile(map(r -> vix_lup[market_date(r.ts)], rs))
+    @show vix
+    div_dir = quantile(map(r -> Dates.value(DateUtil.next_ex_date(r.ts) - DateUtil.market_date(r.ts)), rs))
+    @show div_dir
+    hour_of_day = quantile(map(r -> hour(r.ts), rs))
+    @show hour_of_day
     # TODO: look for how many cases of isolated losses, vs. all for that expiration
     return
 end
+
+function show_f(label, f_key::Function, v::AbstractArray; agg=sum_pnl_rs, rev=true)
+    d = DictUtil.to_dict_of_v(f_key, v)
+    global kd = d
+    items = sort!(collect(show_d(x, d[x]; agg) for x in keys(d)); rev, by=(x -> x.a))
+    println("  ", label)
+    for item in items
+        println("    $(item.key): $(item.len) - $(item.a)")
+    end
+end
+function show_d(k, v; agg)
+    return (;key=k, len=length(v), a=agg(v))
+end
+sum_pnl_rs(x) = sum(r.result.pnl for r in x)
 
 bdout(r) = bdays(r.ts, SH.getExpir(r.r1.lqs))
 
@@ -371,9 +445,11 @@ end
 
 #region Local
 function reset()
+    ore.reset()
     empty!(TOP_TS)
     empty!(TOP_XPIRTS)
     # ore.MAX_LEN[] = 0
+    ore.init(;max_bdays_out=maximum(xpir_inds) * 1.0)
 end
 const TOP_TS = SortedDict{DateTime,Vector}()
 const TOP_XPIRTS = SortedDict{DateTime,Vector}()

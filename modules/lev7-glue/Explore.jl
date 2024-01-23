@@ -4,7 +4,8 @@ import Makie
 using BaseTypes, LegTypes
 using DateUtil
 import Keepers:Keeper
-import SH, Calendars
+import SH
+import Calendars as cal
 import CollUtil:sortuple
 import Positions
 import VectorCalcUtil
@@ -14,27 +15,42 @@ using ProbMultiKde
 import ProbMultiKde as pmk
 import ThreadUtil
 import LinesLeg as LL
-using ProbMeta
+using Bins # ProbMeta
+
+# TODO: test with a X% chance of not getting filled for a particular ts
+
+const PERIOD = Minute(30)
+const TIMES_PER_DAY = (12 - 7 + 1) * 2 # 7 - 12:30 each :30
+
+import IncTA
+
+# const Keltner = Ref{IncTA.KeltnerChannels}(IncTA.KeltnerChannels())
+const BOLLINGER2 = Ref{IncTA.BB}(IncTA.BB{Float64}())
 
 # const CONFIG3 = Ref((;
 #     adjustprices = C(-0.0),
 #     kelprobadjust = 0.0
 # ))
 
-config() = (;
-    adjustprices = C(-0.01),
-    kelprobadjust = 0.0,
-    commit_min = 0.07,
-    commit_max = 4.01,
-    probprofit_min = 0.72,
-    kel_min = 0.1,
-    evrate_min = 4.01,
-    all_risk_max = 10000.0,
-    max_spread = 4.1,
-    max_gap = 4.1,
-    maxcondormiddle = 4.1,
-    annual_min = 4.01,
-)
+# did ok:
+# config() = (;
+#     adjustprices = CZ, # C_NEG_PENNY,
+#     kelprobadjust = 0.0,
+#     commit_min = 0.07,
+#     commit_max = 4.01,
+#     probprofit_min = 0.98, # 0.92,
+#     kel_min = 0.8,
+#     evrate_min = 4.01,
+#     all_risk_max = 10000.0,
+#     max_spread = 4.1,
+#     max_gap = 4.1,
+#     maxcondormiddle = 4.1,
+#     annual_min = 4.01,
+#     min_move_rat = ONE_RAT,
+#     max_bidask_spread = C_12,
+#     min_max_profit = CZ,
+# )
+
 
 # config() = (;
 #     adjustprices = C(-0.0),
@@ -68,9 +84,26 @@ end
 # Base.isless(a::Result{T}, b::Result{T}) where T = a.r.evrate < b.r.evrate
 # Base.isless(a::Result, b::Result) = a.r.evrate < b.r.evrate
 function Base.isless(a::Result, b::Result)
-    av = to_val_kel(a)
-    bv = to_val_kel(b)
+    # av = to_val_kelt(a)
+    # bv = to_val_kelt(b)
+    # return av < bv
+
+    av = to_val_kelt_prob(a.r)
+    bv = to_val_kelt_prob(b.r)
     return av < bv
+
+    # av = to_val_evrate(a)
+    # bv = to_val_evrate(b)
+    # return av < bv
+
+    # ap = to_val_prob(a)
+    # bp = to_val_prob(b)
+    # return ap < bp
+
+    # ay = isfinite(av) ? ap * ap * ap * av : -Inf
+    # by = isfinite(bv) ? bp * bp * ap * bv : -Inf
+    # return ay < by
+
     # isnothing(a.r.all) && return a.r.evrate < b.r.evrate
     # if isnan(a.r.all.evrate)
     #     if isnan(b.r.all.evrate)
@@ -92,17 +125,25 @@ function to_val_evrate(x)
 end
 function to_val_prob(x)
     p = x.r.probprofit
-    return isfinite(p) ? p : -Inf
+    return isfinite(p) ? p : 0.0
 end
 function to_val_kel(x)
     p = x.r.kel
+    return isfinite(p) ? p : -Inf
+end
+function to_val_kelt(x)
+    p = x.r.kelt
+    return isfinite(p) ? p : -Inf
+end
+function to_val_kelt_prob(x)
+    p = x.kelt * x.probprofit
     return isfinite(p) ? p : -Inf
 end
 
 Base.vec(keeper::Keeper{Result}) = map(x -> x.r, keeper.store)
 
 run(inc::Integer; kws...) = run([inc]; kws...)
-function run(incs=1:3; skipto=nothing, kws...)
+function run(incs=1:4; skipto=nothing, kws...)
     # global kcalckel = nothing
     # global kmakeleg = nothing
     # global krun = nothing
@@ -111,13 +152,24 @@ function run(incs=1:3; skipto=nothing, kws...)
 
     # kde = use_kde()
     # xpirs = Expirations.xpirsinrange(1, 4)
-    xpirs = Expirations.expirs()[1:2]
+    xpirtss = cal.getMarketClose.(Expirations.expirs()[1:2])
     # incs = collect(incsin)
+    prob = nothing
     if isnothing(skipto)
-        res = findkel(make_ctx_now(), xpirs, incs; kws...) do xpirts, curp
-            return ChainUtil.oqssEntry(chain(xpirts).chain, curp; legsCheck=Positions.positions(), minshort=0.05, minlong=0.05)
+        # ctx, xpirts::DateTime, oqs, oqss, pos_rs, incs
+        ctx = make_ctx_now()
+        for xpirts in xpirtss
+            oqs = chain(xpirts;age=Second(2)).chain
+            # legsCheck=Positions.positions(),
+            oqss = ChainUtil.oqssEntry(oqs, ctx.curp; minshort=C(0.03), minlong=C(0.03))
+            reset()
+            res = findkel(ctx, xpirts, oqs, oqss, [], incs; kws...)
+            if !isempty(res)
+                prob = kprob
+                break
+            end
         end
-        # global krun = res
+        global krun = res
     else
         res = skipto
     end
@@ -129,10 +181,10 @@ function run(incs=1:3; skipto=nothing, kws...)
 
     r1 = res[1]
     lqs = r1.lqs
-    target = Pricing.price(Action.open, lqs)
+    netos = price_open(lqs) # Pricing.price(Action.open, lqs)
     bdaysout = bdays(today(),SH.getExpir(lqs))
-    println("evrate:$(r1.evrate) probprofit:$(r1.probprofit) min:$(r1.neto) target:$(target) risk:$(r1.risk) daysout:$(bdaysout)");
-    drawres(lqs)
+    println("evrate:$(r1.evrate) probprofit:$(r1.probprofit) min:$(r1.neto) target:$(sum(netos)) risk:$(r1.commit) daysout:$(bdaysout)");
+    drawres(prob, lqs, netos)
 
     # DrawUtil.newfig()
     # evrate_max, i_max = findmax(eachindex(res)) do i
@@ -163,11 +215,11 @@ function run(incs=1:3; skipto=nothing, kws...)
     return r1
 end
 
-function drawres(lms)
-    prob = ProbLup4[SH.getExpir(lms)]
-    numlegs = length(lms)
+function drawres(prob, lqs, netos)
+    # prob = ProbLup4[SH.getExpir(lms)]
+    numlegs = length(lqs)
     display(DrawUtil.newfig())
-    DrawUtil.draw!(:lines, SH.toDraw(lms); label="$(numlegs)-pnl")
+    DrawUtil.draw!(:lines, SH.toDraw(lqs); label="$(numlegs)-pnl")
     DrawUtil.drawprob!(prob; label="$(numlegs)-prob")
     DrawUtil.updateLegend()
 end
@@ -179,20 +231,27 @@ function opentrade(r; minextra=P(0.01))
     Trading.open_trade(market(), r.lqs, r.neto; pre=false, minextra);
 end
 
-# function make_ctx_now(; keep=2)
-#     mkt = market()
-#     ts = mkt.tsMarket
-#     curp = mkt.curp
-#     kde = pmk.get_kde(ts)
-#     # ress = [Keeper{Result}(keep) for _ in 1:Threads.nthreads()]
-#     # kelly_bufs = [Kelly.make_buf() for _ in 1:Threads.nthreads()]
-#     # (;ts, date=Date(ts), curp, kde, keep, ress, kelly_bufs)
-#     return make_ctx(ts, kde, curp; keep)
-# end
-function make_ctx(ts, prob_for_xpirts, curp; keep=2)
+function make_ctx_now(; keep=2, use_pos=false)
+    mkt = market()
+    ts = mkt.tsMarket
+    curp = mkt.curp
+    # kde = pmk.get_kde(ts)
+    # ress = [Keeper{Result}(keep) for _ in 1:Threads.nthreads()]
+    # kelly_bufs = [Kelly.make_buf() for _ in 1:Threads.nthreads()]
+    # (;ts, date=Date(ts), curp, kde, keep, ress, kelly_bufs)
+    return make_ctx(ts, curp, vix, use_pos; keep)
+end
+function make_ctx(ts, curp, vix, use_pos; keep=2)
     ress = [Keeper{Result}(keep) for _ in 1:Threads.nthreads()]
     kelly_bufs = [Kelly.make_buf() for _ in 1:Threads.nthreads()]
-    return (;ts, date=Date(ts), prob_for_xpirts, curp, keep, ress, kelly_bufs)
+    kde = pmk.get_kde(ts)
+    return (;ts, date=Date(ts), kde, curp, vix, keep, ress, kelly_bufs, use_pos)
+    # return (;ts, date=Date(ts), prob_for_xpirts, curp, keep, ress, kelly_bufs)
+end
+
+function reset()
+    PREV_OPEN_CURP[] = C(1)
+    SKIP_COUNT_MIN_MOVE[] = 0
 end
 
 function reset_ctx(ctx)
@@ -203,39 +262,60 @@ function reset_ctx(ctx)
     @assert isempty(ctx.ress[end])
 end
 
-function findkel(ctx, xpirts::DateTime, oqss, pos_rs, incs)
+const PREV_OPEN_CURP = Ref{Currency}(CZ)
+const SKIP_COUNT_MIN_MOVE = Ref{Int}(0)
+
+function findkel(ctx, xpirts::DateTime, oqs, oqss, pos_rs, incs)
     reset_ctx(ctx)
     ress = ctx.ress
-
-    # prob = pmk.makeprob(ctx.kde, ctx.curp, ctx.ts, xpirts, oqs)
-    prob = nothing
-    try
-        prob = ctx.prob_for_xpirts(xpirts)
-    catch e
-        println("ERROR: exception thrown getting prob for $((;ctx.ts, xpirts)). Skipping.\n  $(e)")
+    if abs(1.0 - ctx.curp / PREV_OPEN_CURP[]) < config().min_move_rat
+        SKIP_COUNT_MIN_MOVE[] += 1
         return []
     end
+
+    prob = pmk.makeprob(ctx.kde, ctx.curp, ctx.ts, xpirts, oqs)
+    global kprob = prob
+    if ismissing(prob)
+        println("prob missing: skipping $(ctx.ts)")
+        return []
+    end
+
+    # prob = nothing
+    # try
+    #     prob = ctx.prob_for_xpirts(xpirts)
+    # catch e
+    #     println("ERROR: exception thrown getting prob for $((;ctx.ts, xpirts)). Skipping.\n  $(e)")
+    #     return []
+    # end
     riskrat = calcriskrat(ctx.ts, xpirts)
 
     pos = nothing
     if !isempty(pos_rs)
         lqs = get_pos_lqs(pos_rs)
-        segs = LL.toSegments(lqs, P.(SH.getBid.(lqs)))
+        segs = LL.toSegments(lqs, P.(price_open(lqs)))
         risk = riskrat * max(Pricing.calcMarg(ctx.curp, segs))
-        kel, evret, ev, probprofit = calckel(ctx.kelly_bufs[Threads.threadid()], ctx.curp, prob, risk, segs)
+        kel, evret, ev, probprofit = calckel(ctx.kelly_bufs[Threads.threadid()], prob, risk, segs)
         pos = kv(;lqs=nc(lqs), segs=nc(segs), risk, kel, evret, ev, probprofit, count=length(pos_rs))
+    else
+        pos = kv(;lqs=EMPTY_LEG_QUOTES, segs=EMPTY_SEGMENTS, risk=0.0, kel=0.0, evret=0.0, ev=0.0, probprofit=0.0, count=0)
     end
 
-    ctx2 = kv(;ctx.ts, ctx.date, ctx.curp, prob, riskrat, xpirts, ctx.kelly_bufs, pos)
-    # 1 in incs && findkel1!(ress, ctx2, oqss) && error("stop")
+    ctx2 = kv(;ctx.ts, ctx.date, ctx.curp, prob, riskrat, xpirts, ctx.kelly_bufs, pos, ctx.use_pos)
+    1 in incs && findkel1!(ress, ctx2, oqss) && error("stop")
     2 in incs && findkel2!(ress, ctx2, oqss) && error("stop")
     3 in incs && findkel3!(ress, ctx2, oqss) && error("stop")
     4 in incs && findkel4!(ress, ctx2, oqss) && error("stop")
 
     # println("Finished searching")
     res = merge(ress, ctx.keep)
-    return vec(res)
+    v = vec(res)
+    if !isempty(v)
+        PREV_OPEN_CURP[] = ctx.curp
+    end
+    return v
 end
+const EMPTY_SEGMENTS = LL.Segments([], [])
+const EMPTY_LEG_QUOTES = LegQuoteOpen[]
 
 # pos_new() = Dict()
 # function pos_add(pos, r)
@@ -306,15 +386,23 @@ function make_leg(oq, side)
 end
 
 function findkel1!(ress, ctx, oqss)::Bool
-    stop = ThreadUtil.loop(oqss.call.long) do call
-        check!(ress, ctx, (make_leg(call, Side.long),))
+    call_side, put_side = can_short(ctx.pos)
+    stop = ThreadUtil.loop(oqss.call[call_side]) do call
+        check_one!(ress, ctx, (make_leg(call, call_side),))
     end
     !stop || return stop
-    stop = ThreadUtil.loop(oqss.put.long) do put
-        check!(ress, ctx, (make_leg(put, Side.long),))
+    stop = ThreadUtil.loop(oqss.put[put_side]) do put
+        check_one!(ress, ctx, (make_leg(put, put_side),))
     end
     return stop
 end
+can_short(::Nothing) = (Side.long, Side.long)
+function can_short(pos)
+    lqs = pos.lqs
+    (can_short_call(lqs), can_short_put(lqs))
+end
+can_short_call(lqs) = sum(Int ∘ SH.getSide, filter(isCall, lqs); init=0) > 0 ? Side.short : Side.long
+can_short_put(lqs) = sum(Int ∘ SH.getSide, filter(isPut, lqs); init=0) > 0 ? Side.short : Side.long
 
 import GenCands
 function findkel2!(ress, ctx, oqss)::Bool
@@ -386,19 +474,69 @@ function findkel3!(ress, ctx, oqss)::Bool
 end
 
 function findkel4!(ress, ctx, oqss)::Bool
+    # kel4_wide_long!(ress, ctx, oqss)
+    # return false
+
     kel4!(ress, ctx, Side.long, oqss.call.long, oqss.call.short, oqss.call.short, oqss.call.long)
     kel4!(ress, ctx, Side.short, oqss.call.short, oqss.call.long, oqss.call.long, oqss.call.short)
 
-    kel4!(ress, ctx, Side.long, oqss.put.long, oqss.put.short, oqss.put.short, oqss.put.long)
-    kel4!(ress, ctx, Side.short, oqss.put.short, oqss.put.long, oqss.put.long, oqss.put.short)
+    # kel4!(ress, ctx, Side.long, oqss.put.long, oqss.put.short, oqss.put.short, oqss.put.long)
+    # kel4!(ress, ctx, Side.short, oqss.put.short, oqss.put.long, oqss.put.long, oqss.put.short)
 
-    kel4!(ress, ctx, Side.long, oqss.call.long, oqss.call.short, oqss.put.short, oqss.put.long)
-    kel4!(ress, ctx, Side.short, oqss.call.short, oqss.call.long, oqss.put.long, oqss.put.short)
+    # kel4!(ress, ctx, Side.long, oqss.call.long, oqss.call.short, oqss.put.short, oqss.put.long)
+    # kel4!(ress, ctx, Side.short, oqss.call.short, oqss.call.long, oqss.put.long, oqss.put.short)
 
     kel4!(ress, ctx, Side.short, oqss.put.long, oqss.put.short, oqss.call.short, oqss.call.long)
     kel4!(ress, ctx, Side.long, oqss.put.short, oqss.put.long, oqss.call.long, oqss.call.short)
 
     return false
+end
+
+function kel4_wide_long!(ress, ctx, oqss)
+    curp = ctx.curp
+    sl1 = 0.7 * curp
+    sl2 = 0.995 * curp
+    sr1 = 1.005 * curp
+    sr2 = 1.3 * curp
+    for left1 in oqss.put.long
+        strikeL1 = SH.getStrike(left1)
+        strikeL1 >= sl1 || continue
+        strikeL1 < sl2 || break
+        for left2 in oqss.put.long
+            strikeL2 = SH.getStrike(left2)
+            strikeL2 > strikeL1 || continue
+            strikeL2 < (strikeL1 + 2.4) || break
+            # strikeL2 < sl2 || break
+
+            # legL1 = make_leg(left1, Side.long)
+            # legL2 = make_leg(left2, Side.short)
+            # netos = sum(price_open((legL1,legL2)))
+            # 0.02 <= netos <= 0.06 || continue
+
+            for right1 in oqss.call.long
+                strikeR1 = SH.getStrike(right1)
+                strikeR1 >= sr1 || continue
+                strikeR1 < sr2 || break
+                for right2 in oqss.call.long
+                    strikeR2 = SH.getStrike(right2)
+                    strikeR2 > strikeR1 || continue
+                    strikeR2 < (strikeR1 + 2.4) || break
+                    # strikeR2 < sr2 || break
+
+                    # legR1 = make_leg(right1, Side.short)
+                    # legR2 = make_leg(right2, Side.long)
+                    # netos = sum(price_open((legR1,legR2)))
+                    # 0.02 <= netos <= 0.06 || continue
+
+                    lqs = (make_leg(left1, Side.long), make_leg(left2, Side.short), make_leg(right1, Side.short), make_leg(right2, Side.long))
+                    # lqs = (legL1, legL2, legR1, legR2)
+                    check!(ress, ctx, lqs)
+                    # check_simple!(ress, ctx, lqs)
+                    yield()
+                end
+            end
+        end
+    end
 end
 
 function kel4!(ress, ctx, side1, oqsL1, oqsL2, oqsR1, oqsR2)
@@ -438,82 +576,101 @@ end
 #     end
 # end
 
-function check!(ress, ctx, lqs)::Nothing
-    cfg = config()
-    netos = P.(SH.getBid.(lqs))
-    segs = LL.toSegments(lqs, netos)
-    LL.canprofit(segs) || return
-    commit = max(Pricing.calcMarg(ctx.curp, segs))
-    cfg.commit_min < commit < cfg.commit_max || return
-    # commit *= ctx.riskrat
+function check_one!(ress, ctx, lqs)
+    global kpos = ctx.pos
+    pos = ctx.pos
+    # ctx.use_pos
+
+    lqs_all = sort!(vcat(ctx.pos.lqs, lqs...); by=SH.getStrike)
+    netos = P.(price_open(lqs))
+    netos_all = P.(price_open(lqs_all))
+    # segs = LL.toSegments(lqs, netos)
+    segs_all = LL.toSegments(lqs_all, netos_all)
+    # TODO: how to calculate commit for just the short?
+    commit_all = max(Pricing.calcMarg(ctx.curp, segs_all))
 
     thid = Threads.threadid()
-    kel, evret, ev, probprofit = calckel(ctx.kelly_bufs[thid], ctx.curp, ctx.prob, commit, segs)
-    (isfinite(kel) && kel > cfg.kel_min) || return
-    probprofit >= cfg.probprofit_min || return
-    # evrate = calcevrate(evret, ctx.xpirts, ctx.date)
+    kel, evret, ev, probprofit = calckel(ctx.kelly_bufs[thid], ctx.prob, commit_all, segs_all)
+    kel > pos.kel || return
+    evret > pos.evret || return
+    # probprofit > pos.probprofit || return
     timult = DateUtil.timult(ctx.date, ctx.xpirts)
+    evret > ctx.pos.evret || return
     evrate = evret * timult
-    evrate > cfg.evrate_min || return
 
-    try
-        pos = ctx.pos
-        pos_count = 0
-        forpos = nothing
-        if !isnothing(pos)
-            pos_count = pos.count
-            all_lqs = sort!(vcat(pos.lqs, lqs...); by=SH.getStrike)
-            all_segs = LL.toSegments(all_lqs, P.(SH.getBid.(all_lqs)))
-            marg = Pricing.calcMarg(ctx.curp, all_segs)
-            all_risk = ctx.riskrat * max(marg)
-            if all_risk > cfg.all_risk_max
-                # global kriskhigh = (;marg, all_risk, lqs, pos_lqs=pos.lqs, all_lqs, all_segs)
-                # @show all_risk
-                return
-            end
-            all_kel, all_evret, all_ev, all_probprofit = calckel(ctx.kelly_bufs[thid], ctx.curp, ctx.prob, all_risk, all_segs)
-            if !isnan(all_evret) && (all_evret <= pos.evret) # || all_probprofit <= pos.probprofit)
-                return
-            end
-            all_evrate = calcevrate(evret, ctx.xpirts, ctx.date)
-            forpos = kv(;evrate=all_evrate, kel=all_kel, evret=all_evret, ev=all_ev, probprofit=all_probprofit, risk=all_risk)
-        end
+    cnt = 1 + (ctx.pos.count + numtradestoxpir(ctx.ts, ctx.xpirts))
+    balrat = 1 / (cnt + 4)
 
-        # probprofit = Between.calcprobprofit(ctx.prob, segs)
-        # cnt = 1 + (pos_count + numtradestoxpir(ctx.ts, ctx.xpirts))
-        # balrat = 1 / cnt
-        balrat = 1 / (19 * 3) # 19 / day * 3 days
-        # TODO: filter out ones that have a lot of outcome too close to zero
-        annual = calc_iter_ret(ctx.curp, ctx.prob, segs, commit, timult)
-        if annual < config().annual_min
-            # println("WARN: annual return $(annual) too low, evrate:$(evrate)")
-            return
-        end
-        push!(ress[thid], Result(kv(;forpos, evrate, balrat, kel, ev, evret, probprofit, commit, annual, ctx.xpirts, lqs=nc(lqs), netos=netos=nc(netos), neto=sum(netos))))
-    catch e
-        global kcheck = kv(;ctx, lqs=nc(lqs), segs, netos)
-        rethrow(e)
-    end
+    # annual = calc_iter_ret(ctx.curp, ctx.prob, segs, commit, timult)
+    annual = 0.0 # TODO
+    forpos = nothing # TODO
+    push!(ress[thid], Result(kv(;forpos, evrate, balrat, kel, ev, evret, probprofit, commit=commit_all, annual, ctx.xpirts, lqs=nc(lqs), netos=netos=nc(netos), neto=sum(netos))))
     return
 end
+
+function check_simple!(ress, ctx, lqs)::Nothing
+    cfg = config()
+
+    netos = P.(price_open(lqs))
+    segs = LL.toSegments(lqs, netos)
+
+    maxprofit = LL.maxprofit(segs, ctx.curp)
+    # maxprofit >= config().min_max_profit || return
+    max_bid_improv = maximum(netos .- SH.getBid.(lqs))
+    @assert max_bid_improv >= 0
+    maxprofit >= (config().min_max_profit + max_bid_improv) || ( track_skip(:maxprofit, maxprofit); return )
+
+    commit = max(Pricing.calcMarg(ctx.curp, segs))
+    cfg.commit_min < commit < cfg.commit_max || ( track_skip(:commit, commit); return )
+
+    thid = Threads.threadid()
+    kel, evret, ev, probprofit = calckel(ctx.kelly_bufs[thid], ctx.prob, commit, segs)
+    (isfinite(kel) && kel > 0.01) || ( track_skip(:kel, kel); return )
+    probprofit >= cfg.probprofit_min || ( track_skip(:probprofit, probprofit); return )
+    timult = DateUtil.timult(ctx.date, ctx.xpirts)
+    evrate = evret * timult
+    # evrate > 0.1 || return
+
+    cnt = 1 + (ctx.pos.count + numtradestoxpir(ctx.ts, ctx.xpirts))
+    balrat = 1 / (cnt + 4)
+
+    annual = calc_iter_ret(ctx.curp, ctx.prob, segs, commit, timult)
+    forpos = nothing
+    push!(ress[thid], Result(kv(;forpos, evrate, balrat, kel, ev, evret, probprofit, commit=commit, annual, ctx.xpirts, lqs=nc(lqs), netos=nc(netos), neto=sum(netos))))
+    return
+end
+
+import ThreadUtil
+const SKIP = Dict{Symbol, Int}()
+const skip_lock = ReentrantLock()
+function track_skip(key, val)
+    ThreadUtil.runSync(skip_lock) do
+        val = get!(SKIP, key, 0)
+        SKIP[key] = val + 1
+    end
+end
+
+is_loss(segs, x) = LL.atsegs(segs, x) < 0
+
+kmax_bid_improv_count = 0
 
 import Lines
 function calc_iter_ret(curp, prob, lqs; balrat = 0.5)
     xpir = SH.getExpir(lqs)
-    netos = P.(SH.getBid.(lqs))
+    netos = P.(price_open(lqs))
     segs = LL.toSegments(lqs, netos)
     timult = DateUtil.timult(prob.ts, xpir)
     commit = max(Pricing.calcMarg(prob.center, segs))
     return calc_iter_ret(curp, prob, segs, commit, timult; balrat)
 end
 function calc_iter_ret(curp, prob, segs, commit, timult; balrat = 0.5)
-    len = Bins.VNUM # length(prob.xs.xs)
+    len = length(prob.xs.xs) # Bins.VNUM
     s = 1.0
     for i in 1:len
-        x = Bins.x(i) # prob.xs.xs[i]
+        x = prob.xs.xs[i] # Bins.x(i)
         y = Lines.atsegs(segs, x * curp)
         o = y / commit
-        p = prob[i] # prob.prob_mass[i]
+        p = prob.prob_mass[i] # prob[i]
         @assert -commit <= y @str commit x y o p balrat
         # p *= o >= 0.0 ? 1.0 - probadjust : 1.0 + probadjust
         # o > 0 && (probprofit += p)
@@ -532,76 +689,76 @@ function calc_iter_ret(curp, prob, segs, commit, timult; balrat = 0.5)
     return s
 end
 
-function checkold!(ress, ctx, lms)::Nothing
-    # neto = CZ
-    # try
-    #     neto = Pricing.price(Action.open, lms)
-    # catch e
-    #     global kpricingerr = (;ctx, lms)
-    #     ThreadUtil.show_exc(e, "error pricing")
-    #     rethrow(e)
-    # end
-    # if neto < 0.07
-    #     return true
-    # end
-    # segs, netos = Between.toSegmentsN(lms)
-    netos = P.(SH.getBid.(lms))
-    segs = LL.toSegments(lms, netos)
-    try
-        LL.canprofit(segs) || return
-        risk = ctx.riskrat * max(Pricing.calcMarg(ctx.prob.center, segs))
-        0.14 < risk < 6.0 || return
-        thid = Threads.threadid()
-        kel, evret, ev, probprofit = calckel(ctx.kelly_buffer[thid], ctx.prob, risk, segs)
-        isfinite(kel) || return
-        probprofit >= 0.85 || return
+# function checkold!(ress, ctx, lms)::Nothing
+#     # neto = CZ
+#     # try
+#     #     neto = Pricing.price(Action.open, lms)
+#     # catch e
+#     #     global kpricingerr = (;ctx, lms)
+#     #     ThreadUtil.show_exc(e, "error pricing")
+#     #     rethrow(e)
+#     # end
+#     # if neto < 0.07
+#     #     return true
+#     # end
+#     # segs, netos = Between.toSegmentsN(lms)
+#     netos = P.(price_open(lms))
+#     segs = LL.toSegments(lms, netos)
+#     try
+#         LL.canprofit(segs) || return
+#         risk = ctx.riskrat * max(Pricing.calcMarg(ctx.prob.center, segs))
+#         0.14 < risk < 6.0 || return
+#         thid = Threads.threadid()
+#         kel, evret, ev, probprofit = calckel(ctx.kelly_buffer[thid], ctx.prob, risk, segs)
+#         isfinite(kel) || return
+#         probprofit >= 0.85 || return
 
-        pos = ctx.pos
-        pos_count = 0
-        all = nothing
-        if !isnothing(pos)
-            pos_count = pos.count
-            # all_lms = sort!(vcat(collect(lms), pos.lms); by=SH.getStrike)
-            # all_segs = LL.toSegments(all_lms, P.(SH.getBid.(all_lms)))
-            # all_risk = ctx.riskrat * max(Pricing.calcMarg(ctx.prob.center, all_segs))
-            # all_kel, all_evret, all_ev = calckel(ctx.kelly_buffer[thid], ctx.prob, all_risk, all_segs)
+#         pos = ctx.pos
+#         pos_count = 0
+#         all = nothing
+#         if !isnothing(pos)
+#             pos_count = pos.count
+#             # all_lms = sort!(vcat(collect(lms), pos.lms); by=SH.getStrike)
+#             # all_segs = LL.toSegments(all_lms, P.(price_open(all_lms)))
+#             # all_risk = ctx.riskrat * max(Pricing.calcMarg(ctx.prob.center, all_segs))
+#             # all_kel, all_evret, all_ev = calckel(ctx.kelly_buffer[thid], ctx.prob, all_risk, all_segs)
 
-            # all_lms = sort(vcat(SVector(lms), pos.lms); by=SH.getStrike)
-            all_lms = sort!(vcat(pos.lms, lms...); by=SH.getStrike)
-            all_segs = LL.toSegments(all_lms, P.(SH.getBid.(all_lms)))
-            all_risk = ctx.riskrat * max(Pricing.calcMarg(ctx.prob.center, all_segs))
-            all_kel, all_evret, all_ev, all_probprofit = calckel(ctx.kelly_buffer[thid], ctx.prob, all_risk, all_segs)
-            if !isnan(all_evret) && (all_evret <= pos.evret) # || all_probprofit <= pos.probprofit)
-                return
-            end
+#             # all_lms = sort(vcat(SVector(lms), pos.lms); by=SH.getStrike)
+#             all_lms = sort!(vcat(pos.lms, lms...); by=SH.getStrike)
+#             all_segs = LL.toSegments(all_lms, P.(price_open(all_lms)))
+#             all_risk = ctx.riskrat * max(Pricing.calcMarg(ctx.prob.center, all_segs))
+#             all_kel, all_evret, all_ev, all_probprofit = calckel(ctx.kelly_buffer[thid], ctx.prob, all_risk, all_segs)
+#             if !isnan(all_evret) && (all_evret <= pos.evret) # || all_probprofit <= pos.probprofit)
+#                 return
+#             end
 
-            all_evrate = calcevrate(evret, ctx.xpirts, ctx.date)
-            # ThreadUtil.sync_output(@str (pos.kel, pos.evret) (kel, evret) (all_kel, all_evret))
-            all = kv(;evrate=all_evrate, kel=all_kel, evret=all_evret, ev=all_ev, probprofit=all_probprofit)
-            # if length(lms) == 1 && (all_kel > pos.kel || all_evret > pos.evret)
-            #     ThreadUtil.sync_output(@str all_kel pos.kel all_evret pos.evret)
-            #     error("Found improved by one leg")
-            # end
-        end
+#             all_evrate = calcevrate(evret, ctx.xpirts, ctx.date)
+#             # ThreadUtil.sync_output(@str (pos.kel, pos.evret) (kel, evret) (all_kel, all_evret))
+#             all = kv(;evrate=all_evrate, kel=all_kel, evret=all_evret, ev=all_ev, probprofit=all_probprofit)
+#             # if length(lms) == 1 && (all_kel > pos.kel || all_evret > pos.evret)
+#             #     ThreadUtil.sync_output(@str all_kel pos.kel all_evret pos.evret)
+#             #     error("Found improved by one leg")
+#             # end
+#         end
 
-        # if isfinite(kel) # && kel >= 0.48
-            evrate = calcevrate(evret, ctx.xpirts, ctx.date)
-            # probprofit = Between.calcprobprofit(ctx.prob, segs)
-            cnt = 1 + (pos_count + numtradestoxpir(ctx.ts, ctx.xpirts))
-            # if cnt < 1
-            #     global kctx = ctx
-            #     error("invalid count")
-            # end
-            balrat = 1 / cnt
-            # TODO: filter out ones that have a lot of outcome too close to zero
-            push!(ress[thid], Result(kv(;all, evrate, balrat, kel, ev, evret, probprofit, risk, ctx.xpirts, lms=nc(lms), netos=netos=nc(netos), neto=sum(netos))))
-        # end
-    catch e
-        # global kcheck = kv(;ctx, lms=nc(lms), segs, netos)
-        rethrow(e)
-    end
-    return
-end
+#         # if isfinite(kel) # && kel >= 0.48
+#             evrate = calcevrate(evret, ctx.xpirts, ctx.date)
+#             # probprofit = Between.calcprobprofit(ctx.prob, segs)
+#             cnt = 1 + (pos_count + numtradestoxpir(ctx.ts, ctx.xpirts))
+#             # if cnt < 1
+#             #     global kctx = ctx
+#             #     error("invalid count")
+#             # end
+#             balrat = 1 / cnt
+#             # TODO: filter out ones that have a lot of outcome too close to zero
+#             push!(ress[thid], Result(kv(;all, evrate, balrat, kel, ev, evret, probprofit, risk, ctx.xpirts, lms=nc(lms), netos=netos=nc(netos), neto=sum(netos))))
+#         # end
+#     catch e
+#         # global kcheck = kv(;ctx, lms=nc(lms), segs, netos)
+#         rethrow(e)
+#     end
+#     return
+# end
 #endregion LookForBestKelly
 
 #region Kelly
@@ -617,10 +774,10 @@ import Kelly, Pricing, LinesLeg as LL
 # calckel(lms) = calckel(ProbLup[SH.getExpir(lms)], lms)
 # calckel(prob, lms) = calckel(prob, calcriskrat(today(), SH.getExpir(lms)), lms)
 
-function calckel(buf, curp, prob, risk::Real, segs)
+function calckel(buf, prob, risk::Real, segs)
     probadjust = config().kelprobadjust
     try
-        return Kelly.calckel(buf, curp, prob, risk, segs, probadjust)
+        return Kelly.calckel(buf, prob, risk, segs, probadjust)
     catch e
         # global kcalckel = kv(;prob, risk, segs=nc(segs), probadjust)
         rethrow(e)
@@ -631,9 +788,9 @@ function numtradestoxpir(ts::DateTime, xpir::DateLike)
     xpir = Date(xpir)
     date = Date(ts)
     @assert xpir > date
-    num_day1 = floor(Int, (dat.market_close(ts) - ts) / Minute(15))
+    num_day1 = floor(Int, (dat.market_close(ts) - ts) / PERIOD)
     bdays = DateUtil.bdays(date, xpir) - 1 # exclude the xpir day itself
-    return num_day1 + bdays * 26 # each 15 minutes 6:30 - 1:00
+    return num_day1 + bdays * TIMES_PER_DAY
 end
 #endregion Kelly
 
@@ -685,7 +842,7 @@ end
 import DrawUtil
 DrawUtil.drawprob(prob::KdeProb2; kws...) = DrawUtil.drawdist!(DrawUtil.getAxis(;newFig=true), prob.center, prob.xs.xs, probdispvals(prob); kws...)
 DrawUtil.drawprob!(prob::KdeProb2; kws...) = DrawUtil.drawdist!(DrawUtil.getAxis(;newFig=false), prob.center, prob.xs.xs, probdispvals(prob); kws...)
-probdispvals(prob::KdeProb2) = ( k = 100 * 0.01 / xswidth(prob) ; prob.prob_mass .* k )
+probdispvals(prob::KdeProb2) = ( k = 0.01 / xswidth(prob) ; prob.prob_mass .* k )
 xswidth(prob::KdeProb2) = prob.xs.xs[2] - prob.xs.xs[1]
 
 # function data_from_tsx(tsx, len)
@@ -825,4 +982,148 @@ nc(x) = collect(x)
 nc(x::LL.Segments) = return x # ( global kseg = x ; return x )
 @specialize
 
+# price_spread(lq) = getAsk(lq) - getBid(lq)
+function price_open(lqs)
+    bids = SH.getBid.(lqs)
+    asks = SH.getAsk.(lqs)
+    if maximum(asks .- bids) > config().max_bidask_spread
+        return bids # return worst case if bidask spread is too big to avoid it
+    end
+    mid = round.((bids .+ asks) ./ 2, RoundUp; digits=2)
+    return min.(mid, asks .- 0.01)
+end
+function pricer(a::Action.T, lqs)
+    return a == Action.open ? sum(price_open(lqs)) : error("bad")
+end
+
+#region Update
+const gmax_bdays_out = Ref{Int}(0)
+calc_balrat() = 1 / (gmax_bdays_out[] * TIMES_PER_DAY)
+
+function check!(ress, ctx, lqs)::Nothing
+    cfg = config()
+    netos = P.(price_open(lqs))
+    neto = sum(netos)
+    if neto < cfg.min_neto
+        return
+    end
+    segs = LL.toSegments(lqs, netos)
+    # LL.atsegs(segs, 0.8 * ctx.curp) >= 0 || return
+    # LL.canprofit(segs) || return
+    maxprofit = LL.maxprofit(segs, ctx.curp)
+    # maxprofit >= config().min_max_profit || return
+    max_bid_improv = maximum(netos .- SH.getBid.(lqs))
+    # max_bid_improv >= 0 || ( global kmax_bid_improv_count += 1 ; @assert max_bid_improv >= 0 )
+    max_bid_improv >= 0 || ( track_skip(:max_bid_improv, ">=0") ; return )
+    mmp = (config().min_max_profit + max_bid_improv )
+    maxprofit >= mmp || return
+    commit = max(Pricing.calcMarg(ctx.curp, segs))
+    cfg.commit_min < commit < cfg.commit_max || return
+    # commit *= ctx.riskrat
+
+    bands = IncTA.value(BOLLINGER2[])
+    !ismissing(bands) || ( track_skip(:bands_missing, "missing"); return )
+    !is_loss(segs, bands.lower) || ( track_skip(:bands_lower, "lower"); return )
+    # !is_loss(segs, bands.central) || return
+    !is_loss(segs, bands.upper) || ( track_skip(:bands_upper, "upper"); return )
+
+    thid = Threads.threadid()
+    timult = DateUtil.timult(ctx.date, ctx.xpirts)
+    kel, evret, ev, probprofit = calckel(ctx.kelly_bufs[thid], ctx.prob, commit, segs)
+    evrate = evret * timult
+
+    try
+        # pos = ctx.pos
+        # pos_count = 0
+        forpos = nothing
+        # if ctx.use_pos && pos.count > 0
+        #     pos_count = pos.count
+        #     all_lqs = sort!(vcat(pos.lqs, lqs...); by=SH.getStrike)
+        #     all_segs = LL.toSegments(all_lqs, P.(price_open(all_lqs)))
+        #     marg = Pricing.calcMarg(ctx.curp, all_segs)
+        #     all_risk = ctx.riskrat * max(marg)
+        #     if all_risk > cfg.all_risk_max
+        #         # global kriskhigh = (;marg, all_risk, lqs, pos_lqs=pos.lqs, all_lqs, all_segs)
+        #         # @show all_risk
+        #         return
+        #     end
+        #     all_kel, all_evret, all_ev, all_probprofit = calckel(ctx.kelly_bufs[thid], ctx.prob, all_risk, all_segs)
+        #     if !isnan(all_evret) && (all_evret <= pos.evret) # || all_probprofit <= pos.probprofit)
+        #         return
+        #     end
+        #     all_evrate = calcevrate(all_evret, ctx.xpirts, ctx.date)
+        #     forpos = kv(;evrate=all_evrate, kel=all_kel, evret=all_evret, ev=all_ev, probprofit=all_probprofit, risk=all_risk)
+        # else
+            (isfinite(kel) && kel >= cfg.kel_min) || return
+            kelt = kel * timult
+            kelt >= cfg.kelt_min || return
+            (kelt * probprofit) >= cfg.kelt_prob_min || return
+            probprofit >= cfg.probprofit_min || return
+            evrate > cfg.evrate_min || return
+        # end
+
+        # probprofit = Between.calcprobprofit(ctx.prob, segs)
+        # cnt = 1 + (pos_count + numtradestoxpir(ctx.ts, ctx.xpirts))
+        # balrat = 1 / (cnt + 4)
+        balrat = calc_balrat()
+        # TODO: filter out ones that have a lot of outcome too close to zero
+        annual = calc_iter_ret(ctx.curp, ctx.prob, segs, commit, timult)
+        if annual < config().annual_min
+            # println("WARN: annual return $(annual) too low, evrate:$(evrate)")
+            return
+        end
+        track_skip(:not_skip, "")
+        push!(ress[thid], Result(kv(;forpos, evrate, balrat, kel, kelt, ev, evret, probprofit, commit, annual, ctx.xpirts, lqs=nc(lqs), netos=netos=nc(netos), neto=sum(netos))))
+    catch e
+        global kcheck = kv(;ctx, lqs=nc(lqs), segs, netos)
+        rethrow(e)
+    end
+    return
+end
+
+function init(;max_bdays_out)
+    gmax_bdays_out[] = max_bdays_out
+    empty!(SKIP)
+    period = 16 * TIMES_PER_DAY
+    # Keltner[] = KeltnerChannels{Float32}(; ma_period=period, atr_period=period, atr_mult_up=1.25, atr_mult_down=1.5, ma=EMA)
+    BOLLINGER2[] = IncTA.BB{Float64}(; ma=IncTA.EMA, period=period, std_dev_mult=1.0)
+    # BB{T}(; period = BB_PERIOD, std_dev_mult = BB_STD_DEV_MULT, ma = SMA, input_filter = always_true, input_modifier = identity, input_modifier_return_type = T)
+end
+
+function update(ts, curp, vix)
+    IncTA.fit!(BOLLINGER2[], Float64(curp))
+    return !ismissing(IncTA.value(BOLLINGER2[]))
+end
+
+const C_NEG_PENNY = C(-0.01)
+const C_12 = C(0.12)
+const C_TEN = C(0.1)
+const C_8 = C(0.08)
+const C_FIVE = C(0.05)
+const ONE_HALF_RAT = 1.5 / 400
+const ONE_RAT = 1 / 400
+const HALF_RAT = 0.5 / 400
+const RAT4 = 0.4 / 400
+const RAT2 = 0.2 / 400
+config() = (;
+    adjustprices = CZ, # C_NEG_PENNY,
+    kelprobadjust = 0.0,
+    commit_min = 0.05,
+    commit_max = 8.51,
+    probprofit_min = 0.01,
+    kel_min = 0.01,
+    kelt_min = 0.01,
+    kelt_prob_min = 100.0,
+    evrate_min = 0.01,
+    all_risk_max = 1000000.0,
+    max_spread = 4.1,
+    max_gap = 4.1,
+    maxcondormiddle = 4.1,
+    annual_min = 0.01,
+    min_move_rat = RAT2,
+    max_bidask_spread = C_12,
+    min_max_profit = C_8,
+    min_neto = -Inf, # C_FIVE,
+)
+#endregion Update
 end

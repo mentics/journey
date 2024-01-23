@@ -101,25 +101,30 @@ end
 function query_prices(date_start=EARLIEST_SPY_DATE, date_end=Date(DateUtil.market_now() - Day(1)); sym="SPY", age=age_daily(), interval=Minute(30))
     ivl = Dates.value(Millisecond(interval))
     return cache!(DataFrame, Symbol("thetadata-prices-$(sym)-$(str(date_start))-$(str(date_end))-$(ivl)"), age) do
-        url = "http://localhost:25510/hist/stock/trade?root=$(sym)&start_date=$(str(date_start))&end_date=$(str(date_end))&ivl=$(ivl)"
-        # TODO: is it safe to use last trade instead of quote?
-        # TODO: check that all expected ts are covered by comparing with DateUtil.all_weekday_ts
-        println("Querying prices: $(url)")
-        resp = HTTP.get(url, HEADERS_GET[]; retry=false)
-        ticks = parseJson(String(resp.body), Dict)["response"]
-        tss = DateTime[]
-        prices = Float32[]
-        # res = Dict{DateTime,Float32}()
-        for tick in ticks
-            @assert tick[1] % (1000 * 60 * 30) == 0 "$(tick[1]) % (1000 * 60 * 30) == 0"
-            ts = DateUtil.fromMarketTZ(to_date(tick[6]), to_time(tick[1]))
-            price = tick[5]
-            # res[ts] = price
-            push!(tss, ts)
-            push!(prices, price)
-        end
-        return DataFrame([tss, prices], [:ts, :price])
+        load_prices(date_start, date_end, sym, ivl)
     end
+end
+
+function load_prices(date_start, date_end, sym, ivl)
+    url = "http://localhost:25510/hist/stock/trade?root=$(sym)&start_date=$(str(date_start))&end_date=$(str(date_end))&ivl=$(ivl)"
+    # TODO: is it safe to use last trade instead of quote?
+    # TODO: check that all expected ts are covered by comparing with DateUtil.all_weekday_ts
+    println("Querying prices: $(url)")
+    # resp = HTTP.get(url, HEADERS_GET[]; retry=false)
+    resp = HTTP.get(url; retry=false)
+    ticks = parseJson(String(resp.body), Dict)["response"]
+    tss = DateTime[]
+    prices = Float32[]
+    # res = Dict{DateTime,Float32}()
+    for tick in ticks
+        @assert tick[1] % (1000 * 60 * 30) == 0 "$(tick[1]) % (1000 * 60 * 30) == 0"
+        ts = DateUtil.fromMarketTZ(to_date(tick[6]), to_time(tick[1]))
+        price = tick[5]
+        # res[ts] = price
+        push!(tss, ts)
+        push!(prices, price)
+    end
+    return DataFrame([tss, prices], [:ts, :price])
 end
 #endregion Prices
 

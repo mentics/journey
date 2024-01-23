@@ -232,6 +232,7 @@ const PROB_CACHE3 = LRUCache.LRU{Tuple{DateTime,DateTime},Union{Missing,KdeProb2
 
 # TODO: get oqs inside the get! to avoid getting it when hit cache
 function makeprob(kde::SimpleKde, curp, ts::DateTime, xpirts::DateTime, oqs; binwidth=1e-3, k=(0.001, 0.01, 0.01))
+    global kargs = (;kde, curp, ts, xpirts, oqs)
     return get!(PROB_CACHE3, (ts, xpirts)) do
         @assert !isempty(oqs)
         # global kmakeprobargs = (kde, curp, ts, xpirts, oqs)

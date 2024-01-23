@@ -13,7 +13,7 @@ function tradierQuote(sym::AStr=getDefaultSymbol())::TradierResp
 end
 
 tradierQuotes(syms::AStr...)::TradierResp = tradierQuotes(syms)
-function tradierQuotes(syms::Coll{<:AStr})::TradierResp
+function tradierQuotes(syms::CollT{<:AStr})::TradierResp
     payload = "symbols=$(join(syms, ','))&greeks=false"
     raw = tradierPost("/markets/quotes", payload, Call(nameof(var"#self#")); retries=3)
     # haskey(raw["quotes"], "quote") || error(raw)

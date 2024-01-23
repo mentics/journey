@@ -1,7 +1,7 @@
 module LinesLeg
 using SH, BaseTypes, SmallTypes
 using LineTypes
-import Lines:Lines, Segments, SegSide, Left, Right, at, combine, toLineTuples, findZeros, segmentsWithZeros
+import Lines:Lines, Segments, SegSide, Left, Right, at, atsegs, combine, toLineTuples, findZeros, segmentsWithZeros
 import LegTypes:LegLike
 
 export Segments, Section, toLineTuples
@@ -77,6 +77,11 @@ end
 
 (slopeprofit(s::Segments)) = s.slopes[1] < 0 || s.slopes[end] > 0
 canprofit(s::Segments) = slopeprofit(s) || !isnothing(findfirst(p -> p.y > 0, s.points))
+function maxprofit(s::Segments, curp)
+    # TODO: Use particular cdf points (eg. 20%, 50%, 80%) on the prob distribution?
+    p = Float64(curp)
+    return max(atsegs(s, 0.9 * p), atsegs(s, p), atsegs(s, 1.1 * p))
+end
 
 # canprofit(s::Segments{1}) = slopeprofit(s) || s.points[1].y > 0
 # canprofit(s::Segments{2}) = slopeprofit(s) || s.points[1].y > 0 || s.points[2].y > 0

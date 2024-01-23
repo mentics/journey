@@ -93,10 +93,11 @@ end
 
 #region ToLegQuote
 import Chains
-function requote(action::Action.T, legs; lup=Chains.chainLookup)
+function requote(action::Action.T, legs; lup=Chains.chainLookup, pricer=Pricing.price)
+    println("Using pricer: $(pricer)")
     isop = action == Action.open
     lmsnew = isop ? tos(LegQuoteOpen, legs, lup) : tos(LegQuoteClose, legs, lup)
-    println("Requote price: $(isop ? string(Pricing.price(action, legs)) : "closing") -> $(Pricing.price(action, lmsnew))")
+    println("Requote price: $(isop ? string(pricer(action, legs)) : "closing") -> $(pricer(action, lmsnew))")
     return lmsnew
 end
 SH.to(::Type{LegQuoteOpen}, oq, side) = LegQuoteOpen(oq, side)

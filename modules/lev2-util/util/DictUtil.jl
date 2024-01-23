@@ -117,6 +117,26 @@ dictFromKeys(f, keys) = Dict(x => f(x) for x in keys)
 #     return d
 # end
 
+function push_to_key!(d::Dict, k, a::Any)
+    v = get!(d, k) do
+        Vector{Any}()
+    end
+    push!(v, a)
+    return nothing
+end
+
+function to_dict_of_v(f::Function, v::AbstractArray)
+    # val = v[1]
+    # key = f(v[1])
+    # d = Dict{typeof(key),Any}()
+    # return d
+    d = Dict()
+    for x in v
+        push_to_key!(d, f(x), x)
+    end
+    return d
+end
+
 setindexes!(d::Dict, pairs) = foreach(pairs) do pair
     d[first(pair)] = last(pair)
 end

@@ -6,6 +6,7 @@ using TradierOrder, TradierAccount
 import Pricing
 using Positions # TODO: just being used to grab prices for TradeMeta, and verify positions before close
 import StoreTrade:newTrade,getTradeOpen
+using OutputUtil
 
 export price, submitPreview, submitLive, closeTrade, closeLeg
 
@@ -15,8 +16,8 @@ import Chains, Between, Pricing
 function open_trade(mkt, legsin, mineto::PT; pre=false, minextra::PT=P(0.02), kws...)
     TradierAccount.ensure_listening()
 
-    legs = update_legs(Action.open, legsin, mkt.curp)
-    extra = validate_legs(Action.open, legs, mineto, minextra)
+    legs = update_legs(Action.open, legsin, mkt.curp; kws...)
+    extra = validate_legs(Action.open, legs, mineto, minextra; kws...)
     !isnothing(extra) || return
 
     tid = pre ? 0 : newTrade(P(Pricing.price(Action.open, legs)), legs, getBid(mkt.curQuot), getAsk(mkt.curQuot))
@@ -50,9 +51,9 @@ function close_trade(tid, minetc::PT; pre=false, minextra::PT=P(0.02), curp=mark
 end
 
 function pos_list_cont(minet=kminet) # inds, minet=kminet)
-    legs = krem_legs[inds]
+    legs = krem_legs # [inds]
     validate_legs(kaction, legs, minet, kminextra)
-    pos_list_do(kaction, ktid, legs, minet, kextra)
+    fills = pos_list_do(kaction, ktid, legs, minet, kextra)
     rem = length(legs) - length(fills)
     global krem_legs = rem == 0 ? nothing : legs[(end - (rem - 1)):end]
 end
@@ -96,25 +97,25 @@ end
 #endregion
 
 #region LocalPosDo
-function validate_legs(action::Action.T, legs, minet, minextra, minextraleg=CZ)
+function validate_legs(action::Action.T, legs, minet, minextra, minextraleg=CZ; pricer=Pricing.price)
     global kminextra = minextra
     bid = P(sum(getBid.(legs)))
     ask = P(sum(getAsk.(legs)))
 
     rat = (minet - bid) / (ask - bid)
-    if rat > 0.4
+    if rat > 1.0
         println("TODO SHOULD HAVE Aborted: neto:$(minet) has rat:$(rd3(rat)) too high with bid:$(bid) and ask:$(ask)")
         # return
     end
     # println("Target neto:$(mineto) is $(rd3(100 * rat))% between bid:$(bid) and ask:$(ask)")
 
-    dist = P(Pricing.price(action, legs) - minet)
+    dist = P(pricer(action, legs) - minet)
     if dist <= 0.0
-        println("TODO SHOULD HAVEAborted: no leeway in meeting target neto, dist:$(dist)")
+        println("TODO SHOULD HAVE Aborted: no leeway in meeting target neto, dist:$(dist)")
         # return
     end
     if abs(dist) > 0.2
-        println("TODO SHOULD HAVEAborted: too far away from current price, check price, dist:$(dist)")
+        println("TODO SHOULD HAVE Aborted: too far away from current price, check price, dist:$(dist)")
         # return
     end
 
@@ -133,7 +134,7 @@ function validate_legs(action::Action.T, legs, minet, minextra, minextraleg=CZ)
     return extra
 end
 
-function pos_do(action::Action.T, tid, leg, price_tgt::PT, price_min::PT; pre=false, timeout=2.0)
+function pos_do(action::Action.T, tid, leg, price_tgt::PT, price_min::PT; pre=false, timeout=2.0, kws...)
     println("## $(action) $(getSide(leg)) $(getOption(leg)) between $(price_tgt) and $(price_min)")
     price = price_tgt
     oid, resp = pos_new_order(action, tid, leg, price, pre, timeout)
@@ -259,10 +260,10 @@ end
 #endregion
 
 #region Util
-function update_legs(action::Action.T, legs, curp)
+function update_legs(action::Action.T, legs, curp; pricer=Pricing.price)
     xpir = getExpir(legs)
     oqs = Chains.loadChain("SPY", xpir).chain
-    lms1 = Between.requote(action, legs; lup=o -> Chains.chainLookup(oqs, o))
+    lms1 = Between.requote(action, legs; lup=o -> Chains.chainLookup(oqs, o), pricer)
     return sortoto(action, curp, lms1)
 end
 
@@ -270,7 +271,7 @@ const NEED_SIDE_OPEN = [isLong, isShort]
 const NEED_SIDE_CLOSE = [isShort, isLong]
 
 import StatsBase, CollUtil
-function sortoto(action::Action.T, curp, legsin::Coll{L}) where L
+function sortoto(action::Action.T, curp, legsin::CollT{L}) where L
     style_counts = StatsBase.countmap(map(getStyle, legsin))
     if length(style_counts) > 1
         # It has both styles so process one of them first
@@ -283,7 +284,7 @@ function sortoto(action::Action.T, curp, legsin::Coll{L}) where L
     end
 end
 
-function _sortoto(action::Action.T, curp, legsin::Coll{L}) where L
+function _sortoto(action::Action.T, curp, legsin::CollT{L}) where L
     fside = action == Action.open ? NEED_SIDE_OPEN : NEED_SIDE_CLOSE
     legs = sort!(collect(legsin); by=l -> -getQuantity(l) + abs(curp - getStrike(l)) / 1024)
     res = Vector{L}()

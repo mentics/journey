@@ -2,7 +2,7 @@
 
 julia_version = "1.9.4"
 manifest_format = "2.0"
-project_hash = "faa2d90aa6a0a93c34e6263ed895fd5b98170517"
+project_hash = "d34c377310c3cf361609146568248b5b85d7d992"
 
 [[deps.ATK_jll]]
 deps = ["Artifacts", "Glib_jll", "JLLWrappers", "Libdl"]
@@ -1045,6 +1045,12 @@ git-tree-sha1 = "27da3d215f3ac8bd5dc2b0bb144b4a4367652462"
 uuid = "f7bf1975-0170-51b9-8c5f-a992d46b9575"
 version = "0.6.11"
 
+[[deps.IncTA]]
+deps = ["Dates", "OnlineStatsBase", "Tables"]
+path = "C:\\Users\\joel\\.julia\\dev\\IncTA"
+uuid = "dc2d07fb-478f-4566-8417-81bb3e5a7af1"
+version = "0.1.0-DEV"
+
 [[deps.IndirectArrays]]
 git-tree-sha1 = "012e604e1c7458645cb8b436f8fba789a51b257f"
 uuid = "9b13fd28-a010-5f03-acff-a1bbcff69959"
@@ -1737,6 +1743,12 @@ deps = ["Adapt", "ChainRulesCore", "Compat", "GPUArraysCore", "LinearAlgebra", "
 git-tree-sha1 = "5e4029759e8699ec12ebdf8721e51a659443403c"
 uuid = "0b1bfda6-eb8a-41d2-88d8-f5af5cad476f"
 version = "0.2.4"
+
+[[deps.OnlineStatsBase]]
+deps = ["AbstractTrees", "Dates", "LinearAlgebra", "OrderedCollections", "Statistics", "StatsBase"]
+git-tree-sha1 = "790f151a4650b77850ec2313eae034e99823dafe"
+uuid = "925886fa-5bf2-5e8e-b522-a9147a512338"
+version = "1.6.1"
 
 [[deps.OpenBLAS_jll]]
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "Libdl"]

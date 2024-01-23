@@ -56,6 +56,10 @@ end
 function get_vix(;age=DateUtil.age_daily())
     return Paths.load_data(file_vix(), DataFrame; age)
 end
+function vix_lookup(;sym="SPY", age=DateUtil.age_daily())
+    vix = get_vix(;age)
+    return Dict(vix.date .=> vix.open)
+end
 
 function get_prices_at_xpirts(; sym="SPY", age=DateUtil.age_daily())
     return Paths.load_data(file_prices_at_xpirs(;sym), DataFrame; age)

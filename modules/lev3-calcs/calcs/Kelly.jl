@@ -1,8 +1,8 @@
-module Kelly2023
+module Kelly
 using Roots, LoopVectorization
 using BaseTypes
+import ProbMultiKde as pmk
 import Lines:atsegs, Segments
-using ProbMeta
 
 import BenchmarkTools
 struct ParamsFunction{F,P}
@@ -20,12 +20,12 @@ function testpf()
 end
 pftest(x, p) = x + p
 
-struct Buf5
+struct Buf4
     po::Vector{Float64}
     outcome::Vector{Float64}
     p::Vector{Float64}
-    function Buf5()
-        len_max = 803
+    function Buf4()
+        len_max = 500
         po = Vector{Float64}(undef, len_max)
         o = Vector{Float64}(undef, len_max)
         p = Vector{Float64}(undef, len_max)
@@ -63,7 +63,7 @@ end
 
 # triv(x) = 0.5 - x
 
-make_buf() = Buf5()
+make_buf() = Buf4()
 
 function kel3(x, (po, o, len))
     # return 0.5 - x + 1/10000
@@ -102,7 +102,7 @@ end
 
 # https://math.stackexchange.com/a/662210/235608
 # Commit, not risk, because in the formula, it's balance/commit to get number of contracts
-function calckel(buf, curp, prob, commit, segs, probadjust)::NamedTuple{(:kel, :evret, :ev, :probprofit), Tuple{Float64, Float64, Float64, Float64}}
+function calckel(buf, prob, commit, segs, probadjust)::NamedTuple{(:kel, :evret, :ev, :probprofit), Tuple{Float64, Float64, Float64, Float64}}
     # global kcalckelargs = (;buf, prob, commit, segs, probadjust)
     # error("stop")
     if commit <= 0.0
@@ -110,15 +110,14 @@ function calckel(buf, curp, prob, commit, segs, probadjust)::NamedTuple{(:kel, :
         return (;kel=NaN, evret=NaN, ev=100.0, probprofit=0.0)
     end
 
-    len = Bins.VNUM
+    len = length(prob.xs.xs)
     ev = 0.0
     prob_tot = 0.0
     probprofit = 0.0
     for i in 1:len
-        x = Bins.x(i)
-        # TODO: handle cutoffs to left and right?
-        o = atsegs(segs, x * curp) / commit
-        p = prob[i]
+        x = prob.xs.xs[i]
+        o = atsegs(segs, x * prob.center) / commit
+        p = prob.prob_mass[i]
         p *= o >= 0.0 ? 1.0 - probadjust : 1.0 + probadjust
         o > 0 && (probprofit += p)
         prob_tot += p
@@ -164,7 +163,7 @@ function calckel(buf, curp, prob, commit, segs, probadjust)::NamedTuple{(:kel, :
     #     end
     #     return s
     # end
-    kel > 0.0 || return (;kel=NaN, evret=NaN, ev, probprofit=0.0)
+    kel > 0.0 || return (;kel=0.0, evret=0.0, ev, probprofit=0.0)
     if kel > 1.0
         kel = 1.0
     end

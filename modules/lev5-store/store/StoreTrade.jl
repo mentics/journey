@@ -23,7 +23,7 @@ function newTrade(primitDir::PriceT, legs::CollT{LegQuoteOpen}, underBid::Curren
                     tid, Int(getStyle(lq)), getExpir(lq), getStrike(lq), Int(getSide(lq)), getQuantity(lq))
             lid = first(resLeg).lid
             update("insert into LegTradeMeta (lid, bid, ask, iv) values (?, ?, ?, ?)",
-                    lid, getBid(lq), getAsk(lq), getIv(lq))
+                    lid, getBid(lq), getAsk(lq), CZ) # getIv(lq)
         end
     end
     updateTradesOpen()

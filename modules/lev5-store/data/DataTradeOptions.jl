@@ -154,11 +154,93 @@ function explore(fproc)
     return dfc
 end
 
+function explore2(fproc)
+    global kcount_spread = 1
+    global kcount_odd = 1
+    # global track_skip = []
+    df = DataRead.get_trade_options(;age=DateUtil.FOREVER2)
+    gdf = groupby(df, [:ts,:expir])
+    dfc = combine(gdf, [:ts,:expir,:style,:strike,:bid,:ask,:xpir_value] => fproc => [:pnl_bid, :pnl_mid, :pnl_ask])
+    global kdfc = dfc
+    println("calls:")
+    sho(dfc[dfc.style .== 1,:])
+    println("puts:")
+    sho(dfc[dfc.style .== -1,:])
+    return dfc
+end
+
 function sho(df)
     pnl_bid = sum(df.pnl_bid)
     pnl_mid = sum(df.pnl_mid)
     pnl_ask = sum(df.pnl_ask)
     @show pnl_bid pnl_mid pnl_ask
+end
+
+function single(tss, xpirtss, styles, strikes, bids, asks, xpir_values)
+    EMPTY = (;pnl_bid=0f0, pnl_mid=0f0, pnl_ask=0f0)
+    all(asks .> bids) || return EMPTY
+    # all( (asks .- bids) .< MAX_BID_ASK_SPREAD[] ) || ( global kcount_spread += 1 ; return EMPTY )
+    global kargs = (;tss, xpirtss, styles, strikes, bids, asks, xpir_values)
+
+    left_of_mid = length(strikes) ÷ 2
+    left_of_mid > 1 || return EMPTY
+    style = first(styles)
+    style == -1 || return EMPTY
+    xpir = DateUtil.market_date(first(xpirtss))
+    off = [-1]
+    inds = [left_of_mid + x for x in off]
+    sides = [Side.short]
+
+    lqs = map(inds, sides) do ind, side
+        oq = toq(style, xpir, strikes[ind], bids[ind], asks[ind])
+        return LegQuoteOpen(oq, side)
+    end
+    global klqs = lqs
+    # lqs = lqs[1:4]
+    neto_bid = sum(SH.getBid.(lqs))
+    # neto_bid > 0.05 || return EMPTY
+    neto_ask = sum(SH.getAsk.(lqs))
+    netc = sum(Int.(sides) .* xpir_values[inds])
+    neto_mid = sum(SH.getAsk.(lqs) .- 0.01)
+    res = (;pnl_bid=(neto_bid + netc), pnl_mid=(neto_mid + netc), pnl_ask=(neto_ask + netc))
+    # if res.pnl_bid < 0
+    # end
+    # @show res
+    # error("stop")
+    return res
+end
+
+function two(tss, xpirtss, styles, strikes, bids, asks, xpir_values)
+    EMPTY = (;pnl_bid=0f0, pnl_mid=0f0, pnl_ask=0f0)
+    # all(asks .> bids) || return EMPTY
+    # all( (asks .- bids) .< MAX_BID_ASK_SPREAD[] ) || ( global kcount_spread += 1 ; return EMPTY )
+    global kargs = (;tss, xpirtss, styles, strikes, bids, asks, xpir_values)
+
+    left_of_mid = length(strikes) ÷ 2
+    left_of_mid > 8 || return EMPTY
+    style = first(styles)
+    style == -1 || return EMPTY
+    xpir = DateUtil.market_date(first(xpirtss))
+    # off = [-1]
+    inds = [max(1, left_of_mid - 7), left_of_mid - 6]
+    sides = [Side.long, Side.short]
+
+    lqs = map(inds, sides) do ind, side
+        oq = toq(style, xpir, strikes[ind], bids[ind], asks[ind])
+        return LegQuoteOpen(oq, side)
+    end
+    global klqs = lqs
+    neto_bid = sum(SH.getBid.(lqs))
+    neto_bid > 0.05 || return EMPTY
+    neto_ask = sum(SH.getAsk.(lqs))
+    netc = sum(Int.(sides) .* xpir_values[inds])
+    neto_mid = sum(SH.getAsk.(lqs) .- 0.01)
+    res = (;pnl_bid=(neto_bid + netc), pnl_mid=(neto_mid + netc), pnl_ask=(neto_ask + netc))
+    # if res.pnl_bid < 0
+    # end
+    # @show res
+    # error("stop")
+    return res
 end
 
 function three(tss, xpirtss, styles, strikes, bids, asks, xpir_values)
@@ -232,22 +314,52 @@ function four(tss, xpirtss, styles, strikes, bids, asks, xpir_values)
     return res
 end
 
-toq(style, xpir, strike, bid, ask) = OptionQuote(Option(Style.T(style), xpir, strike), Quote(bid, ask), OptionMetaTypes.MetaZero)
+function double(tss, xpirtss, styles, strikes, bids, asks, xpir_values)
+    EMPTY = (;pnl_bid=0f0, pnl_mid=0f0, pnl_ask=0f0)
+    all(asks .> bids) || return EMPTY
+    # all( (asks .- bids) .< MAX_BID_ASK_SPREAD[] ) || ( global kcount_spread += 1 ; return EMPTY )
+    global kargs = (;tss, xpirtss, styles, strikes, bids, asks, xpir_values)
 
-function calc_spread_pnl(bids, asks, xpir_values, long, short)
-    EMPTY = [0f0,0f0]
+    left_of_mid = length(strikes) ÷ 2
+    left_of_mid > 4 || return EMPTY
+    style = first(styles)
+    xpir = DateUtil.market_date(first(xpirtss))
+    off = [-3,-2,-2,-1,2,3,3,4]
+    inds = [left_of_mid + x for x in off]
+    sides = [Side.short, Side.long, Side.long, Side.short, Side.short, Side.long, Side.long, Side.short]
 
-    # long_spread = asks[long] - bids[long]
-    # short_spread = asks[short] - bids[short]
-    neto_bid = price_short(bids[short], asks[short]) + price_long(bids[long], asks[long])
+    strikes_use = strikes[inds]
+    min_strike, min_ind = findmin(strikes_use)
+    mults = off .- minimum(off)
+    check = (strikes_use .- min_strike) ./ mults
+    global kcheck = check
+    if !(isnan(check[min_ind]) && allequal(check[Not(min_ind)]))
+        # println("found odd ball")
+        # @show strikes_use
+        global kcount_odd += 1
+        return EMPTY
+    end
 
-    neto_ask = asks[short] - bids[long]
-    (neto_bid > 0 && neto_ask > 0) || return EMPTY
-    netc = xpir_values[long] - xpir_values[short]
-    pnl_bid = neto_bid + netc
-    pnl_ask = neto_ask + netc
-    return [pnl_bid, pnl_ask]
+    lqs = map(inds, sides) do ind, side
+        oq = toq(style, xpir, strikes[ind], bids[ind], asks[ind])
+        return LegQuoteOpen(oq, side)
+    end
+    global klqs = lqs
+    # lqs = lqs[1:4]
+    neto_bid = sum(SH.getBid.(lqs))
+    neto_bid > 0.05 || return EMPTY
+    neto_ask = sum(SH.getAsk.(lqs))
+    netc = sum(Int.(sides) .* xpir_values[inds])
+    neto_mid = sum(SH.getAsk.(lqs) .- 0.01)
+    res = (;pnl_bid=(neto_bid + netc), pnl_mid=(neto_mid + netc), pnl_ask=(neto_ask + netc))
+    # if res.pnl_bid < 0
+    # end
+    # @show res
+    # error("stop")
+    return res
 end
+
+toq(style, xpir, strike, bid, ask) = OptionQuote(Option(Style.T(style), xpir, strike), Quote(bid, ask), OptionMetaTypes.MetaZero)
 
 function explore()
     df = DataRead.get_trade_options(;age=DateUtil.FOREVER2)

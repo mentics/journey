@@ -107,7 +107,7 @@ function newVal()::Market
     # q = Quote(C(tryKey(tq, "bid", 0.0)), C(tryKey(tq, "ask", 0.0)))
     q = Quote(C(get(tq, "bid", 0.0)), C(get(tq, "ask", 0.0)))
     vix = C(tqs[2]["last"]) # TODO: make sure this is the right field to use
-    startDay = nextTradingDay(toDateMarket(tsMarket))
+    startDay = nextTradingDay(DateUtil.market_date(tsMarket))
     m = C(0.5 * (q.bid + q.ask))
     # op = C(tryKey(tq, "open", m))
     op = C(getnn(tq, "open", m))
