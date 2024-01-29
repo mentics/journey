@@ -167,6 +167,7 @@ function find_first_ind_date(df, seq_len)
 end
 
 function encode_scales(ss)
+    return log.(ss)
     mapreduce(encode_scale, vcat, ss)
 end
 encode_scale(s) = Float32.(bits(s))

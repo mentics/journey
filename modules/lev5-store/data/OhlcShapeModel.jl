@@ -103,7 +103,7 @@ function make_buffers(price_len, vix_len, scaling_len, batch_size)
         vix_seq = Matrix{Float32}(undef, vix_len, batch_size),
         # vix_mask = BitArray(undef, vix_len, batch_size),
         vix_mask = Matrix{Bool}(undef, vix_len, batch_size),
-        scaling = Matrix{Bool}(undef, scaling_len, batch_size),
+        scaling = Matrix{Float32}(undef, scaling_len, batch_size),
     )
     gpu = Flux.gpu(cpu)
     return (;cpu, gpu)
@@ -175,14 +175,15 @@ end
 #region Run
 function calc_loss(model, batch)
     (;price_seq, vix_seq, scaling) = run_train(model, batch.x)
-    global kloss = (;price_seq, vix_seq, scaling)
-    any(isnan, price_seq) && error("price has NaN")
-    any(isnan, vix_seq) && error("vix has NaN")
-    any(isnan, scaling) && error("scaling has NaN")
-    ls = Flux.mse(price_seq, batch.x.price_seq) + Flux.mse(vix_seq, batch.x.vix_seq) + Flux.mse(scaling, batch.x.scaling)
-    if isnan(ls)
-        error("loss is NaN")
-    end
+    # global kloss = (;price_seq, vix_seq, scaling)
+    # any(isnan, price_seq) && error("price has NaN")
+    # any(isnan, vix_seq) && error("vix has NaN")
+    # any(isnan, scaling) && error("scaling has NaN")
+    ls = Flux.mse(price_seq, batch.x.price_seq) + Flux.mse(vix_seq, batch.x.vix_seq)
+    # + Flux.mse(scaling, batch.x.scaling)
+    # if isnan(ls)
+    #     error("loss is NaN")
+    # end
     return ls
 end
 
@@ -202,10 +203,10 @@ function run_encoder(encoder, batchx)
 end
 
 function run_decoder(decoder, encoded, batchx)
-    (dec_price_raw, dec_vix_raw, scaling_raw) = decoder(encoded)
+    (dec_price_raw, dec_vix_raw, scaling) = decoder(encoded)
     price_seq = dec_price_raw .* batchx.price_mask
     vix_seq = dec_vix_raw .* batchx.vix_mask
-    scaling = to_binary.(scaling_raw)
+    # scaling = to_binary.(scaling_raw)
     return (;price_seq, vix_seq, scaling)
 end
 to_binary(x) = ifelse(x <= 0f0, 0f0, 1f0)
@@ -240,7 +241,8 @@ end
 function model_encoder(cfg)
     input_price = Dense(cfg.input_width_price => cfg.width1_price; bias=cfg.use_input_bias)
     input_vix = Dense(cfg.input_width_vix => cfg.width1_vix; bias=cfg.use_input_bias)
-    layer_input = Parallel(vcat; input_price, input_vix, input_scaling=identity)
+    input_scaling = Dense(cfg.input_width_scaling => cfg.input_width_scaling; bias=cfg.use_input_bias)
+    layer_input = Parallel(vcat; input_price, input_vix, input_scaling)
 
     blocks1_count = floor(Int, cfg.block_count / 2)
     blocks2_count = cfg.block_count - blocks1_count
@@ -264,11 +266,12 @@ function model_decoder(cfg)
 
     output_price = Dense(cfg.width1_price => cfg.input_width_price; bias=cfg.use_input_bias)
     output_vix = Dense(cfg.width1_vix => cfg.input_width_vix; bias=cfg.use_input_bias)
+    output_scaling = Dense(cfg.input_width_scaling => cfg.input_width_scaling; bias=cfg.use_input_bias)
     s1 = cfg.width1_price
     s2 = cfg.width1_price + cfg.width1_vix
     s3 = cfg.width1_price + cfg.width1_vix + cfg.input_width_scaling
     layer_output = RangesLayer(
-        (output_price, output_vix, identity),
+        (output_price, output_vix, output_scaling),
         (1:s1, (s1+1):s2,  (s2+1):s3)
     )
     return Chain(;decoder_input=layer_input,
