@@ -59,6 +59,10 @@ function tsx_for_prob(ts::DateTime, len::Int)
         @show len length(df.ts) ind ts
         error("Insuffient events previous to ts for prob")
     end
+    if ind == length(df.ts)
+        @show len length(df.ts) ind ts
+        error("Data doesn't reach ts for prob")
+    end
     df = df[(ind - len + 1):ind,:]
     # rename!(df, :vol => :extrindt, :logvol => :vol)
 end

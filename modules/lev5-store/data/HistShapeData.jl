@@ -56,7 +56,7 @@ function make_input(params=params_data())
     # rename!(df, :prices_ts => :ts)
     select!(df, Not([:date, :price, :open, :high, :low, :close]))
     sort!(df, :ts)
-    Paths.save_data_params(Paths.db_input(NAME), params, df)
+    # Paths.save_data_params(Paths.db_input(NAME), params, df)
     return df
 end
 # f_prefix(s) = name -> s * name
@@ -79,7 +79,7 @@ function make_input_prices(params=params_data())
 end
 
 function make_input_prices_raw(intraday_period)
-    df_prices = DataRead.get_prices(;age=Day(10))
+    df_prices = DataRead.get_prices(;age=DateUtil.FOREVER2) # (;age=Day(10))
     df_tss_all = DataFrame(:ts => DateUtil.all_weekday_ts(;period=intraday_period))
     df = leftjoin(df_tss_all, df_prices; on=:ts)
     transform!(df, :price => (p -> replace(p, missing => MISSING_FLOAT2)) => :price)
@@ -234,7 +234,7 @@ function make_input_vix(params=params_data())
 end
 
 function make_vix_raw()
-    df_vix = DataRead.get_vix()
+    df_vix = DataRead.get_vix(;age=DateUtil.FOREVER2)
     # df_days_all = DataFrame(:date => collect(DateUtil.all_weekdays(;date_to=(DateUtil.market_today() - Day(1)))))
     df_days_all = DataFrame(:date => collect(DateUtil.all_weekdays(;date_to=(DateUtil.market_today()))))
     df = leftjoin(df_days_all, df_vix; on=:date)

@@ -81,65 +81,6 @@ struct Result{T}
     r::T
 end
 
-# Base.isless(a::Result{T}, b::Result{T}) where T = a.r.evrate < b.r.evrate
-# Base.isless(a::Result, b::Result) = a.r.evrate < b.r.evrate
-function Base.isless(a::Result, b::Result)
-    # av = to_val_kelt(a)
-    # bv = to_val_kelt(b)
-    # return av < bv
-
-    av = to_val_kelt_prob(a.r)
-    bv = to_val_kelt_prob(b.r)
-    return av < bv
-
-    # av = to_val_evrate(a)
-    # bv = to_val_evrate(b)
-    # return av < bv
-
-    # ap = to_val_prob(a)
-    # bp = to_val_prob(b)
-    # return ap < bp
-
-    # ay = isfinite(av) ? ap * ap * ap * av : -Inf
-    # by = isfinite(bv) ? bp * bp * ap * bv : -Inf
-    # return ay < by
-
-    # isnothing(a.r.all) && return a.r.evrate < b.r.evrate
-    # if isnan(a.r.all.evrate)
-    #     if isnan(b.r.all.evrate)
-    #         println("ERROR: results both nans")
-    #         @show a b
-    #         return a.r.all.evrate < b.r.all.evrate
-    #     else
-    #         return true # nan is always less
-    #     end
-    # elseif isnan(b.r.all.evrate)
-    #     return false # already know a is not nan and nan is always less
-    # else
-    #     return
-    # end
-end
-function to_val_evrate(x)
-    x1 = isnothing(x.r.forpos) ? x.r.evrate : x.r.forpos.evrate
-    return isnan(x1) ? -Inf : x1
-end
-function to_val_prob(x)
-    p = x.r.probprofit
-    return isfinite(p) ? p : 0.0
-end
-function to_val_kel(x)
-    p = x.r.kel
-    return isfinite(p) ? p : -Inf
-end
-function to_val_kelt(x)
-    p = x.r.kelt
-    return isfinite(p) ? p : -Inf
-end
-function to_val_kelt_prob(x)
-    p = x.kelt * x.probprofit
-    return isfinite(p) ? p : -Inf
-end
-
 Base.vec(keeper::Keeper{Result}) = map(x -> x.r, keeper.store)
 
 run(inc::Integer; kws...) = run([inc]; kws...)
@@ -268,10 +209,11 @@ const SKIP_COUNT_MIN_MOVE = Ref{Int}(0)
 function findkel(ctx, xpirts::DateTime, oqs, oqss, pos_rs, incs)
     reset_ctx(ctx)
     ress = ctx.ress
-    if abs(1.0 - ctx.curp / PREV_OPEN_CURP[]) < config().min_move_rat
-        SKIP_COUNT_MIN_MOVE[] += 1
-        return []
-    end
+    # if abs(1.0 - ctx.curp / PREV_OPEN_CURP[]) < config().min_move_rat
+    # # if abs(ctx.curp - PREV_OPEN_CURP[]) < 0.94
+    #     SKIP_COUNT_MIN_MOVE[] += 1
+    #     return []
+    # end
 
     prob = pmk.makeprob(ctx.kde, ctx.curp, ctx.ts, xpirts, oqs)
     global kprob = prob
@@ -543,7 +485,8 @@ function kel4!(ress, ctx, side1, oqsL1, oqsL2, oqsR1, oqsR2)
     side2 = SH.toOther(side1)
     maxspread = config().max_spread
     maxcondormiddle = config().maxcondormiddle
-    for left1 in 1:(lastindex(oqsL1)-1)
+    return ThreadUtil.loop(1:(lastindex(oqsL1)-1)) do left1
+    # for left1 in 1:(lastindex(oqsL1)-1)
         oqL1 = oqsL1[left1]
         strikeL1 = SH.getStrike(oqL1)
         for left2 in eachindex(oqsL2)
@@ -989,8 +932,8 @@ function price_open(lqs)
     if maximum(asks .- bids) > config().max_bidask_spread
         return bids # return worst case if bidask spread is too big to avoid it
     end
-    mid = round.((bids .+ asks) ./ 2, RoundUp; digits=2)
-    return min.(mid, asks .- 0.01)
+    mid = round.((bids .+ asks) ./ 2, RoundDown; digits=2)
+    return max.(bids, min.(mid, asks .- 0.01) .- 0.01)
 end
 function pricer(a::Action.T, lqs)
     return a == Action.open ? sum(price_open(lqs)) : error("bad")
@@ -999,6 +942,32 @@ end
 #region Update
 const gmax_bdays_out = Ref{Int}(0)
 calc_balrat() = 1 / (gmax_bdays_out[] * TIMES_PER_DAY)
+
+function Base.isless(a::Result, b::Result)
+    av = to_val_kelt_prob2(a.r)
+    bv = to_val_kelt_prob2(b.r)
+    return av < bv
+end
+function to_val_evrate(x)
+    x1 = isnothing(x.r.forpos) ? x.r.evrate : x.r.forpos.evrate
+    return isnan(x1) ? -Inf : x1
+end
+function to_val_prob(x)
+    p = x.r.probprofit
+    return isfinite(p) ? p : 0.0
+end
+function to_val_kel(x)
+    p = x.r.kel
+    return isfinite(p) ? p : -Inf
+end
+function to_val_kelt(x)
+    p = x.r.kelt
+    return isfinite(p) ? p : -Inf
+end
+function to_val_kelt_prob2(x)
+    p = x.kelt * x.probprofit * x.probprofit
+    return isfinite(p) ? p : -Inf
+end
 
 function check!(ress, ctx, lqs)::Nothing
     cfg = config()
@@ -1021,11 +990,11 @@ function check!(ress, ctx, lqs)::Nothing
     cfg.commit_min < commit < cfg.commit_max || return
     # commit *= ctx.riskrat
 
-    bands = IncTA.value(BOLLINGER2[])
-    !ismissing(bands) || ( track_skip(:bands_missing, "missing"); return )
-    !is_loss(segs, bands.lower) || ( track_skip(:bands_lower, "lower"); return )
-    # !is_loss(segs, bands.central) || return
-    !is_loss(segs, bands.upper) || ( track_skip(:bands_upper, "upper"); return )
+    # bands = IncTA.value(BOLLINGER2[])
+    # !ismissing(bands) || ( track_skip(:bands_missing, "missing"); return )
+    # !is_loss(segs, bands.lower) || ( track_skip(:bands_lower, "lower"); return )
+    # # !is_loss(segs, bands.central) || return
+    # !is_loss(segs, bands.upper) || ( track_skip(:bands_upper, "upper"); return )
 
     thid = Threads.threadid()
     timult = DateUtil.timult(ctx.date, ctx.xpirts)
@@ -1084,15 +1053,16 @@ end
 function init(;max_bdays_out)
     gmax_bdays_out[] = max_bdays_out
     empty!(SKIP)
-    period = 16 * TIMES_PER_DAY
+    # period = 16 * TIMES_PER_DAY
     # Keltner[] = KeltnerChannels{Float32}(; ma_period=period, atr_period=period, atr_mult_up=1.25, atr_mult_down=1.5, ma=EMA)
-    BOLLINGER2[] = IncTA.BB{Float64}(; ma=IncTA.EMA, period=period, std_dev_mult=1.0)
+    # BOLLINGER2[] = IncTA.BB{Float64}(; ma=IncTA.EMA, period=period, std_dev_mult=1.0)
     # BB{T}(; period = BB_PERIOD, std_dev_mult = BB_STD_DEV_MULT, ma = SMA, input_filter = always_true, input_modifier = identity, input_modifier_return_type = T)
 end
 
 function update(ts, curp, vix)
-    IncTA.fit!(BOLLINGER2[], Float64(curp))
-    return !ismissing(IncTA.value(BOLLINGER2[]))
+    # IncTA.fit!(BOLLINGER2[], Float64(curp))
+    # return !ismissing(IncTA.value(BOLLINGER2[]))
+    return true
 end
 
 const C_NEG_PENNY = C(-0.01)
@@ -1109,21 +1079,42 @@ config() = (;
     adjustprices = CZ, # C_NEG_PENNY,
     kelprobadjust = 0.0,
     commit_min = 0.05,
-    commit_max = 8.51,
+    commit_max = 4.51,
     probprofit_min = 0.01,
     kel_min = 0.01,
     kelt_min = 0.01,
-    kelt_prob_min = 100.0,
+    kelt_prob_min = 40.01,
     evrate_min = 0.01,
     all_risk_max = 1000000.0,
-    max_spread = 4.1,
-    max_gap = 4.1,
-    maxcondormiddle = 4.1,
+    max_spread = 4.01,
+    max_gap = 16.01,
+    maxcondormiddle = 8.01,
     annual_min = 0.01,
-    min_move_rat = RAT2,
+    # min_move_rat = 0.0,
     max_bidask_spread = C_12,
-    min_max_profit = C_8,
+    min_max_profit = 0.08,
     min_neto = -Inf, # C_FIVE,
 )
 #endregion Update
 end
+
+# config() = (;
+#     adjustprices = C_NEG_PENNY,
+#     kelprobadjust = 0.4,
+#     commit_min = 0.05,
+#     commit_max = 16.51,
+#     probprofit_min = 0.01,
+#     kel_min = 0.01,
+#     kelt_min = 0.01,
+#     kelt_prob_min = 60.01,
+#     evrate_min = 0.01,
+#     all_risk_max = 1000000.0,
+#     max_spread = 16.01,
+#     max_gap = 16.1,
+#     maxcondormiddle = 16.01,
+#     annual_min = 0.01,
+#     # min_move_rat = RAT4,
+#     max_bidask_spread = C_12,
+#     min_max_profit = 0.08,
+#     min_neto = -Inf, # C_FIVE,
+# )

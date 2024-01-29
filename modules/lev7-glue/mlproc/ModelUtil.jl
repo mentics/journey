@@ -5,19 +5,20 @@ import JLD2
 import DateUtil
 using Paths, FilesArrow
 
-export SplitLayer
+export RangesLayer
 
-struct SplitLayer{L,W}
+struct RangesLayer{L,W}
     layers::L
-    split::W
+    ranges::W
 end
-Flux.@functor SplitLayer
+Flux.@functor RangesLayer
 
-function (m::SplitLayer)(x)
-    return (
-        m.layers[1](x[1:m.split,:]),
-        m.layers[2](x[(m.split+1):end,:])
-    )
+function (m::RangesLayer)(x)
+    return map(m.layers, m.ranges) do layer, range
+        # layer(view(x, range))
+        vw = view(x, range, fill(:, ndims(x)-1)...)
+        layer(vw)
+    end
 end
 
 encode_version(num, params) = "$(num)-$(Paths.safe_hash(params)))"

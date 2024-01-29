@@ -67,6 +67,15 @@ function interleave!(out, vs)
     end
 end
 
+function interleave!(out, vs, scales)
+    vs_count = length(vs)
+    for (iv, v) in enumerate(vs)
+        for (i, x) in enumerate(v)
+            out[(i - 1) * vs_count + iv] = x / scales[iv]
+        end
+    end
+end
+
 # function conv(v::AbstractVector{T}, kernel::AbstractVector{T}) where T
 #     vlen = length(v)
 #     klen = length(kernel)

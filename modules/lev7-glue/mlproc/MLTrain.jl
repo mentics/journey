@@ -12,10 +12,10 @@ dev(x) = gpu(x) # gpu(x)
 
 params_train(;kws...) = (;
     rng_seed = 1,
-    holdout = 0.1,
+    # holdout = 0.1,
     kfolds = 5,
-    batch_size = 512,
-    weight_decay = 0.00001f0,
+    batch_size = 32,
+    weight_decay = 0f0, # 0.00001f0,
     kws...
 )
 
@@ -266,7 +266,7 @@ function check_holdout(training)
     params = training.params
 
     Flux.testmode!(model)
-    trainee.mod.OVERRIDE_SQUARED[] = true
+    # trainee.mod.OVERRIDE_SQUARED[] = true
     loss = 0.0
     count = 0
     for obss in eachobs(data.holdout; batchsize=params.train.batch_size)
@@ -275,7 +275,7 @@ function check_holdout(training)
     end
     loss /= count
     Flux.testmode!(model, :auto)
-    trainee.mod.OVERRIDE_SQUARED[] = false
+    # trainee.mod.OVERRIDE_SQUARED[] = false
 
     println("Loss for holdout: $(loss)")
     # for ibatch in training.params[:cv].holdout
@@ -291,7 +291,7 @@ function batch1(training)
     # return training.data.prep_input(first(eachobs(training.data.data_for_epoch(), batchsize=training.params.train.batch_size)))
     return training.data.prep_input(obss1(training))
 end
-single(training, ind) = (;batch=training.data.single(ind) |> cpu, yhat=vec(training.trainee.run_train(training.model, training.data.single(ind).x) |> cpu))
+single(training, ind) = (;batch=training.data.single(ind) |> cpu, yhat=training.trainee.run_train(training.model, training.data.single(ind).x) |> cpu)
 # single_yhat(training, ind) = vec(training.trainee.run_train(training.model, training.data.single(ind).x) |> cpu)
 
 import DrawUtil:draw,draw!
@@ -306,6 +306,7 @@ function checki(training, inds)
         # # (x, x) = trainee.mod.to_draw_x(batch, 2)
         # (yx, yy) = trainee.mod.to_draw_y(batch, 1)
         # (yhx, yhy) = trainee.mod.to_draw_yh(yhat, 1)
+        println(typeof(yhat))
 
         yy = trainee.mod.to_draw_y(batch, 1)
         yhy = trainee.mod.to_draw_yh(yhat, 1)

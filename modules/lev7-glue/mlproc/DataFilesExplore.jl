@@ -24,10 +24,10 @@ is_ts_backtest(ts_min) = function(ts)
     return ts >= ts_min && ts != cal.getMarketOpen(date) && ts != cal.getMarketClose(date)
 end
 
-function run_long()
-    reset()
+function run_long(;xpir_inds=1:4, max_bdays_out=8, incs=2:4)
+    reset(;max_bdays_out)
     yms = vcat([(2020,i) for i in 1:12], [(2021,i) for i in 1:12], [(2022,i) for i in 1:12], [(2023,i) for i in 1:12])
-    explore(;yms, use_pos=false, xpir_inds=1:4, max_bdays_out=8, incs=2:4);
+    explore(;yms, use_pos=false, xpir_inds, max_bdays_out, incs);
 end
 
 import DataFiles as dat
@@ -306,7 +306,7 @@ function stats(rs, tot_count; rev, vix_lup)
     @show kel
     kelt = quantile(map(r -> r.r1.kelt, rs))
     @show kelt
-    keltprob = quantile(map(r -> ore.to_val_kelt_prob(r.r1), rs))
+    keltprob = quantile(map(r -> ore.to_val_kelt_prob2(r.r1), rs))
     @show keltprob
     evret = quantile(map(r -> r.r1.evret, rs))
     @show evret
@@ -423,33 +423,34 @@ function add_rs(rs)
 end
 
 using JLD2, FileIO
-function save_state()
-    save_state("top_xpirts", TOP_XPIRTS)
-    save_state("top_ts", TOP_TS)
+function save_state(name)
+    save_state("top_xpirts-$(name)", TOP_XPIRTS)
+    save_state("top_ts-$(name)", TOP_TS)
 end
 function save_state(name, obj)
-    file = File(format"JLD2", "D:/data/tmp/$(name).jld2")
+    file = File(format"JLD2", "D:/data/tmp/dfe/$(name).jld2")
     save(file, name, obj)
 end
 
-function load_state()
-    loadinto("top_xpirts", TOP_XPIRTS)
-    loadinto("top_ts", TOP_TS)
+function load_state(name)
+    loadinto("top_xpirts-$(name)", TOP_XPIRTS)
+    loadinto("top_ts-$(name)", TOP_TS)
 end
 function loadinto(name, into)
-    obj = FileIO.load("D:/data/tmp/$(name).jld2", name)
+    obj = FileIO.load("D:/data/tmp/dfe/$(name).jld2", name)
     empty!(into)
     merge!(into, obj)
 end
 #endregion Public
 
 #region Local
-function reset()
+function reset(;max_bdays_out=8)
     ore.reset()
     empty!(TOP_TS)
     empty!(TOP_XPIRTS)
     # ore.MAX_LEN[] = 0
-    ore.init(;max_bdays_out=maximum(xpir_inds) * 1.0)
+    ore.init(;max_bdays_out)
+    return
 end
 const TOP_TS = SortedDict{DateTime,Vector}()
 const TOP_XPIRTS = SortedDict{DateTime,Vector}()
@@ -511,7 +512,7 @@ function df_calc_pnl(r1, df_ts, lqs, xpirts; xpir_price)
     netcs = -action_dir .* OptionUtil.value_at_xpir.(SH.getStyle.(lqs), Float32.(SH.getStrike.(lqs)), xpir_price)
     # println(netcs)
     netc = sum(netcs)
-    res = (;neto, netc, pnl=(neto + netc))
+    res = (;neto, netc, pnl=(neto + netc), xpir_price)
     return res
 
     # strikes = SH.getStrike.(lqs)
