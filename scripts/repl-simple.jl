@@ -1,11 +1,12 @@
 include("repl-base.jl")
 
-using Dates, StaticArrays
+using Dates
+# , StaticArrays
 # import IterTools, NamedTupleTools
 # IT = IterTools
 # NTT = NamedTupleTools
-using SH, BaseTypes, Globals, SmallTypes, LegTypes, LegQuoteTypes
-using OutputUtil, TypeOutputs
+# using SH, BaseTypes, Globals, SmallTypes, LegTypes, LegQuoteTypes, TypeOutputs
+# using OutputUtil
 
 import ModuleUtil
 if ModuleUtil.findCycles()

@@ -1,4 +1,4 @@
-include("repl-simple.jl")
+include("repl-base.jl")
 
 # using DrawUtil
 # using Calendars, Markets, Chains, Expirations
@@ -24,11 +24,11 @@ import Calendars as cal
 
 using DataRead, DataUpdate, Paths, FilesArrow, FilesJLD2
 
-import HistShapeData as hsd
-import HistShapeModel as hsm
-import ReturnProbData as rpd
-import ReturnProbModel as rpm
 import MLTrain as ml
+import OhlcShapeData as osd
+import OhlcShapeModel as osm
+# import ReturnProbData as rpd
+# import ReturnProbModel as rpm
 
-using ModelUtil
-import DataFilesExplore as dfe
+# using ModelUtil
+# import DataFilesExplore as dfe
