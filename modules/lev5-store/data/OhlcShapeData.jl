@@ -38,7 +38,8 @@ For this one:
 date, prices_seq, prices_mask, prices_scaling, vix_seq, vix_mask, vix_scaling
 =#
 function make_input(params=params_data())
-    global kprice = prices = make_df_seq("SPY", (OHLC_COLS..., :volume), params)
+    # global kprice = prices = make_df_seq("SPY", (OHLC_COLS..., :volume), params)
+    global kprice = prices = make_df_seq("SPY", OHLC_COLS, params)
     global kvix = vix = make_df_seq("VIX", OHLC_COLS, params)
     global kdf = df = leftjoin(prices, vix; on=:date, renamecols=f_prefix("price_") => f_prefix("vix_"))
     disallowmissing!(df)
@@ -167,7 +168,8 @@ function find_first_ind_date(df, seq_len)
 end
 
 function encode_scales(ss)
-    return log.(ss)
+    # return log.(ss)
+    return ss
     mapreduce(encode_scale, vcat, ss)
 end
 encode_scale(s) = Float32.(bits(s))

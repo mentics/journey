@@ -11,7 +11,7 @@ CUDA.allowscalar(false)
 dev(x) = gpu(x) # gpu(x)
 
 params_train(;kws...) = (;
-    rng_seed = 1,
+    rng_seed = 2,
     # holdout = 0.1,
     kfolds = 5,
     batch_size = 128,
