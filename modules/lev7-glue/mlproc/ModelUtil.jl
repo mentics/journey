@@ -11,7 +11,7 @@ struct RangesLayer{L,W}
     layers::L
     ranges::W
 end
-Flux.@functor RangesLayer
+Flux.@functor RangesLayer (layers,)
 
 function (m::RangesLayer)(x)
     return map(m.layers, m.ranges) do layer, range
