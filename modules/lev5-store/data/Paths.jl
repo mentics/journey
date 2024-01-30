@@ -53,7 +53,7 @@ function check_file_mtime(path, age, asof)
 end
 
 # params_hash(params) = Base64.base64encode(hash(params))
-safe_hash(params) = "TEMP" # replace(Base64.base64encode(stable_hash(params)), '+' => '-', '/' => '_', '=' => "")
+safe_hash(params) = replace(Base64.base64encode(stable_hash(params)), '+' => '-', '/' => '_', '=' => "")
 #endregion
 
 end
