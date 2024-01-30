@@ -15,7 +15,7 @@ params_model() = (;
     hidden_width_mult = 2,
     dropout = 0f0,
     activation = NNlib.swish,
-    use_input_bias = true,
+    use_input_bias = false,
 )
 
 #region MLTrain Interface
@@ -179,7 +179,8 @@ function calc_loss(model, batch)
     # any(isnan, price_seq) && error("price has NaN")
     # any(isnan, vix_seq) && error("vix has NaN")
     # any(isnan, scaling) && error("scaling has NaN")
-    ls = Flux.mse(price_seq, batch.x.price_seq) + Flux.mse(vix_seq, batch.x.vix_seq) + Flux.mse(scaling, batch.x.scaling)
+    ls = Flux.mse(price_seq, batch.x.price_seq) + Flux.mse(vix_seq, batch.x.vix_seq)
+    # + Flux.mse(scaling, batch.x.scaling)
     # if isnan(ls)
     #     error("loss is NaN")
     # end

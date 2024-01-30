@@ -11,7 +11,7 @@ CUDA.allowscalar(false)
 dev(x) = gpu(x) # gpu(x)
 
 params_train(;kws...) = (;
-    rng_seed = 2,
+    rng_seed = 1,
     # holdout = 0.1,
     kfolds = 5,
     batch_size = 128,
@@ -99,7 +99,8 @@ function setup(trainee::Trainee, pt=nothing; kws...)
     model = trainee.make_model() |> dev
     println("Model has param count: ", sum(length, Flux.params(model)))
 
-    opt = Flux.AdamW(trainee.get_learning_rate(1), (0.9, 0.999), pt.weight_decay)
+    # opt = Flux.AdamW(trainee.get_learning_rate(1), (0.9, 0.999), pt.weight_decay)
+    opt = Flux.Optimisers.Lion()
     opt_state = Flux.setup(opt, model) |> dev
 
     # if !iszero(pt.weight_decay)

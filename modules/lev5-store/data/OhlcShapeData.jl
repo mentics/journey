@@ -151,6 +151,7 @@ function make_sequence_date(df, ind, weeks_count, cols)
     @assert !iszero(vol)
     scales = Tuple(col == :volume ? vol : op for col in cols[1:end])
     vcu.interleave!(seq, vws, scales)
+    replace!(x -> iszero(x) ? x : x - 1f0, seq)
     return seq, scales
 end
 
