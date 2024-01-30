@@ -425,8 +425,8 @@ function save(training)
     check_holdout(training)
     ModelUtil.save_training(training)
 end
-function load(training)
-    ModelUtil.load_training(training)
+function load(training; hash=nothing)
+    ModelUtil.load_training(training; hash)
     check_holdout(training)
     return
 end

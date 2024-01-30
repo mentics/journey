@@ -69,10 +69,10 @@ function save_training(name, model, opt_state, params)
     println("Saved model, opt_state, and params to $(path) in $(stop - start) seconds")
 end
 
-load_training(training) = load_training(training.trainee.name, training.model, training.opt_state, training.params)
-function load_training(name, model, in_opt_state, params)
+load_training(training; hash=nothing) = load_training(training.trainee.name, training.model, training.opt_state, training.params; hash)
+function load_training(name, model, in_opt_state, params; hash=nothing)
     start = time()
-    (path, (model_state, opt_state)) = Paths.load_data_params(Paths.db_checkpoint(name), params, "model_state", "opt_state"; latest=true)
+    (path, (model_state, opt_state)) = Paths.load_data_params(Paths.db_checkpoint(name), params, "model_state", "opt_state"; latest=true, hash)
     Flux.loadmodel!(model, model_state)
     Flux.loadmodel!(in_opt_state, opt_state)
     stop = time()

@@ -31,9 +31,9 @@ function Paths.load_data(path, names...; age=DateUtil.FOREVER2, asof=DateUtil.DA
     return JLD2.load(path, names...)
 end
 
-function Paths.load_data_params(parent_dir, params, names...; suffix::Union{Nothing,String}=nothing, age=DateUtil.FOREVER2, asof=DateUtil.DATETIME_BEFORE, latest=false)
+function Paths.load_data_params(parent_dir, params, names...; suffix::Union{Nothing,String}=nothing, age=DateUtil.FOREVER2, asof=DateUtil.DATETIME_BEFORE, latest=false, hash=nothing)
     !isempty(names) || throw(ArgumentError("FilesJLD2 load_data_params requires names"))
-    dir = joinpath(parent_dir, safe_hash(params))
+    dir = joinpath(parent_dir, isnothing(hash) ? safe_hash(params) : hash)
     if latest
         path = sort!(filter!(s -> startswith(basename(s), "data"), readdir(dir; join=true)), by=mtime)[end]
     else

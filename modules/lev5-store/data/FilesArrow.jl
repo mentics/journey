@@ -30,8 +30,10 @@ function Paths.load_data(path, ::Type{DataFrame}; age=DateUtil.FOREVER2, asof=Da
     return DataFrame(Arrow.Table(path); copycols)
 end
 
-function Paths.load_data_params(parent_dir, ::Type{DataFrame}; age=DateUtil.FOREVER2, asof=DateUtil.DATETIME_BEFORE, copycols=false, params=nothing)
-    if !isnothing(params)
+function Paths.load_data_params(parent_dir, ::Type{DataFrame}; age=DateUtil.FOREVER2, asof=DateUtil.DATETIME_BEFORE, copycols=false, params=nothing, hash=nothing)
+    if !isnothing(hash)
+        dir = joinpath(parent_dir, hash)
+    elseif !isnothing(params)
         dir = joinpath(parent_dir, safe_hash(params))
     else
         dir = sort!(readdir(parent_dir; join=true), by=mtime)[end]
