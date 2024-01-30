@@ -140,6 +140,29 @@ function loop(f, xs)::Bool
     return @atomic stop.value
 end
 
+# function run_timeout(f, seconds)
+#     t = Threads.@spawn begin
+#         try
+#             f()
+#         catch e
+#             println("Thread interrupted $(e)")
+#         end
+#     end
+#     t2 = Threads.@spawn Timer(seconds) do _
+#         try
+#             if !istaskdone(t)
+#                 println("Task did not complete in time. Aborting.")
+#                 # Base.throwto(t, InterruptException())
+#                 schedule(t, InterruptException(), error=true)
+#             else
+#                 println("Task completed within seconds.")
+#             end
+#         catch e
+#             println("Error around timer $(e)")
+#         end
+#     end
+# end
+
 #region Local
 const running = Ref{Union{Nothing,Task}}()
 
