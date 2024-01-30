@@ -38,8 +38,8 @@ For this one:
 date, prices_seq, prices_mask, prices_scaling, vix_seq, vix_mask, vix_scaling
 =#
 function make_input(params=params_data())
-    # global kprice = prices = make_df_seq("SPY", (OHLC_COLS..., :volume), params)
-    global kprice = prices = make_df_seq("SPY", OHLC_COLS, params)
+    global kprice = prices = make_df_seq("SPY", (OHLC_COLS..., :volume), params)
+    # global kprice = prices = make_df_seq("SPY", OHLC_COLS, params)
     global kvix = vix = make_df_seq("VIX", OHLC_COLS, params)
     global kdf = df = leftjoin(prices, vix; on=:date, renamecols=f_prefix("price_") => f_prefix("vix_"))
     disallowmissing!(df)
@@ -116,6 +116,15 @@ end
 
 function make_input_raw(sym, cols)
     df_daily = select!(DataFrame(HistData.dataDaily(sym)), :date, cols...)
+    if :volume in cols
+        df_daily.volume = [Float32(iszero(x) ? x : log(x)) for x in df_daily.volume]
+        # replace!(log, df_daily.volume)
+    end
+    if sym == "VIX"
+        for col in cols
+            replace!(x -> iszero(x) ? x : log(x), df_daily[!,col])
+        end
+    end
     df_dates_all = DataFrame(:date => collect(DateUtil.all_weekdays()))
     df = leftjoin(df_dates_all, df_daily; on=:date)
     transform!(df, tf_missing_cols(cols)...)
