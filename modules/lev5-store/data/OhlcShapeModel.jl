@@ -10,8 +10,8 @@ const NAME = replace(string(@__MODULE__), "Model" => "")
 
 params_model() = (;
     encoded_width = 32,
-    block_count = 2,
-    layers_per_block = 2,
+    block_count = 4,
+    layers_per_block = 4,
     hidden_width_mult = 2,
     through_width_mult = 1.5,
     dropout = 0f0,
