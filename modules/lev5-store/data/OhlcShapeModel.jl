@@ -179,12 +179,18 @@ function calc_loss(model, batch)
     # any(isnan, price_seq) && error("price has NaN")
     # any(isnan, vix_seq) && error("vix has NaN")
     # any(isnan, scaling) && error("scaling has NaN")
-    ls = Flux.mse(price_seq, batch.x.price_seq) + Flux.mse(vix_seq, batch.x.vix_seq) + Flux.mse(scaling, batch.x.scaling)
+    # ls = Flux.mse(price_seq, batch.x.price_seq) + Flux.mse(vix_seq, batch.x.vix_seq) + Flux.mse(scaling, batch.x.scaling)
+    ls = err(price_seq, batch.x.price_seq) + err(vix_seq, batch.x.vix_seq) + err(scaling, batch.x.scaling)
     # if isnan(ls)
     #     error("loss is NaN")
     # end
     return ls
 end
+function err(v1, v2)
+    sum(err.(v1, v2))
+end
+# err(x1, x2) = (x1 + one(x1)) / (x2 + one(x1)) - one(x1)
+err(x1::Number, x2::Number) = abs((x1 + 1f0) / (x2 + 1f0) - 1f0)
 
 function run_train(model, batchx)
     encoded = run_encoder(model.layers.encoder, batchx)
