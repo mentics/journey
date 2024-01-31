@@ -9,9 +9,9 @@ import CudaUtil
 const NAME = replace(string(@__MODULE__), "Model" => "")
 
 params_model() = (;
-    encoded_width = 64,
-    block_count = 4,
-    layers_per_block = 4,
+    encoded_width = 32,
+    block_count = 2,
+    layers_per_block = 2,
     hidden_width_mult = 2,
     dropout = 0f0,
     activation = NNlib.swish,
