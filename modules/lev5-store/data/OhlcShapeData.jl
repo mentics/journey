@@ -75,7 +75,7 @@ function make_input(params=params_data())
     #     vix_seq=length(df.vix_seq[1]),
     # )))
     params = merge(params, (;width=length(df.seq[1])))
-    # Paths.save_data_params(Paths.db_input(NAME), params, df)
+    Paths.save_data_params(Paths.db_input(NAME), params, df)
     return df
 end
 f_prefix(s) = name -> s * name

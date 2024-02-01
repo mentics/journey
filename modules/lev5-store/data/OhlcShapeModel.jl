@@ -9,12 +9,12 @@ import CudaUtil
 const NAME = replace(string(@__MODULE__), "Model" => "")
 
 params_model() = (;
-    encoded_width = 64,
+    encoded_width = 32,
     block_count = 2,
     layers_per_block = 2,
     hidden_width_mult = 2,
     through_width_mult = 1.5,
-    # dropout = 0.2f0,
+    # dropout = 0.15f0,
     # activation = NNlib.swish,
     activation = NNlib.swish,
     use_input_bias = false,
@@ -231,12 +231,12 @@ function model_encoder(cfg)
 
     output = Dense(cfg.through_width => cfg.encoded_width, Flux.sigmoid_fast; bias=false)
     return Chain(;
-            # bn0=BatchNorm(cfg.input_width, swish),
+            # bn0=bn(cfg.through_width),
             encoder_input=input,
-            # bn1=BatchNorm(cfg.through_width, swish),
+            # bn1=bn(cfg.through_width),
             encoder_blocks=Chain(blocks1...),
             # dropout,
-            # bn2=BatchNorm(cfg.through_width, swish),
+            # bn2=bn(cfg.through_width),
             encoder_blocks2=Chain(blocks2...),
             encoder_output=output)
 end
@@ -251,12 +251,13 @@ function model_decoder(cfg)
 
     output = Dense(cfg.through_width => cfg.input_width, Flux.sigmoid_fast; bias=cfg.use_input_bias)
     return Chain(;decoder_input=input,
-            # bn1=BatchNorm(cfg.through_width, swish),
+            # bn1=bn(cfg.through_width),
             decoder_blocks1=Chain(blocks1...),
-            # bn2=BatchNorm(cfg.through_width, swish),
+            # bn2=bn(cfg.through_width),
             decoder_blocks2=Chain(blocks2...),
             decoder_output=output)
 end
+bn(w) = BatchNorm(w)
 
 function get_inference_model(model)
     return model.layers.encoder
