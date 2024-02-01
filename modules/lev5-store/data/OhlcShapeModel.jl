@@ -10,11 +10,12 @@ const NAME = replace(string(@__MODULE__), "Model" => "")
 
 params_model() = (;
     encoded_width = 64,
-    block_count = 4,
-    layers_per_block = 4,
+    block_count = 2,
+    layers_per_block = 2,
     hidden_width_mult = 2,
     through_width_mult = 1.5,
-    dropout = 0f0,
+    # dropout = 0.2f0,
+    # activation = NNlib.swish,
     activation = NNlib.swish,
     use_input_bias = false,
 )
@@ -220,17 +221,23 @@ function config(params)
 end
 
 function model_encoder(cfg)
-    input = Dense(cfg.input_width => cfg.through_width; bias=cfg.use_input_bias)
+    input = Dense(cfg.input_width => cfg.through_width, cfg.activation; bias=cfg.use_input_bias)
 
     blocks1_count = floor(Int, cfg.block_count / 2)
     blocks2_count = cfg.block_count - blocks1_count
     blocks1 = [SkipConnection(ModelUtil.make_block(cfg.through_width, cfg.hidden_width, cfg.layers_per_block, cfg.activation, false), +) for _ in 1:blocks1_count]
-    dropout = Dropout(cfg.dropout)
+    # dropout = Dropout(cfg.dropout)
     blocks2 = [SkipConnection(ModelUtil.make_block(cfg.through_width, cfg.hidden_width, cfg.layers_per_block, cfg.activation, false), +) for _ in 1:blocks2_count]
 
     output = Dense(cfg.through_width => cfg.encoded_width; bias=false)
-    return Chain(;encoder_input=input,
-            encoder_blocks=Chain(blocks1..., dropout, blocks2...),
+    return Chain(;
+            # bn0=BatchNorm(cfg.input_width, swish),
+            encoder_input=input,
+            # bn1=BatchNorm(cfg.through_width, swish),
+            encoder_blocks=Chain(blocks1...),
+            # dropout,
+            # bn2=BatchNorm(cfg.through_width, swish),
+            encoder_blocks2=Chain(blocks2...),
             encoder_output=output)
 end
 
@@ -242,9 +249,12 @@ function model_decoder(cfg)
     blocks1 = [SkipConnection(ModelUtil.make_block(cfg.through_width, cfg.hidden_width, cfg.layers_per_block, cfg.activation, false), +) for _ in 1:blocks1_count]
     blocks2 = [SkipConnection(ModelUtil.make_block(cfg.through_width, cfg.hidden_width, cfg.layers_per_block, cfg.activation, false), +) for _ in 1:blocks2_count]
 
-    output = Dense(cfg.through_width => cfg.input_width; bias=cfg.use_input_bias)
+    output = Dense(cfg.through_width => cfg.input_width, Flux.sigmoid_fast; bias=cfg.use_input_bias)
     return Chain(;decoder_input=input,
-            decoder_blocks=Chain(blocks1..., blocks2...),
+            # bn1=BatchNorm(cfg.through_width, swish),
+            decoder_blocks1=Chain(blocks1...),
+            # bn2=BatchNorm(cfg.through_width, swish),
+            decoder_blocks2=Chain(blocks2...),
             decoder_output=output)
 end
 
