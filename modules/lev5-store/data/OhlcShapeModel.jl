@@ -49,11 +49,13 @@ to_draw_yh(yhat, ind) = yhat[:,ind] # vcat(yhat.prices[1:end,ind], yhat.vix[1:en
 #endregion MLTrain Interface
 
 #region Data
+import DataFrameUtil as dfu
 function make_data(df, params)
     # Hold out some of the most recent data so we can backtest on untrained data
-    holdout_date = params.data.holdout_date
-    df_train = filter(:date => (date -> date < holdout_date), df)
-    df_holdout = filter(:date => (date -> date >= holdout_date), df)
+    df_train, df_holdout = dfu.split(df, params.data.holdout_date; keycol=:date)
+    # holdout_date = params.data.holdout_date
+    # df_train = filter(:date => (date -> date < holdout_date), df)
+    # df_holdout = filter(:date => (date -> date >= holdout_date), df)
     @assert df_holdout.date[1] > df_train.date[end] "df_holdout.date[1] $(df_holdout.date[1]) > $(df_train.date[end]) df_train.date[end]"
 
     InputData(;

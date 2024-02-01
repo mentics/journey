@@ -20,6 +20,7 @@ params_data() = (;
 function make_input(params=params_data(); age=DateUtil.FOREVER2) # DateUtil.age_daily())
     # Get xtqs and ret
     df_tsx = filtered_tsx(;age)
+    df_tsx.date = Date.(df_tsx.ts)
 
     # Add temporal for ts
     transform!(df_tsx, [:ts] => (ts -> ModelUtil.to_temporal_ts.(ts)) => prefix_sym.([:week_day, :month_day, :quarter_day, :year_day, :hour], :ts_))
@@ -38,15 +39,19 @@ function make_input(params=params_data(); age=DateUtil.FOREVER2) # DateUtil.age_
     # Add hist
     df_hist, params_hist = Paths.load_data_params(Paths.db_output(osd.NAME), DataFrame)
     # rename!(df_hist, :key => :ts)
-    df_hist_ts = DataFrame(:date => df_hist.date)
+    df_hist_date = DataFrame(:date => df_hist.date)
     df_hist_enc = DataFrame([[df_hist.output[row][i] for row in eachindex(df_hist.output)] for i in eachindex(df_hist.output[1])], :auto)
-    df_hist = hcat(df_hist_ts, df_hist_enc)
+    df_hist = hcat(df_hist_date, df_hist_enc)
     params = merge(params, (;hist=params_hist))
-    df = innerjoin(df_tsx, df_hist; on=:ts)
+    df = leftjoin(df_tsx, df_hist; on=:date)
+    sort!(df, [:ts, :expir])
 
-    # TODO: should match eventually. so change to assert when ready
-    # except for skip_back and near current time where ret is in the future
-    # @show (df.ts == df_hist.ts)
+    date_range = df_hist.date[1]..last(params_hist.data.date_range)
+    filter!(:date => (date -> date in date_range), df)
+    # expected_dates = DateUtil.all_bdays(df_hist.date[1], last(date_range))
+    # println(symdiff(expected_dates, unique(df.date)))
+    # @assert expected_dates == unique(df.date)
+    disallowmissing!(df)
 
     # Bin the returns
     transform!(df, :ret => (r -> Bins.nearest.(r .+ 1)) => :y_bin)
@@ -61,7 +66,7 @@ function make_input(params=params_data(); age=DateUtil.FOREVER2) # DateUtil.age_
         ) => :ce_compare)
 
     # cleanup
-    select!(df, :ts, :expir, :y_bin, :ce_compare, Not([:ts, :expir, :y_bin, :ce_compare, :ret, :days_to_xpir]))
+    select!(df, :ts, :expir, :y_bin, :ce_compare, Not([:ts, :date, :expir, :y_bin, :ce_compare, :ret, :days_to_xpir]))
 
     @assert issorted(df, [:ts, :expir])
     @assert allunique(df, [:ts, :expir])

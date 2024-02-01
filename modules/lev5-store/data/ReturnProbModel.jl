@@ -4,7 +4,7 @@ using Flux, MLUtils
 import CUDA:CuArray
 using DateUtil, Paths, ModelUtil, TrainUtil, MLTrain
 import CudaUtil:copyto_itr!
-import DataFrameUtil as DF
+import DataFrameUtil as dfu
 
 #=
 No pushing to gpu in data or model modules. Only MLTrain pushed to gpu. well... would be nice, but api for data was messy that way, but maybe can get back to that.
@@ -18,7 +18,7 @@ params_model() = (;
     block_count = 32,
     layers_per_block = 4,
     use_output_for_hidden = false,
-    hidden_width_mult = 1,
+    hidden_width_mult = 4,
     dropout = 0.2f0,
     activation = NNlib.swish,
     use_bias_in = false,
@@ -35,7 +35,7 @@ params_model() = (;
 function load_input(; days_to_xpir=nothing)
     df, params_data, path = Paths.load_data_params(Paths.db_input(NAME), DataFrame)
     if !isnothing(days_to_xpir)
-        df = DF.filter_days_to_xpir(df, days_to_xpir)
+        df = dfu.filter_days_to_xpir(df, days_to_xpir)
     end
     return df, params_data
 end
@@ -88,8 +88,11 @@ get_input_width(df) = size(df, 2) - 4
 get_input_width(df, skip) = size(df, 2) - skip
 
 function make_data(df, params)
+    global kmd = (;df, params)
+    date_range = params.data.hist.data.date_range
+    @assert df.ts[1] in date_range && df.ts[end] in date_range
     # Hold out some of the most recent data so we can backtest on untrained data
-    df_train, df_holdout = DF.split_in_after(df, params.data.hist.data.train_date_range)
+    df_train, df_holdout = dfu.split(df, params.data.hist.data.holdout_date; keycol=:ts)
     @assert df_holdout.ts[1] > df_train.ts[end] "df_holdout.ts[1] $(df_holdout.ts[1]) > $(df_train.ts[end]) df_train.ts[end]"
     # ce_all = setup_ce_all(df_train)
 
@@ -332,6 +335,7 @@ function make_model(input_width, params)
     cfg = params.model
     output_width = params.data.bins_count
     through_width = cfg.use_output_for_hidden ? cfg.hidden_width_mult * output_width : cfg.hidden_width_mult * input_width
+    @show input_width through_width
 
     input_layer = Dense(input_width => through_width; bias=cfg.use_bias_in)
 

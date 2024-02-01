@@ -26,11 +26,11 @@ function after(df, ts; keycol=:ts)
 end
 
 # Split a dataframe into before and after the given timestamp
-function split(df, ts; keycol=:ts)
-    @assert df[keycol][1] <= ts
-    @assert df[keycol][end] >= ts
-    ind = searchsortedfirst(df[keycol], ts)
-    return df[1:ind - 1,:], df[ind,:]
+function split(df, x; keycol=:ts)
+    @assert df[!,keycol][1] <= x
+    @assert df[!,keycol][end] >= x
+    ind = searchsortedfirst(df[!,keycol], x)
+    return df[1:ind - 1,:], df[ind:end,:]
 end
 
 function split_in_after(df, range; keycol=:ts)
