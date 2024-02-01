@@ -3,7 +3,7 @@ using Dates, Intervals, DataFrames, SearchSortedNearest
 import Flux
 import DateUtil, Paths
 import DataConst, DataRead, ModelUtil
-import HistShapeData as hsd
+import OhlcShapeData as osd
 import Calendars as cal
 using ProbMeta, MLyze
 import DataFrameUtil as DF
@@ -17,7 +17,7 @@ params_data() = (;
     skip_cols = 4, # skip ts, expir, y_bin, ce_compare for actual input
 )
 
-function make_input(params=params_data(); age=DateUtil.age_daily())
+function make_input(params=params_data(); age=DateUtil.FOREVER2) # DateUtil.age_daily())
     # Get xtqs and ret
     df_tsx = filtered_tsx(;age)
 
@@ -36,10 +36,10 @@ function make_input(params=params_data(); age=DateUtil.age_daily())
     transform!(df_tsx, [:ts] => (tss -> [treasury_lookup(DateUtil.market_date(ts)) for ts in tss]) => :treasury_rate)
 
     # Add hist
-    df_hist, params_hist = Paths.load_data_params(Paths.db_output(hsd.NAME), DataFrame)
+    df_hist, params_hist = Paths.load_data_params(Paths.db_output(osd.NAME), DataFrame)
     # rename!(df_hist, :key => :ts)
-    df_hist_ts = DataFrame(:ts => df_hist.ts)
-    df_hist_enc = DataFrame([[df_hist.output[row][col] for row in eachindex(df_hist.output)] for col in eachindex(df_hist.output[1])], :auto)
+    df_hist_ts = DataFrame(:date => df_hist.date)
+    df_hist_enc = DataFrame([[df_hist.output[row][i] for row in eachindex(df_hist.output)] for i in eachindex(df_hist.output[1])], :auto)
     df_hist = hcat(df_hist_ts, df_hist_enc)
     params = merge(params, (;hist=params_hist))
     df = innerjoin(df_tsx, df_hist; on=:ts)
@@ -84,8 +84,8 @@ end
 
 function make_pmfk_lookup()
     df = filtered_tsx()
-    _, params_hist = Paths.load_data_params(Paths.db_output(hsd.NAME), DataFrame)
-    range = params_hist.data.train_date_range
+    _, params_hist = Paths.load_data_params(Paths.db_output(osd.NAME), DataFrame)
+    range = params_hist.data.date_range
     df_train = DF.in(df, range)
     @assert df_train.ts[end] < (now(UTC) - Month(3))
     # return MLyze.calc_pmf_kde(df_train.y_bin; nbins)

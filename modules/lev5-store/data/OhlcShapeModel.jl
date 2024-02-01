@@ -229,7 +229,7 @@ function model_encoder(cfg)
     # dropout = Dropout(cfg.dropout)
     blocks2 = [SkipConnection(ModelUtil.make_block(cfg.through_width, cfg.hidden_width, cfg.layers_per_block, cfg.activation, false), +) for _ in 1:blocks2_count]
 
-    output = Dense(cfg.through_width => cfg.encoded_width; bias=false)
+    output = Dense(cfg.through_width => cfg.encoded_width, Flux.sigmoid_fast; bias=false)
     return Chain(;
             # bn0=BatchNorm(cfg.input_width, swish),
             encoder_input=input,

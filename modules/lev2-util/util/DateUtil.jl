@@ -126,10 +126,9 @@ const DTF_SHORT = dateformat"mm-dd HH:MM:SS Z"
 
 ###############################
 
-# function __init__()
-    # TODO: need this?
-    # BusinessDays.initcache(:USNYSE)
-# end
+function __init__()
+    BusinessDays.initcache(BusinessDays.USNYSE())
+end
 
 # function numDays() end
 
@@ -139,23 +138,23 @@ toDate(z::ZonedDateTime)::Date = Date(astimezone(z, LOCALZONE))
 using Memoization, ThreadSafeDicts
 export isbd
 # TODO: cleanup
-isBusDay(d::DateLike) = isbd_t(d) # isbday(:USNYSE, d)
+isBusDay(d::DateLike) = isbd_t(d)
 isbd(d::DateLike) = isbd_t(d)
-# @memoize ThreadSafeDicts.ThreadSafeDict isbd_t(d::DateLike) = isbday(:USNYSE, d)
+# @memoize ThreadSafeDicts.ThreadSafeDict isbd_t(d::DateLike) = isbday(BusinessDays.USNYSE(), d)
 isbd_t(d::DateTime) = isbd_t(market_date(d))
-@memoize isbd_t(d::Date) = isbday(:USNYSE, d)
+@memoize isbd_t(d::Date) = isbday(BusinessDays.USNYSE(), d)
 
 bdays(d1::DateLike, d2::DateLike)::Int = bdays_t(d1, d2)
-# @memoize ThreadSafeDicts.ThreadSafeDict bdays_t(d1::DateLike, d2::DateLike)::Int = bdayscount(:USNYSE, Date(d1), Date(d2))
-@memoize bdays_t(d1::DateLike, d2::DateLike)::Int = bdayscount(:USNYSE, Date(d1), Date(d2))
-# @memoize bdays(d1::Date, d2::Date)::Int = bdayscount(:USNYSE, d1, d2)
+# @memoize ThreadSafeDicts.ThreadSafeDict bdays_t(d1::DateLike, d2::DateLike)::Int = bdayscount(BusinessDays.USNYSE(), Date(d1), Date(d2))
+@memoize bdays_t(d1::DateLike, d2::DateLike)::Int = bdayscount(BusinessDays.USNYSE(), Date(d1), Date(d2))
+# @memoize bdays(d1::Date, d2::Date)::Int = bdayscount(BusinessDays.USNYSE(), d1, d2)
 
-lastTradingDay(d::Date)::Date = tobday(:USNYSE, d; forward=false)
-lastTradingDay(ts::DateTime)::Date = tobday(:USNYSE, market_date(ts); forward=false)
-lastTradingDay(zdt::ZonedDateTime)::Date = tobday(:USNYSE, market_date(zdt); forward=false)
-nextTradingDay(d::Date)::Date = tobday(:USNYSE, d; forward=true)
-bdaysBefore(d::Date, n::Int)::Date = advancebdays(:USNYSE, lastTradingDay(d), -n)
-bdaysAfter(d::Date, n::Int)::Date = advancebdays(:USNYSE, lastTradingDay(d), n)
+lastTradingDay(d::Date)::Date = tobday(BusinessDays.USNYSE(), d; forward=false)
+lastTradingDay(ts::DateTime)::Date = tobday(BusinessDays.USNYSE(), market_date(ts); forward=false)
+lastTradingDay(zdt::ZonedDateTime)::Date = tobday(BusinessDays.USNYSE(), market_date(zdt); forward=false)
+nextTradingDay(d::Date)::Date = tobday(BusinessDays.USNYSE(), d; forward=true)
+bdaysBefore(d::Date, n::Int)::Date = advancebdays(BusinessDays.USNYSE(), lastTradingDay(d), -n)
+bdaysAfter(d::Date, n::Int)::Date = advancebdays(BusinessDays.USNYSE(), lastTradingDay(d), n)
 
 function matchAfter(from::Date, dates, bdays)
     dateMin = bdaysAfter(from, first(bdays))
@@ -214,13 +213,15 @@ function year_months(;start_date=DEFAULT_DATA_START_DATE, end_date=market_today(
     [(;year=year(d), month=month(d)) for d in start_date:Month(1):end_date]
 end
 
-function all_weekdays(;date_from=DEFAULT_DATA_START_DATE, date_to=market_today())
+all_bdays(from, to) = BusinessDays.listbdays(BusinessDays.USNYSE(), from, to)
+
+function all_weekdays(date_from=DEFAULT_DATA_START_DATE, date_to=market_today())
     return Iterators.filter(d -> Dates.dayofweek(d) <= 5, date_from:Day(1):date_to)
 end
 
 function all_weekday_ts(;date_from=DEFAULT_DATA_START_DATE, date_to=market_today(), time_from=Time(9, 30), time_to=Time(16,00), period=Minute(30))
     res = DateTime[]
-    for date in all_weekdays(;date_from, date_to)
+    for date in all_weekdays(date_from, date_to)
         append!(res, [fromMarketTZ(date, t) for t in time_from:period:time_to])
     end
     return res

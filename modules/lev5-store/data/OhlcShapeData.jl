@@ -2,7 +2,7 @@ module OhlcShapeData
 using Intervals, Dates, DataFrames, StatsBase
 import Distributions
 import EmpiricalDistributions:UvBinnedDist
-using DateUtil, DataConst, Paths, FilesArrow
+using BaseTypes, DateUtil, DataConst, Paths, FilesArrow
 # , DataRead
 import VectorCalcUtil as vcu
 import HistData
@@ -41,8 +41,15 @@ Format for input files is an Arrow table with columns:
 For this one:
 date, prices_seq, prices_mask, prices_scaling, vix_seq, vix_mask, vix_scaling
 =#
+
+first_last(x) = (first(x), last(x))
 function make_input(params=params_data())
+    allweekdays = collect(DateUtil.all_weekdays(first_last(params.date_range)...))
+    first_ind = find_first_ind_date(allweekdays, DateUtil.DAYS_PER_WEEK * params.weeks_count)
+    expected_dates = DateUtil.all_bdays(allweekdays[first_ind], last(params.date_range))
+
     price = make_df_seq("SPY", OHLC_COLS, params; scale=true)
+
     # maximum index of data we can use to calculate distribution to use so we can test against data not used in it
     max_distri_ind = searchsortedfirst(price.date, params.holdout_date) - 1
     scale!(price.seq, max_distri_ind, params.distri_nbins)
@@ -61,12 +68,14 @@ function make_input(params=params_data())
         mask = vcat.(price.mask, volume.mask, vix.mask),
     )
     sort!(df, :date)
+    @assert df.date == expected_dates "Missing dates: $(setdiff(allbdays, df.date))"
+
     # params = merge(params, (;widths=(;
     #     price_seq=length(df.price_seq[1]),
     #     vix_seq=length(df.vix_seq[1]),
     # )))
     params = merge(params, (;width=length(df.seq[1])))
-    Paths.save_data_params(Paths.db_input(NAME), params, df)
+    # Paths.save_data_params(Paths.db_input(NAME), params, df)
     return df
 end
 f_prefix(s) = name -> s * name
@@ -87,8 +96,10 @@ function make_df_seq(sym, cols, params; scale=false)
     # scaling_len = (length(cols) - 3) * 32
 
     df = make_input_raw(sym, cols, params)
-    first_ind = find_first_ind_date(df, entry_count)
-    inds = [ind for ind in first_ind:length(df.date) if (!iszero(df[ind,2]) && !iszero(df[ind-1,end]))]
+    first_ind = find_first_ind_date(df.date, entry_count)
+    # inds = [ind for ind in first_ind:length(df.date) if (!iszero(df[ind,2]) && !iszero(df[ind-1,end]))]
+    inds = [ind for ind in first_ind:length(df.date) if !iszero(df[ind,2])]
+    # inds = first_ind:length(df.date)
     # rows = mapreduce(vcat, inds) do ind
     sequences::Vector{Vector{Float32}} = mapreduce(push!, inds; init=Vector()) do ind
         # seq, scales = make_sequence_date(df, ind, weeks_count, cols)
@@ -202,15 +213,16 @@ function make_sequence_date(df, ind, weeks_count, cols)
     return seq
 end
 
-function find_first_ind_date(df, seq_len)
-    if Dates.dayofweek(df.date[1]) == 1
+function find_first_ind_date(dates, seq_len)
+    global kff = (;dates, seq_len)
+    if Dates.dayofweek(dates[1]) == 1
         first_ind = seq_len
     else
-        first_left_date = Dates.firstdayofweek(df.date[1] + Week(1))
-        first_left_ind = searchsortedfirst(df.date, first_left_date)
-        @assert Dates.dayofweek(df.date[first_left_ind]) == 1
+        first_left_date = Dates.firstdayofweek(dates[1] + Week(1))
+        first_left_ind = searchsortedfirst(dates, first_left_date)
+        @assert Dates.dayofweek(dates[first_left_ind]) == 1
         first_ind = first_left_ind + seq_len - 1
-        @assert Dates.dayofweek(df.date[first_ind]) == 5
+        @assert Dates.dayofweek(dates[first_ind]) == 5 (@str "Dates.dayofweek(dates[first_ind])" first_left_date first_left_ind first_ind)
     end
     return first_ind
 end
