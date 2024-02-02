@@ -14,8 +14,8 @@ params_train(;kws...) = (;
     rng_seed = 1,
     # holdout = 0.1,
     kfolds = 5,
-    batch_size = 16, # 256 with Lion went to 3.59 holdout after 1 epoch
-    weight_decay = 0.0001f0,
+    batch_size = 16,
+    weight_decay = 0f0,
     kws...
 )
 
