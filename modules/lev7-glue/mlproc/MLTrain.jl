@@ -14,7 +14,7 @@ params_train(;kws...) = (;
     rng_seed = 1,
     # holdout = 0.1,
     kfolds = 5,
-    batch_size = 512,
+    batch_size = 128,
     weight_decay = 0.001f0,
     kws...
 )
