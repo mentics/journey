@@ -299,32 +299,36 @@ single(training, ind) = (;batch=training.data.single(ind) |> cpu, yhat=training.
 
 import DrawUtil:draw,draw!
 function checki(training, inds)
-    draw(:vlines, 0f0)
-    trainee = training.trainee
-    for i in inds
-        gbatch = training.data.single(i) |> gpu
-        yhat = trainee.run_train(training.model, gbatch.x) |> cpu
-        batch = gbatch |> cpu
+    try
+        Flux.testmode!(training.model)
+        draw(:vlines, 0f0)
+        trainee = training.trainee
+        for i in inds
+            gbatch = training.data.single(i) |> gpu
+            yhat = trainee.run_train(training.model, gbatch.x) |> cpu
+            batch = gbatch |> cpu
 
-        # # (x, x) = trainee.mod.to_draw_x(batch, 2)
-        # (yx, yy) = trainee.mod.to_draw_y(batch, 1)
-        # (yhx, yhy) = trainee.mod.to_draw_yh(yhat, 1)
-        println(typeof(yhat))
+            # # (x, x) = trainee.mod.to_draw_x(batch, 2)
+            # (yx, yy) = trainee.mod.to_draw_y(batch, 1)
+            # (yhx, yhy) = trainee.mod.to_draw_yh(yhat, 1)
+            # println(typeof(yhat))
 
-        yy = trainee.mod.to_draw_y(batch, 1)
-        yhy = trainee.mod.to_draw_yh(yhat, 1)
-        draw!(:scatter, yy; label="y-$(i)")
-        draw!(:scatter, yhy; label="yh-$(i)")
+            yy = trainee.mod.to_draw_y(batch, 1)
+            yhy = trainee.mod.to_draw_yh(yhat, 1)
+            draw!(:scatter, yy; label="y-$(i)")
+            draw!(:scatter, yhy; label="yh-$(i)")
 
-        # # draw(:scatter, x; label="x")
-        # # draw!(:scatter, yhx, yhy; label="yh")
-        # # draw!(:scatter, yx, yy ./ 10; label="y")
-        # draw!(:scatter, yhx, yhy)
-        # # draw!(:scatter, yx, yy ./ 10)
-        # draw!(:scatter, [yhx[findmax(yhy[:,1])[2]]], [0.1])
+            # # draw(:scatter, x; label="x")
+            # # draw!(:scatter, yhx, yhy; label="yh")
+            # # draw!(:scatter, yx, yy ./ 10; label="y")
+            # draw!(:scatter, yhx, yhy)
+            # # draw!(:scatter, yx, yy ./ 10)
+            # draw!(:scatter, [yhx[findmax(yhy[:,1])[2]]], [0.1])
+        end
+        return # (;batch, yhat)
+    finally
+        Flux.testmode!(training.model, :auto)
     end
-    return # (;batch, yhat)
-
     # for i in axes(under, 1), j in axes(under, 2)
     #     if under[i,j] != 0f0
     #       print("$(under[i,j]),")
