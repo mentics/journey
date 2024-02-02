@@ -13,7 +13,7 @@ const NAME = replace(string(@__MODULE__), "Data" => "")
 #region Public
 params_data() = (;
     xpirs_within = DataConst.XPIRS_WITHIN_CALC2,
-    bins_count = Bins.VNUM,
+    # bins_count = Bins.num_edges?,
     # skip_cols = 4, # skip ts, expir, y_bin, ce_compare for actual input
     skip_cols = 3, # skip ts, expir, y_bin
 )

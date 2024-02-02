@@ -5,6 +5,7 @@ import CUDA:CuArray
 using DateUtil, Paths, ModelUtil, TrainUtil, MLTrain
 import CudaUtil:copyto_itr!
 import DataFrameUtil as dfu
+import  ProbMeta as Bins
 
 #=
 No pushing to gpu in data or model modules. Only MLTrain pushed to gpu. well... would be nice, but api for data was messy that way, but maybe can get back to that.
@@ -29,6 +30,8 @@ params_model() = (;
     output_func = run_train_sum1,
     softmax_temp = 1.2f0, # 8.4f0,
     ce_compare_squared = true,
+
+    edges_count = Bins.num_edges(),
 )
 
 #region MLTrain Interface
@@ -157,7 +160,7 @@ function prep_input(obss, params, bufs)
     end
     copyto!(bufs.gpu.x, bufs.cpu.x)
     # y = YS2[][:,obss.y_bin]
-    y = Flux.onehotbatch(obss.y_bin, 1:params.data.bins_count) |> gpu
+    y = Flux.onehotbatch(obss.y_bin, 1:params.model.edges_count) |> gpu
     # ce_compare = obss.ce_compare |> gpu # ce_all[obss.y_bin] |> gpu
     # if !OVERRIDE_SQUARED[] && params.model.ce_compare_squared
     #     ce_compare .^= 2
@@ -171,10 +174,10 @@ import CUDA
 const YS2 = Ref{CuArray{Float32, 2, CUDA.Mem.DeviceBuffer}}()
 import Distributions
 function setup_y()
-    ys = Matrix(undef, Bins.VNUM, Bins.VNUM)
-    for i in 1:Bins.VNUM
+    ys = Matrix(undef, Bins.num_edges(), Bins.num_edges())
+    for i in 1:Bins.num_edges()
         dlap = Distributions.Laplace(Float32(i), 16f0) # from roughly fitting to all y_bin and narrowing as a goal
-        ys[:,i] .= vcu.normalize!([Distributions.pdf(dlap, x) for x in 1:Bins.VNUM])
+        ys[:,i] .= vcu.normalize!([Distributions.pdf(dlap, x) for x in 1:Bins.num_edges()])
     end
     YS2[] = ys |> gpu
 end
@@ -399,7 +402,6 @@ function check_load(ind=1)
     check_output(df, ind)
 end
 import DrawUtil
-using ProbMeta
 function check_output(df, ind=1)
     # data = Vector(select(df, Not(:key))[ind,:])
     # replace!(x -> x < 0 ? 0f0 : x, data)
