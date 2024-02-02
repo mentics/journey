@@ -14,8 +14,8 @@ params_train(;kws...) = (;
     rng_seed = 1,
     # holdout = 0.1,
     kfolds = 5,
-    batch_size = 256,
-    weight_decay = 0f0, # 0.001f0,
+    batch_size = 16, # 256 with Lion went to 3.59 holdout after 1 epoch
+    weight_decay = 0.001f0,
     kws...
 )
 
@@ -99,8 +99,8 @@ function setup(trainee::Trainee, pt=nothing; kws...)
     model = trainee.make_model() |> dev
     println("Model has param count: ", sum(length, Flux.params(model)))
 
-    # opt = Flux.AdamW(trainee.get_learning_rate(1), (0.9, 0.999), pt.weight_decay)
-    opt = Flux.Optimisers.Lion(trainee.get_learning_rate(1))
+    opt = Flux.AdamW(trainee.get_learning_rate(1), (0.9, 0.999), pt.weight_decay)
+    # opt = Flux.Optimisers.Lion(trainee.get_learning_rate(1))
     opt_state = Flux.setup(opt, model) |> dev
 
     # if !iszero(pt.weight_decay)
@@ -148,6 +148,7 @@ function train(training::Training; epochs=1000)
     training.metrics[:epoch_losses] = epoch_losses
     print_status = throttle(4; leading=false) do status
         println(status)
+        check_holdout(training)
         # println("epoch: $(epoch), fold: $(ifold), batch: $(batches_fold_count) / $(length(cv_inds.train)) ($(ibatch)) - Training loss $(loss)")
     end
 

@@ -25,8 +25,8 @@ params_model() = (;
     use_bias_out = false,
     activation = NNlib.swish,
     output_activation = NNlib.sigmoid_fast,
-    output_func = run_train_softmax,
-    # output_func = run_train_sum1,
+    # output_func = run_train_softmax,
+    output_func = run_train_sum1,
     softmax_temp = 1.2f0, # 8.4f0,
     ce_compare_squared = true,
 )
