@@ -5,20 +5,25 @@ import DateUtil, Paths
 import DataConst, DataRead, ModelUtil
 import OhlcShapeData as osd
 import Calendars as cal
-using ProbMeta, MLyze
+using MLyze
 import DataFrameUtil as DF
+import ProbMeta as Bins
 
 const NAME = replace(string(@__MODULE__), "Data" => "")
 
 #region Public
 params_data() = (;
     xpirs_within = DataConst.XPIRS_WITHIN_CALC2,
-    # bins_count = Bins.num_edges?,
     # skip_cols = 4, # skip ts, expir, y_bin, ce_compare for actual input
     skip_cols = 3, # skip ts, expir, y_bin
+
+    bins_count = 203,
+    bins_span = 0.1,
 )
 
 function make_input(params=params_data(); age=DateUtil.FOREVER2) # DateUtil.age_daily())
+    Bins.init_bins(params.bins_count, params.bins_span)
+
     # Get xtqs and ret
     df_tsx = filtered_tsx(;age)
     df_tsx.date = Date.(df_tsx.ts)

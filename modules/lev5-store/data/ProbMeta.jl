@@ -46,6 +46,11 @@ num_bins() = BINS2[].NUM
 num_edges() = BINS2[].VNUM
 xs() = BINS2[].XS
 
+nearest(x::Real)::Int = nearest(BINS2[], x)
+nearest(bins, x) = isLeft(bins, x) ? 1 : isRight(bins, x) ? bins.VNUM : 2 + round(Int, (x - bins.XS[2]) / bins.WIDTH)
+isLeft(bins, x::Real) = x <= bins.XLEFT
+isRight(bins, x::Real) = x >= bins.XRIGHT
+
 r(x::Float64) = round(x; sigdigits=8)
 
 end

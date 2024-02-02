@@ -20,7 +20,7 @@ params_model() = (;
     layers_per_block = 2,
     use_output_for_hidden = false,
     hidden_width_mult = 2,
-    dropout = 0.1f0,
+    dropout = 0f0,
     use_bias_in = false,
     use_bias_block = false,
     use_bias_out = false,
@@ -30,9 +30,6 @@ params_model() = (;
     output_func = run_train_sum1,
     softmax_temp = 1.2f0, # 8.4f0,
     ce_compare_squared = true,
-
-    bins_count = 203,
-    bins_span = 0.05,
 )
 
 #region MLTrain Interface
@@ -50,7 +47,6 @@ function make_trainee(params_m=params_model(); days_to_xpir=nothing)
     println("Training with $(size(df,1)) observations")
     input_width = get_input_width(df) # get_input_width(df, params_data.skip_cols)
     params = (;data=params_data, model=params_m)
-    Bins.init_bins(params.model.bins_count, params.model.bins_span)
 
     global state = Trainee(;
         name=NAME,
@@ -162,7 +158,7 @@ function prep_input(obss, params, bufs)
     end
     copyto!(bufs.gpu.x, bufs.cpu.x)
     # y = YS2[][:,obss.y_bin]
-    y = Flux.onehotbatch(obss.y_bin, 1:params.model.bins_count) |> gpu
+    y = Flux.onehotbatch(obss.y_bin, 1:params.data.bins_count) |> gpu
     # ce_compare = obss.ce_compare |> gpu # ce_all[obss.y_bin] |> gpu
     # if !OVERRIDE_SQUARED[] && params.model.ce_compare_squared
     #     ce_compare .^= 2
