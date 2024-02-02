@@ -15,11 +15,11 @@ TODO: something is wrong with dividing by ce_all this way?
 const NAME = replace(string(@__MODULE__), "Model" => "")
 
 params_model() = (;
-    block_count = 8,
-    layers_per_block = 4,
+    block_count = 4,
+    layers_per_block = 2,
     use_output_for_hidden = false,
-    hidden_width_mult = 4,
-    dropout = 0f0,
+    hidden_width_mult = 2,
+    dropout = 0.2f0,
     use_bias_in = false,
     use_bias_block = false,
     use_bias_out = false,
@@ -92,9 +92,12 @@ function make_data(df, params)
     date_range = params.data.hist.data.date_range
     @assert df.ts[1] in date_range && df.ts[end] in date_range
     # Hold out some of the most recent data so we can backtest on untrained data
-    df_train, df_holdout = dfu.split(df, params.data.hist.data.holdout_date; keycol=:ts)
+    dfrange = filter(:ts => (date -> year(date) >= 2018), df)
+    df_train, df_holdout = dfu.split(dfrange, params.data.hist.data.holdout_date; keycol=:ts)
     @assert df_holdout.ts[1] > df_train.ts[end] "df_holdout.ts[1] $(df_holdout.ts[1]) > $(df_train.ts[end]) df_train.ts[end]"
     # ce_all = setup_ce_all(df_train)
+    println("Training with data between $(df_train.ts[1]) and $(df_train.ts[end])")
+    println("Holdout has data between $(df_holdout.ts[1]) and $(df_holdout.ts[end])")
 
     # shuffled = shuffleobs(df) # pre-shuffle so holdout is random
     # training, holdout = splitobs(shuffled; at=(1.0 - params.train.holdout))
@@ -228,7 +231,8 @@ function calc_loss_for(yhat, y) # , ce_compare)
     # ce = Flux.Losses.crossentropy(yhat, y; agg=(x -> agg_loss(x, ce_compare)))
     # return ce
 
-    return Flux.Losses.crossentropy(yhat, y)
+    # return Flux.Losses.crossentropy(yhat, y)
+    return Flux.Losses.binarycrossentropy(yhat, y)
 
     # return Flux.Losses.mse(yhat, y)
 

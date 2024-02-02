@@ -15,7 +15,7 @@ params_train(;kws...) = (;
     # holdout = 0.1,
     kfolds = 5,
     batch_size = 16, # 256 with Lion went to 3.59 holdout after 1 epoch
-    weight_decay = 0f0,
+    weight_decay = 0.0001f0,
     kws...
 )
 
@@ -191,6 +191,10 @@ function train(training::Training; epochs=1000)
             end
             loss_validation /= count
             Flux.testmode!(model, :auto)
+            # if check_holdout(training) < 3.6
+            #     error("stop training")
+            #     println("Stopped: Reached target holdout loss")
+            # end
 
             println("Epoch $(epoch), fold $(ifold) - Validation loss #$(batches_epoch_count): $(loss_validation)")
         end
@@ -285,9 +289,6 @@ function check_holdout(training)
     #     loss = training.trainee.get_loss(training.trainee.training_model, training.trainee.batches.get(1, ibatch))
     #     println("Loss for holdout batch $(ibatch): $(loss)")
     # end
-    if loss < 3.6
-        error("stop training")
-    end
     return loss
 end
 
