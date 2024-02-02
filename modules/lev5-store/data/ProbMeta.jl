@@ -40,11 +40,11 @@ const BINS2 = Ref{BinsInfo}()
 function __init__()
     init_bins()
 end
-init_bins() = BINS2[] = make_bins(201, 0.5)
+init_bins(nbins=201, span=0.1) = BINS2[] = make_bins(nbins, span)
 
 num_bins() = BINS2[].NUM
 num_edges() = BINS2[].VNUM
-xs() = BINS3[].XS
+xs() = BINS2[].XS
 
 r(x::Float64) = round(x; sigdigits=8)
 
