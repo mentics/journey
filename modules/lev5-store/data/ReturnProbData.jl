@@ -14,7 +14,8 @@ const NAME = replace(string(@__MODULE__), "Data" => "")
 params_data() = (;
     xpirs_within = DataConst.XPIRS_WITHIN_CALC2,
     bins_count = Bins.VNUM,
-    skip_cols = 4, # skip ts, expir, y_bin, ce_compare for actual input
+    # skip_cols = 4, # skip ts, expir, y_bin, ce_compare for actual input
+    skip_cols = 3, # skip ts, expir, y_bin
 )
 
 function make_input(params=params_data(); age=DateUtil.FOREVER2) # DateUtil.age_daily())
@@ -58,15 +59,16 @@ function make_input(params=params_data(); age=DateUtil.FOREVER2) # DateUtil.age_
 
     # Calc pmf and cross entropy by days to xpir for comparison
     transform!(df, [:ts, :expir] => DateUtil.calc_days_to_xpir => :days_to_xpir)
-    pmfk_lookup = load_pmfk_lookup()
-    bins = 1:params.bins_count
-    transform!(df, [:y_bin,:days_to_xpir] => (
-            (y_bins, days_to_xpirs) ->
-                [Flux.crossentropy(pmfk_lookup[days_to_xpirs[i]], Flux.onehot(y_bins[i], bins)) for i in eachindex(y_bins)]
-        ) => :ce_compare)
+    # pmfk_lookup = load_pmfk_lookup()
+    # bins = 1:params.bins_count
+    # transform!(df, [:y_bin,:days_to_xpir] => (
+    #         (y_bins, days_to_xpirs) ->
+    #             [Flux.crossentropy(pmfk_lookup[days_to_xpirs[i]], Flux.onehot(y_bins[i], bins)) for i in eachindex(y_bins)]
+    #     ) => :ce_compare)
 
     # cleanup
-    select!(df, :ts, :expir, :y_bin, :ce_compare, Not([:ts, :date, :expir, :y_bin, :ce_compare, :ret, :days_to_xpir]))
+    # select!(df, :ts, :expir, :y_bin, :ce_compare, Not([:ts, :date, :expir, :y_bin, :ce_compare, :ret, :days_to_xpir]))
+    select!(df, :ts, :expir, :y_bin, Not([:ts, :date, :expir, :y_bin, :ret, :days_to_xpir]))
 
     @assert issorted(df, [:ts, :expir])
     @assert allunique(df, [:ts, :expir])
@@ -114,7 +116,7 @@ file_pmfk_lookup() = Paths.db_incoming("pmfk_lookup", "pfmk.jld2")
 #endregion Pmfk
 
 #region Util
-function filtered_tsx(;age=DateUtil.age_daily())
+function filtered_tsx(;age=DateUtil.FOREVER2) # DateUtil.age_daily())
     # Near the end, we don't have returns because they are in the future so filter them out.
     # We can't even backtest on this because we won't know the performance of it anyway
     df1 = filter(:ret => isfinite, DataRead.get_tsx(;age))

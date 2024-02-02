@@ -15,16 +15,16 @@ TODO: something is wrong with dividing by ce_all this way?
 const NAME = replace(string(@__MODULE__), "Model" => "")
 
 params_model() = (;
-    block_count = 32,
-    layers_per_block = 4,
+    block_count = 8,
+    layers_per_block = 2,
     use_output_for_hidden = false,
     hidden_width_mult = 4,
-    dropout = 0.2f0,
-    activation = NNlib.swish,
+    dropout = 0.05f0,
     use_bias_in = false,
     use_bias_block = false,
     use_bias_out = false,
-    output_activation = NNlib.relu,
+    activation = NNlib.swish,
+    output_activation = NNlib.sigmoid_fast,
     # output_func = run_train_softmax,
     output_func = run_train_sum1,
     softmax_temp = 1.2f0, # 8.4f0,
@@ -44,7 +44,7 @@ function make_trainee(params_m=params_model(); days_to_xpir=nothing)
     df, params_data = load_input(; days_to_xpir)
     # df = select(df, Not([:xtq1_call, :xtq2_call, :xtq3_call, :xtq1_put, :xtq2_put, :xtq3_put]))
     println("Training with $(size(df,1)) observations")
-    input_width = get_input_width(df, params_data.skip_cols)
+    input_width = get_input_width(df) # get_input_width(df, params_data.skip_cols)
     params = (;data=params_data, model=params_m)
 
     global state = Trainee(;
@@ -55,7 +55,7 @@ function make_trainee(params_m=params_model(); days_to_xpir=nothing)
         run_train = (model, batch) -> params_m.output_func(model, batch, params),
         run_infer = (model, batch) -> params_m.output_func(model, batch, params),
         prep_data = params_train -> make_data(df, merge(params, (;train=params_train))),
-        get_learning_rate = TrainUtil.learning_rate_linear_decay(), # TrainUtil.lr_cycle_decay(),
+        get_learning_rate = TrainUtil.learning_rate_linear_decay(1e-4), # TrainUtil.lr_cycle_decay(),
         get_loss = (model, batch) -> calc_loss(params_m.output_func, model, batch, params),
         params,
         mod = @__MODULE__
@@ -84,8 +84,8 @@ to_draw_yh(yhat, ind) = yhat[1:end,ind] |> cpu
 
 #region Data
 # TODO: make this easier, more reliable?
-get_input_width(df) = size(df, 2) - 4
-get_input_width(df, skip) = size(df, 2) - skip
+get_input_width(df) = size(df, 2) - 3 # should get this 3 from params.data.skip_cols
+# get_input_width(df, skip) = size(df, 2) - skip
 
 function make_data(df, params)
     global kmd = (;df, params)
@@ -127,9 +127,9 @@ single(df, ind, params; kws...) = prep_input(df[ind:ind,:], params; kws...)
 #     return (;keys, x, y)
 # end
 
-make_buffers(obss) = make_buffers(get_input_width(obss), size(obss, 1))
+make_buffers(obss::DataFrame) = make_buffers(get_input_width(obss), size(obss, 1))
 import Flux
-function make_buffers(input_width, batch_size)
+function make_buffers(input_width::Integer, batch_size::Integer)
     c = (;
         x = Matrix{Float32}(undef, input_width, batch_size),
         # Note: custom objects are used for onehot and copyto! doesn't seem to work on them.
@@ -155,11 +155,12 @@ function prep_input(obss, params, bufs)
     copyto!(bufs.gpu.x, bufs.cpu.x)
     # y = YS2[][:,obss.y_bin]
     y = Flux.onehotbatch(obss.y_bin, 1:params.data.bins_count) |> gpu
-    ce_compare = obss.ce_compare |> gpu # ce_all[obss.y_bin] |> gpu
-    if !OVERRIDE_SQUARED[] && params.model.ce_compare_squared
-        ce_compare .^= 2
-    end
-    return (;keys, x=bufs.gpu.x, y, ce_compare)
+    # ce_compare = obss.ce_compare |> gpu # ce_all[obss.y_bin] |> gpu
+    # if !OVERRIDE_SQUARED[] && params.model.ce_compare_squared
+    #     ce_compare .^= 2
+    # end
+    # return (;keys, x=bufs.gpu.x, y, ce_compare)
+    return (;keys, x=bufs.gpu.x, y)
 end
 const OVERRIDE_SQUARED = Ref(false)
 
@@ -209,7 +210,8 @@ get_y(y) = YS2[][:,y]
 #region Run
 function calc_loss(f, model, batch, params; kws...)
     yhat = f(model, batch.x, params)
-    return calc_loss_for(yhat, batch.y, batch.ce_compare; kws...)
+    # return calc_loss_for(yhat, batch.y, batch.ce_compare; kws...)
+    return calc_loss_for(yhat, batch.y; kws...)
 end
 function agg_loss(x, ce_compare)
     len = size(ce_compare, 1)
@@ -222,7 +224,7 @@ function agg_loss(x, ce_compare)
     @assert typeof(m) == Float32 "typeof(m) $(typeof(m)) == Float32"
     return m
 end
-function calc_loss_for(yhat, y, ce_compare)
+function calc_loss_for(yhat, y) # , ce_compare)
     # ce = Flux.Losses.crossentropy(yhat, y; agg=(x -> agg_loss(x, ce_compare)))
     # return ce
 
@@ -319,7 +321,10 @@ end
 
 function run_train_sum1(model, batchx, params)
     yhat = model(batchx)
+    global kyhat = yhat
+    @assert all(>=(0f0), yhat)
     ss = sum(yhat; dims=1)
+    @assert all(>=(0f0), ss)
     yhat = yhat ./ ss
     return yhat
 end
@@ -337,7 +342,7 @@ function make_model(input_width, params)
     through_width = cfg.use_output_for_hidden ? cfg.hidden_width_mult * output_width : cfg.hidden_width_mult * input_width
     @show input_width through_width
 
-    input_layer = Dense(input_width => through_width; bias=cfg.use_bias_in)
+    input_layer = Dense(input_width => through_width, cfg.activation; bias=cfg.use_bias_in)
 
     # blocks1_count = cfg.block_count ÷ 2
     # blocks2_count = cfg.block_count - blocks1_count
@@ -356,6 +361,7 @@ function make_model(input_width, params)
     blocks = []
     push!(blocks, :block_1 => SkipConnection(ModelUtil.make_block(through_width, through_width, cfg.layers_per_block, cfg.activation, cfg.use_bias_block), +))
     for i in 1:cfg.block_count
+        push!(blocks, Symbol("bn$(i)") => bn(through_width))
         if !iszero(cfg.dropout)
             push!(blocks, Symbol("dropout_$(i)") => Dropout(cfg.dropout))
         end
@@ -364,8 +370,15 @@ function make_model(input_width, params)
 
     output_layer = Dense(through_width => output_width, cfg.output_activation; bias=cfg.use_bias_out)
 
-    return Chain(;input_layer, blocks..., output_layer)
+    return Chain(;
+        input_layer,
+        bnin=bn(through_width),
+        blocks...,
+        bnout=bn(through_width),
+        output_layer
+    )
 end
+bn(w) = BatchNorm(w)
 
 function get_inference_model(model)
     return model

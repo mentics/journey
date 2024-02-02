@@ -1,5 +1,5 @@
 module ProbMeta
-import Bins800 as Bins
+import Bins200 as Bins
 export Bins
 
 
