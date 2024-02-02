@@ -19,7 +19,7 @@ struct BinsInfo
 end
 
 function make_bins(num, span)
-    NUM = num
+    NUM = num - 2
     SPAN = span
 
     VNUM = NUM + 2
