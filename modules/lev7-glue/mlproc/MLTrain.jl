@@ -15,7 +15,7 @@ params_train(;kws...) = (;
     # holdout = 0.1,
     kfolds = 5,
     batch_size = 16, # 256 with Lion went to 3.59 holdout after 1 epoch
-    weight_decay = 0.001f0,
+    weight_decay = 0f0,
     kws...
 )
 
@@ -285,6 +285,9 @@ function check_holdout(training)
     #     loss = training.trainee.get_loss(training.trainee.training_model, training.trainee.batches.get(1, ibatch))
     #     println("Loss for holdout batch $(ibatch): $(loss)")
     # end
+    if loss < 3.6
+        error("stop training")
+    end
     return loss
 end
 

@@ -15,7 +15,7 @@ TODO: something is wrong with dividing by ce_all this way?
 const NAME = replace(string(@__MODULE__), "Model" => "")
 
 params_model() = (;
-    block_count = 4,
+    block_count = 8,
     layers_per_block = 4,
     use_output_for_hidden = false,
     hidden_width_mult = 4,
