@@ -15,18 +15,18 @@ TODO: something is wrong with dividing by ce_all this way?
 const NAME = replace(string(@__MODULE__), "Model" => "")
 
 params_model() = (;
-    block_count = 8,
-    layers_per_block = 2,
+    block_count = 4,
+    layers_per_block = 4,
     use_output_for_hidden = false,
     hidden_width_mult = 4,
-    dropout = 0.2f0,
+    dropout = 0f0,
     use_bias_in = false,
     use_bias_block = false,
     use_bias_out = false,
     activation = NNlib.swish,
     output_activation = NNlib.sigmoid_fast,
-    # output_func = run_train_softmax,
-    output_func = run_train_sum1,
+    output_func = run_train_softmax,
+    # output_func = run_train_sum1,
     softmax_temp = 1.2f0, # 8.4f0,
     ce_compare_squared = true,
 )
@@ -361,7 +361,7 @@ function make_model(input_width, params)
     blocks = []
     push!(blocks, :block_1 => SkipConnection(ModelUtil.make_block(through_width, through_width, cfg.layers_per_block, cfg.activation, cfg.use_bias_block), +))
     for i in 1:cfg.block_count
-        push!(blocks, Symbol("bn$(i)") => bn(through_width))
+        # push!(blocks, Symbol("bn$(i)") => bn(through_width))
         if !iszero(cfg.dropout)
             push!(blocks, Symbol("dropout_$(i)") => Dropout(cfg.dropout))
         end
@@ -372,9 +372,9 @@ function make_model(input_width, params)
 
     return Chain(;
         input_layer,
-        bnin=bn(through_width),
+        # bnin=bn(through_width),
         blocks...,
-        bnout=bn(through_width),
+        # bnout=bn(through_width),
         output_layer
     )
 end
