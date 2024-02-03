@@ -17,10 +17,10 @@ const NAME = replace(string(@__MODULE__), "Model" => "")
 
 params_model() = (;
     block_count = 4,
-    layers_per_block = 2,
+    layers_per_block = 4,
     use_output_for_hidden = false,
-    hidden_width_mult = 2,
-    dropout = 0.1f0,
+    hidden_width_mult = 4,
+    dropout = 0f0,
     use_bias_in = false,
     use_bias_block = false,
     use_bias_out = false,

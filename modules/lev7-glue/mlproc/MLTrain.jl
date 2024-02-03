@@ -191,10 +191,10 @@ function train(training::Training; epochs=1000)
             end
             loss_validation /= count
             Flux.testmode!(model, :auto)
-            # if check_holdout(training) < 3.6
-            #     error("stop training")
-            #     println("Stopped: Reached target holdout loss")
-            # end
+            if check_holdout(training) < 0.029
+                error("stop training")
+                println("Stopped: Reached target holdout loss")
+            end
 
             println("Epoch $(epoch), fold $(ifold) - Validation loss #$(batches_epoch_count): $(loss_validation)")
         end
