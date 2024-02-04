@@ -16,18 +16,18 @@ TODO: something is wrong with dividing by ce_all this way?
 const NAME = replace(string(@__MODULE__), "Model" => "")
 
 params_model() = (;
-    block_count = 4,
-    layers_per_block = 4,
+    block_count = 2,
+    layers_per_block = 2,
     use_output_for_hidden = false,
-    hidden_width_mult = 4,
+    hidden_width_mult = 2,
     dropout = 0f0,
     use_bias_in = false,
     use_bias_block = false,
     use_bias_out = false,
     activation = NNlib.swish,
     output_activation = NNlib.sigmoid_fast,
-    # output_func = run_train_softmax,
-    output_func = run_train_sum1,
+    output_func = run_train_softmax,
+    # output_func = run_train_sum1,
     softmax_temp = 1.2f0, # 8.4f0,
     ce_compare_squared = true,
 )
@@ -158,7 +158,9 @@ function prep_input(obss, params, bufs)
     end
     copyto!(bufs.gpu.x, bufs.cpu.x)
     # y = YS2[][:,obss.y_bin]
+
     y = Flux.onehotbatch(obss.y_bin, 1:params.data.bins_count) |> gpu
+
     # ce_compare = obss.ce_compare |> gpu # ce_all[obss.y_bin] |> gpu
     # if !OVERRIDE_SQUARED[] && params.model.ce_compare_squared
     #     ce_compare .^= 2
@@ -233,9 +235,9 @@ function calc_loss_for(yhat, y) # , ce_compare)
     # return ce
 
     # return Flux.Losses.crossentropy(yhat, y)
-    return Flux.Losses.binarycrossentropy(yhat, y)
+    # return Flux.Losses.binarycrossentropy(yhat, y)
 
-    # return Flux.Losses.mse(yhat, y)
+    return Flux.Losses.mse(yhat, y)
 
     # smooth_penalty = 10 * calc_smooth_penalty(yhat) # / (10 + ce)
     # return ce + smooth_penalty

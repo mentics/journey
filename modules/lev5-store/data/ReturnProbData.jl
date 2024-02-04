@@ -17,12 +17,12 @@ params_data() = (;
     # skip_cols = 4, # skip ts, expir, y_bin, ce_compare for actual input
     skip_cols = 3, # skip ts, expir, y_bin
 
-    bins_count = 203,
-    bins_span = 0.1,
+    bins_count = 5,
+    # bins_span = 0.1,
 )
 
 function make_input(params=params_data(); age=DateUtil.FOREVER2) # DateUtil.age_daily())
-    Bins.init_bins(params.bins_count, params.bins_span)
+    # Bins.init_bins(params.bins_count, params.bins_span)
 
     # Get xtqs and ret
     df_tsx = filtered_tsx(;age)
@@ -59,8 +59,10 @@ function make_input(params=params_data(); age=DateUtil.FOREVER2) # DateUtil.age_
     # @assert expected_dates == unique(df.date)
     disallowmissing!(df)
 
+    global kret = df.ret
     # Bin the returns
-    transform!(df, :ret => (r -> Bins.nearest.(r .+ 1)) => :y_bin)
+    # transform!(df, :ret => (r -> Bins.nearest.(r .+ 1)) => :y_bin)
+    transform!(df, :ret => to_bin => :y_bin)
 
     # Calc pmf and cross entropy by days to xpir for comparison
     transform!(df, [:ts, :expir] => DateUtil.calc_days_to_xpir => :days_to_xpir)
@@ -83,6 +85,15 @@ function make_input(params=params_data(); age=DateUtil.FOREVER2) # DateUtil.age_
 
     Paths.save_data_params(Paths.db_input(NAME), params, df; update=true)
     return df
+end
+
+to_bin(ret::Vector) = to_bin.(ret)
+function to_bin(ret)
+    ret <= -0.02 && return 1
+    ret <= -0.005 && return 2
+    ret >= 0.005 && return 4
+    ret >= 0.02 && return 5
+    return 3
 end
 #endregion Public
 
