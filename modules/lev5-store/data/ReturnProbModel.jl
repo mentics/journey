@@ -323,7 +323,8 @@ end
 
 function run_train_softmax(model, batchx, params)
     yhat = model(batchx)
-    return softmax(yhat ./ params.model.softmax_temp)
+    # return softmax(yhat ./ params.model.softmax_temp)
+    return softmax(yhat)
 end
 
 function run_train_sum1(model, batchx, params)
