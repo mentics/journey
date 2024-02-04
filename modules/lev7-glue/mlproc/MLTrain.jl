@@ -14,7 +14,7 @@ params_train(;kws...) = (;
     rng_seed = 1,
     # holdout = 0.1,
     kfolds = 5,
-    batch_size = 32,
+    batch_size = 512,
     weight_decay = 0f0, # 0.000001f0,
     kws...
 )
@@ -99,8 +99,8 @@ function setup(trainee::Trainee, pt=nothing; kws...)
     model = trainee.make_model() |> dev
     println("Model has param count: ", sum(length, Flux.params(model)))
 
-    opt = Flux.AdamW(trainee.get_learning_rate(1), (0.9, 0.999), pt.weight_decay)
-    # opt = Flux.Optimisers.Lion(trainee.get_learning_rate(1))
+    # opt = Flux.AdamW(trainee.get_learning_rate(1), (0.9, 0.999), pt.weight_decay)
+    opt = Flux.Optimisers.Lion(trainee.get_learning_rate(1))
     opt_state = Flux.setup(opt, model) |> dev
 
     # if !iszero(pt.weight_decay)

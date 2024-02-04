@@ -16,8 +16,8 @@ TODO: something is wrong with dividing by ce_all this way?
 const NAME = replace(string(@__MODULE__), "Model" => "")
 
 params_model() = (;
-    block_count = 2,
-    layers_per_block = 2,
+    block_count = 4,
+    layers_per_block = 4,
     use_output_for_hidden = false,
     hidden_width_mult = 2,
     dropout = 0f0,
@@ -235,9 +235,9 @@ function calc_loss_for(yhat, y) # , ce_compare)
     # return ce
 
     # return Flux.Losses.crossentropy(yhat, y)
-    # return Flux.Losses.binarycrossentropy(yhat, y)
+    return Flux.Losses.binarycrossentropy(yhat, y)
 
-    return Flux.Losses.mae(yhat, y)
+    # return Flux.Losses.mae(yhat, y)
 
     # smooth_penalty = 10 * calc_smooth_penalty(yhat) # / (10 + ce)
     # return ce + smooth_penalty
