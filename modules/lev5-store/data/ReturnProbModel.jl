@@ -237,7 +237,7 @@ function calc_loss_for(yhat, y) # , ce_compare)
     # return Flux.Losses.crossentropy(yhat, y)
     # return Flux.Losses.binarycrossentropy(yhat, y)
 
-    return Flux.Losses.mse(yhat, y)
+    return Flux.Losses.mae(yhat, y)
 
     # smooth_penalty = 10 * calc_smooth_penalty(yhat) # / (10 + ce)
     # return ce + smooth_penalty
