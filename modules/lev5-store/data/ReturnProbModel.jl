@@ -17,9 +17,9 @@ const NAME = replace(string(@__MODULE__), "Model" => "")
 
 params_model() = (;
     block_count = 4,
-    layers_per_block = 4,
+    layers_per_block = 2,
     use_output_for_hidden = false,
-    hidden_width_mult = 2,
+    hidden_width_mult = 4,
     dropout = 0f0,
     use_bias_in = false,
     use_bias_block = false,

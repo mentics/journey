@@ -29,6 +29,8 @@ import OhlcShapeData as osd
 import OhlcShapeModel as osm
 import ReturnProbData as rpd
 import ReturnProbModel as rpm
+trainee = rpm.make_trainee(); training = ml.setup(trainee);
+ml.train(training; epochs=1)
 
 # using ModelUtil
 # import DataFilesExplore as dfe
