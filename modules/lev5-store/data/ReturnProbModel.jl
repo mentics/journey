@@ -428,6 +428,27 @@ function check1(training, inds=1)
     end
 end
 
+function percent_right(training)
+    obss = training.data.holdout
+    bufs = make_buffers(obss)
+    batch = training.data.prep_input(obss, bufs)
+    y = batch.y |> cpu
+    yhat = training.trainee.run_infer(training.model, batch.x) |> cpu
+    res = check_right.(eachcol(yhat), eachcol(y))
+    return countmap(res)
+    # count((==)(1), [( s = ml.single(training, i) ; check_right(s.yhat, s.batch.y) ) for i in (207072-11604):207072])
+    # return right_count / size(obss, 1)
+end
+
+function check_right(yhat, y)
+    yh = argmax(yhat)[1]
+    yy = argmax(y)[1]
+    yh <= 2 && (return yy <= 2 ? 1 : -1)
+    yh >= 4 && (return yy >= 4 ? 1 : -1)
+    return 0
+    # yh == 3 && yy == 3 && return 1
+    # return 0
+end
 #endregion Check
 
 end

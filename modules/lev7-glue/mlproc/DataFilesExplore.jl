@@ -8,7 +8,6 @@ import DrawUtil, ThreadUtil
 using OutputUtil
 import Calendars as cal
 import Paths
-import ProbMeta:Bins
 import MLyze
 
 using DataRead
@@ -25,7 +24,7 @@ is_ts_backtest(ts_min) = function(ts)
 end
 
 function run_long(;xpir_inds=1:4, max_bdays_out=8, incs=2:4)
-    reset(;max_bdays_out)
+    # reset(;max_bdays_out)
     yms = vcat([(2020,i) for i in 1:12], [(2021,i) for i in 1:12], [(2022,i) for i in 1:12], [(2023,i) for i in 1:12])
     explore(;yms, use_pos=false, xpir_inds, max_bdays_out, incs);
 end
