@@ -449,6 +449,18 @@ function percent_right(training; c=check_right)
     # return right_count / size(obss, 1)
 end
 
+function output_counts(training)
+    obss = training.data.holdout
+    bufs = make_buffers(obss)
+    batch = training.data.prep_input(obss, bufs)
+    y = batch.y |> cpu
+    yhat = training.trainee.run_infer(training.model, batch.x) |> cpu
+    yhat_out = mapslices(argmax, yhat; dims=1)
+    y_out = mapslices(argmin, y; dims=1)
+    println("yhat: ", countmap(yhat_out))
+    println("y: ", countmap(y_out))
+end
+
 function check_right(yhat, y)
     yh = argmax(yhat)[1]
     yy = argmax(y)[1]
