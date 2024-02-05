@@ -159,7 +159,9 @@ function prep_input(obss, params, bufs)
     copyto!(bufs.gpu.x, bufs.cpu.x)
     # y = YS2[][:,obss.y_bin]
 
-    y = Flux.onehotbatch(obss.y_bin, 1:params.data.bins_count) |> gpu
+    # y = Flux.onehotbatch(obss.y_bin, 1:params.data.bins_count) |> gpu
+    y = mapreduce(x -> encode_triangle(x, params.data.bins_count), hcat, obss.y_bin) |> gpu
+    global ky = y
 
     # ce_compare = obss.ce_compare |> gpu # ce_all[obss.y_bin] |> gpu
     # if !OVERRIDE_SQUARED[] && params.model.ce_compare_squared
@@ -169,6 +171,12 @@ function prep_input(obss, params, bufs)
     return (;keys, x=bufs.gpu.x, y)
 end
 const OVERRIDE_SQUARED = Ref(false)
+function encode_triangle(y, len)
+    global ketargs = (;y, len)
+    return map(1:len) do i
+        1.0 - 1.0 * (0.5)^(abs(y-i))
+    end
+end
 
 import CUDA
 const YS2 = Ref{CuArray{Float32, 2, CUDA.Mem.DeviceBuffer}}()
@@ -237,7 +245,8 @@ function calc_loss_for(yhat, y) # , ce_compare)
     # return Flux.Losses.crossentropy(yhat, y)
     # return Flux.Losses.binarycrossentropy(yhat, y)
 
-    return Flux.Losses.mse(yhat, y)
+    # return Flux.Losses.mse(yhat, y)
+    return mean(yhat .* y)
 
     # smooth_penalty = 10 * calc_smooth_penalty(yhat) # / (10 + ce)
     # return ce + smooth_penalty
