@@ -1,5 +1,6 @@
 module ReturnProbData
 using Dates, Intervals, DataFrames, SearchSortedNearest
+using StatsBase
 import Flux
 import DateUtil, Paths
 import DataConst, DataRead, ModelUtil
@@ -27,6 +28,9 @@ function make_input(params=params_data(); age=DateUtil.FOREVER2) # DateUtil.age_
     # Get xtqs and ret
     df_tsx = filtered_tsx(;age)
     df_tsx.date = Date.(df_tsx.ts)
+    global kdftsx = df_tsx
+    xtq_scale = fit(UnitRangeTransform, collect(Float32, Iterators.flatten(eachcol(df_tsx[!,4:19]))))
+    StatsBase.transform!.(Ref(xtq_scale), eachcol(df_tsx[!,3:18]))
 
     # Add temporal for ts
     transform!(df_tsx, [:ts] => (ts -> ModelUtil.to_temporal_ts.(ts)) => prefix_sym.([:week_day, :month_day, :quarter_day, :year_day, :hour], :ts_))
