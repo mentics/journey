@@ -171,10 +171,24 @@ function prep_input(obss, params, bufs)
     return (;keys, x=bufs.gpu.x, y)
 end
 const OVERRIDE_SQUARED = Ref(false)
-function encode_triangle(y, len)
+function encode_triangle1(y, len)
     global ketargs = (;y, len)
     return map(1:len) do i
         1.0 - 1.0 * (0.5)^(abs(y-i))
+    end
+end
+function encode_triangle2(y, len)
+    global ketargs = (;y, len)
+    return map(1:len) do i
+        # (0.5)^(len - abs(y-i) - 1)
+        abs(y-i) / len
+    end
+end
+function encode_triangle(y, len)
+    global ketargs = (;y, len)
+    return map(1:len) do i
+        # (0.5)^(len - abs(y-i) - 1)
+        abs(y-i)^2
     end
 end
 
