@@ -938,6 +938,18 @@ end
 function pricer(a::Action.T, lqs)
     return a == Action.open ? sum(price_open(lqs)) : error("bad")
 end
+function price_open(side, bid, ask)
+    if side == Side.long
+        tmp = ask
+        ask = -bid
+        bid = -tmp
+    end
+    if ask - bid > config().max_bidask_spread
+        return bid # return worst case if bidask spread is too big to avoid it
+    end
+    mid = round((bid + ask) / 2, RoundDown; digits=2)
+    return max(bid, min(mid, ask - 0.01) .- 0.01)
+end
 
 #region Update
 const gmax_bdays_out = Ref{Int}(0)

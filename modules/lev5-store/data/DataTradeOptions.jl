@@ -16,9 +16,9 @@ function validate_result(df)
 end
 
 #region Standard Api
-function make_trade_options(;sym="SPY", max_dist=16)
+function make_trade_options(;sym="SPY", max_dist=16, age=nothing)
     MAX_DIST_FROM_PRICE[] = max_dist # max(8, SPREAD_DIST[] + SPREAD_WIDTH[])
-    price_lookup = DataRead.price_lookup()
+    price_lookup = DataRead.price_lookup(;age)
 
     (;avail) = DataRead.get_options_yms()
     yms = avail
@@ -101,19 +101,19 @@ function filter_trade_options(ts, xpirts)
     xpir = Date(xpirts)
     return ts != cal.getMarketOpen(Date(ts)) &&
         ts != cal.getMarketClose(Date(ts)) &&
-        1 <= Dates.value(xpir - date) <= 2
+        DateUtil.bdays(date, xpir) in [1,2,4,8,16,32]
 end
 
 filter_ntm(price_lookup) = function(tss, xpirtss, styles, strikes_in, bids, asks)
     ts = first(tss)
     xpirts = first(xpirtss)
     style = first(styles)
-    ts_price = price_lookup[ts]
+    ts_price = Float32(haskey(price_lookup, ts) ? price_lookup[ts] : NaN32);
     left_of_mid = searchsortedlast(strikes_in, ts_price)
     left, right, _ = get_radius(length(strikes_in), left_of_mid)
     strikes = strikes_in[left:right]
     @assert iseven(length(strikes))
-    xpirts_price = xpirts > now(UTC) ? NaN : price_lookup[xpirts]
+    xpirts_price = Float32((xpirts < now(UTC) && haskey(price_lookup, xpirts)) ? price_lookup[xpirts] : NaN32)
     xpir_values = OptionUtil.value_at_xpir.(style, strikes, xpirts_price)
     out_count = length(strikes)
 
@@ -145,21 +145,6 @@ function explore(fproc)
     # global track_skip = []
     df = DataRead.get_trade_options(;age=DateUtil.FOREVER2)
     gdf = groupby(df, [:ts,:expir,:style])
-    dfc = combine(gdf, [:ts,:expir,:style,:strike,:bid,:ask,:xpir_value] => fproc => [:pnl_bid, :pnl_mid, :pnl_ask])
-    global kdfc = dfc
-    println("calls:")
-    sho(dfc[dfc.style .== 1,:])
-    println("puts:")
-    sho(dfc[dfc.style .== -1,:])
-    return dfc
-end
-
-function explore2(fproc)
-    global kcount_spread = 1
-    global kcount_odd = 1
-    # global track_skip = []
-    df = DataRead.get_trade_options(;age=DateUtil.FOREVER2)
-    gdf = groupby(df, [:ts,:expir])
     dfc = combine(gdf, [:ts,:expir,:style,:strike,:bid,:ask,:xpir_value] => fproc => [:pnl_bid, :pnl_mid, :pnl_ask])
     global kdfc = dfc
     println("calls:")
@@ -441,4 +426,124 @@ function to(df, bid_ask, dir, side, style=nothing)
     return df[:,sym]
 end
 #endregion Explore
+
+#region Half
+import Explore as ore
+function explore_half(;hist_len=100)
+    dfto = DataRead.get_trade_options(;age=nothing)
+    df = filter(:style => ==(-1), dfto)
+    df = filter!([:price_ts, :strike, :bid, :ask] =>
+        (price_ts, strike, bid, ask) ->
+            ask - bid < 0.12 && abs(strike - price_ts) < 8.0,
+        df)
+    df.long = ore.price_open.(Side.long, df.bid, df.ask)
+    df.short = ore.price_open.(Side.short, df.bid, df.ask)
+
+    dfhist = unique(df, [:ts])
+    dfhist.hist = rolling_extrema(dfhist.price_ts, hist_len)
+    select!(dfhist, :ts, :hist)
+    leftjoin!(df, dfhist; on=:ts)
+
+    global kdf = df
+    res = []
+    dfs = []
+    for days_to_xpir in [1,2,4,8,16,32]
+        dfin = filter([:ts, :expir] =>
+            (ts, xpirts) ->
+                DateUtil.bdays(Date(ts), Date(xpirts)) == days_to_xpir,
+            df)
+        gdf = groupby(dfin, [:ts, :expir])
+        for spread in [1,2,3,4,5,6,7]
+            for neto_target in [0.1f0, Float32(spread / 4), Float32(spread / 2), Float32(3 * spread / 4), Float32(spread - 0.1f0)]
+                f = proc_half(spread, neto_target)
+                dfc = combine(gdf, [:ts,:expir,:style,:strike,:long,:short,:xpir_value,:price_ts,:price_xpir,:hist] => f => [:strike_long,:strike_short,:neto,:netc,:pnl,:price_ts,:price_xpir,:risk])
+                filter!([:pnl, :price_xpir, :risk] => ((pnl, price_xpir, risk) -> isfinite(pnl) && isfinite(price_xpir) && risk > 0f0), dfc)
+                if !isempty(dfc)
+                    push!(res, (;days_to_xpir, spread, neto_target, balance_end=calc_balances(dfc.pnl, dfc.risk, days_to_xpir)[end]))
+                    push!(dfs, dfc)
+                end
+            end
+        end
+    end
+    s = sortperm(res; rev=true, by=x -> x.balance_end)
+    res = res[s]
+    dfs = dfs[s]
+    println(res[1])
+    draw(:scatter, dfs[1].ts, calc_balances(dfs[1].pnl, dfs[1].risk, res[1].days_to_xpir))
+    println(res[2])
+    draw!(:scatter, dfs[2].ts, calc_balances(dfs[2].pnl, dfs[2].risk, res[2].days_to_xpir))
+    return res, dfs
+end
+import DrawUtil:draw,draw!
+
+calc_rets(pnls, risks, days_to_xpir) = clamp.(pnls ./ risks ./ days_to_xpir, -1.0, 100.0)
+calc_balances(pnls, risks, days_to_xpir) = calc_balances(calc_rets(pnls, risks, days_to_xpir))
+calc_balances(rets) = accumulate(*, 1.0 .+ (0.01 .* rets); init=1.0)
+
+# all_match(v) = !all(x -> x==hists[end] || ( all(isnan.(x)) && all(isnan.(hists[end])) ), hists)
+
+proc_half(spread, neto_target) = function(tss, xpirtss, styles, strikes, longs, shorts, xpir_values, price_tss, price_xpirs, hists)
+    EMPTY = (;strike_long=0f0, strike_short=0f0, neto=0f0, netc=0f0, pnl=0f0, price_ts=0f0, price_xpir=0f0, risk=0f0)
+    !isempty(tss) || return EMPTY
+    # @assert price_tss[end] == hists[end]
+    @assert all(==(tss[end]), tss)
+    @assert all(==(xpirtss[end]), xpirtss)
+    if !all(isequal(price_xpirs[end]), price_xpirs)
+        global kargs = (;tss, xpirtss, styles, strikes, longs, shorts, xpir_values, price_tss, price_xpirs, hists)
+        error("!all(==(price_xpirs[end]), price_xpirs)")
+    end
+    @assert all(==(price_tss[end]), price_tss)
+    # if !all(x -> x==hists[end] || ( all(isnan.(x)) && all(isnan.(hists[end])) ), hists)
+    if !all(isequal(hists[end]), hists)
+        global kargs = (;tss, xpirtss, styles, strikes, longs, shorts, xpir_values, price_tss, price_xpirs, hists)
+        error("all(==(hists[end]), hists)")
+    end
+    # @assert all(==(hists[end]), hists)
+    hist = hists[end]
+    range = first(hist) .+ (0.0, 0.4) .* width(hist)
+    range[1] < first(price_tss) < range[2] || return EMPTY
+    res = []
+    for i in eachindex(strikes)[1:end-spread]
+        j = i + spread
+        # for j in (i+1):lastindex(strikes)
+            # neto = shorts[i] + longs[j]
+            # # if 0.4 <= neto <= 0.6
+            #     push!(res, (;short=i, long=j, neto))
+            # # end
+            neto = longs[i] + shorts[j]
+            0.04 < neto < (spread - 0.04) || continue
+            risk = Float32(spread - neto)
+            # if -0.6 <= neto <= -0.4
+                push!(res, (;long=i, short=j, neto, risk))
+            # end
+        # end
+    end
+    filter!(x -> x.neto >= 0.01, res)
+    if isempty(res)
+        return EMPTY
+    end
+    # top = res[findmin(x -> abs(abs(x.neto) - 0.5), res)[2]]
+    top = res[findmin(x -> abs(x.neto - neto_target), res)[2]]
+    netc = xpir_values[top.long] - xpir_values[top.short]
+    pnl = top.neto + netc
+    # return (;strike_long=[strikes[top.long]], strike_short=[strikes[top.short]], neto=[top.neto], netc=[netc], pnl=[pnl])
+    res = (;strike_long=strikes[top.long], strike_short=strikes[top.short], top.neto, netc, pnl, price_ts=first(price_tss), price_xpir=first(price_xpirs), risk=top.risk)
+    # println("returning: ", res)
+    return res
+end
+
+function rolling_extrema(v, window)
+    res = Vector{NTuple{2,Float32}}(undef, length(v))
+    for i in eachindex(v)
+        i >= window || ( res[i] = (NaN32,NaN32); continue )
+        left = i - window + 1
+        right = i
+        res[i] = extrema(v[left:right])
+    end
+    return res
+end
+
+width(t::Tuple) = last(t) - first(t)
+#endregion Half
+
 end

@@ -48,7 +48,7 @@ function check_file_mtime(path, age, asof)
     mt = unix2datetime(mtime(path))
     mt >= asof || throw("File $(path) out of date $(mt) < $(asof)")
     a = now(UTC) - mt
-    a < age || throw("File $(path) too old $(a) > $(age)")
+    (isnothing(age) || a < age) || throw("File $(path) too old $(a) > $(age)")
     return
 end
 

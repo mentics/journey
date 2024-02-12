@@ -24,7 +24,13 @@ function populateVixOpens()
 end
 
 # In descending date order
-dataDaily(sym::AStr="SPY"; refresh=false)::DailyType = ( res = cache!(() -> updateDaily(sym), DailyType, Symbol("daily-$(lowercase(sym))"), Hour(4); refresh) ; @assert length(res) > 5000 string("length(dataDaily(", sym, ")) ", length(res)) ; return res )
+function dataDaily(sym::AStr="SPY"; refresh=false)::Union{Nothing,DailyType}
+    res = cache!(() -> updateDaily(sym), DailyType, Symbol("daily-$(lowercase(sym))"), Hour(4); refresh)
+    if length(res) < 100
+        println("Result length too short for dataDaily(", sym, ") ", length(res))
+    end
+    return res
+end
 dataDaily(d::Date, sym::AStr="SPY")::DailyType = (daily = dataDaily(sym) ; daily[findfirst(r->r.date <= d, daily):end])
 dataDaily(from::Date, to::Date, sym::AStr="SPY")::DailyType = filter(r -> from <= r.date <= to, dataDaily(sym))
 dailyDict(from::Date, to::Date, sym::AStr="SPY")::Dict{Date,NamedTuple} = dictFromVals(getDate, filter(x -> from <= x.date <= to, dataDaily(sym)))
@@ -141,7 +147,11 @@ end
 const header = [:date, :open, :high, :low, :close, :volume]
 # const pathDaily = dirData("hist", "daily", "spy", "spy-daily.csv")
 # const pathDailyVix = dirData("hist", "daily", "spy", "vix-daily.csv")
-pathDaily(sym::AStr)::String = joinpath(dirData("hist", "daily"), "$(sym)-daily.csv")
+
+
+import Paths
+# pathDaily(sym::AStr)::String = joinpath(dirData("hist", "daily"), "$(sym)-daily.csv")
+pathDaily(sym::AStr)::String = Paths.db_incoming("tradier", "daily", "$(sym).csv")
 
 function updateDaily(sym)::DailyType
     path = pathDaily(lowercase(sym))
