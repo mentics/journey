@@ -10,7 +10,7 @@ function sendEmail(to::AStr, subject::AStr, body::AStr)
     #Provide the message body as RFC5322 within an IO
     body = IOBuffer(
             "Date: $(dateStr)\r\n" *
-            "From: <***REMOVED***>\r\n" *
+            "From: <## REMOVED EMAIL ##>\r\n" *
             "To: $(to)\r\n" *
             "Subject: $(subject)\r\n" *
             "\r\n" *
