@@ -37,7 +37,7 @@ const HIST_CACHE2 = LRUCache.LRU{String,Union{Nothing,Dict}}(;maxsize=10000)
 function query_options(date_start, date_end, xpir; period=1800000, sym="SPY", cache=true)
     println("Getting quotes for $(date_start) to $(date_end) for xpir=$(xpir)")
 
-    url = "http://localhost:25510//v2/bulk_hist/option/quote?exp=$(str(xpir))&start_date=$(str(date_start))&end_date=$(str(date_end))&root=$(sym)&ivl=$(period)"
+    url = "http://127.0.0.1:25510/v2/bulk_hist/option/quote?exp=$(str(xpir))&start_date=$(str(date_start))&end_date=$(str(date_end))&root=$(sym)&ivl=$(period)"
     if !cache || !haskey(HIST_CACHE2, url)
     # data = get!(HIST_CACHE2, url) do
         start = time()
@@ -54,6 +54,7 @@ function query_options(date_start, date_end, xpir; period=1800000, sym="SPY", ca
         stop = time()
         println("  data was not in cache, acquired from thetadata in $(stop - start) seconds: $(url)")
         data = dict
+        HIST_CACHE2[url] = data
     else
         data = HIST_CACHE2[url]
     end
@@ -86,6 +87,67 @@ function query_options(date_start, date_end, xpir; period=1800000, sym="SPY", ca
             # under = Date(ts) <= DAT_UNDER_LAST_DATE ? dat.lup_under(ts) : get_under()[ts]
             # @assert !ismissing(under) "under missing for $(ts)"
             push!(df, [ts, to_xpirts(xpir), style, strike / 1000, bid, bid_size, bid_condition, ask, ask_size, ask_condition])
+        end
+    end
+    stop = time()
+    dur = stop - start
+    if dur > 2.0
+        println("  created df in $(dur) seconds")
+    end
+    return df
+end
+
+20130316
+const HIST_CACHE_EOD = LRUCache.LRU{String,Union{Nothing,Dict}}(;maxsize=10000)
+function query_options_eod(date_start, date_end, xpir; sym="UPRO", cache=true)
+    println("Getting $(sym) quotes for $(date_start) to $(date_end) for xpir=$(xpir)")
+
+    url = "http://127.0.0.1:25510/v2/bulk_hist/option/eod?exp=$(str(xpir))&start_date=$(str(date_start))&end_date=$(str(date_end))&root=$(sym)"
+    if !cache || !haskey(HIST_CACHE_EOD, url)
+        start = time()
+        resp = HTTP.get(url, HEADERS_GET[]; retry=false)
+        dict = parseJson(String(resp.body), Dict)
+        error_type = get(dict["header"], "error_type", "null")
+        if error_type != "null"
+            if error_type == "NO_DATA"
+                return nothing
+            else
+                throw((dict["header"], url))
+            end
+        end
+        stop = time()
+        println("  data was not in cache, acquired from thetadata in $(stop - start) seconds: $(url)")
+        data = dict
+        HIST_CACHE_EOD[url] = data
+    else
+        data = HIST_CACHE_EOD[url]
+    end
+    if isnothing(data)
+        println("WARN: no data for url=$(url)")
+        return nothing
+    end
+
+    # "format": ["ms_of_day","ms_of_day2","open","high","low","close","volume","count","bid_size","bid_exchange","bid","bid_condition","ask_size","ask_exchange","ask","ask_condition","date"]
+    start = time()
+    df = DataFrame([Date[], Date[], Int8[], CT[], CT[], CT[], CT[], CT[], UInt32[]], [:date, :expir, :style, :strike, :open, :high, :low, :close, :volume])
+    global kdata = data
+    for d in data["response"]
+        global kd = d
+        info = d["contract"]
+        style = Int8(info["right"] == "C" ? 1 : -1)
+        strike = info["strike"]
+        for tick in d["ticks"]
+            global ktick = tick
+            date = to_date(tick[17])
+            DateUtil.isBusDay(date) || continue
+            # TODO: still need this?
+            # !(date in DateUtil.BAD_DATA_DATES()) || continue
+            open = tick[3]
+            high = tick[4]
+            low = tick[5]
+            close = tick[6]
+            volume = tick[7]
+            push!(df, [date, xpir, style, strike / 1000, open, high, low, close, volume])
         end
     end
     stop = time()

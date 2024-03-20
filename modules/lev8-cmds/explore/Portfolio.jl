@@ -21,7 +21,7 @@ mutable struct Account
     quantities::Dict{Symbol, Float64}
     transactions::Vector{Transaction}
 end
-Account() = Account(100000, Dict{Symbol, Float64}(), Transaction[])
+Account() = Account(1000000, Dict{Symbol, Float64}(), Transaction[])
 
 struct DataLookup
     price::DataFrame
@@ -34,6 +34,8 @@ const SECTORS3 = Ref{DataFrame}()
 const DISALLOW = Vector{Symbol}()
 
 sparrow_path() = Paths.db_incoming("norgate", "SP500.arrow")
+always_symbols() = [:SPY, :UPRO, :TMF]
+always_count() = length(always_symbols())
 #endregion Types and Constants
 
 function run(;corr_ndays=120, ret_ndays=20, count_per_sector=4, min_price=10.2, refresh=false)
@@ -57,17 +59,24 @@ function run(;corr_ndays=120, ret_ndays=20, count_per_sector=4, min_price=10.2, 
             price = lup.price[ind_curday, :open]
             if isnan(price)
                 println("NaN price for $(sym) at $(date)")
+                # error("stop")
             end
-            lup.constituency.include[ind_curday] || return 0.0, 0.0
+            # lup.constituency.include[ind_curday] || return 0.0, 0.0
 
-            prices = @view lup.price[(ind_curday - corr_ndays):(ind_curday-1), :open]
+            # prices = @view lup.price[(ind_curday - corr_ndays):(ind_curday-1), :open]
+            prices = @view lup.price[(ind_curday - corr_ndays):ind_curday, :open]
             i = findlast(!isnan, prices)
             value = prices[i]
 
+            @assert isnan(price) || price == value "price: $(price) | value: $(value) for $(sym) at $(date)"
+            # if price != value
+            #     println("** price: $(price) | value: $(value) for $(sym) at $(date)")
+            # end
             return price, value
             # df = DF_LOOKUP[sym].price
             # return df[ind_curday, :open]
         end
+        global kgetprice = get_cur_price
         # get_cur_price = function(sym)
         #     prices = @view DF_LOOKUP[sym].price[(ind_curday - corr_ndays):(ind_curday-1), :open]
         #     i = findlast(!isnan, prices)
@@ -79,7 +88,10 @@ function run(;corr_ndays=120, ret_ndays=20, count_per_sector=4, min_price=10.2, 
         global ktargets = targets
 
         update!(date, get_cur_price, acct, targets)
-        push!(kbal, (;date, bal=calc_account_value(get_cur_price, acct)))
+
+        total_value = calc_account_value(get_cur_price, acct)
+        push!(kbal, (;date, bal=total_value))
+        println((;ind_curday, date, total_value, acct.cash))
     end
     return acct
 end
@@ -88,8 +100,9 @@ function make_df_corr(lookup, date, ind, len, min_price)
     corr_inds = (ind - len):(ind - 1)
     to_include = filter(lookup) do (sym, lup)
         !(sym in DISALLOW) || return false
+        occursin('-', string(sym)) && return false
 
-        if DF_LOOKUP[sym].price[ind, :close_unadjusted] < min_price
+        if lup.price[ind, :close_unadjusted] < min_price
             push!(DISALLOW, sym)
             println("Disallowed: $(sym) at $(date)")
             return false
@@ -122,39 +135,49 @@ function buysell_to_target!(date, get_cur_price, acct, targets)
     isempty(adding) || println("Adding $(adding)")
     cash_start = acct.cash
     total_value = calc_account_value(get_cur_price, acct)
-    println((;date, total_value, cash_start))
-    for (sym, target_ratio) in targets
-        cur_price, cur_value = get_cur_price(sym)
-        if isnan(cur_price)
-            println("cur_price is zero: $(cur_price) for $(sym) at $(date)")
-            continue
-        end
-        # !isnan(cur_price) || continue
-        cur_qty = get(acct.quantities, sym, 0.0)
-        cur_value = cur_price * cur_qty
-        cur_ratio = cur_value / total_value
-        diff_ratio = target_ratio - cur_ratio
-        diff_qty = round(Int, (diff_ratio * total_value) / cur_price, RoundDown)
-        # diff_qty != 0 || ( println("diff_qty < 1.0 so skipping purchase for $(sym)"); continue )
-
-        if acct.cash < diff_qty * cur_price
-            x = acct.cash / cur_price
-            if x >= 1.0
-                new_diff_qty = round(Int, x, RoundDown)
-                println("cash limited, purchasing reduced $(diff_qty) to $(new_diff_qty) of $(sym)")
-                diff_qty = new_diff_qty
-            else
-                println("Insufficient cash to purchase even 1 of $(sym)")
+    for sell in [true, false]
+        # println("Cash for sell=$(sell): $(acct.cash)")
+        for (sym, target_ratio) in targets
+            cur_price, cur_value = get_cur_price(sym)
+            if isnan(cur_price)
+                println("cur_price is nan: $(cur_price) for $(sym) at $(date)")
                 continue
             end
-        end
+            # !isnan(cur_price) || continue
+            cur_qty = get(acct.quantities, sym, 0.0)
+            cur_value = cur_price * cur_qty
+            cur_ratio = cur_value / total_value
+            diff_ratio = target_ratio - cur_ratio
+            diff_ratio != 0.0 || continue
+            (diff_ratio < 0.0) == sell || continue
 
-        tx = Transaction(date, sym, diff_qty, cur_price)
-        push!(acct.transactions, tx)
-        acct.quantities[sym] = get!(acct.quantities, sym, 0.0) + diff_qty
-        acct.cash -= diff_qty * cur_price
+            # diff_value = diff_ratio * total_value
+            # (diff_value < 0.0 || diff_value > 2000.0) || continue
+            # @show sell diff_ratio < 0.0
+
+            diff_qty = round(Int, (diff_ratio * total_value) / cur_price, RoundDown)
+            !iszero(diff_qty) || continue # ( println("diff_qty < 1.0 so skipping purchase for $(sym)"); continue )
+
+            if acct.cash < diff_qty * cur_price
+                x = acct.cash / cur_price
+                if x >= 1.0
+                    new_diff_qty = round(Int, x, RoundDown)
+                    println("cash limited, purchasing reduced $(diff_qty) to $(new_diff_qty) of $(sym)")
+                    diff_qty = new_diff_qty
+                else
+                    println("Insufficient cash $(acct.cash) for $(sym) qty:$(diff_qty) at:$(cur_price) could buy: $(x)")
+                    continue
+                end
+            end
+
+            tx = Transaction(date, sym, diff_qty, cur_price)
+            # println(tx)
+            push!(acct.transactions, tx)
+            acct.quantities[sym] = get!(acct.quantities, sym, 0.0) + diff_qty
+            acct.cash -= diff_qty * cur_price
+        end
     end
-    @assert (length(targets) - length(acct.quantities)) <= 2
+    @assert (length(targets) - length(acct.quantities)) <= 12 "length(targets)=$(length(targets)) | length(acct.quantities)=$(length(acct.quantities))"
     cash_end = acct.cash
     if cash_end < 0.0
         error("Cash went negative: $(cash_start) -> $(cash_end)")
@@ -165,7 +188,7 @@ calc_account_value(get_cur_price, acct) = acct.cash + sum([qty * get_cur_price(s
 
 function sell_all!(date, get_cur_price, acct, syms)
     if !isempty(syms)
-        @assert !(:SPY in syms)
+        @assert not_in(always_symbols(), syms)
         println("Removing: $(syms)")
     end
     for sym in syms
@@ -184,10 +207,10 @@ function sell_all!(date, get_cur_price, acct, syms)
 end
 
 function sector_targets(df_corr, cur_positions, get_cur_price, ret_ndays, count_per_sector)
-    targets = [(;sym=:SPY, score=1.0)]
-    gdfs = groupby(SECTORS3[], :Class2)
+    targets = [(;sym, score=1.0) for sym in always_symbols()]
+    gdfs = groupby(SECTORS3[], :Class3)
     for gdf in gdfs
-        syms = vcat(:SPY, intersect(gdf.sym, propertynames(df_corr)))
+        syms = vcat(always_symbols(), intersect(gdf.sym, propertynames(df_corr)))
         to_add = score(df_corr[!,syms], get_cur_price, ret_ndays, count_per_sector, cur_positions)
         append!(targets, to_add)
     end
@@ -201,43 +224,76 @@ function sector_targets(df_corr, cur_positions, get_cur_price, ret_ndays, count_
     return Dict([s.sym => target_ratio for s in targets])
 end
 
+import LsqFit
+linear_model(x, p) = p[1] .* x .+ p[2]
+const INIT_PARAM = [1.0, 1.0]
 function score(df_corr, get_cur_price, ret_ndays, count_per_sector, bonuses)
-    @assert propertynames(df_corr)[1] == :SPY
-    syms = propertynames(df_corr)[2:end] # skip :SPY
-    # rets = [(;sym, ret = get_cur_price(sym)[2] / df_corr[1,sym]) for sym in syms_all]
-    # sort!(rets; rev=true, by=(r -> r.ret))
-    # syms = unique!(vcat([r.sym for r in first(rets, 199)], :SPY))
-    # df_corr = df_corr[!, syms]
+    @assert propertynames(df_corr)[1:always_count()] == always_symbols()
 
-    m = Matrix(df_corr)
+    # Ignore non-finite values and don't score, but we need to keep them in syms/targets in case their already owned
+    syms_all = propertynames(df_corr)
+    corr_cols = all.(isfinite, eachcol(df_corr))
+    # score_cols = copy(corr_cols)
+    # score_cols[1] = false
+
+    m = Matrix(df_corr[!,corr_cols])
+    global km = m
+
+    # skip = unique!(getindex.(findall(!isfinite, m), 2))
+    # for i in skip
+    #     println("Non-finite value in $(syms[i])")
+    #     fill!((@view m[:,i]), 0.0)
+    # end
+
+    slopes_corr = detrend!(m)
+
     corr = StatsBase.cor(m)
     global kcorr = corr
-    # @assert all(!ismissing, corr)
 
-    # draw_mat(reverse(corr; dims=1))
-    # TODO: make this algo better
-    # scor_corr = vec(mapslices(v -> StatsBase.median(abs.(v)), corr; dims=1))[2:end] # skip :SPY
-    scor_corr = vec(mapslices(v -> maximum(abs.(v)), corr; dims=1))[2:end] # skip :SPY
-    global kscorr = scor_corr
-    scor = map(eachindex(scor_corr)) do i
-        m[end,i] / m[end - ret_ndays,i] / (1 + scor_corr[i])
+    # scor_corr = vec(mapslices(v -> StatsBase.median(abs.(v)), corr; dims=1))[length(always_symbols()):end] # skip :SPY
+    scor_ltd = vec(mapslices(v -> maximum(abs.(v)), corr; dims=1))[(always_count() + 1):end] # skip :SPY
+    slopes_ltd = slopes_corr[(always_count() + 1):end] # skip :SPY
+    global kscorr = scor_ltd
+    global kslopes_corr = slopes_ltd
+    scor = map(eachindex(scor_ltd)) do i
+        # 1 / (1 + scor_corr[i])
+        # m[end,i] / m[end - ret_ndays,i] / (1 + scor_corr[i])
+        slopes_ltd[i] / (1 + scor_ltd[i])
     end
-    # scor = map(eachindex(scor_corr)) do i
-    #     1 / (1 + scor_corr[i])
-    # end
-    for sym in syms
+    @assert all(isfinite, scor)
+
+    syms_scored = syms_all[corr_cols][(always_count() + 1):end] # skip :SPY
+    global ksyms_scored = syms_scored
+    @assert not_in(always_symbols(), syms_scored)
+
+    # bonus = abs(StatsBase.quantile(slopes, 0.9))
+    bonus = abs(maximum(scor)) / 1
+    for i in eachindex(syms_scored)
+        sym = syms_scored[i]
         if sym in bonuses
-            i = findfirst(syms .== sym)
-            scor[i] *= 2.0
+            scor[i] += bonus
         end
     end
     global kscor = scor
-    @assert all(!ismissing, scor)
-    sorted = sortperm(scor; rev=true)
-    permute!(syms, sorted)
-    permute!(scor, sorted)
-    res1 = first(syms, count_per_sector)
+
+    scor_sort = sortperm(scor; rev=true)
+    permute!(syms_scored, scor_sort)
+    permute!(scor, scor_sort)
+    res1 = first(syms_scored, count_per_sector)
     res2 = first(scor, count_per_sector)
+
+    # keep_inds = filter(eachindex(res1)) do i
+    #     scor[i] > 0.0 # || syms_scored[i] in bonuses
+    # end
+    # res1 = res1[keep_inds]
+    # res2 = res2[keep_inds]
+
+    # for i in eachindex(res1)
+    #     if scor[i] < 0.0 && !(syms_scored[i] in bonuses)
+    #         deleteat!(res1, i)
+    #         deleteat!(res2, i)
+    #     end
+    # end
     return [(;sym=s, score=sc) for (s, sc) in zip(res1, res2)]
 end
 
@@ -273,11 +329,11 @@ function make_targets(df_corr, cur_positions, get_cur_price, num_syms, ret_ndays
     target_ratio = 1 / num_syms
 
     syms_all = propertynames(df_corr)
-    @assert :SPY in syms_all
+    @assert !not_in(always_symbols(), syms_all)
 
     rets = [(;sym, ret = get_cur_price(sym)[2] / df_corr[1,sym]) for sym in syms_all]
     sort!(rets; rev=true, by=(r -> r.ret))
-    syms = unique!(vcat([r.sym for r in first(rets, 199)], :SPY))
+    syms = unique!(vcat([r.sym for r in first(rets, 199)], always_symbols()))
     df_corr = df_corr[!, syms]
 
     print("Correlating $(length(syms)) symbols... ")
@@ -304,7 +360,7 @@ function make_targets(df_corr, cur_positions, get_cur_price, num_syms, ret_ndays
 
     if !isempty(cur_positions)
         syms_dropped = setdiff(cur_positions, syms_all)
-        @assert !(:SPY in syms_dropped)
+        @assert false # !(:SPY in syms_dropped)
         if !isempty(syms_dropped)
             new_positions = collect(filter(cur_positions) do sym
                 !(sym in syms_dropped)
@@ -342,12 +398,30 @@ function make_targets(df_corr, cur_positions, get_cur_price, num_syms, ret_ndays
 end
 
 #region Util
+not_in(needles, haystack) = isempty(intersect(needles, haystack))
+
+function detrend!(m::AbstractMatrix{T}) where T<:Real
+    # calc slopes and detrend
+    # return mapslices(m; dims=1) do v
+    slopes = Vector{T}(undef, size(m, 2))
+    for i in axes(m, 2)
+        v = @view m[:,i]
+        slope, offset = LsqFit.curve_fit(linear_model, eachindex(v), v, INIT_PARAM).param
+        for i in eachindex(v)
+            v[i] -= slope * i + offset
+        end
+        # println("$(eachindex(v)), slope: $(slope) | offset: $(offset)")
+        # return slope
+        slopes[i] = slope
+    end
+    return slopes
+end
 #endregion Util
 
 #region Norgate Data
 base_path() = Paths.db_incoming("norgate", "sp500-daily")
 sectors_path() = joinpath(base_path(), "sectors.arrow")
-sym_path(sym) = joinpath(base_path(), sym * ".arrow")
+sym_path(sym) = joinpath(base_path(), string(sym, ".arrow"))
 
 function make_sectors()
     df_sectors = disallowmissing!(Paths.load_data(sectors_path(), DataFrame))
@@ -360,7 +434,7 @@ end
 
 function make_lookup()
     df_sectors = disallowmissing!(Paths.load_data(sectors_path(), DataFrame))
-    syms = vcat(df_sectors.Symbol, "SPY")
+    syms = vcat(Symbol.(df_sectors.Symbol), always_symbols())
     df_dates = DataFrame(:date => dates_list())
     @assert issorted(df_dates.date)
 
@@ -379,7 +453,7 @@ function make_lookup()
         )
         sort!(df_price, :date)
 
-        df_constituency_raw = select!(Paths.load_data(joinpath(base_path(), sym * "_constituency.arrow"), DataFrame), :Date => (x -> Date.(x)) => :date, Not(:Date))
+        df_constituency_raw = select!(Paths.load_data(joinpath(base_path(), string(sym, "_constituency.arrow")), DataFrame), :Date => (x -> Date.(x)) => :date, Not(:Date))
         # df_constituency = leftjoin(df_dates, Paths.load_data(joinpath(base_path(), sym * "_constituency.arrow"), DataFrame); on=:date => :Date)
         df_constituency = leftjoin(df_dates, df_constituency_raw; on=:date)
         # global kdf_constituency_raw = df_constituency_raw
@@ -387,15 +461,15 @@ function make_lookup()
         select!(df_constituency, :date,
                 Symbol("Index Constituent") => (v -> missing_to_false.(v)) => :include
         )
-        if sym == "SPY"
+        if sym in always_symbols()
             df_constituency.include .= true
         end
         sort!(df_constituency, :date)
 
-        @assert issorted(df_price.date) sym
+        @assert issorted(df_price.date)
         @assert issorted(df_constituency.date)
 
-        DF_LOOKUP[Symbol(sym)] = DataLookup(df_price, df_constituency)
+        DF_LOOKUP[sym] = DataLookup(df_price, df_constituency)
     end
 end
 

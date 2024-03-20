@@ -956,24 +956,24 @@ const gmax_bdays_out = Ref{Int}(0)
 calc_balrat() = 1 / (gmax_bdays_out[] * TIMES_PER_DAY)
 
 function Base.isless(a::Result, b::Result)
-    av = to_val_kelt_prob2(a.r)
-    bv = to_val_kelt_prob2(b.r)
+    av = to_val_kelt(a.r)
+    bv = to_val_kelt(b.r)
     return av < bv
 end
 function to_val_evrate(x)
-    x1 = isnothing(x.r.forpos) ? x.r.evrate : x.r.forpos.evrate
+    x1 = isnothing(x.forpos) ? x.evrate : x.forpos.evrate
     return isnan(x1) ? -Inf : x1
 end
 function to_val_prob(x)
-    p = x.r.probprofit
+    p = x.probprofit
     return isfinite(p) ? p : 0.0
 end
 function to_val_kel(x)
-    p = x.r.kel
+    p = x.kel
     return isfinite(p) ? p : -Inf
 end
 function to_val_kelt(x)
-    p = x.r.kelt
+    p = x.kelt
     return isfinite(p) ? p : -Inf
 end
 function to_val_kelt_prob2(x)
@@ -1092,19 +1092,19 @@ config() = (;
     kelprobadjust = 0.0,
     commit_min = 0.05,
     commit_max = 8.51,
-    probprofit_min = 0.01,
-    kel_min = 0.01,
-    kelt_min = 0.01,
-    kelt_prob_min = 100.01,
+    probprofit_min = 0.84,
+    kel_min = 0.2,
+    kelt_min = 10.0,
+    kelt_prob_min = 20.0,
     evrate_min = 0.01,
     all_risk_max = 1000000.0,
-    max_spread = 8.01,
-    max_gap = 64.01,
-    maxcondormiddle = 64.01,
+    max_spread = 8.51,
+    max_gap = 8.51,
+    maxcondormiddle = 22.51,
     annual_min = 0.01,
     # min_move_rat = 0.0,
-    max_bidask_spread = C_8,
-    min_max_profit = 0.7,
+    max_bidask_spread = C_12,
+    min_max_profit = 0.8,
     min_neto = -Inf, # C_FIVE,
 )
 #endregion Update

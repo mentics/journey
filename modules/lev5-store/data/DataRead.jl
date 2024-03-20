@@ -152,4 +152,6 @@ file_treasury() = joinpath(Paths.db_incoming("treasury", "treasury.jld2"))
 file_trade_options(;sym="SPY") = joinpath(Paths.db_thetadata("trade_options"; sym), "trade_options-$(sym).arrow")
 #endregion Local
 
+file_options_eod(;sym="UPRO") = joinpath(Paths.db_thetadata("options_eod"; sym), "ohlc-$(sym).arrow")
+
 end

@@ -23,8 +23,8 @@ is_ts_backtest(ts_min) = function(ts)
     return ts >= ts_min && ts != cal.getMarketOpen(date) && ts != cal.getMarketClose(date)
 end
 
-function run_long(;xpir_inds=1:4, max_bdays_out=8, incs=2:4)
-    # reset(;max_bdays_out)
+function run_long(;xpir_inds=1:8, max_bdays_out=32, incs=4:4, restart=false)
+    restart && reset(;max_bdays_out)
     yms = vcat([(2020,i) for i in 1:12], [(2021,i) for i in 1:12], [(2022,i) for i in 1:12], [(2023,i) for i in 1:12])
     explore(;yms, use_pos=false, xpir_inds, max_bdays_out, incs);
 end
