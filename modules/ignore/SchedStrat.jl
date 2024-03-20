@@ -52,7 +52,7 @@ function run()
         io = IOBuffer()
         pretyble(io, res; rowcol=true, widths=CmdStrats.tupleWidths())
         # TODO: include output of comp(1)
-        sendEmail("***REMOVED***", "Found potential entry for $(exs)", String(take!(io)))
+        sendEmail("## REMOVED EMAIL ##", "Found potential entry for $(exs)", String(take!(io)))
     end
     return
 end

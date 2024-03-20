@@ -19,7 +19,7 @@ function checkTodo()
     end
     println(report) ; println(report)
     println(report, captureStdio(dbChecks))
-    sendEmail("***REMOVED***", "Close positions $(today())", String(take!(report)))
+    sendEmail("## REMOVED EMAIL ##", "Close positions $(today())", String(take!(report)))
 end
 
 end

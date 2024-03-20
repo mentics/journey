@@ -43,9 +43,9 @@ end
 
 #region Local
 const USER = "journey"
-const PASSWORD = "***REMOVED***"
-# const DB_USER = "mentics"
-# const DB_PSW = "***REMOVED***"
+const PASSWORD = "## REMOVED PASSWORD ##"
+# const DB_USER = "## REMOVED USERID ##"
+# const DB_PSW = "## REMOVED PASSWORD ##"
 # const DB_URL = "postgresql://mentics:$(DB_PSW)@free-tier4.aws-us-west-2.cockroachlabs.cloud:26257/frilly-insect-2710.defaultdb?sslmode=verify-full"
 const DB_URL = "postgresql://$(USER):$(PASSWORD)@free-tier4.aws-us-west-2.cockroachlabs.cloud:26257/frilly-insect-2710.DBNAME?sslmode=verify-full"
 const DB_PROD = "prod"

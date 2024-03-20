@@ -102,7 +102,7 @@ function runCheck(i, track, minScores, notify=true)
             prety = spretyble(vcat(ctx.metPos, met1s, metRuns[end]))
             println("Cumulative:")
             println(prety)
-            notify && sendEmail("***REMOVED***", "Found din scan entry for $(i) $(ctx.exp)", prety)
+            notify && sendEmail("## REMOVED EMAIL ##", "Found din scan entry for $(i) $(ctx.exp)", prety)
         else
             # haskey(track, ctx.exp) || (track[ctx.exp] = (;ctx, lmss, mets, rets))
             println("Evr too low ", (;scoreFrom, scoreTo, scoreMin))

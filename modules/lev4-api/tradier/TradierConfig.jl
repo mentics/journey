@@ -108,15 +108,15 @@ end
 
 const ENV_PROD = (;
     env = :prod,
-    accountId = "6YA21612",
-    apiKey = "***REMOVED***",
+    accountId = "## REMOVED ACCOUNTID ##",
+    apiKey = "## REMOVED APIKEY ##",
     baseUrl = "https://api.tradier.com/v1"
 )
 
 const ENV_PAPER = (;
     env = :paper,
-    accountId = "VA90524539",
-    apiKey = "***REMOVED***",
+    accountId = "## REMOVED ACCOUNTID ##",
+    apiKey = "## REMOVED APIKEY ##",
     baseUrl = "https://sandbox.tradier.com/v1"
 )
 

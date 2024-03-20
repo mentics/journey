@@ -44,7 +44,7 @@ function check()
         for (name, n) in Notifs
             msg = n.pred()
             if !isnothing(msg)
-                sendEmail("***REMOVED***", name, msg)
+                sendEmail("## REMOVED EMAIL ##", name, msg)
             end
         end
     end
